@@ -57,15 +57,15 @@ export default defineConfig({
       includeAssets: ["icons/*.png", "icons/*.svg"],
       manifest: {
         id: "/app/",
-        name: "Czytnik01",
-        short_name: "Czytnik01",
-        description: "Aplikacja do sterowania urządzeniem czytnik01.",
+        name: "Flower",
+        short_name: "Flower",
+        description: "Aplikacja Flower — czytnik RSVP, biblioteka, konwerter, pluginy.",
         start_url: `${repoBase}app/`,
         scope: `${repoBase}app/`,
         display: "standalone",
         orientation: "portrait",
-        background_color: "#0b0d10",
-        theme_color: "#0b0d10",
+        background_color: "#e8f4fd",
+        theme_color: "#2e8eff",
         lang: "pl",
         icons: [
           {

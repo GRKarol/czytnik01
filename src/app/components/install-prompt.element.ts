@@ -69,16 +69,17 @@ export class InstallPrompt extends LitElement {
     .bar {
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 20;
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       align-items: center;
       justify-content: space-between;
       padding: 10px 14px;
-      background: #ff7a45;
-      color: #1a0d05;
-      font: 600 0.88rem/1.2 inherit;
+      background: linear-gradient(135deg, #2e8eff 0%, #5aa8ff 100%);
+      color: #ffffff;
+      font: 600 0.88rem/1.2 ui-sans-serif, system-ui, sans-serif;
+      box-shadow: 0 6px 16px rgba(46, 142, 255, 0.25);
     }
     .actions {
       display: flex;
@@ -88,14 +89,14 @@ export class InstallPrompt extends LitElement {
       padding: 6px 12px;
       border: 0;
       border-radius: 999px;
-      background: rgba(0, 0, 0, 0.15);
+      background: rgba(255, 255, 255, 0.2);
       color: inherit;
       font: inherit;
       cursor: pointer;
     }
     button.primary {
-      background: #1a0d05;
-      color: #ff7a45;
+      background: #ffffff;
+      color: #1f6fd4;
     }
   `;
 }

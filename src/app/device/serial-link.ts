@@ -1,23 +1,16 @@
+/**
+ * USB (Web Serial) — tryb advanced / diagnostyczny.
+ * Główny tor klienta to WiFi (i ewentualnie BLE na Androidzie).
+ * Tutaj zostawiamy USB dla serwisu / developera (Karol).
+ */
+
 import {
   type DeviceCommand,
   type DeviceEvent,
   encodeCommand,
   parseEvent,
 } from "../../shared/device-protocol";
-
-/**
- * Cienki wrapper nad Web Serial dla pojedynczego urządzenia.
- *
- * Zamiana na Web Bluetooth będzie polegała na podmienieniu tej klasy.
- * Reszta aplikacji powinna używać tego interfejsu.
- */
-export interface DeviceLink {
-  readonly connected: boolean;
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  send(cmd: DeviceCommand): Promise<void>;
-  onEvent(handler: (ev: DeviceEvent) => void): () => void;
-}
+import type { DeviceLink, TransportInfo } from "./device-link";
 
 const BAUD_RATE = 115200;
 
@@ -27,6 +20,7 @@ export class SerialLink implements DeviceLink {
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private buffer = "";
   private handlers = new Set<(ev: DeviceEvent) => void>();
+  readonly transport: TransportInfo = { kind: "serial", label: "USB (advanced)" };
 
   get connected(): boolean {
     return this.port !== null;

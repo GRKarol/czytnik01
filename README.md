@@ -1,15 +1,20 @@
-# Czytnik01
+# Flower / Czytnik01
 
-Web flasher + PWA dla urządzenia **Czytnik01** opartego o **ESP32-S3**.
+Web flasher + PWA dla urządzenia **Flower** (czytnik RSVP) opartego o **ESP32-S3**.
 
-Repo zawiera dwie aplikacje webowe budowane wspólnie przez Vite:
+Repo zawiera trzy spójne kawałki:
 
-| Ścieżka  | Co to              | Dla kogo                       |
-| -------- | ------------------ | ------------------------------ |
-| `/`      | Web flasher        | Pierwsze uruchomienie / serwis |
-| `/app/`  | PWA klienta        | Codzienne użycie               |
+| Ścieżka      | Co to                            | Dla kogo                       |
+| ------------ | -------------------------------- | ------------------------------ |
+| `/`          | Web flasher (USB)                | Serwis / Karol                 |
+| `/app/`      | PWA klienta (WiFi + BLE)         | Codzienne użycie klienta       |
+| `firmware/`  | Kod ESP32-S3 (vendor: rsvpnano)  | Build osobno PlatformIO        |
 
-Wszystko hostowane statycznie na GitHub Pages — nic nie wymaga backendu.
+Frontend (flasher + PWA) hostowany statycznie na GitHub Pages — nic nie
+wymaga backendu. Konwersja formatów książek dzieje się w przeglądarce
+(offline). Komunikacja z urządzeniem przez **WiFi (HTTP + WebSocket)**
+jako główny tor, **Bluetooth (Web BT)** jako bonus dla Androida,
+**USB (Web Serial)** w trybie advanced/diagnostyki.
 
 ## Stack
 
@@ -17,8 +22,11 @@ Wszystko hostowane statycznie na GitHub Pages — nic nie wymaga backendu.
 - **Lit** (Web Components) — UI flashera i aplikacji
 - **vite-plugin-pwa** (Workbox) — instalowalność + offline dla `/app/`
 - **esp-web-tools** — flashowanie ESP32-S3 z poziomu Chrome/Edge przez Web Serial
-- Komunikacja z urządzeniem po flashowaniu: **Web Serial** (potencjalnie też Web Bluetooth
-  w przyszłości — interfejs `DeviceLink` w `src/app/device/` jest do tego przygotowany)
+- Komunikacja z urządzeniem po flashowaniu: trzy implementacje wspólnego
+  interfejsu `DeviceLink` (`src/app/device/`):
+  - `WifiLink` — HTTP + WebSocket do AP urządzenia (główny tor, iOS+Android)
+  - `BluetoothLink` — Web Bluetooth (bonus, tylko Android Chrome — iOS nie wspiera)
+  - `SerialLink` — Web Serial / USB (tryb advanced, diagnostyka)
 
 ## Struktura
 
@@ -30,13 +38,14 @@ Wszystko hostowane statycznie na GitHub Pages — nic nie wymaga backendu.
 ├── src/
 │   ├── flasher/                # kod strony flashera
 │   ├── app/
-│   │   ├── components/         # współdzielone komponenty UI
-│   │   ├── device/             # komunikacja z urządzeniem (Web Serial)
-│   │   └── pages/              # ekrany aplikacji
+│   │   ├── components/         # współdzielone komponenty UI (install-prompt, flower-decor)
+│   │   └── device/             # 3 transporty: wifi, bluetooth, serial
 │   └── shared/                 # protokół, config, typy
 ├── public/
 │   ├── firmware/               # manifest.json + .bin (nie commitowane)
-│   └── icons/                  # ikony PWA (TODO: realne logo)
+│   ├── plugins/                # statyczny sklep pluginów (index.json + paczki)
+│   └── icons/                  # ikony PWA / favicon
+├── firmware/                   # kod C++ na ESP32-S3 (vendored: rsvpnano)
 ├── docs/                       # architektura, plan, flow QR
 ├── .github/workflows/          # CI + auto-deploy na GitHub Pages
 ├── vite.config.ts              # multi-page input + plugin PWA

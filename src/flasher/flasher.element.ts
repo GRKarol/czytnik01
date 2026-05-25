@@ -1,6 +1,21 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { APP_URL, FIRMWARE_MANIFEST_URL } from "../shared/config";
+import { APP_URL, BRAND_NAME, FIRMWARE_MANIFEST_URL } from "../shared/config";
+
+const iconFlower = (s = 80) => svg`
+  <svg width=${s} height=${s} viewBox="0 0 100 100" aria-hidden="true">
+    <g transform="translate(50 50)">
+      ${[0, 60, 120, 180, 240, 300].map(
+        (a) => svg`
+        <ellipse cx="0" cy="-22" rx="14" ry="22" fill="currentColor" opacity="0.85"
+                 transform="rotate(${a})"/>
+      `,
+      )}
+      <circle r="10" fill="#fff2bf"/>
+      <circle r="6" fill="#ffd66e"/>
+    </g>
+  </svg>
+`;
 
 @customElement("czytnik-flasher")
 export class CzytnikFlasher extends LitElement {
@@ -10,16 +25,17 @@ export class CzytnikFlasher extends LitElement {
   render() {
     return html`
       <main>
-        <section class="hero">
+        <section class="hero card">
+          <div class="hero-art">${iconFlower(96)}</div>
           <p class="eyebrow">Instalator firmware</p>
-          <h1>Czytnik01</h1>
+          <h1>${BRAND_NAME}</h1>
           <p class="lead">
             Podłącz urządzenie kablem USB i zainstaluj firmware z poziomu przeglądarki —
             bez VS Code, bez PlatformIO, bez terminala.
           </p>
         </section>
 
-        <section class="install">
+        <section class="card">
           <h2>Krok 1 — Zainstaluj firmware</h2>
           <p>Podłącz urządzenie i naciśnij przycisk poniżej.</p>
 
@@ -47,16 +63,17 @@ export class CzytnikFlasher extends LitElement {
             : ""}
         </section>
 
-        <section class="install">
+        <section class="card">
           <h2>Krok 2 — Otwórz aplikację</h2>
           <p>
-            Po zainstalowaniu firmware otwórz aplikację Czytnik01 i połącz się z urządzeniem.
-            Aplikację możesz dodać do ekranu głównego telefonu (PWA).
+            Po zainstalowaniu firmware otwórz aplikację ${BRAND_NAME} i połącz się z
+            urządzeniem przez WiFi lub Bluetooth. Aplikację możesz dodać do ekranu
+            głównego telefonu (PWA).
           </p>
-          <a class="cta cta--ghost" href=${APP_URL}>Przejdź do aplikacji</a>
+          <a class="cta ghost" href=${APP_URL}>Przejdź do aplikacji</a>
         </section>
 
-        <section class="steps">
+        <section class="card steps">
           <h2>Zanim zaczniesz</h2>
           <ol>
             <li>Użyj Chrome lub Edge na macOS, Windows lub Linux.</li>
@@ -68,129 +85,144 @@ export class CzytnikFlasher extends LitElement {
           </ol>
         </section>
 
-        <footer>Czytnik01 &middot; web flasher</footer>
+        <footer>${BRAND_NAME} &middot; web flasher</footer>
       </main>
     `;
   }
 
   static styles = css`
     :host {
-      --ink: #e8e6e3;
-      --muted: #9aa0a6;
-      --bg: #0b0d10;
-      --panel: #14181d;
-      --accent: #ff7a45;
-      --accent-deep: #c64f1f;
-      --line: #2a2f36;
+      --ink: #0c2340;
+      --ink-soft: #3d5278;
+      --muted: #6b7c97;
+      --sky-1: #e8f4fd;
+      --sky-2: #d1e9fb;
+      --sky-3: #b8dcff;
+      --paper: #ffffff;
+      --accent: #2e8eff;
+      --accent-deep: #1f6fd4;
+      --line: #d9e6f6;
+      --esp-tools-button-color: var(--accent);
+      --esp-tools-button-text-color: #ffffff;
+      --esp-tools-button-border-radius: 999px;
       display: block;
       min-height: 100vh;
       color: var(--ink);
-      background:
-        radial-gradient(circle at 14% 16%, rgba(255, 122, 69, 0.16), transparent 32rem),
-        radial-gradient(circle at 88% 10%, rgba(198, 79, 31, 0.1), transparent 24rem),
-        var(--bg);
       font-family:
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        "Segoe UI",
-        Roboto,
-        sans-serif;
+        "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
+      background:
+        radial-gradient(circle at 14% 16%, rgba(255, 214, 110, 0.35), transparent 32rem),
+        radial-gradient(circle at 88% 10%, rgba(255, 182, 200, 0.3), transparent 28rem),
+        linear-gradient(160deg, var(--sky-1) 0%, var(--sky-2) 55%, var(--sky-3) 100%);
     }
 
     main {
-      width: min(1040px, calc(100% - 32px));
+      width: min(960px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 52px 0 44px;
+      padding: 44px 0 44px;
       display: grid;
-      gap: 24px;
+      gap: 20px;
     }
 
     .hero {
-      padding: clamp(28px, 6vw, 58px);
-      border: 1px solid var(--line);
-      border-radius: 28px;
-      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 12px;
+      padding: clamp(28px, 5vw, 48px);
+    }
+
+    .hero-art {
+      color: var(--accent);
+      filter: drop-shadow(0 10px 22px rgba(46, 142, 255, 0.28));
     }
 
     .eyebrow {
-      margin: 0 0 16px;
-      color: var(--accent);
+      margin: 0;
+      color: var(--accent-deep);
+      font-family: ui-sans-serif, system-ui, sans-serif;
       font-weight: 700;
       font-size: 0.76rem;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(3rem, 9vw, 6.4rem);
+      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-size: clamp(3rem, 9vw, 5.5rem);
       line-height: 0.9;
-      letter-spacing: -0.04em;
+      letter-spacing: -0.03em;
     }
 
     .lead {
       max-width: 56ch;
-      margin: 28px 0 0;
-      color: var(--muted);
-      font-size: clamp(1.05rem, 2vw, 1.32rem);
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: clamp(1rem, 1.6vw, 1.18rem);
       line-height: 1.55;
+      font-family: ui-sans-serif, system-ui, sans-serif;
     }
 
-    .install,
-    .steps {
-      padding: 28px;
+    .card {
+      padding: 24px;
       border: 1px solid var(--line);
-      border-radius: 24px;
-      background: var(--panel);
+      border-radius: 22px;
+      background: var(--paper);
+      box-shadow: 0 12px 26px rgba(46, 142, 255, 0.14);
     }
 
-    .install h2,
-    .steps h2 {
+    .card h2 {
       margin: 0 0 10px;
+      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
       font-size: 1.2rem;
     }
 
-    .install p,
-    .steps p,
-    .steps li {
-      color: var(--muted);
+    .card p,
+    .card li {
+      color: var(--ink-soft);
       line-height: 1.5;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+
+    esp-web-install-button {
+      display: inline-block;
+      margin-top: 8px;
     }
 
     .cta {
       display: inline-block;
-      margin-top: 16px;
+      margin-top: 6px;
       padding: 13px 22px;
       border: 0;
       border-radius: 999px;
       color: #fff;
       background: var(--accent);
-      font: 800 0.95rem/1 inherit;
+      font: 700 0.95rem/1 ui-sans-serif, system-ui, sans-serif;
       text-decoration: none;
       cursor: pointer;
-      box-shadow: 0 12px 26px rgba(255, 122, 69, 0.28);
+      box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
     }
-
     .cta:hover {
       background: var(--accent-deep);
     }
-
-    .cta--ghost {
+    .cta.ghost {
       background: transparent;
       color: var(--accent);
-      border: 1px solid var(--accent);
+      border: 1.5px solid var(--accent);
       box-shadow: none;
     }
 
     .warning {
-      margin-top: 14px;
+      margin-top: 12px;
       padding: 12px 14px;
       border-left: 3px solid var(--accent);
       border-radius: 12px;
-      background: rgba(255, 122, 69, 0.08);
-      color: var(--accent);
+      background: rgba(46, 142, 255, 0.08);
+      color: var(--accent-deep);
       font-size: 0.92rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
     }
 
     ol {
@@ -198,21 +230,26 @@ export class CzytnikFlasher extends LitElement {
     }
 
     code {
-      padding: 0.12em 0.35em;
+      padding: 0.12em 0.38em;
       border-radius: 0.4em;
-      background: rgba(255, 122, 69, 0.12);
-      color: var(--accent);
+      background: var(--sky-2);
+      color: var(--accent-deep);
+      font-family: ui-monospace, SFMono-Regular, monospace;
     }
 
     footer {
       text-align: center;
       color: var(--muted);
-      font-size: 0.9rem;
+      font: 0.88rem/1.4 ui-sans-serif, system-ui, sans-serif;
     }
 
     @media (max-width: 760px) {
       main {
         padding-top: 18px;
+      }
+      .card {
+        padding: 20px;
+        border-radius: 18px;
       }
     }
   `;

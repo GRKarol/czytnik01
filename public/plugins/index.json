@@ -1,0 +1,48 @@
+{
+  "$schema": "./schema.json",
+  "version": 1,
+  "updated": "2026-05-25",
+  "plugins": [
+    {
+      "id": "focus-timer",
+      "name": "Klepsydra",
+      "tagline": "Skupiona sesja czytania z timerem pomodoro.",
+      "description": "Mały timer-pomodoro do skupionego czytania. Domyślne sesje 25/5 minut, dźwięk delikatnego dzwonka na końcu sesji. Idealnie współgra z trybem RSVP — pomaga utrzymać tempo i nie dać się rozproszyć.",
+      "version": "1.0.0",
+      "icon": "icons/focus-timer.svg",
+      "package": "packages/focus-timer-1.0.0.zip",
+      "sizeBytes": 12480,
+      "tags": ["produktywność", "rdzeń"],
+      "minFirmware": "0.1.0",
+      "author": "Flower"
+    },
+    {
+      "id": "voice-notes",
+      "name": "Dyktafon",
+      "tagline": "Szybkie notatki głosowe podczas czytania.",
+      "description": "Nagrywaj krótkie notatki głosowe bez przerywania czytania. Trzymane lokalnie na karcie SD, eksport do aplikacji po połączeniu z telefonem.",
+      "version": "0.1.0",
+      "icon": "icons/voice-notes.svg",
+      "package": "packages/voice-notes-0.1.0.zip",
+      "sizeBytes": 0,
+      "tags": ["notatki"],
+      "minFirmware": "0.2.0",
+      "status": "planned",
+      "author": "Flower"
+    },
+    {
+      "id": "music-player",
+      "name": "Odtwarzacz muzyki",
+      "tagline": "Cicha muzyka tła z karty SD.",
+      "description": "Odtwarzaj swoje pliki muzyczne z karty SD podczas czytania. Wsparcie dla MP3 i OGG, prosta kolejka, niskobitratowe miksowanie żeby nie odciągało uwagi.",
+      "version": "0.1.0",
+      "icon": "icons/music-player.svg",
+      "package": "packages/music-player-0.1.0.zip",
+      "sizeBytes": 0,
+      "tags": ["audio"],
+      "minFirmware": "0.3.0",
+      "status": "planned",
+      "author": "Flower"
+    }
+  ]
+}

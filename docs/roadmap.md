@@ -3,60 +3,95 @@
 Plan dalszej pracy. Lista, nie kontrakt — układ ma sens dopiero po
 przemyśleniu z klientem hardware'u.
 
-## Faza 0 — Podkładka (TO JEST TERAZ)
+## Faza 0 — Podkładka (✅ done)
 
 - [x] Wipe starego repo, orphan branch.
 - [x] Scaffold Vite + TS + Lit + vite-plugin-pwa.
 - [x] Strona flashera z esp-web-tools, manifest `public/firmware/manifest.json`.
-- [x] Stub PWA klienta z połączeniem przez Web Serial.
+- [x] Stub PWA klienta.
 - [x] CI: build + auto-deploy na GitHub Pages.
 - [x] Dokumentacja architektury, flow QR.
 
-## Faza 1 — Firmware
+## Faza 1 — Rebrand + nowy transport (✅ done w tej rundzie)
 
-Decyzje do podjęcia z klientem przed startem:
+- [x] Skopiowano firmware z `ionutdecebal/rsvpnano` do `firmware/`.
+- [x] Wymiana abstrakcji urządzenia: `DeviceLink` + 3 implementacje:
+      `WifiLink` (główny, HTTP+WS), `BluetoothLink` (bonus Androida),
+      `SerialLink` (tryb advanced/diagnostyczny).
+- [x] Rebrand: motyw **Flower** — jasnoniebieskie niebo, kwiatkowe akcenty,
+      książkowa serif typografia, kwiatkowe logo.
+- [x] 6 ekranów aplikacji (na razie szkielety): Start, Książki, Konwerter,
+      Pluginy, Aktualizacje, Więcej.
+- [x] Wybór połączenia jako wizard (WiFi / Bluetooth / USB advanced).
+- [x] Sklep pluginów: `public/plugins/index.json` z 3 wpisami
+      (Klepsydra gotowa, Dyktafon i Muzyka planowane).
 
-- [ ] Dokładny model płytki ESP32-S3 (Waveshare? DevKit? własna PCB?).
-- [ ] Layout partycji (16 MB? 8 MB? OPI PSRAM?).
-- [ ] Czy potrzebujemy NVS dla ustawień klienta, SPIFFS/LittleFS dla danych?
-- [ ] Czy firmware ma własną webappkę przez WiFi AP (drugi tor obok PWA)?
-- [ ] Stack: Arduino / ESP-IDF / Zephyr?
+## Faza 2 — Logika ekranów aplikacji (TO JEST NASTĘPNIE)
 
-Repo firmware: osobne (czytnik01-firmware?). To repo będzie tylko
-konsumować scaloną binarkę.
+### 2.1 Konwerter formatów (w przeglądarce)
 
-## Faza 2 — Protokół
+Wsparcie dla każdego źródła, wyjście zawsze `.rsvp`:
 
-- [ ] Spisać polecenia (`cmd`) i eventy (`ev`) między hostem i urządzeniem
-      w `src/shared/device-protocol.ts`.
-- [ ] Zdecydować: surowy JSON Lines czy COBS + binary frames z CRC?
-- [ ] Wersjonowanie protokołu (`{"cmd": "hello", "v": 1}` ⇒ `{"ev": "hello", "v": 1, "fw": "..."}`).
+- [ ] `.txt` / `.md` / `.html` — trywialne, parser stringów.
+- [ ] `.epub` — biblioteka `epubjs` lub własny parser z `jszip`.
+- [ ] `.pdf` — `pdf.js`, wyciągamy text layer.
+- [ ] `.mobi` / `.azw` — `kindleunpack-js` lub konwersja przez wewnętrzny EPUB.
+- [ ] Drag-and-drop + file picker (mobilne też!).
+- [ ] Edytor metadanych (tytuł, autor) przed konwersją.
+- [ ] Lokalna pamięć podręczna skonwertowanych książek (IndexedDB).
 
-## Faza 3 — PWA klienta — funkcje
+### 2.2 Biblioteka
 
-> "Apka jak od DJI / drona" — duża, czytelna kontrola głównej funkcji,
-> przyciski statusu, telemetria, ustawienia.
+- [ ] Pobieranie listy książek z urządzenia (`GET /api/library`).
+- [ ] Upload książki (`POST /api/library` multipart).
+- [ ] Usuwanie, zmiana kolejności, kategoryzacja.
 
-Konkrety zależą od tego, co umie urządzenie. Wstępne kandydatury:
+### 2.3 Pluginy
 
-- [ ] Dashboard: stan urządzenia (bateria, połączenie, tryb pracy).
-- [ ] Główna funkcja (TBD wraz z klientem).
-- [ ] Ustawienia (jasność, dźwięk, język, kalibracja).
-- [ ] Aktualizacja firmware z poziomu aplikacji (OTA przez Serial /
-      przeniesienie usera do flashera).
-- [ ] Wsparcie / kontakt.
+- [ ] Pobieranie listy z `public/plugins/index.json`.
+- [ ] Pobieranie paczki `.zip` przez `fetch`.
+- [ ] Wysyłka na urządzenie (`POST /api/plugins/install`).
+- [ ] Lista zainstalowanych pluginów na urządzeniu + usuwanie.
 
-## Faza 4 — Dystrybucja
+### 2.4 Aktualizacje firmware
 
-- [ ] Domena własna (np. `app.czytnik01.pl`) zamiast GitHub Pages.
-- [ ] Generator etykiet QR (nadruk na pudełku) — skrypt w `tools/`.
+- [ ] Sprawdzanie GitHub Releases (`OTA_RELEASES_API` w configu).
+- [ ] Porównanie z aktualną wersją na urządzeniu.
+- [ ] Pobranie `.bin` i wysyłka na urządzenie (`POST /api/ota`).
+- [ ] Pasek postępu, retry on fail.
+
+## Faza 3 — Firmware: dodanie API WiFi/BT
+
+Decyzje do podjęcia z Karolem:
+
+- [ ] Rebrand stringów RSVP Nano → Flower w `firmware/src/`.
+- [ ] WiFi mode dla aplikacji: AP-only, czy konfigurowalny (AP + STA)?
+- [ ] HTTP API: jakie endpointy (`/api/hello`, `/api/library`, `/api/cmd`,
+      `/api/ota`, `/api/plugins/*`).
+- [ ] WebSocket dla eventów real-time.
+- [ ] BLE GATT: definicja serwisu (UUID już w configu), charakterystyki
+      CMD/EVENT.
+- [ ] Plugin runtime: jak ładujemy paczki ZIP, gdzie trzymamy na SD,
+      jak firmware je czyta / włącza w menu.
+- [ ] OTA: integracja z `firmware/src/update/OtaUpdater.cpp` —
+      retarget endpointa z rsvpnano na nasz GitHub Releases.
+
+## Faza 4 — Onboarding / dystrybucja
+
+- [ ] Pierwszorazowy wizard po pobraniu PWA (3 ekrany: cześć / połącz /
+      gotowe).
+- [ ] Detekcja iOS — dodatkowa podpowiedź "Dodaj do ekranu głównego"
+      z ikonografią Share Sheet.
+- [ ] Generator etykiet QR na pudełka (skrypt w `firmware/tools/`?).
+- [ ] Domena własna (np. `flower.app` / `app.flower.pl`).
 - [ ] Sygnowanie firmware (opcjonalnie, dla anti-tampering).
 
 ## Otwarte pytania
 
-- iOS: czy klient musi wspierać iPhone'y? Jeśli tak → BLE w firmware
-  + albo Capacitor wrapper, albo Web Bluetooth (lepiej dziala na Androidzie
-  niż na iOS Safari, który WB nie wspiera w ogóle).
-- WiFi: czy urządzenie ma w ogóle dostęp do internetu, czy działa tylko
-  point-to-point z PWA?
-- Wielojęzyczność: PL only, czy też EN?
+- Czy konwerter ma robić batch (wiele plików naraz)?
+- Czy biblioteka na urządzeniu ma kategorie / tagi, czy płaska lista?
+- Plugin "Klepsydra" już jest jako `firmware/src/timer/FocusTimer.cpp` —
+  decyzja: zostaje wbudowany i plugin tylko go włącza, czy wyrzucamy
+  z firmware i dystrybuujemy wyłącznie jako paczkę plugin?
+- Jak nazywamy paczki pluginów w UI — "Pluginy", "Rozszerzenia",
+  "Dodatki", coś jeszcze?
