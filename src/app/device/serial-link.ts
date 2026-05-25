@@ -1,0 +1,97 @@
+import {
+  type DeviceCommand,
+  type DeviceEvent,
+  encodeCommand,
+  parseEvent,
+} from "../../shared/device-protocol";
+
+/**
+ * Cienki wrapper nad Web Serial dla pojedynczego urządzenia.
+ *
+ * Zamiana na Web Bluetooth będzie polegała na podmienieniu tej klasy.
+ * Reszta aplikacji powinna używać tego interfejsu.
+ */
+export interface DeviceLink {
+  readonly connected: boolean;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  send(cmd: DeviceCommand): Promise<void>;
+  onEvent(handler: (ev: DeviceEvent) => void): () => void;
+}
+
+const BAUD_RATE = 115200;
+
+export class SerialLink implements DeviceLink {
+  private port: SerialPort | null = null;
+  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  private buffer = "";
+  private handlers = new Set<(ev: DeviceEvent) => void>();
+
+  get connected(): boolean {
+    return this.port !== null;
+  }
+
+  static isSupported(): boolean {
+    return typeof navigator !== "undefined" && "serial" in navigator;
+  }
+
+  async connect(): Promise<void> {
+    if (!SerialLink.isSupported()) {
+      throw new Error("Web Serial nie jest wspierany w tej przeglądarce.");
+    }
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: BAUD_RATE });
+    this.port = port;
+    this.writer = port.writable!.getWriter();
+    this.reader = port.readable!.getReader();
+    void this.readLoop();
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      await this.reader?.cancel();
+      this.reader?.releaseLock();
+      await this.writer?.close();
+      this.writer?.releaseLock();
+      await this.port?.close();
+    } finally {
+      this.reader = null;
+      this.writer = null;
+      this.port = null;
+      this.buffer = "";
+    }
+  }
+
+  async send(cmd: DeviceCommand): Promise<void> {
+    if (!this.writer) throw new Error("Nie połączono z urządzeniem.");
+    await this.writer.write(encodeCommand(cmd));
+  }
+
+  onEvent(handler: (ev: DeviceEvent) => void): () => void {
+    this.handlers.add(handler);
+    return () => this.handlers.delete(handler);
+  }
+
+  private async readLoop(): Promise<void> {
+    const decoder = new TextDecoder();
+    while (this.reader) {
+      try {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        if (!value) continue;
+        this.buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = this.buffer.indexOf("\n")) >= 0) {
+          const line = this.buffer.slice(0, nl);
+          this.buffer = this.buffer.slice(nl + 1);
+          const ev = parseEvent(line);
+          if (ev) for (const h of this.handlers) h(ev);
+        }
+      } catch (err) {
+        console.warn("serial read loop error", err);
+        break;
+      }
+    }
+  }
+}

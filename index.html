@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d10" />
+    <meta
+      name="description"
+      content="Strona instalacyjna firmware dla urządzenia czytnik01 (ESP32-S3)."
+    />
+    <title>Czytnik01 — Web Flasher</title>
+    <link rel="icon" type="image/svg+xml" href="/icons/logo.svg" />
+    <script type="module" src="/src/flasher/main.ts"></script>
+  </head>
+  <body>
+    <czytnik-flasher></czytnik-flasher>
+    <noscript>
+      <p style="padding: 2rem; font-family: system-ui, sans-serif">
+        Ta strona wymaga włączonego JavaScript oraz przeglądarki obsługującej Web Serial
+        (Chrome lub Edge na desktopie).
+      </p>
+    </noscript>
+  </body>
+</html>
