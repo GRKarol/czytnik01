@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/jolly-einstein-tAvuA
   workflow_dispatch:
 
 permissions:
