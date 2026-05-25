@@ -217,7 +217,7 @@ String readBodyLimited(HTTPClient &http, size_t maxBytes) {
 }
 
 String userAgentForVersion(const String &version) {
-  return String("RSVP-Nano/") + (version.isEmpty() ? "dev" : version);
+  return String("Flower/") + (version.isEmpty() ? "dev" : version);
 }
 
 String versionDetail(const String &currentVersion, const String &latestVersion) {

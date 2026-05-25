@@ -114,7 +114,7 @@ const char *UsbMassStorageManager::statusMessage() const { return statusMessage_
 
 bool UsbMassStorageManager::configureMsc() {
 #if RSVP_USB_TRANSFER_ENABLED && CONFIG_TINYUSB_MSC_ENABLED && !ARDUINO_USB_MODE
-  msc_.vendorID("RSVPNANO");
+  msc_.vendorID("FLOWER");
   msc_.productID("SD Transfer");
   msc_.productRevision("0.1");
   msc_.onRead(onRead);

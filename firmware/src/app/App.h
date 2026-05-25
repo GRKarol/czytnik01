@@ -262,6 +262,12 @@ class App {
   String configuredWifiSsid();
   bool otaAutoCheckEnabled();
   String otaOwnerLabel();
+  /// Tryb developera — domyślnie wyłączony. Włączany tylko z poziomu
+  /// aplikacji-towarzysza (ukryty 10-tap w PWA → settings sync API).
+  /// Kiedy wyłączony, advanced ustawienia (OTA owner, auto-OTA itp.)
+  /// nie pojawiają się w menu urządzenia — UX dla klienta jest czystsze.
+  bool devModeEnabled();
+  void setDevModeEnabled(bool enabled);
   String pacingDelayLabel(uint16_t delayMs) const;
   String firmwareUpdateMenuLabel() const;
   String themeModeLabel() const;

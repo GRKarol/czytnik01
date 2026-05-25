@@ -39,7 +39,7 @@ export class ConverterPanel extends LitElement {
         <label for="picker" class="picker">
           <strong>Wybierz plik</strong>
           <span>lub upuść go tutaj</span>
-          <span class="formats">EPUB · TXT · MD · HTML &nbsp;·&nbsp; <i>PDF/MOBI wkrótce</i></span>
+          <span class="formats">EPUB · PDF · TXT · MD · HTML &nbsp;·&nbsp; <i>MOBI wkrótce</i></span>
         </label>
       </div>
 

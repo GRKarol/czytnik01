@@ -9,6 +9,8 @@ import "./components/install-prompt.element";
 import "./components/flower-decor.element";
 import "./components/converter-panel.element";
 import "./components/updates-panel.element";
+import "./components/library-panel.element";
+import "./components/settings-panel.element";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
 type Transport = "wifi" | "bluetooth" | "serial";
@@ -132,7 +134,7 @@ export class CzytnikApp extends LitElement {
 
       <nav>
         ${this.navButton("home", "Start", iconHome())}
-        ${this.navButton("library", "Książki", iconBook(), !this.connected)}
+        ${this.navButton("library", "Książki", iconBook())}
         ${this.navButton("converter", "Konwerter", iconConvert())}
         ${this.navButton("plugins", "Pluginy", iconPlug())}
         ${this.navButton("updates", "Aktualizacje", iconUpdate())}
@@ -323,11 +325,7 @@ export class CzytnikApp extends LitElement {
     return html`
       <section class="card">
         <h3>${iconBook(22)} Książki</h3>
-        <p class="muted">
-          Lista książek na urządzeniu i przycisk „Wyślij książkę z telefonu" pojawią
-          się tutaj po podłączeniu protokołu WiFi do firmware.
-        </p>
-        <button class="cta" disabled>Wyślij książkę (wkrótce)</button>
+        <library-panel></library-panel>
       </section>
     `;
   }
@@ -388,6 +386,7 @@ export class CzytnikApp extends LitElement {
     return html`
       <section class="card">
         <h3>${iconGear(22)} Więcej</h3>
+        <settings-panel></settings-panel>
         <ul class="settings-list">
           <li><strong>Wersja aplikacji</strong><span>${APP_VERSION}</span></li>
           <li><strong>Marka</strong><span>${BRAND_NAME}</span></li>

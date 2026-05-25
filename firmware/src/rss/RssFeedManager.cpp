@@ -378,7 +378,7 @@ int tagEndIndex(const String &text, size_t start, size_t limit) {
   return -1;
 }
 
-String userAgent() { return String("RSVP-Nano-RSS/1.0"); }
+String userAgent() { return String("Flower-RSS/1.0"); }
 
 String hostLabelForUrl(const String &url) {
   int start = url.indexOf("://");

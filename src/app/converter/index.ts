@@ -2,9 +2,10 @@ import type { ParsedBook } from "./rsvp";
 import { writeRsvp } from "./rsvp";
 import { parseTxt, parseMarkdown, parseHtml } from "./text-formats";
 import { parseEpub } from "./epub";
+import { parsePdf } from "./pdf";
 
-export type SupportedFormat = "txt" | "md" | "html" | "epub";
-export type PlannedFormat = "pdf" | "mobi" | "azw" | "azw3";
+export type SupportedFormat = "txt" | "md" | "html" | "epub" | "pdf";
+export type PlannedFormat = "mobi" | "azw" | "azw3";
 
 const SUPPORTED_EXT: Record<string, SupportedFormat> = {
   txt: "txt",
@@ -16,10 +17,10 @@ const SUPPORTED_EXT: Record<string, SupportedFormat> = {
   htm: "html",
   xhtml: "html",
   epub: "epub",
+  pdf: "pdf",
 };
 
 const PLANNED_EXT: Record<string, PlannedFormat> = {
-  pdf: "pdf",
   mobi: "mobi",
   azw: "azw",
   azw3: "azw3",
@@ -47,6 +48,8 @@ export async function parseFile(file: File, format: SupportedFormat): Promise<Pa
       return parseHtml(file);
     case "epub":
       return parseEpub(file);
+    case "pdf":
+      return parsePdf(file);
   }
 }
 

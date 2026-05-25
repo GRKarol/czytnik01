@@ -79,7 +79,7 @@ const char kWebCompanionHtml[] PROGMEM = R"HTML(<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RSVP Nano Companion</title>
+<title>Flower Companion</title>
 <style>
 :root{color-scheme:dark;--bg:#0c1110;--fg:#f5f1e8;--muted:#a7aaa0;--line:#2d3430;--card:#151b18;--accent:#78d5b1;--accentInk:#07110e;--accent2:#ff9b73;--soft:#1d2924}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#18241f 0,#0c1110 38%);color:var(--fg);font:15px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -99,7 +99,7 @@ ul{padding-left:20px}code{background:var(--soft);border-radius:4px;padding:1px 4
 </head>
 <body>
 <header>
-<h1>RSVP Nano Companion</h1>
+<h1>Flower Companion</h1>
 <nav class="tabs">
 <button data-tab="books" class="active">Books</button>
 <button data-tab="articles">Articles</button>
@@ -191,7 +191,7 @@ ul{padding-left:20px}code{background:var(--soft);border-radius:4px;padding:1px 4
 <section id="help" class="page">
 <div class="card"><h2>How to use this web companion</h2>
 <ul>
-<li>Open Companion sync on the reader, join the <code>RSVP-Nano</code> Wi-Fi network, then open this page.</li>
+<li>Open Companion sync on the reader, join the <code>Flower</code> Wi-Fi network, then open this page.</li>
 <li>Use Books for prepared book files and Articles for article drafts, article uploads, and synced articles.</li>
 <li>For best book conversion, use the hosted web converter/flasher first. This page is the wireless upload and settings companion, not the full conversion engine.</li>
 <li><code>.txt</code> and <code>.epub</code> uploads are accepted, but EPUB conversion is handled on the device when opened.</li>
@@ -211,7 +211,7 @@ function escRsvp(s){return (s||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n').tri
 function articleFile(){const title=$('articleTitle').value.trim()||'Untitled Article';const author=$('articleAuthor').value.trim();const body=escRsvp($('articleBody').value);let out='@rsvp 1\n@title '+title+'\n';if(author)out+='@author '+author+'\n';out+='@para\n'+body+'\n';return {name:safeName(title)+'.rsvp',blob:new Blob([out],{type:'text/plain'})}}
 function html(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function renderList(id,items){$(id).innerHTML=items.length?items.map(b=>`<div class="item"><div class="item-title">${html(b.title||b.name)}</div><div class="item-meta">${html([b.author,b.name,bytes(b.bytes),b.progressPercent!=null?b.progressPercent+'% read':null].filter(Boolean).join(' - '))}</div><p><button class="danger" data-delete="${html(encodeURIComponent(b.name))}">Delete</button></p></div>`).join(''):'<span class="muted">Nothing here yet.</span>';document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>delBook(decodeURIComponent(b.dataset.delete)))}
-async function refresh(){try{const info=await api('/api/info');$('infoBox').innerHTML=`${info.name}<br><span class="muted">${info.mode} - ${info.networkSsid||''}</span><br>Pairing code: <strong>${info.pairingCode}</strong>`;const data=await api('/api/books');renderList('booksList',data.books.filter(b=>b.category!=='article'&&!String(b.name).startsWith('articles/')));renderList('articlesList',data.books.filter(b=>b.category==='article'||String(b.name).startsWith('articles/')));status('Connected to RSVP Nano.')}catch(e){status('Connection problem: '+e.message)}}
+async function refresh(){try{const info=await api('/api/info');$('infoBox').innerHTML=`${info.name}<br><span class="muted">${info.mode} - ${info.networkSsid||''}</span><br>Pairing code: <strong>${info.pairingCode}</strong>`;const data=await api('/api/books');renderList('booksList',data.books.filter(b=>b.category!=='article'&&!String(b.name).startsWith('articles/')));renderList('articlesList',data.books.filter(b=>b.category==='article'||String(b.name).startsWith('articles/')));status('Connected to Flower.')}catch(e){status('Connection problem: '+e.message)}}
 async function delBook(name){if(!confirm('Delete '+name+'?'))return;try{await api('/api/books?name='+encodeURIComponent(name),{method:'DELETE'});await refresh();status('Deleted '+name)}catch(e){status('Delete failed: '+e.message)}}
 async function uploadBlob(blob,name,category){const fd=new FormData();fd.append('file',blob,name);await api('/api/books?name='+encodeURIComponent(name)+'&category='+encodeURIComponent(category),{method:'POST',body:fd})}
 async function uploadPicked(inputId,category){const f=$(inputId).files[0];if(!f){status('Choose a file first.');return}try{await uploadBlob(f,f.name,category);$(inputId).value='';await refresh();status('Uploaded '+f.name)}catch(e){status('Upload failed: '+e.message)}}
@@ -658,7 +658,7 @@ void CompanionSyncManager::handleNotFoundStatic() {
 }
 
 bool CompanionSyncManager::startAccessPoint() {
-  const String ssid = "RSVP-Nano-" + deviceSuffix();
+  const String ssid = "Flower-" + deviceSuffix();
   statusLine1_ = "Sync Wi-Fi";
   statusLine2_ = ssid;
   networkSsid_ = ssid;
@@ -708,7 +708,7 @@ void CompanionSyncManager::stopServer() {
 
 void CompanionSyncManager::handleInfo() {
   const String mode = networkMode_ == NetworkMode::Station ? "station" : "access_point";
-  const String body = String("{") + "\"name\":\"RSVP Nano\"," +
+  const String body = String("{") + "\"name\":\"Flower\"," +
                       "\"mode\":\"" + mode + "\"," +
                       "\"baseUrl\":\"" + jsonEscape(baseUrl()) + "\"," +
                       "\"networkSsid\":\"" + jsonEscape(networkSsid_) + "\"," +
@@ -1414,7 +1414,7 @@ bool CompanionSyncManager::writeRssFeedsJson(const String &body, String &error) 
     error = "Could not write RSS config";
     return false;
   }
-  file.println("# RSVP Nano RSS feeds");
+  file.println("# Flower RSS feeds");
   for (const String &feed : feeds) {
     file.print("feed=");
     file.println(feed);

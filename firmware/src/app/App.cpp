@@ -225,6 +225,7 @@ constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
 constexpr const char *kPrefOtaAuto = "ota_auto";
 constexpr const char *kPrefOtaOwner = "ota_owner";
+constexpr const char *kPrefDevMode = "dev_mode";
 constexpr size_t kReaderFontSizeCount = 3;
 constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144};
 constexpr size_t kPhantomAfterCharTargets[] = {96, 144, 208};
@@ -3391,9 +3392,13 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back("Network: " + storedOrFallbackLabel(configuredWifiSsid(), "Not set"));
     settingsMenuItems_.push_back("Choose network");
-    settingsMenuItems_.push_back("Auto OTA: " + String(otaAutoCheckEnabled() ? "On" : "Off"));
     settingsMenuItems_.push_back("Forget network");
-    settingsMenuItems_.push_back("OTA Owner: " + otaOwnerLabel());
+    // Advanced — pokazywane tylko w trybie developera. Klient nie potrzebuje
+    // grzebać w „OTA Owner" ani „Auto OTA"; te rzeczy steruje się z aplikacji.
+    if (devModeEnabled()) {
+      settingsMenuItems_.push_back("Auto OTA: " + String(otaAutoCheckEnabled() ? "On" : "Off"));
+      settingsMenuItems_.push_back("OTA Owner: " + otaOwnerLabel());
+    }
   }
 
   if (settingsSelectedIndex_ >= settingsMenuItems_.size()) {
@@ -3433,6 +3438,17 @@ String App::otaOwnerLabel() {
   OtaUpdater::Config cfg;
   otaUpdater_.loadConfig(cfg);
   return cfg.githubOwner;
+}
+
+bool App::devModeEnabled() {
+  return preferences_.getBool(kPrefDevMode, false);
+}
+
+void App::setDevModeEnabled(bool enabled) {
+  preferences_.putBool(kPrefDevMode, enabled);
+  if (state_ == AppState::Menu && menuScreen_ == MenuScreen::WifiSettings) {
+    rebuildSettingsMenuItems();
+  }
 }
 
 OtaUpdater::Config App::preferredOtaConfig() {
