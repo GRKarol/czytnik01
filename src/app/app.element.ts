@@ -7,6 +7,8 @@ import { BluetoothLink } from "./device/bluetooth-link";
 import { SerialLink } from "./device/serial-link";
 import "./components/install-prompt.element";
 import "./components/flower-decor.element";
+import "./components/converter-panel.element";
+import "./components/updates-panel.element";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
 type Transport = "wifi" | "bluetooth" | "serial";
@@ -338,12 +340,7 @@ export class CzytnikApp extends LitElement {
           Wybierz plik z telefonu — przekonwertujemy go na format
           <code>.rsvp</code> w przeglądarce, bez wysyłania nigdzie.
         </p>
-        <p class="muted">
-          Obsługiwane: <strong>EPUB</strong>, <strong>TXT</strong>, <strong>MD</strong>,
-          <strong>HTML</strong>. Planowane: <strong>PDF</strong>, <strong>MOBI</strong>,
-          <strong>AZW</strong>.
-        </p>
-        <button class="cta" disabled>Wybierz plik (wkrótce)</button>
+        <converter-panel></converter-panel>
       </section>
     `;
   }
@@ -382,11 +379,7 @@ export class CzytnikApp extends LitElement {
     return html`
       <section class="card">
         <h3>${iconUpdate(22)} Aktualizacje</h3>
-        <p class="muted">
-          Aplikacja sprawdzi GitHub Releases tego repo i — jeśli jest nowsza wersja —
-          pobierze ją i wyśle do urządzenia przez WiFi.
-        </p>
-        <button class="cta" disabled>Sprawdź aktualizacje (wkrótce)</button>
+        <updates-panel></updates-panel>
       </section>
     `;
   }
