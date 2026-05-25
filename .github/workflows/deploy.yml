@@ -22,6 +22,41 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Pełna historia — `git describe` w skrypcie eksportu firmware'u
+          # potrzebuje tagów żeby nadać wersję.
+          fetch-depth: 0
+
+      # ─── Firmware build ──────────────────────────────────────────────────
+      # Build ESP32-S3 .bin równolegle z PWA. Pierwszy run ściąga toolchain
+      # (~300 MB, ~5 min), kolejne — z cache — biorą ~2 min.
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            firmware/.pio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware (merged + OTA binaries)
+        run: python3 firmware/tools/export_web_firmware.py --version "${GITHUB_SHA::7}"
+
+      # ─── PWA build ───────────────────────────────────────────────────────
+      # Dzieje się PO firmware build, bo `npm run build` kopiuje całe
+      # `public/` do `dist/` — łącznie z nowo wygenerowanym .bin.
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,15 +64,20 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install
+      - name: Install npm deps
         run: npm ci
 
-      - name: Build
+      - name: Build PWA + flasher
         run: npm run build
         env:
           # GitHub Pages na project-pages serwuje pod /<repo>/, więc Vite
           # musi mieć ustawione `base` na tę ścieżkę.
           VITE_BASE: /${{ github.event.repository.name }}/
+
+      - name: Sanity-check that the firmware binary ended up in dist/
+        run: |
+          test -f dist/firmware/czytnik01.bin || { echo "Missing dist/firmware/czytnik01.bin"; exit 1; }
+          ls -lh dist/firmware/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
