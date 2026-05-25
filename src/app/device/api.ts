@@ -164,6 +164,35 @@ function stripExt(name: string): string {
   return name.replace(/\.[^.]+$/, "");
 }
 
-// Pojedyncza instancja używana przez UI — później podmienimy na real
-// implementację (np. `new HttpDeviceApi(wifiLink)`).
-export const deviceApi: DeviceApi = new MockDeviceApi();
+// ─── Reactive API selection ─────────────────────────────────────────────────
+//
+// `deviceApi` to ruchomy wskaźnik. Domyślnie wskazuje na mocka (PWA
+// działa nawet bez urządzenia). Kiedy klient połączy się przez WiFi,
+// app.element.ts robi `setDeviceApi(new HttpDeviceApi(...))`.
+//
+// Komponenty subskrybują zmianę przez `onDeviceApiChange()` — kiedy
+// API się przełączy, są informowane żeby odświeżyć dane.
+
+let _api: DeviceApi = new MockDeviceApi();
+const _apiListeners = new Set<(api: DeviceApi) => void>();
+
+export const deviceApi = {
+  get current(): DeviceApi {
+    return _api;
+  },
+  listBooks: () => _api.listBooks(),
+  uploadBook: (f: Blob, n: string) => _api.uploadBook(f, n),
+  deleteBook: (n: string) => _api.deleteBook(n),
+  getSettings: () => _api.getSettings(),
+  putSettings: (p: Partial<DeviceSettings>) => _api.putSettings(p),
+};
+
+export function setDeviceApi(api: DeviceApi): void {
+  _api = api;
+  for (const l of _apiListeners) l(api);
+}
+
+export function onDeviceApiChange(handler: (api: DeviceApi) => void): () => void {
+  _apiListeners.add(handler);
+  return () => _apiListeners.delete(handler);
+}

@@ -33,6 +33,7 @@ class CompanionSyncManager {
   };
 
   static void handleInfoStatic();
+  static void handleHelloStatic();
   static void handleRootStatic();
   static void handleBooksListStatic();
   static void handleSettingsStatic();
@@ -47,6 +48,7 @@ class CompanionSyncManager {
   bool startServer();
   void stopServer();
   void handleInfo();
+  void handleHello();
   void handleRoot();
   void handleBooksList();
   void handleSettings();

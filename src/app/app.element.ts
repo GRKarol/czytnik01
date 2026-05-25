@@ -11,6 +11,9 @@ import "./components/converter-panel.element";
 import "./components/updates-panel.element";
 import "./components/library-panel.element";
 import "./components/settings-panel.element";
+import "./components/onboarding.element";
+import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from "./device/api";
+import { HttpDeviceApi, pingDevice } from "./device/http-api";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
 type Transport = "wifi" | "bluetooth" | "serial";
@@ -105,12 +108,37 @@ export class CzytnikApp extends LitElement {
   @state() private error: string | null = null;
   @state() private chosenTransport: Transport | null = null;
   @state() private showAdvanced = false;
+  @state() private devMode = false;
 
   private link: DeviceLink | null = null;
+  private unsubApi: (() => void) | null = null;
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.refreshDevMode();
+    this.unsubApi = onDeviceApiChange(() => this.refreshDevMode());
+    this.addEventListener("device-settings-changed", () => this.refreshDevMode());
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.unsubApi?.();
+  }
+
+  /** Sprawdza w API czy dev mode jest włączony — odświeża badge w header. */
+  private async refreshDevMode(): Promise<void> {
+    try {
+      const s: DeviceSettings = await deviceApi.getSettings();
+      this.devMode = s.devMode;
+    } catch {
+      this.devMode = false;
+    }
+  }
 
   render() {
     return html`
       <czytnik-install-prompt></czytnik-install-prompt>
+      <onboarding-wizard></onboarding-wizard>
 
       <div class="sky">
         <flower-decor density="medium"></flower-decor>
@@ -124,9 +152,12 @@ export class CzytnikApp extends LitElement {
             <small>v${APP_VERSION}</small>
           </span>
         </div>
-        <div class=${`pill ${this.connected ? "ok" : ""}`}>
-          <span class="dot"></span>
-          ${this.connected ? `Połączono · ${this.link?.transport.label}` : "Brak połączenia"}
+        <div class="badges">
+          ${this.devMode ? html`<span class="badge dev">DEV</span>` : ""}
+          <div class=${`pill ${this.connected ? "ok" : ""}`}>
+            <span class="dot"></span>
+            ${this.connected ? `Połączono · ${this.link?.transport.label}` : "Brak połączenia"}
+          </div>
         </div>
       </header>
 
@@ -424,6 +455,13 @@ export class CzytnikApp extends LitElement {
             : new SerialLink();
       await this.link.connect();
       this.connected = true;
+      // Przełącz API komponentów na real HTTP — biblioteka i ustawienia
+      // od teraz gadają z urządzeniem zamiast z mockiem.
+      // (BLE i USB jeszcze nie mają back-end API, więc dopiero WiFi to robi.)
+      if (this.chosenTransport === "wifi") {
+        const reachable = await pingDevice();
+        if (reachable) setDeviceApi(new HttpDeviceApi());
+      }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.link = null;
@@ -438,6 +476,9 @@ export class CzytnikApp extends LitElement {
     this.connected = false;
     this.chosenTransport = null;
     this.view = "home";
+    // Wróć do mocka — szybkie testy bez podłączonego urządzenia dalej działają.
+    const { MockDeviceApi } = await import("./device/api");
+    setDeviceApi(new MockDeviceApi());
   };
 
   // ─── Style ─────────────────────────────────────────────────────────────────
@@ -528,6 +569,22 @@ export class CzytnikApp extends LitElement {
       letter-spacing: 0.06em;
     }
 
+    .badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font: 800 0.7rem/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.1em;
+    }
+    .badge.dev {
+      background: linear-gradient(135deg, #ff7a45, #ff9b73);
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(255, 122, 69, 0.3);
+    }
     .pill {
       display: inline-flex;
       align-items: center;

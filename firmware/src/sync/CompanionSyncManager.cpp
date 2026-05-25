@@ -603,6 +603,17 @@ void CompanionSyncManager::handleInfoStatic() {
   }
 }
 
+void CompanionSyncManager::handleHelloStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleHello();
+  }
+}
+
+void CompanionSyncManager::handleHello() {
+  server_.send(200, "application/json",
+               "{\"ok\":true,\"name\":\"Flower\",\"api\":1}");
+}
+
 void CompanionSyncManager::handleRootStatic() {
   if (instance_ != nullptr) {
     instance_->handleRoot();
@@ -675,6 +686,9 @@ bool CompanionSyncManager::startAccessPoint() {
 
 bool CompanionSyncManager::startServer() {
   server_.on("/", HTTP_GET, handleRootStatic);
+  // Mini-handshake dla aplikacji-towarzysza (Flower PWA). Wskazuje
+  // jednoznacznie że to nasze urządzenie (a nie czyjeś AP o podobnej nazwie).
+  server_.on("/api/hello", HTTP_GET, handleHelloStatic);
   server_.on("/api/info", HTTP_GET, handleInfoStatic);
   server_.on("/api/books", HTTP_GET, handleBooksListStatic);
   server_.on("/api/books", HTTP_DELETE, handleBookDeleteStatic);
@@ -1108,6 +1122,12 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"guideGap\":{\"min\":" + String(kMinTypographyGuideGap) +
           ",\"max\":" + String(kMaxTypographyGuideGap) + "}";
   body += "}}";
+  // Developer mode — preferowana flaga ukrywająca advanced ustawienia na
+  // urządzeniu i odsłaniająca je w aplikacji-towarzyszu. Dorzucamy na
+  // końcu żeby nie ruszać istniejących sekcji.
+  body += ",\"developer\":{\"devMode\":";
+  body += preferences_.getBool("dev_mode", false) ? "true" : "false";
+  body += "}";
   return body;
 }
 
@@ -1274,6 +1294,12 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
       return false;
     }
     preferences_.putUChar(kPrefTypographyGuideGap, static_cast<uint8_t>(intValue));
+  }
+
+  // Developer mode toggle — odbierane przez PUT/PATCH z PWA.
+  // Klucz preferencji jest dzielony z App.cpp (`kPrefDevMode = "dev_mode"`).
+  if (readJsonBool(body, "devMode", boolValue)) {
+    preferences_.putBool("dev_mode", boolValue);
   }
 
   return true;

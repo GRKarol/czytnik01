@@ -2,6 +2,7 @@ import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   deviceApi,
+  onDeviceApiChange,
   type DeviceSettings,
   type Theme,
   type Language,
@@ -39,15 +40,18 @@ export class SettingsPanel extends LitElement {
   @state() private tapCount = 0;
   @state() private justUnlocked = false;
   private tapResetTimer: number | null = null;
+  private unsubApi: (() => void) | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
     void this.load();
+    this.unsubApi = onDeviceApiChange(() => void this.load());
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     if (this.tapResetTimer) window.clearTimeout(this.tapResetTimer);
+    this.unsubApi?.();
   }
 
   render() {
@@ -218,6 +222,16 @@ export class SettingsPanel extends LitElement {
     this.error = "";
     try {
       this.settings = await deviceApi.putSettings(patch);
+      // Powiedz rodzicowi (app.element.ts) żeby odświeżył DEV badge w header.
+      if ("devMode" in patch && previous.devMode !== this.settings.devMode) {
+        this.dispatchEvent(
+          new CustomEvent("device-settings-changed", {
+            bubbles: true,
+            composed: true,
+            detail: this.settings,
+          }),
+        );
+      }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.settings = previous;

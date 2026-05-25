@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { deviceApi, type Book } from "../device/api";
+import { deviceApi, onDeviceApiChange, type Book } from "../device/api";
 
 @customElement("library-panel")
 export class LibraryPanel extends LitElement {
@@ -8,10 +8,17 @@ export class LibraryPanel extends LitElement {
   @state() private loading = true;
   @state() private error = "";
   @state() private filter: "all" | "book" | "article" = "all";
+  private unsubApi: (() => void) | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
     void this.refresh();
+    this.unsubApi = onDeviceApiChange(() => void this.refresh());
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.unsubApi?.();
   }
 
   render() {
