@@ -10,16 +10,19 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-WEB_FIRMWARE_DIR = ROOT / "web" / "firmware"
+ROOT = Path(__file__).resolve().parents[1]            # /…/czytnik01/firmware
+REPO_ROOT = ROOT.parent                                # /…/czytnik01
+WEB_FIRMWARE_DIR = REPO_ROOT / "public" / "firmware"   # serwowane przez Vite/Pages
 BOOT_APP0_GLOB = "framework-arduinoespressif32*/tools/partitions/boot_app0.bin"
 
 EXPORTS = {
     "waveshare_esp32s3_usb_msc": {
-        "binary": "rsvp-nano.bin",
-        "ota_binary": "rsvp-nano-ota.bin",
+        # Scalony obraz do web flashera (musi pasować do path w manifest.json).
+        "binary": "czytnik01.bin",
+        # Surowa aplikacja do OTA (zgodne z OtaUpdater::Config::assetName).
+        "ota_binary": "flower-firmware.bin",
         "manifest": "manifest.json",
-        "label": "RSVP Nano firmware",
+        "label": "Flower firmware",
     },
 }
 
