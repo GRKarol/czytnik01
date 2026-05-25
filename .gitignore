@@ -16,3 +16,10 @@ shoot.mjs
 # Drop a real rsvp-nano.bin / czytnik01.bin into public/firmware/ locally
 # or have CI bake it in — never commit firmware binaries to git.
 public/firmware/*.bin
+
+# Firmware build outputs (PlatformIO)
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+firmware/.vscode/
+firmware/build/
