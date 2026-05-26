@@ -3684,12 +3684,17 @@ void App::openWelcomeLanguage() {
 void App::selectWelcomeLanguageItem(uint32_t /*nowMs*/) {
   // Zachowaj kolejność z rebuildSettingsMenuItems() dla WelcomeLanguage:
   // 0 English, 1 Polski, 2 Deutsch, 3 Español, 4 Français, 5 Română.
-  // Tablicę dopasowujemy do Localization::Language ordering (zob.
-  // Localization::sanitizeLanguage / kPrefUiLanguage value).
+  // Mapujemy na UiLanguage enum (0=English, 1=Spanish, 2=French,
+  // 3=German, 4=Romanian, 5=Polish — patrz Localization.h).
   static const uint8_t kLangByIndex[] = {0, 5, 3, 1, 2, 4};
   if (settingsSelectedIndex_ < sizeof(kLangByIndex)) {
-    preferences_.putUChar(kPrefUiLanguage, kLangByIndex[settingsSelectedIndex_]);
+    // Tak jak cycleUiLanguage: najpierw member field, potem pref.
     uiLanguage_ = Localization::sanitizeLanguage(kLangByIndex[settingsSelectedIndex_]);
+    preferences_.putUChar(kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_));
+    Serial.printf("[welcome] language=%s (idx=%u → enum=%u)\n",
+                  uiLanguageLabel().c_str(),
+                  static_cast<unsigned>(settingsSelectedIndex_),
+                  static_cast<unsigned>(uiLanguage_));
   }
   openWelcomeTheme();
 }
@@ -3705,8 +3710,15 @@ void App::selectWelcomeThemeItem(uint32_t nowMs) {
   // 0 Light, 1 Dark, 2 Night.
   const bool dark = settingsSelectedIndex_ >= 1;
   const bool night = settingsSelectedIndex_ == 2;
-  preferences_.putBool(kPrefDarkMode, dark);
-  preferences_.putBool(kPrefNightMode, night);
+  // KRYTYCZNE — applyDisplayPreferences czyta member fields, nie preferences.
+  // Bez ustawienia darkMode_/nightMode_ przed apply, motyw się nie zmieni.
+  // To samo robi cycleThemeMode (App.cpp:1466) — kopiujemy ten wzorzec.
+  darkMode_ = dark;
+  nightMode_ = night;
+  preferences_.putBool(kPrefDarkMode, darkMode_);
+  preferences_.putBool(kPrefNightMode, nightMode_);
+  Serial.printf("[welcome] theme dark=%d night=%d\n",
+                static_cast<int>(darkMode_), static_cast<int>(nightMode_));
   applyDisplayPreferences(nowMs);
   finishWelcomeWizard(nowMs);
 }
