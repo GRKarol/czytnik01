@@ -786,7 +786,7 @@ void App::begin() {
   } else {
     currentBookTitle_ = storage_.bookDisplayName(pendingBootBookIndex_);
     if (currentBookTitle_.isEmpty()) {
-      currentBookTitle_ = "Loading book";
+      currentBookTitle_ = polish("Wczytywanie ksiazki", "Loading book");
     }
   }
 
@@ -943,7 +943,8 @@ void App::setState(AppState nextState, uint32_t nowMs) {
       display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
       break;
     case AppState::UsbTransfer:
-      display_.renderStatus("USB", "Preparing SD", "Eject when done");
+      display_.renderStatus("USB", polish("Przygotowuje SD", "Preparing SD"),
+                            polish("Wysun po skonczeniu", "Eject when done"));
       break;
     case AppState::Standby:
       seedStandbyScreensaver(nowMs);
@@ -1644,7 +1645,8 @@ void App::handleBatteryProtection(uint32_t nowMs) {
     Serial.printf("[power] critical battery %.2f V %u%%; powering off\n",
                   static_cast<double>(batteryFilteredVoltage_),
                   static_cast<unsigned int>(batteryDisplayedPercent_));
-    display_.renderStatus("LOW BATTERY", "Powering off", line2);
+    display_.renderStatus(polish("NISKA BATERIA", "LOW BATTERY"),
+                          polish("Wylaczam", "Powering off"), line2);
     delay(kBatteryShutdownNoticeMs);
     enterPowerOff(millis());
     return;
@@ -1678,8 +1680,11 @@ void App::showLowBatteryWarning(uint32_t nowMs) {
   }
 
   const String line1 =
-      String(static_cast<unsigned int>(batteryDisplayedPercent_)) + "% remaining";
-  display_.renderStatus("LOW BATTERY", line1, batteryVoltageLabel() + " charge soon");
+      String(static_cast<unsigned int>(batteryDisplayedPercent_)) +
+      (uiLanguage_ == UiLanguage::Polish ? "% zostalo" : "% remaining");
+  display_.renderStatus(polish("NISKA BATERIA", "LOW BATTERY"), line1,
+                        batteryVoltageLabel() +
+                            polish(" naladuj wkrotce", " charge soon"));
   Serial.printf("[power] low battery warning %.2f V %u%%\n",
                 static_cast<double>(batteryFilteredVoltage_),
                 static_cast<unsigned int>(batteryDisplayedPercent_));
@@ -3923,7 +3928,8 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
 
   if (!otaUpdater_.isConfigured(config)) {
     if (!automatic) {
-      display_.renderStatus("OTA", "Wi-Fi not set", "Settings -> Wi-Fi");
+      display_.renderStatus("OTA", polish("Brak Wi-Fi", "Wi-Fi not set"),
+                            polish("Ustawienia -> Wi-Fi", "Settings -> Wi-Fi"));
       delay(1600);
       if (state_ == AppState::Menu && isSettingsListScreen()) {
         rebuildSettingsMenuItems();
@@ -3945,7 +3951,7 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
                 result.latestVersion.c_str(), result.summary.c_str(), result.detail.c_str());
 
   if (result.rebootRequired) {
-    display_.renderStatus("OTA", "Restarting", result.latestVersion);
+    display_.renderStatus("OTA", polish("Restartuje", "Restarting"), result.latestVersion);
     delay(300);
     ESP.restart();
     return;
@@ -3993,7 +3999,9 @@ void App::runRssFeedCheck(uint32_t nowMs) {
 
 String App::pacingDelayLabel(uint16_t delayMs) const { return String(delayMs) + " ms"; }
 
-String App::firmwareUpdateMenuLabel() const { return "Firmware update"; }
+String App::firmwareUpdateMenuLabel() const {
+  return polish("Aktualizacja firmware", "Firmware update");
+}
 
 String App::uiText(UiText key) const { return Localization::text(uiLanguage_, key); }
 
@@ -4344,7 +4352,7 @@ void App::enterCompanionSync(uint32_t nowMs) {
   pausedTouch_.active = false;
   pausedTouchIntent_ = TouchIntent::None;
   wpmFeedbackVisible_ = false;
-  display_.renderStatus("Sync", "Starting Wi-Fi", "");
+  display_.renderStatus("Sync", polish("Wlaczam Wi-Fi", "Starting Wi-Fi"), "");
 
   OtaUpdater::Config wifiConfig = preferredOtaConfig();
   CompanionSyncManager::Config syncConfig;
@@ -4353,7 +4361,8 @@ void App::enterCompanionSync(uint32_t nowMs) {
 
   if (!companionSync_.begin(syncConfig)) {
     Serial.println("[app] companion sync failed");
-    display_.renderStatus("Sync", "Could not start", "Returning");
+    display_.renderStatus("Sync", polish("Nie udalo sie", "Could not start"),
+                          polish("Wracam", "Returning"));
     delay(1400);
     menuScreen_ = MenuScreen::Main;
     setState(AppState::Menu, nowMs);
@@ -4381,7 +4390,7 @@ void App::updateCompanionSync(uint32_t nowMs) {
 
 void App::exitCompanionSync(uint32_t nowMs) {
   Serial.println("[app] leaving companion sync mode");
-  display_.renderStatus("Sync", "Stopping", "");
+  display_.renderStatus("Sync", polish("Zatrzymuje", "Stopping"), "");
   companionSync_.end();
   preferences_.end();
   preferences_.begin(kPrefsNamespace, false);
@@ -5145,7 +5154,8 @@ void App::loadPendingBootBook(uint32_t nowMs) {
   }
 
   pendingBootBookLoad_ = false;
-  display_.renderStatus("Loading book", currentBookTitle_, "Please wait");
+  display_.renderStatus(polish("Wczytywanie", "Loading book"), currentBookTitle_,
+                        polish("Czekaj", "Please wait"));
   const uint32_t startedMs = millis();
   const bool allowIndexBuild = pendingBootBookLegacyFallback_;
   const bool loaded = loadBookAtIndex(pendingBootBookIndex_, nowMs,
@@ -6205,7 +6215,8 @@ String App::phantomAfterText() const {
 
 void App::renderActiveReader(uint32_t nowMs) {
   if (pendingBootBookLoad_) {
-    display_.renderStatus("Loading book", currentBookTitle_, "Please wait");
+    display_.renderStatus(polish("Wczytywanie", "Loading book"), currentBookTitle_,
+                        polish("Czekaj", "Please wait"));
     return;
   }
 
