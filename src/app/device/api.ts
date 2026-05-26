@@ -63,6 +63,12 @@ export interface DeviceApi {
   deleteBook(name: string): Promise<void>;
   getSettings(): Promise<DeviceSettings>;
   putSettings(patch: Partial<DeviceSettings>): Promise<DeviceSettings>;
+  /**
+   * Wysyła firmware (.bin) na urządzenie i instaluje przez OTA. Po sukcesie
+   * urządzenie się restartuje, więc Promise resolve'uje TUŻ przed restartem
+   * — connection zaraz potem padnie. Mock no-op (rzuca błąd).
+   */
+  installOta(blob: Blob, onProgress?: (loaded: number, total: number) => void): Promise<void>;
 }
 
 // ─── Mock implementation ────────────────────────────────────────────────────
@@ -158,6 +164,12 @@ export class MockDeviceApi implements DeviceApi {
     write(STORE_SETTINGS, next);
     return this.delay(next, 150);
   }
+
+  async installOta(): Promise<void> {
+    throw new Error(
+      "Wgranie firmware'u wymaga połączenia z urządzeniem. Najpierw połącz się przez WiFi.",
+    );
+  }
 }
 
 function stripExt(name: string): string {
@@ -185,6 +197,8 @@ export const deviceApi = {
   deleteBook: (n: string) => _api.deleteBook(n),
   getSettings: () => _api.getSettings(),
   putSettings: (p: Partial<DeviceSettings>) => _api.putSettings(p),
+  installOta: (b: Blob, onProgress?: (loaded: number, total: number) => void) =>
+    _api.installOta(b, onProgress),
 };
 
 export function setDeviceApi(api: DeviceApi): void {

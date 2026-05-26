@@ -162,6 +162,34 @@ export class HttpDeviceApi implements DeviceApi {
     const fw = await this.json<FirmwareSettings>(res);
     return fromFirmware(fw);
   }
+
+  /**
+   * Multipart upload do `/api/ota`. Używamy XMLHttpRequest zamiast fetch,
+   * bo fetch nie wystawia natywnego progress callbacka dla uploadu.
+   * Urządzenie po sukcesie odpowiada `{"ok":true,"reboot":true}` i robi
+   * `ESP.restart()` — następne komendy do `192.168.4.1` będą padać aż
+   * wstanie z powrotem (~5–10 s) i klient ponownie podłączy się do AP.
+   */
+  async installOta(blob: Blob, onProgress?: (loaded: number, total: number) => void): Promise<void> {
+    const fd = new FormData();
+    fd.append("firmware", blob, "flower-firmware.bin");
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", this.url("/api/ota"));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Urządzenie odrzuciło OTA (${xhr.status}): ${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Połączenie z urządzeniem zerwane przed końcem OTA."));
+      xhr.send(fd);
+    });
+  }
 }
 
 /** Lekki "ping" — sprawdza czy urządzenie jest pod baseUrl. */

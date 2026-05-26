@@ -7,8 +7,18 @@ import {
   isNewer,
   type ReleaseInfo,
 } from "../updates/releases";
+import { deviceApi } from "../device/api";
 
-type Stage = "idle" | "checking" | "found" | "none" | "error" | "downloading" | "downloaded";
+type Stage =
+  | "idle"
+  | "checking"
+  | "found"
+  | "none"
+  | "error"
+  | "downloading"
+  | "downloaded"
+  | "installing"
+  | "installed";
 
 @customElement("updates-panel")
 export class UpdatesPanel extends LitElement {
@@ -60,6 +70,8 @@ export class UpdatesPanel extends LitElement {
       case "found":
       case "downloading":
       case "downloaded":
+      case "installing":
+      case "installed":
         return this.renderRelease();
     }
   }
@@ -91,11 +103,14 @@ export class UpdatesPanel extends LitElement {
           ? html`
               <div class="asset">
                 <span><strong>${asset.name}</strong> · ${formatBytes(asset.size)}</span>
-                ${this.stage === "downloading"
+                ${this.stage === "downloading" || this.stage === "installing"
                   ? html`<progress max="100" value=${this.progress}></progress>`
                   : ""}
                 ${this.stage === "downloaded"
                   ? html`<span class="ok">Pobrano</span>`
+                  : ""}
+                ${this.stage === "installed"
+                  ? html`<span class="ok">Zainstalowano · urządzenie się restartuje</span>`
                   : ""}
               </div>
               <div class="row">
@@ -105,10 +120,15 @@ export class UpdatesPanel extends LitElement {
                     </button>`
                   : ""}
                 ${this.stage === "downloaded"
-                  ? html`<button class="cta" @click=${this.savePhone}>
-                        Zapisz w pamięci
+                  ? html`<button class="cta" @click=${this.install}>
+                        Wyślij na urządzenie
                       </button>
-                      <button class="cta ghost" disabled>Wyślij na urządzenie (wkrótce)</button>`
+                      <button class="cta ghost" @click=${this.savePhone}>
+                        Zapisz plik na telefonie
+                      </button>`
+                  : ""}
+                ${this.stage === "installing"
+                  ? html`<span class="muted">Wysyłam ${this.progress}%…</span>`
                   : ""}
               </div>
             `
@@ -165,6 +185,22 @@ export class UpdatesPanel extends LitElement {
     a.download = asset.name;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  private install = async () => {
+    if (!this.downloaded) return;
+    this.stage = "installing";
+    this.progress = 0;
+    this.error = "";
+    try {
+      await deviceApi.installOta(this.downloaded, (loaded, total) => {
+        this.progress = total ? Math.round((loaded / total) * 100) : 0;
+      });
+      this.stage = "installed";
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+      this.stage = "error";
+    }
   };
 
   static styles = css`

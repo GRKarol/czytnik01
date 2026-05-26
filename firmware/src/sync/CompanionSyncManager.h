@@ -42,6 +42,8 @@ class CompanionSyncManager {
   static void handleBookDeleteStatic();
   static void handleBooksStatic();
   static void handleBookUploadStatic();
+  static void handleOtaStatic();
+  static void handleOtaUploadStatic();
   static void handleNotFoundStatic();
 
   bool startAccessPoint();
@@ -57,6 +59,8 @@ class CompanionSyncManager {
   void handleBookDelete();
   void handleBooks();
   void handleBookUpload();
+  void handleOta();
+  void handleOtaUpload();
   void handleNotFound();
   String settingsJson();
   bool applySettingsJson(const String &body, String &error);
@@ -81,6 +85,7 @@ class CompanionSyncManager {
   String uploadFinalPath_;
   String uploadTmpPath_;
   String uploadError_;
+  String otaError_;
   String pairingCode_;
   String networkSsid_;
   Preferences preferences_;

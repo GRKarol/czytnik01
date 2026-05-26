@@ -2,6 +2,7 @@
 
 #include <ESPmDNS.h>
 #include <SD_MMC.h>
+#include <Update.h>
 #include <WiFi.h>
 #include <algorithm>
 #include <cstdio>
@@ -662,6 +663,18 @@ void CompanionSyncManager::handleBookUploadStatic() {
   }
 }
 
+void CompanionSyncManager::handleOtaStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleOta();
+  }
+}
+
+void CompanionSyncManager::handleOtaUploadStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleOtaUpload();
+  }
+}
+
 void CompanionSyncManager::handleNotFoundStatic() {
   if (instance_ != nullptr) {
     instance_->handleNotFound();
@@ -693,6 +706,10 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/books", HTTP_GET, handleBooksListStatic);
   server_.on("/api/books", HTTP_DELETE, handleBookDeleteStatic);
   server_.on("/api/books", HTTP_POST, handleBooksStatic, handleBookUploadStatic);
+  // OTA przez WiFi — PWA „Aktualizacje" wysyła tu pobranego asseta z
+  // GitHub Releases (preferowany: flower-firmware.bin, sama aplikacja
+  // pasująca do Update.h). Po sukcesie urządzenie się restartuje.
+  server_.on("/api/ota", HTTP_POST, handleOtaStatic, handleOtaUploadStatic);
   server_.on("/api/settings", HTTP_GET, handleSettingsStatic);
   server_.on("/api/settings", HTTP_PATCH, handleSettingsStatic);
   server_.on("/api/settings", HTTP_PUT, handleSettingsStatic);
@@ -999,6 +1016,81 @@ void CompanionSyncManager::handleBookUpload() {
   if (upload.status == UPLOAD_FILE_ABORTED) {
     uploadError_ = "Upload aborted";
     finishUpload(false);
+  }
+}
+
+// ─── OTA over WiFi ───────────────────────────────────────────────────────────
+//
+// PWA „Aktualizacje" wysyła tu pobrane .bin (osobno: aplikacja, nie scalona
+// binarka — patrz `flower-firmware.bin` w GitHub Releases). Update.h
+// (esp_ota_*) zapisuje w nieaktywnej partycji OTA, po sukcesie ESP.restart()
+// przełącza na nią.
+
+void CompanionSyncManager::handleOta() {
+  // Wywołane gdy całe multipart body zostało już zjedzone przez
+  // handleOtaUpload. Tu tylko zwracamy status i restartujemy.
+  if (!otaError_.isEmpty()) {
+    server_.send(500, "application/json",
+                 String("{\"ok\":false,\"error\":\"") + jsonEscape(otaError_) + "\"}");
+    statusLine1_ = "OTA failed";
+    statusLine2_ = otaError_;
+    return;
+  }
+  server_.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+  statusLine1_ = "OTA done";
+  statusLine2_ = "Restarting…";
+  Serial.println("[sync] OTA success — restart in 500ms");
+  // Dajemy WebServer chwilę żeby wysłał response zanim restart.
+  delay(500);
+  ESP.restart();
+}
+
+void CompanionSyncManager::handleOtaUpload() {
+  HTTPUpload &upload = server_.upload();
+
+  if (upload.status == UPLOAD_FILE_START) {
+    Serial.printf("[sync] OTA upload start: %s\n", upload.filename.c_str());
+    otaError_ = "";
+    // UPDATE_SIZE_UNKNOWN — wgrywamy do całej dostępnej partycji OTA,
+    // rozmiar weryfikujemy dopiero na końcu (Update.end()).
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+      otaError_ = "Update.begin failed";
+      Serial.printf("[sync] %s\n", otaError_.c_str());
+    } else {
+      statusLine1_ = "Receiving OTA";
+      statusLine2_ = upload.filename;
+    }
+    return;
+  }
+
+  if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!otaError_.isEmpty()) return;
+    const size_t written = Update.write(upload.buf, upload.currentSize);
+    if (written != upload.currentSize) {
+      otaError_ = "Flash write failed";
+      Update.abort();
+      Serial.printf("[sync] %s (written=%u expected=%u)\n", otaError_.c_str(),
+                    static_cast<unsigned>(written),
+                    static_cast<unsigned>(upload.currentSize));
+    }
+    return;
+  }
+
+  if (upload.status == UPLOAD_FILE_END) {
+    Serial.printf("[sync] OTA upload end bytes=%u\n", upload.totalSize);
+    if (!otaError_.isEmpty()) return;
+    // `true` = setBootPartition po sukcesie. Po tym restart przełącza.
+    if (!Update.end(true)) {
+      otaError_ = String("Update.end failed: ") + Update.errorString();
+      Serial.printf("[sync] %s\n", otaError_.c_str());
+    }
+    return;
+  }
+
+  if (upload.status == UPLOAD_FILE_ABORTED) {
+    Update.abort();
+    otaError_ = "OTA aborted";
+    Serial.println("[sync] OTA aborted by client");
   }
 }
 

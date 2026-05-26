@@ -68,9 +68,17 @@ function toReleaseInfo(r: GhRelease): ReleaseInfo {
   };
 }
 
-/** Heurystyka: który asset to firmware .bin? */
+/**
+ * Heurystyka: który asset to firmware .bin do OTA?
+ *
+ * Preferujemy `flower-firmware.bin` (sama aplikacja, pasuje do Update.h
+ * w firmware). `czytnik01.bin` to scalona binarka — działa tylko dla
+ * web flashera, dla OTA przez WiFi by uszkodziła flash.
+ */
 export function pickFirmwareAsset(release: ReleaseInfo): ReleaseAsset | null {
   return (
+    release.assets.find((a) => /flower-firmware.*\.bin$/i.test(a.name)) ??
+    release.assets.find((a) => /\.bin$/i.test(a.name) && !/czytnik01/i.test(a.name)) ??
     release.assets.find((a) => /\.bin$/i.test(a.name)) ??
     release.assets.find((a) => a.contentType === "application/octet-stream") ??
     null
