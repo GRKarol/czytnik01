@@ -273,6 +273,12 @@ class App {
   bool devModeEnabled();
   void setDevModeEnabled(bool enabled);
 
+  /// Zwraca true dla każdego ekranu który renderuje się jako list-menu
+  /// settings (display_.renderMenu z settingsMenuItems_). Touch handlery
+  /// i nawigacja musi traktować je wszystkie tak samo — bez tego helpera
+  /// trzeba by powielać warunek w 6 miejscach.
+  bool isSettingsListScreen() const;
+
   /// Nowe ekrany ustawień zorganizowane wokół codziennego użycia (a nie
   /// odziedziczonej hierarchii rsvpnano). Otwieranie + handlery wyboru.
   void openSettingsConnectivity();

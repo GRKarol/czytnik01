@@ -1277,8 +1277,7 @@ void App::applyDisplayPreferences(uint32_t nowMs, bool rerender) {
   }
 
   if (state_ == AppState::Menu) {
-    if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-        menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings) {
+    if (isSettingsListScreen()) {
       rebuildSettingsMenuItems();
       renderSettings();
       return;
@@ -1305,9 +1304,7 @@ void App::applyHandednessSettings(uint32_t nowMs, bool rerender) {
     return;
   }
 
-  if (state_ == AppState::Menu &&
-      (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings)) {
+  if (state_ == AppState::Menu && isSettingsListScreen()) {
     rebuildSettingsMenuItems();
   }
 
@@ -1489,8 +1486,7 @@ void App::cycleUiLanguage(uint32_t nowMs) {
   Serial.printf("[display] language=%s\n", uiLanguageLabel().c_str());
 
   if (state_ == AppState::Menu) {
-    if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-        menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings) {
+    if (isSettingsListScreen()) {
       rebuildSettingsMenuItems();
       renderSettings();
       return;
@@ -2443,7 +2439,10 @@ void App::moveMenuSelection(int direction) {
   size_t *selectedIndex = &menuSelectedIndex_;
   size_t itemCount = MenuItemCount;
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings) {
+      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
+      menuScreen_ == MenuScreen::SettingsConnectivity ||
+      menuScreen_ == MenuScreen::SettingsAbout ||
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme) {
     selectedIndex = &settingsSelectedIndex_;
     itemCount = settingsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
@@ -2487,7 +2486,10 @@ void App::moveMenuSelection(int direction) {
 
   renderMenu();
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings) {
+      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
+      menuScreen_ == MenuScreen::SettingsConnectivity ||
+      menuScreen_ == MenuScreen::SettingsAbout ||
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme) {
     Serial.printf("[settings] selected=%s\n", settingsMenuItems_[settingsSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     Serial.printf("[wifi] selected=%s\n", wifiNetworkMenuItems_[wifiNetworkSelectedIndex_].title.c_str());
@@ -2569,8 +2571,7 @@ void App::moveMenuSelection(int direction) {
 }
 
 void App::selectMenuItem(uint32_t nowMs) {
-  if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings) {
+  if (isSettingsListScreen()) {
     selectSettingsItem(nowMs);
     return;
   }
@@ -3561,6 +3562,17 @@ void App::setDevModeEnabled(bool enabled) {
   }
 }
 
+bool App::isSettingsListScreen() const {
+  return menuScreen_ == MenuScreen::SettingsHome ||
+         menuScreen_ == MenuScreen::SettingsDisplay ||
+         menuScreen_ == MenuScreen::SettingsPacing ||
+         menuScreen_ == MenuScreen::SettingsConnectivity ||
+         menuScreen_ == MenuScreen::SettingsAbout ||
+         menuScreen_ == MenuScreen::WifiSettings ||
+         menuScreen_ == MenuScreen::WelcomeLanguage ||
+         menuScreen_ == MenuScreen::WelcomeTheme;
+}
+
 // ─── SettingsConnectivity ────────────────────────────────────────────────────
 
 void App::openSettingsConnectivity() {
@@ -3889,9 +3901,7 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
     if (!automatic) {
       display_.renderStatus("OTA", "Wi-Fi not set", "Settings -> Wi-Fi");
       delay(1600);
-      if (state_ == AppState::Menu &&
-          (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-           menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings)) {
+      if (state_ == AppState::Menu && isSettingsListScreen()) {
         rebuildSettingsMenuItems();
         renderSettings();
       } else {
@@ -3924,9 +3934,7 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
   const String line2 = result.detail.isEmpty() ? result.currentVersion : result.detail;
   display_.renderStatus("OTA", result.summary, line2);
   delay(1600);
-  if (state_ == AppState::Menu &&
-      (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings)) {
+  if (state_ == AppState::Menu && isSettingsListScreen()) {
     rebuildSettingsMenuItems();
     renderSettings();
   } else {
