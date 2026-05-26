@@ -973,11 +973,14 @@ void App::updateState(uint32_t nowMs) {
     }
 
     // Pierwsze uruchomienie po flashowaniu — pokaż welcome wizard zamiast
-    // od razu otwierać czytnik. Klient wybiera język i motyw, potem flaga
-    // setup_done jest ustawiana w finishWelcomeWizard().
+    // od razu otwierać czytnik. Ważne: ustaw menuScreen_ ZANIM zawołamy
+    // setState(Menu), bo setState→renderMenu() patrzy na menuScreen_ i bez
+    // tego renderuje Main menu zamiast naszej listy języków.
     if (!preferences_.getBool(kPrefSetupDone, false)) {
+      menuScreen_ = MenuScreen::WelcomeLanguage;
+      settingsSelectedIndex_ = 0;
+      rebuildSettingsMenuItems();
       setState(AppState::Menu, nowMs);
-      openWelcomeLanguage();
       return;
     }
 
@@ -5327,7 +5330,11 @@ void App::renderMenu() {
   }
 
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
-      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings) {
+      menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
+      menuScreen_ == MenuScreen::SettingsConnectivity ||
+      menuScreen_ == MenuScreen::SettingsAbout ||
+      menuScreen_ == MenuScreen::WelcomeLanguage ||
+      menuScreen_ == MenuScreen::WelcomeTheme) {
     renderSettings();
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     renderWifiNetworks();
