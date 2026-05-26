@@ -279,6 +279,13 @@ class App {
   /// trzeba by powielać warunek w 6 miejscach.
   bool isSettingsListScreen() const;
 
+  /// Lekka lokalizacja PL/EN bez rozbudowy UiText. Wszystkie nowe etykiety
+  /// w settings/welcome przechodzą przez ten helper — w polskim zwraca `pl`,
+  /// w pozostałych językach `en` (które dla rsvpnano i tak było defaultem).
+  /// Bez diakrytyków, bo embedded fonty ich nie obsługują (patrz istniejące
+  /// tłumaczenia w Localization.h: "Wroc", "Jasnosc", itd.).
+  const char *polish(const char *pl, const char *en) const;
+
   /// Nowe ekrany ustawień zorganizowane wokół codziennego użycia (a nie
   /// odziedziczonej hierarchii rsvpnano). Otwieranie + handlery wyboru.
   void openSettingsConnectivity();

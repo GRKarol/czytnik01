@@ -3416,80 +3416,85 @@ void App::rebuildSettingsMenuItems() {
   settingsMenuItems_.reserve(SettingsItemCount);
   if (menuScreen_ == MenuScreen::SettingsHome) {
     // Nowy układ: 4 pozycje codzienne dla klienta, reszta za dev mode.
-    // Pozycje codzienne mają indeksy 1–4 zgodnie ze stałymi
-    // kSettingsHomeReadingIndex / Display / Connectivity / About.
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::WordPacing));      // 1 = Reading
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
-    settingsMenuItems_.push_back("Connectivity");                  // 3 = Connectivity (NEW)
-    settingsMenuItems_.push_back("About / Help");                  // 4 = About (NEW)
+    settingsMenuItems_.push_back(polish("Polaczenia", "Connectivity"));      // 3
+    settingsMenuItems_.push_back(polish("Informacje", "About / Help"));      // 4
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back(uiText(UiText::TypographyTune)); // 5 dev
-      settingsMenuItems_.push_back("Wi-Fi (advanced)");             // 6 dev
-      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());      // 7 dev
+      settingsMenuItems_.push_back(uiText(UiText::TypographyTune));          // 5 dev
+      settingsMenuItems_.push_back(polish("Wi-Fi (zaaw.)", "Wi-Fi (advanced)"));// 6 dev
+      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());               // 7 dev
     }
   } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
-    // Pokazuje co użytkownik faktycznie potrzebuje: jak połączyć aplikację
-    // z urządzeniem. Bluetooth na razie placeholder (brak BLE w firmware).
     settingsMenuItems_.push_back(uiText(UiText::Back));
     const bool syncActive = state_ == AppState::CompanionSync;
-    settingsMenuItems_.push_back(String("Phone sync: ") + (syncActive ? "ON" : "OFF"));
+    settingsMenuItems_.push_back(
+        String(polish("Sync z tel.: ", "Phone sync: ")) +
+        (syncActive ? polish("WLACZONY", "ON") : polish("WYLACZONY", "OFF")));
     if (syncActive) {
-      // Statyczna pozycja pokazująca SSID + IP — tap na niej nic nie robi,
-      // ale klient widzi do czego ma się podłączyć w telefonie.
       settingsMenuItems_.push_back(
           String("    ") + companionSync_.statusLine1() + " / " + companionSync_.statusLine2());
     } else {
-      settingsMenuItems_.push_back("    (turn on to see Wi-Fi code)");
+      settingsMenuItems_.push_back(
+          polish("    (wlacz aby zobaczyc kod Wi-Fi)", "    (turn on to see Wi-Fi code)"));
     }
-    settingsMenuItems_.push_back("Home Wi-Fi: " +
-                                 storedOrFallbackLabel(configuredWifiSsid(), "Not set"));
-    settingsMenuItems_.push_back("Bluetooth: coming soon");
+    settingsMenuItems_.push_back(String(polish("Wi-Fi domowe: ", "Home Wi-Fi: ")) +
+                                 storedOrFallbackLabel(configuredWifiSsid(),
+                                                       polish("Brak", "Not set")));
+    settingsMenuItems_.push_back(polish("Bluetooth: wkrotce", "Bluetooth: coming soon"));
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
-    // Wersja, marka, podpowiedź żeby konfigurować z telefonu, oraz
-    // licznikowy „easter egg" dev mode na pozycji „Version".
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back("Version: " + otaUpdater_.currentVersion());
-    settingsMenuItems_.push_back("Brand: Flower (Czytnik01)");
-    settingsMenuItems_.push_back("Phone app: grkarol.github.io/czytnik01/app");
+    settingsMenuItems_.push_back(String(polish("Wersja: ", "Version: ")) +
+                                 otaUpdater_.currentVersion());
+    settingsMenuItems_.push_back(polish("Marka: Flower (Czytnik01)",
+                                        "Brand: Flower (Czytnik01)"));
+    settingsMenuItems_.push_back(polish("Aplikacja: grkarol.github.io/czytnik01/app",
+                                        "Phone app: grkarol.github.io/czytnik01/app"));
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back("Developer mode: ON (turn off)");
+      settingsMenuItems_.push_back(polish("Tryb dev: WL (wylacz)", "Developer mode: ON (turn off)"));
     }
   } else if (menuScreen_ == MenuScreen::WelcomeLanguage) {
-    // First-run wizard — krok 1/2. Lista języków zgodnie z Localization.
-    // Pierwszy element NIE jest „Back" — z wizarda nie można cofać przed boot.
+    // First-run wizard — krok 1/2. Lista języków po ich własnych nazwach
+    // (te się nie tłumaczą — Polski to zawsze Polski, niezależnie od języka UI).
     settingsMenuItems_.push_back("English");
     settingsMenuItems_.push_back("Polski");
     settingsMenuItems_.push_back("Deutsch");
-    settingsMenuItems_.push_back("Español");
-    settingsMenuItems_.push_back("Français");
-    settingsMenuItems_.push_back("Română");
+    settingsMenuItems_.push_back("Espanol");
+    settingsMenuItems_.push_back("Francais");
+    settingsMenuItems_.push_back("Romana");
   } else if (menuScreen_ == MenuScreen::WelcomeTheme) {
-    // First-run wizard — krok 2/2.
-    settingsMenuItems_.push_back("Light");
-    settingsMenuItems_.push_back("Dark");
-    settingsMenuItems_.push_back("Night");
+    // First-run wizard — krok 2/2. Po wyborze języka w step 1 (już zapisanym
+    // w uiLanguage_), te labele lecą przez UiText więc są przetłumaczone.
+    settingsMenuItems_.push_back(uiText(UiText::Light));
+    settingsMenuItems_.push_back(uiText(UiText::Dark));
+    settingsMenuItems_.push_back(uiText(UiText::Night));
   } else if (menuScreen_ == MenuScreen::SettingsDisplay) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back("Display mode: " + themeModeLabel());
+    settingsMenuItems_.push_back(String(uiText(UiText::Theme)) + ": " + themeModeLabel());
     settingsMenuItems_.push_back(uiText(UiText::Brightness) + ": " +
                                  String(currentBrightnessPercent()) + "%");
-    settingsMenuItems_.push_back("Reader hand: " + handednessLabel());
-    settingsMenuItems_.push_back("Footer label: " + footerMetricModeLabel());
-    settingsMenuItems_.push_back("Battery label: " + batteryLabelModeLabel());
-    settingsMenuItems_.push_back("Screensaver: " + screensaverModeLabel());
-    settingsMenuItems_.push_back("Reading battery: " +
+    settingsMenuItems_.push_back(String(polish("Dlon: ", "Reader hand: ")) + handednessLabel());
+    settingsMenuItems_.push_back(String(polish("Stopka: ", "Footer label: ")) +
+                                 footerMetricModeLabel());
+    settingsMenuItems_.push_back(String(polish("Bateria: ", "Battery label: ")) +
+                                 batteryLabelModeLabel());
+    settingsMenuItems_.push_back(String(polish("Wygaszacz: ", "Screensaver: ")) +
+                                 screensaverModeLabel());
+    settingsMenuItems_.push_back(String(polish("Bateria w czyt.: ", "Reading battery: ")) +
                                  onOffLabel(readerBatteryVisibleWhilePlaying_));
-    settingsMenuItems_.push_back("Reading chapter: " +
+    settingsMenuItems_.push_back(String(polish("Rozdz. w czyt.: ", "Reading chapter: ")) +
                                  onOffLabel(readerChapterVisibleWhilePlaying_));
-    settingsMenuItems_.push_back("Reading percent: " +
+    settingsMenuItems_.push_back(String(polish("Procent w czyt.: ", "Reading percent: ")) +
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back("Reading mode: " + readerModeLabel());
-    settingsMenuItems_.push_back("Pause behaviour: " + pauseModeLabel());
-    settingsMenuItems_.push_back("Base speed: " + String(reader_.wpm()) + " WPM");
+    settingsMenuItems_.push_back(uiText(UiText::ReadingMode) + ": " + readerModeLabel());
+    settingsMenuItems_.push_back(String(polish("Pauza: ", "Pause behaviour: ")) +
+                                 pauseModeLabel());
+    settingsMenuItems_.push_back(String(polish("Tempo: ", "Base speed: ")) +
+                                 String(reader_.wpm()) + " WPM");
     settingsMenuItems_.push_back(uiText(UiText::LongWords) + ": " +
                                  pacingDelayLabel(pacingLongWordDelayMs_));
     settingsMenuItems_.push_back(uiText(UiText::Complexity) + ": " +
@@ -3499,14 +3504,17 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
   } else if (menuScreen_ == MenuScreen::WifiSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back("Network: " + storedOrFallbackLabel(configuredWifiSsid(), "Not set"));
-    settingsMenuItems_.push_back("Choose network");
-    settingsMenuItems_.push_back("Forget network");
+    settingsMenuItems_.push_back(String(polish("Siec: ", "Network: ")) +
+                                 storedOrFallbackLabel(configuredWifiSsid(),
+                                                       polish("Brak", "Not set")));
+    settingsMenuItems_.push_back(polish("Wybierz siec", "Choose network"));
+    settingsMenuItems_.push_back(polish("Zapomnij siec", "Forget network"));
     // Advanced — pokazywane tylko w trybie developera. Klient nie potrzebuje
     // grzebać w „OTA Owner" ani „Auto OTA"; te rzeczy steruje się z aplikacji.
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back("Auto OTA: " + String(otaAutoCheckEnabled() ? "On" : "Off"));
-      settingsMenuItems_.push_back("OTA Owner: " + otaOwnerLabel());
+      settingsMenuItems_.push_back(String("Auto OTA: ") +
+                                   (otaAutoCheckEnabled() ? polish("Tak", "On") : polish("Nie", "Off")));
+      settingsMenuItems_.push_back(String("OTA Owner: ") + otaOwnerLabel());
     }
   }
 
@@ -3571,6 +3579,10 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::WifiSettings ||
          menuScreen_ == MenuScreen::WelcomeLanguage ||
          menuScreen_ == MenuScreen::WelcomeTheme;
+}
+
+const char *App::polish(const char *pl, const char *en) const {
+  return uiLanguage_ == UiLanguage::Polish ? pl : en;
 }
 
 // ─── SettingsConnectivity ────────────────────────────────────────────────────
@@ -4013,11 +4025,13 @@ String App::readerModeLabel() const {
 }
 
 String App::pauseModeLabel() const {
-  return pauseMode_ == PauseMode::Instant ? "Instant" : "Sentence";
+  return pauseMode_ == PauseMode::Instant ? polish("Natychm.", "Instant")
+                                          : polish("Zdanie", "Sentence");
 }
 
 String App::handednessLabel() const {
-  return handednessMode_ == HandednessMode::Left ? "Left" : "Right";
+  return handednessMode_ == HandednessMode::Left ? polish("Lewa", "Left")
+                                                 : polish("Prawa", "Right");
 }
 
 String App::readerFontSizeLabel() const {
@@ -5727,38 +5741,38 @@ String App::currentBatteryLabel() const {
 String App::footerMetricModeLabel() const {
   switch (footerMetricMode_) {
     case FooterMetricMode::ChapterTime:
-      return "Chapter time";
+      return polish("Czas rozdz.", "Chapter time");
     case FooterMetricMode::BookTime:
-      return "Book time";
+      return polish("Czas ksiazki", "Book time");
     case FooterMetricMode::Percentage:
     default:
-      return "Percent read";
+      return polish("Procent", "Percent read");
   }
 }
 
 String App::batteryLabelModeLabel() const {
   switch (batteryLabelMode_) {
     case BatteryLabelMode::TimeRemaining:
-      return "Time remaining";
+      return polish("Czas pracy", "Time remaining");
     case BatteryLabelMode::Voltage:
-      return "Voltage";
+      return polish("Napiecie", "Voltage");
     case BatteryLabelMode::Percent:
     default:
-      return "Percentage";
+      return polish("Procent", "Percentage");
   }
 }
 
 String App::screensaverModeLabel() const {
   switch (screensaverMode_) {
     case ScreensaverMode::Maze:
-      return "Maze";
+      return polish("Labirynt", "Maze");
     case ScreensaverMode::Voronoi:
       return "Voronoi";
     case ScreensaverMode::ScreenOff:
-      return "Screen off";
+      return polish("Wylacz", "Screen off");
     case ScreensaverMode::Life:
     default:
-      return "Life";
+      return polish("Zycie", "Life");
   }
 }
 
