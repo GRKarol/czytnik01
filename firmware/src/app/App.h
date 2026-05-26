@@ -82,6 +82,8 @@ class App {
     SettingsHome,
     SettingsDisplay,
     SettingsPacing,
+    SettingsConnectivity,
+    SettingsAbout,
     WifiSettings,
     WifiNetworks,
     TextEntry,
@@ -93,6 +95,8 @@ class App {
     UpdateConfirm,
     FocusTimerGenres,
     FocusTimerSession,
+    WelcomeLanguage,
+    WelcomeTheme,
   };
 
   enum class FooterMetricMode : uint8_t {
@@ -268,6 +272,21 @@ class App {
   /// nie pojawiają się w menu urządzenia — UX dla klienta jest czystsze.
   bool devModeEnabled();
   void setDevModeEnabled(bool enabled);
+
+  /// Nowe ekrany ustawień zorganizowane wokół codziennego użycia (a nie
+  /// odziedziczonej hierarchii rsvpnano). Otwieranie + handlery wyboru.
+  void openSettingsConnectivity();
+  void selectSettingsConnectivityItem(uint32_t nowMs);
+  void openSettingsAbout();
+  void selectSettingsAboutItem(uint32_t nowMs);
+
+  /// First-run welcome wizard — pyta o język i motyw zanim klient zobaczy
+  /// główne menu. Pokazywany tylko jeśli `kPrefSetupDone == false`.
+  void openWelcomeLanguage();
+  void selectWelcomeLanguageItem(uint32_t nowMs);
+  void openWelcomeTheme();
+  void selectWelcomeThemeItem(uint32_t nowMs);
+  void finishWelcomeWizard(uint32_t nowMs);
   String pacingDelayLabel(uint16_t delayMs) const;
   String firmwareUpdateMenuLabel() const;
   String themeModeLabel() const;
@@ -451,6 +470,10 @@ class App {
   size_t pendingBootBookIndex_ = 0;
   size_t menuSelectedIndex_ = 0;
   size_t settingsSelectedIndex_ = 0;
+  // Counter dla 10-tap na "Wersji" w SettingsAbout — odblokowuje dev mode
+  // bezpośrednio z urządzenia (oprócz odblokowania z PWA).
+  uint8_t aboutTapCount_ = 0;
+  uint32_t aboutLastTapMs_ = 0;
   size_t wifiNetworkSelectedIndex_ = 0;
   size_t bookPickerSelectedIndex_ = 0;
   size_t chapterPickerSelectedIndex_ = 0;

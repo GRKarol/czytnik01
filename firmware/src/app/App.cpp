@@ -153,11 +153,33 @@ constexpr size_t kRestartConfirmHeaderRows = 1;
 constexpr size_t kSdCardRepairConfirmHeaderRows = 1;
 constexpr size_t kUpdateConfirmHeaderRows = 2;
 constexpr size_t kSettingsBackIndex = 0;
-constexpr size_t kSettingsHomePacingIndex = 1;
+// SettingsHome — nowy układ, ułożony pod codzienne użycie.
+// Indeksy 1–4 są zawsze widoczne; 5–7 tylko gdy `devModeEnabled()`.
+constexpr size_t kSettingsHomeReadingIndex = 1;       // = stare Pacing
 constexpr size_t kSettingsHomeDisplayIndex = 2;
-constexpr size_t kSettingsHomeTypographyIndex = 3;
-constexpr size_t kSettingsHomeWifiIndex = 4;
-constexpr size_t kSettingsHomeUpdateIndex = 5;
+constexpr size_t kSettingsHomeConnectivityIndex = 3;  // NEW
+constexpr size_t kSettingsHomeAboutIndex = 4;         // NEW
+constexpr size_t kSettingsHomeTypographyIndex = 5;    // dev only
+constexpr size_t kSettingsHomeWifiIndex = 6;          // dev only (Wi-Fi advanced)
+constexpr size_t kSettingsHomeUpdateIndex = 7;        // dev only (PWA Aktualizacje ma to lepiej)
+
+// Zachowujemy starą nazwę dla kompatybilności z pozostałymi miejscami,
+// które do niej odwołują się dla cofania z głębszych ekranów.
+constexpr size_t kSettingsHomePacingIndex = kSettingsHomeReadingIndex;
+
+// SettingsConnectivity items
+constexpr size_t kSettingsConnSyncToggleIndex = 1;  // start/stop Companion sync (AP)
+constexpr size_t kSettingsConnSyncInfoIndex = 2;    // pokazuje SSID + IP gdy sync aktywny
+constexpr size_t kSettingsConnHomeWifiIndex = 3;    // klient WiFi (dla OTA/RSS)
+constexpr size_t kSettingsConnBluetoothIndex = 4;   // placeholder „wkrótce"
+
+// SettingsAbout items
+constexpr size_t kSettingsAboutVersionIndex = 1;   // tap-target dla dev mode
+constexpr size_t kSettingsAboutBrandIndex = 2;
+constexpr size_t kSettingsAboutAppHintIndex = 3;
+constexpr size_t kSettingsAboutDevModeIndex = 4;   // pokazywane gdy dev mode
+
+constexpr const char *kPrefSetupDone = "setup_done";
 constexpr size_t kSettingsDisplayThemeIndex = 1;
 constexpr size_t kSettingsDisplayBrightnessIndex = 2;
 constexpr size_t kSettingsDisplayHandednessIndex = 3;
@@ -947,6 +969,15 @@ void App::setState(AppState nextState, uint32_t nowMs) {
 void App::updateState(uint32_t nowMs) {
   if (state_ == AppState::Booting) {
     if (nowMs - bootStartedMs_ < kBootSplashMs) {
+      return;
+    }
+
+    // Pierwsze uruchomienie po flashowaniu — pokaż welcome wizard zamiast
+    // od razu otwierać czytnik. Klient wybiera język i motyw, potem flaga
+    // setup_done jest ustawiana w finishWelcomeWizard().
+    if (!preferences_.getBool(kPrefSetupDone, false)) {
+      setState(AppState::Menu, nowMs);
+      openWelcomeLanguage();
       return;
     }
 
@@ -2640,31 +2671,57 @@ void App::selectSettingsItem(uint32_t nowMs) {
         menuScreen_ = MenuScreen::Main;
         renderMainMenu();
         return;
+      case kSettingsHomeReadingIndex:
+        settingsSelectedIndex_ = kSettingsPacingReadingModeIndex;
+        menuScreen_ = MenuScreen::SettingsPacing;
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
       case kSettingsHomeDisplayIndex:
         settingsSelectedIndex_ = kSettingsDisplayThemeIndex;
         menuScreen_ = MenuScreen::SettingsDisplay;
         rebuildSettingsMenuItems();
         renderSettings();
         return;
-      case kSettingsHomeTypographyIndex:
-        openTypographyTuning();
+      case kSettingsHomeConnectivityIndex:
+        openSettingsConnectivity();
         return;
-      case kSettingsHomePacingIndex:
-        settingsSelectedIndex_ = kSettingsPacingReadingModeIndex;
-        menuScreen_ = MenuScreen::SettingsPacing;
-        rebuildSettingsMenuItems();
-        renderSettings();
+      case kSettingsHomeAboutIndex:
+        openSettingsAbout();
+        return;
+      // Pozycje dev-only — branchują tylko gdy menu je faktycznie pokazało.
+      case kSettingsHomeTypographyIndex:
+        if (devModeEnabled()) openTypographyTuning();
         return;
       case kSettingsHomeWifiIndex:
-        openWifiSettings();
+        if (devModeEnabled()) openWifiSettings();
         return;
-      case kSettingsHomeUpdateIndex: {
-        runFirmwareUpdate(preferredOtaConfig(), false, nowMs);
+      case kSettingsHomeUpdateIndex:
+        if (devModeEnabled()) runFirmwareUpdate(preferredOtaConfig(), false, nowMs);
         return;
-      }
       default:
         return;
     }
+  }
+
+  if (menuScreen_ == MenuScreen::SettingsConnectivity) {
+    selectSettingsConnectivityItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::SettingsAbout) {
+    selectSettingsAboutItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::WelcomeLanguage) {
+    selectWelcomeLanguageItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::WelcomeTheme) {
+    selectWelcomeThemeItem(nowMs);
+    return;
   }
 
   if (menuScreen_ == MenuScreen::WifiSettings) {
@@ -3354,12 +3411,60 @@ void App::rebuildSettingsMenuItems() {
   settingsMenuItems_.clear();
   settingsMenuItems_.reserve(SettingsItemCount);
   if (menuScreen_ == MenuScreen::SettingsHome) {
+    // Nowy układ: 4 pozycje codzienne dla klienta, reszta za dev mode.
+    // Pozycje codzienne mają indeksy 1–4 zgodnie ze stałymi
+    // kSettingsHomeReadingIndex / Display / Connectivity / About.
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back(uiText(UiText::WordPacing));
-    settingsMenuItems_.push_back(uiText(UiText::Display));
-    settingsMenuItems_.push_back(uiText(UiText::TypographyTune));
-    settingsMenuItems_.push_back("Wi-Fi");
-    settingsMenuItems_.push_back(firmwareUpdateMenuLabel());
+    settingsMenuItems_.push_back(uiText(UiText::WordPacing));      // 1 = Reading
+    settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
+    settingsMenuItems_.push_back("Connectivity");                  // 3 = Connectivity (NEW)
+    settingsMenuItems_.push_back("About / Help");                  // 4 = About (NEW)
+    if (devModeEnabled()) {
+      settingsMenuItems_.push_back(uiText(UiText::TypographyTune)); // 5 dev
+      settingsMenuItems_.push_back("Wi-Fi (advanced)");             // 6 dev
+      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());      // 7 dev
+    }
+  } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
+    // Pokazuje co użytkownik faktycznie potrzebuje: jak połączyć aplikację
+    // z urządzeniem. Bluetooth na razie placeholder (brak BLE w firmware).
+    settingsMenuItems_.push_back(uiText(UiText::Back));
+    const bool syncActive = state_ == AppState::CompanionSync;
+    settingsMenuItems_.push_back(String("Phone sync: ") + (syncActive ? "ON" : "OFF"));
+    if (syncActive) {
+      // Statyczna pozycja pokazująca SSID + IP — tap na niej nic nie robi,
+      // ale klient widzi do czego ma się podłączyć w telefonie.
+      settingsMenuItems_.push_back(
+          String("    ") + companionSync_.statusLine1() + " / " + companionSync_.statusLine2());
+    } else {
+      settingsMenuItems_.push_back("    (turn on to see Wi-Fi code)");
+    }
+    settingsMenuItems_.push_back("Home Wi-Fi: " +
+                                 storedOrFallbackLabel(configuredWifiSsid(), "Not set"));
+    settingsMenuItems_.push_back("Bluetooth: coming soon");
+  } else if (menuScreen_ == MenuScreen::SettingsAbout) {
+    // Wersja, marka, podpowiedź żeby konfigurować z telefonu, oraz
+    // licznikowy „easter egg" dev mode na pozycji „Version".
+    settingsMenuItems_.push_back(uiText(UiText::Back));
+    settingsMenuItems_.push_back("Version: " + otaUpdater_.currentVersion());
+    settingsMenuItems_.push_back("Brand: Flower (Czytnik01)");
+    settingsMenuItems_.push_back("Phone app: grkarol.github.io/czytnik01/app");
+    if (devModeEnabled()) {
+      settingsMenuItems_.push_back("Developer mode: ON (turn off)");
+    }
+  } else if (menuScreen_ == MenuScreen::WelcomeLanguage) {
+    // First-run wizard — krok 1/2. Lista języków zgodnie z Localization.
+    // Pierwszy element NIE jest „Back" — z wizarda nie można cofać przed boot.
+    settingsMenuItems_.push_back("English");
+    settingsMenuItems_.push_back("Polski");
+    settingsMenuItems_.push_back("Deutsch");
+    settingsMenuItems_.push_back("Español");
+    settingsMenuItems_.push_back("Français");
+    settingsMenuItems_.push_back("Română");
+  } else if (menuScreen_ == MenuScreen::WelcomeTheme) {
+    // First-run wizard — krok 2/2.
+    settingsMenuItems_.push_back("Light");
+    settingsMenuItems_.push_back("Dark");
+    settingsMenuItems_.push_back("Night");
   } else if (menuScreen_ == MenuScreen::SettingsDisplay) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back("Display mode: " + themeModeLabel());
@@ -3446,9 +3551,158 @@ bool App::devModeEnabled() {
 
 void App::setDevModeEnabled(bool enabled) {
   preferences_.putBool(kPrefDevMode, enabled);
-  if (state_ == AppState::Menu && menuScreen_ == MenuScreen::WifiSettings) {
+  if (state_ == AppState::Menu &&
+      (menuScreen_ == MenuScreen::WifiSettings || menuScreen_ == MenuScreen::SettingsHome ||
+       menuScreen_ == MenuScreen::SettingsAbout)) {
     rebuildSettingsMenuItems();
   }
+}
+
+// ─── SettingsConnectivity ────────────────────────────────────────────────────
+
+void App::openSettingsConnectivity() {
+  menuScreen_ = MenuScreen::SettingsConnectivity;
+  settingsSelectedIndex_ = kSettingsConnSyncToggleIndex;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectSettingsConnectivityItem(uint32_t nowMs) {
+  switch (settingsSelectedIndex_) {
+    case kSettingsBackIndex:
+      settingsSelectedIndex_ = kSettingsHomeConnectivityIndex;
+      menuScreen_ = MenuScreen::SettingsHome;
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kSettingsConnSyncToggleIndex:
+      // Włącz / wyłącz tryb sync — to dokładnie companion sync (AP + HTTP).
+      // Po włączeniu wracamy do tego samego ekranu, żeby klient zobaczył
+      // SSID i IP — handler companion sync zmienia state_ na CompanionSync,
+      // ale i tak najpierw renderuje swój własny status splash; rebuild
+      // settings nastąpi gdy klient wróci do menu.
+      if (state_ == AppState::CompanionSync) {
+        exitCompanionSync(nowMs);
+      } else {
+        enterCompanionSync(nowMs);
+      }
+      return;
+    case kSettingsConnSyncInfoIndex:
+      // Pozycja informacyjna — tap nic nie robi, ale można zaktualizować
+      // wyświetlanie gdyby SSID zdążył się zmienić.
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kSettingsConnHomeWifiIndex:
+      openWifiSettings();
+      return;
+    case kSettingsConnBluetoothIndex:
+      // Placeholder — BLE peripheral jeszcze nieobsługiwany w firmware.
+      return;
+    default:
+      return;
+  }
+}
+
+// ─── SettingsAbout ───────────────────────────────────────────────────────────
+
+void App::openSettingsAbout() {
+  menuScreen_ = MenuScreen::SettingsAbout;
+  settingsSelectedIndex_ = kSettingsAboutVersionIndex;
+  aboutTapCount_ = 0;
+  aboutLastTapMs_ = 0;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectSettingsAboutItem(uint32_t nowMs) {
+  switch (settingsSelectedIndex_) {
+    case kSettingsBackIndex:
+      settingsSelectedIndex_ = kSettingsHomeAboutIndex;
+      menuScreen_ = MenuScreen::SettingsHome;
+      aboutTapCount_ = 0;
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kSettingsAboutVersionIndex: {
+      // Łańcuch tapów odblokowuje dev mode (jak Android Build number).
+      constexpr uint32_t kTapWindowMs = 1500;
+      constexpr uint8_t kTapsToUnlock = 10;
+      if (aboutLastTapMs_ != 0 && nowMs - aboutLastTapMs_ > kTapWindowMs) {
+        aboutTapCount_ = 0;
+      }
+      aboutLastTapMs_ = nowMs;
+      aboutTapCount_++;
+      if (!devModeEnabled() && aboutTapCount_ >= kTapsToUnlock) {
+        setDevModeEnabled(true);
+        aboutTapCount_ = 0;
+      }
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    }
+    case kSettingsAboutDevModeIndex:
+      // Pokazane tylko gdy dev mode jest już włączone — pozwala wyłączyć.
+      if (devModeEnabled()) {
+        setDevModeEnabled(false);
+      }
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kSettingsAboutBrandIndex:
+    case kSettingsAboutAppHintIndex:
+    default:
+      return;
+  }
+}
+
+// ─── First-run welcome wizard ────────────────────────────────────────────────
+
+void App::openWelcomeLanguage() {
+  menuScreen_ = MenuScreen::WelcomeLanguage;
+  // Bez „Back" — w wizardzie zaczynamy od pierwszego elementu listy.
+  settingsSelectedIndex_ = 0;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectWelcomeLanguageItem(uint32_t /*nowMs*/) {
+  // Zachowaj kolejność z rebuildSettingsMenuItems() dla WelcomeLanguage:
+  // 0 English, 1 Polski, 2 Deutsch, 3 Español, 4 Français, 5 Română.
+  // Tablicę dopasowujemy do Localization::Language ordering (zob.
+  // Localization::sanitizeLanguage / kPrefUiLanguage value).
+  static const uint8_t kLangByIndex[] = {0, 5, 3, 1, 2, 4};
+  if (settingsSelectedIndex_ < sizeof(kLangByIndex)) {
+    preferences_.putUChar(kPrefUiLanguage, kLangByIndex[settingsSelectedIndex_]);
+    uiLanguage_ = Localization::sanitizeLanguage(kLangByIndex[settingsSelectedIndex_]);
+  }
+  openWelcomeTheme();
+}
+
+void App::openWelcomeTheme() {
+  menuScreen_ = MenuScreen::WelcomeTheme;
+  settingsSelectedIndex_ = 0;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectWelcomeThemeItem(uint32_t nowMs) {
+  // 0 Light, 1 Dark, 2 Night.
+  const bool dark = settingsSelectedIndex_ >= 1;
+  const bool night = settingsSelectedIndex_ == 2;
+  preferences_.putBool(kPrefDarkMode, dark);
+  preferences_.putBool(kPrefNightMode, night);
+  applyDisplayPreferences(nowMs);
+  finishWelcomeWizard(nowMs);
+}
+
+void App::finishWelcomeWizard(uint32_t nowMs) {
+  preferences_.putBool(kPrefSetupDone, true);
+  // Po wizardzie idź prosto do głównego menu — klient widzi swoją bibliotekę.
+  menuScreen_ = MenuScreen::Main;
+  menuSelectedIndex_ = 0;
+  renderMainMenu();
+  (void)nowMs;
 }
 
 OtaUpdater::Config App::preferredOtaConfig() {
