@@ -3698,11 +3698,16 @@ void App::selectWelcomeThemeItem(uint32_t nowMs) {
 
 void App::finishWelcomeWizard(uint32_t nowMs) {
   preferences_.putBool(kPrefSetupDone, true);
-  // Po wizardzie idź prosto do głównego menu — klient widzi swoją bibliotekę.
+  // Po wizardzie zachowaj się jak zwykły boot: wpadnij w tryb czytnika
+  // (Paused/Playing), nie zostawiaj klienta w Main menu. Klient i tak
+  // może otworzyć menu kliknięciem power button.
   menuScreen_ = MenuScreen::Main;
   menuSelectedIndex_ = 0;
-  renderMainMenu();
-  (void)nowMs;
+  settingsSelectedIndex_ = kSettingsBackIndex;
+  setState((touchPlayHeld_ || playLocked_ || pauseAtSentenceEndRequested_)
+               ? AppState::Playing
+               : AppState::Paused,
+           nowMs);
 }
 
 OtaUpdater::Config App::preferredOtaConfig() {
