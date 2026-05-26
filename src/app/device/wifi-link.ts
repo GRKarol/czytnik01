@@ -37,8 +37,17 @@ export class WifiLink implements DeviceLink {
     // 1. Sprawdź czy urządzenie odpowiada na /hello.
     const hello = await fetch(`${this.base}/api/hello`, { method: "GET" }).catch(() => null);
     if (!hello || !hello.ok) {
+      // Najczęstsza przyczyna gdy aplikacja jest hostowana na HTTPS
+      // (grkarol.github.io): mixed content block — przeglądarka odmawia
+      // wykonania HTTP requestu z HTTPS strony. CORS tu nie pomoże, bo
+      // request nigdy nie opuszcza klienta. Workaround: otworzyć
+      // http://192.168.4.1/ bezpośrednio w przeglądarce telefonu i użyć
+      // zakładki "Update" w Companion UI.
+      const isHttps = typeof location !== "undefined" && location.protocol === "https:";
       throw new Error(
-        `Nie udało się złapać urządzenia pod ${this.base}. Czy telefon jest podłączony do sieci urządzenia (Flower-…)?`,
+        isHttps
+          ? `Przeglądarka zablokowała połączenie HTTPS → HTTP. Otwórz w telefonie ${this.base}/ bezpośrednio (Chrome/Safari), tam wgrywaj firmware i książki.`
+          : `Nie udało się złapać urządzenia pod ${this.base}. Czy telefon jest podłączony do sieci urządzenia (Flower-…)?`,
       );
     }
 

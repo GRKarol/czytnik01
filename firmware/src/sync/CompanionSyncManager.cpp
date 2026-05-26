@@ -106,6 +106,7 @@ ul{padding-left:20px}code{background:var(--soft);border-radius:4px;padding:1px 4
 <button data-tab="articles">Articles</button>
 <button data-tab="settings">Settings</button>
 <button data-tab="rss">RSS</button>
+<button data-tab="firmware">Update</button>
 <button data-tab="help">Help</button>
 </nav>
 </header>
@@ -189,6 +190,17 @@ ul{padding-left:20px}code{background:var(--soft);border-radius:4px;padding:1px 4
 </div>
 </section>
 
+<section id="firmware" class="page">
+<div class="card">
+<h2>Update firmware</h2>
+<p>Pick a <code>.bin</code> downloaded from the Flower app or GitHub releases (use <strong>flower-firmware.bin</strong>, not the merged <code>czytnik01.bin</code>).</p>
+<input type="file" id="firmwareFile" accept=".bin">
+<p><button class="primary" id="uploadFirmwareButton">Send and install</button></p>
+<div id="firmwareProgress" class="muted">Idle.</div>
+<p class="muted">After a successful upload the reader reboots automatically into the new firmware.</p>
+</div>
+</section>
+
 <section id="help" class="page">
 <div class="card"><h2>How to use this web companion</h2>
 <ul>
@@ -230,10 +242,11 @@ async function saveWifi(){const ssid=$('wifiSsid').value.trim();if(!ssid){status
 async function forgetWifi(){if(!confirm('Forget saved Wi-Fi?'))return;try{await api('/api/wifi',{method:'DELETE'});$('wifiSsid').value='';$('wifiPassword').value='';$('wifiCurrent').textContent='No home Wi-Fi saved.';status('Wi-Fi credentials cleared.')}catch(e){status('Forget Wi-Fi failed: '+e.message)}}
 async function loadRss(){try{const r=await api('/api/rss-feeds');$('rssFeeds').value=(r.feeds||[]).join('\n');status('RSS feeds loaded.')}catch(e){status('RSS load failed: '+e.message)}}
 async function saveRss(){const feeds=$('rssFeeds').value.split(/\n+/).map(s=>s.trim()).filter(Boolean);try{await api('/api/rss-feeds',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds})});status('RSS feeds saved.')}catch(e){status('RSS save failed: '+e.message)}}
+function uploadFirmware(){const f=$('firmwareFile').files[0];if(!f){status('Pick a .bin first.');return}const fd=new FormData();fd.append('firmware',f,f.name);const xhr=new XMLHttpRequest();xhr.open('POST','/api/ota');xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.round(e.loaded*100/e.total);$('firmwareProgress').textContent='Sending '+pct+'% ('+Math.round(e.loaded/1024)+' / '+Math.round(e.total/1024)+' kB)';status('Firmware upload '+pct+'%')}};xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){$('firmwareProgress').textContent='Installed. Reader is rebooting.';status('Firmware installed. Reader rebooting...')}else{$('firmwareProgress').textContent='Failed: '+xhr.responseText;status('OTA failed ('+xhr.status+'): '+xhr.responseText)}};xhr.onerror=()=>{$('firmwareProgress').textContent='Connection dropped during upload.';status('OTA connection dropped.')};status('Uploading firmware...');xhr.send(fd)}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active');if(b.dataset.tab==='settings'){loadSettings();loadWifi()}if(b.dataset.tab==='rss')loadRss()});
 $('wpm').oninput=()=>{setVal('wpm',snapWpm(val('wpm')));updateLabels()};
 ['longWordMs','complexWordMs','punctuationMs','brightnessIndex','fontSizeIndex','tracking','anchorPercent','guideWidth','guideGap'].forEach(id=>$(id).oninput=updateLabels);
-$('refreshBooksButton').onclick=refresh;$('refreshArticlesButton').onclick=refresh;$('uploadBookButton').onclick=()=>uploadPicked('bookFileInput','book');$('uploadArticleButton').onclick=()=>uploadPicked('articleFileInput','article');$('syncArticleButton').onclick=syncArticle;$('saveDraftButton').onclick=saveDraft;$('saveSettingsButton').onclick=saveSettings;$('saveWifiButton').onclick=saveWifi;$('forgetWifiButton').onclick=forgetWifi;$('saveRssButton').onclick=saveRss;$('reloadRssButton').onclick=loadRss;
+$('refreshBooksButton').onclick=refresh;$('refreshArticlesButton').onclick=refresh;$('uploadBookButton').onclick=()=>uploadPicked('bookFileInput','book');$('uploadArticleButton').onclick=()=>uploadPicked('articleFileInput','article');$('syncArticleButton').onclick=syncArticle;$('saveDraftButton').onclick=saveDraft;$('saveSettingsButton').onclick=saveSettings;$('saveWifiButton').onclick=saveWifi;$('forgetWifiButton').onclick=forgetWifi;$('saveRssButton').onclick=saveRss;$('reloadRssButton').onclick=loadRss;$('uploadFirmwareButton').onclick=uploadFirmware;
 loadDraft();refresh();
 </script>
 </body>
@@ -611,6 +624,7 @@ void CompanionSyncManager::handleHelloStatic() {
 }
 
 void CompanionSyncManager::handleHello() {
+  server_.sendHeader("Access-Control-Allow-Origin", "*");
   server_.send(200, "application/json",
                "{\"ok\":true,\"name\":\"Flower\",\"api\":1}");
 }
