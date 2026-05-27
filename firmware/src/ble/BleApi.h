@@ -38,9 +38,10 @@ class BleApi {
   /// Zatrzymuje advertising + zamyka aktywne połączenia + zwalnia stack.
   void stop();
 
-  /// Wywoływać z głównej pętli (cheap call). Aktualnie no-op — NimBLE
-  /// pracuje na własnych taskach. Zostawiamy dla przyszłych potrzeb
-  /// (rate-limit notifications, watchdog itp.).
+  /// **MUSI być wywoływane z głównego loopa App** (App::update). Drenuje
+  /// zakolejkowane komendy BLE — przetwarza je w kontekście main taska,
+  /// dzięki czemu mutacje App::settingsMenuItems_, NVS, itp. są
+  /// bezpieczne (BLE host task tylko parsuje + kolejkuje).
   void update();
 
   bool isActive() const;
@@ -50,6 +51,11 @@ class BleApi {
   /// Wysyła event JSON do połączonego klienta. Bezpieczne wywołanie
   /// nawet bez klienta — wtedy ignoruje.
   void emitEvent(const String &json);
+
+  /// Atomic test-and-clear: czy stan połączenia BLE zmienił się odkąd
+  /// ostatnio sprawdziliśmy? App używa tego żeby odświeżyć menu
+  /// SettingsConnectivity gdy pojawi się / zniknie klient.
+  bool consumeMenuDirty();
 
  private:
 #if FLOWER_BLE_ENABLED

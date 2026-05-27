@@ -860,6 +860,17 @@ void App::update(uint32_t nowMs) {
   maybeSaveReadingPosition(nowMs);
   updateTimeEstimateBuild(nowMs);
 
+  // BLE: drenuj komendy zakolejkowane przez host task (set-dev-mode itp.)
+  // i sprawdź czy zmiana stanu (connect/disconnect) wymaga odświeżenia
+  // menu Polaczenia. Bez tego label „Bluetooth: WLACZONY" zostaje stale
+  // gdy telefon się podłączy w trakcie wyświetlania menu.
+  ble_.update();
+  if (ble_.consumeMenuDirty() && state_ == AppState::Menu &&
+      menuScreen_ == MenuScreen::SettingsConnectivity) {
+    rebuildSettingsMenuItems();
+    renderSettings();
+  }
+
   if (batteryChanged && (state_ == AppState::Paused || state_ == AppState::Playing)) {
     renderActiveReader(nowMs);
   } else if (batteryChanged && state_ == AppState::Menu) {
@@ -3456,12 +3467,17 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(String(polish("Wi-Fi domowe: ", "Home Wi-Fi: ")) +
                                  storedOrFallbackLabel(configuredWifiSsid(),
                                                        polish("Brak", "Not set")));
+#if FLOWER_BLE_ENABLED
+    // BLE pozycja pokazywana tylko gdy faktycznie skompilowana — w stub
+    // build (FLOWER_BLE_ENABLED=0) toggle by był no-opem, więc lepiej go
+    // schować, niż pozwolić klientowi tapać w niedziałającą pozycję.
     settingsMenuItems_.push_back(
         String("Bluetooth: ") +
         (ble_.isActive()
              ? (ble_.isConnected() ? polish("POLACZONY", "CONNECTED")
                                    : polish("WLACZONY", "ON"))
              : polish("WYLACZONY", "OFF")));
+#endif
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(polish("Wersja: ", "Version: ")) +
@@ -3644,10 +3660,14 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
     case kSettingsConnHomeWifiIndex:
       openWifiSettings();
       return;
+#if FLOWER_BLE_ENABLED
     case kSettingsConnBluetoothIndex: {
       // Toggle BLE peripheral. Stan trzymamy w preferencji, żeby przeżył
       // restart — klient włącza raz i jego telefon „znajduje" Flower za
       // każdym razem (a nie po każdym tapnięciu w sync menu).
+      // Gate'owane na FLOWER_BLE_ENABLED — w stub build pozycja menu też
+      // nie istnieje (patrz rebuildSettingsMenuItems), więc ten case po
+      // prostu nigdy nie trafi.
       const bool wasOn = ble_.isActive();
       if (wasOn) {
         ble_.stop();
@@ -3662,6 +3682,7 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
       renderSettings();
       return;
     }
+#endif
     default:
       return;
   }
