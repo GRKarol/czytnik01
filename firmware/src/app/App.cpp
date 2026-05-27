@@ -248,6 +248,7 @@ constexpr const char *kPrefWifiPass = "wifi_pass";
 constexpr const char *kPrefOtaAuto = "ota_auto";
 constexpr const char *kPrefOtaOwner = "ota_owner";
 constexpr const char *kPrefDevMode = "dev_mode";
+constexpr const char *kPrefBleEnabled = "ble_on";
 constexpr size_t kReaderFontSizeCount = 3;
 constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144};
 constexpr size_t kPhantomAfterCharTargets[] = {96, 144, 208};
@@ -791,6 +792,14 @@ void App::begin() {
   }
 
   maybeAutoCheckForUpdates(bootStartedMs_);
+
+  // Auto-start BLE peripheral jeśli klient włączył go wcześniej.
+  // Stan jest persistowany, więc telefon „znajduje" Flowera od razu po
+  // boocie, bez wchodzenia do menu Polaczenia po każdym restarcie.
+  if (preferences_.getBool(kPrefBleEnabled, false)) {
+    ble_.begin(this);
+    Serial.printf("[app] BLE auto-started (name=%s)\n", ble_.deviceName().c_str());
+  }
   Serial.printf("[app] WPM=%u interval=%lu ms\n", reader_.wpm(),
                 static_cast<unsigned long>(reader_.wordIntervalMs()));
 
@@ -3447,7 +3456,12 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(String(polish("Wi-Fi domowe: ", "Home Wi-Fi: ")) +
                                  storedOrFallbackLabel(configuredWifiSsid(),
                                                        polish("Brak", "Not set")));
-    settingsMenuItems_.push_back(polish("Bluetooth: wkrotce", "Bluetooth: coming soon"));
+    settingsMenuItems_.push_back(
+        String("Bluetooth: ") +
+        (ble_.isActive()
+             ? (ble_.isConnected() ? polish("POLACZONY", "CONNECTED")
+                                   : polish("WLACZONY", "ON"))
+             : polish("WYLACZONY", "OFF")));
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(polish("Wersja: ", "Version: ")) +
@@ -3566,6 +3580,8 @@ bool App::devModeEnabled() {
   return preferences_.getBool(kPrefDevMode, false);
 }
 
+String App::firmwareVersionLabel() const { return otaUpdater_.currentVersion(); }
+
 void App::setDevModeEnabled(bool enabled) {
   preferences_.putBool(kPrefDevMode, enabled);
   if (state_ == AppState::Menu &&
@@ -3628,9 +3644,24 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
     case kSettingsConnHomeWifiIndex:
       openWifiSettings();
       return;
-    case kSettingsConnBluetoothIndex:
-      // Placeholder — BLE peripheral jeszcze nieobsługiwany w firmware.
+    case kSettingsConnBluetoothIndex: {
+      // Toggle BLE peripheral. Stan trzymamy w preferencji, żeby przeżył
+      // restart — klient włącza raz i jego telefon „znajduje" Flower za
+      // każdym razem (a nie po każdym tapnięciu w sync menu).
+      const bool wasOn = ble_.isActive();
+      if (wasOn) {
+        ble_.stop();
+        preferences_.putBool(kPrefBleEnabled, false);
+        Serial.println("[app] BLE turned OFF by user");
+      } else {
+        ble_.begin(this);
+        preferences_.putBool(kPrefBleEnabled, true);
+        Serial.printf("[app] BLE turned ON by user (name=%s)\n", ble_.deviceName().c_str());
+      }
+      rebuildSettingsMenuItems();
+      renderSettings();
       return;
+    }
     default:
       return;
   }

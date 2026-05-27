@@ -16,6 +16,7 @@
 #include "reader/ReadingLoop.h"
 #include "rss/RssFeedManager.h"
 #include "storage/StorageManager.h"
+#include "ble/BleApi.h"
 #include "sync/CompanionSyncManager.h"
 #include "timer/FocusTimer.h"
 #include "update/OtaUpdater.h"
@@ -273,6 +274,10 @@ class App {
   bool devModeEnabled();
   void setDevModeEnabled(bool enabled);
 
+  /// Etykieta wersji firmware (z `RSVP_FIRMWARE_VERSION` build flag).
+  /// Używane przez BleApi do odpowiedzi na `get-version`.
+  String firmwareVersionLabel() const;
+
   /// Zwraca true dla każdego ekranu który renderuje się jako list-menu
   /// settings (display_.renderMenu z settingsMenuItems_). Touch handlery
   /// i nawigacja musi traktować je wszystkie tak samo — bez tego helpera
@@ -454,6 +459,7 @@ class App {
   OtaUpdater otaUpdater_;
   RssFeedManager rssFeedManager_;
   CompanionSyncManager companionSync_;
+  BleApi ble_;
   UsbMassStorageManager usbTransfer_;
   Preferences preferences_;
   PausedTouchSession pausedTouch_;
