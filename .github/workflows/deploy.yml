@@ -69,9 +69,10 @@ jobs:
       - name: Build PWA + flasher
         run: npm run build
         env:
-          # If a custom domain (CNAME) is configured, base is "/".
-          # Otherwise GitHub project-pages needs "/<repo>/".
-          VITE_BASE: ${{ hashFiles('public/CNAME') != '' && '/' || format('/{0}/', github.event.repository.name) }}
+          # GitHub Pages serwuje pod /<repo>/ dla project pages.
+          # Custom domain (progressio.giize.com) jest proxy/redirect —
+          # base musi zostać /<repo>/ bo Pages nadal serwuje z tego patha.
+          VITE_BASE: /${{ github.event.repository.name }}/
 
       - name: Sanity-check that the firmware binary ended up in dist/
         run: |
