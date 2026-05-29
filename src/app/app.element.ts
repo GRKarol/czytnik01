@@ -207,6 +207,10 @@ export class CzytnikApp extends LitElement {
   // ─── Home ──────────────────────────────────────────────────────────────────
 
   private renderHome() {
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true;
+
     return html`
       <section class="hero">
         <div class="hero-flower">${iconFlower(96)}</div>
@@ -217,10 +221,48 @@ export class CzytnikApp extends LitElement {
         </p>
       </section>
 
+      ${!isStandalone ? this.renderInstallBanner() : ""}
       ${!this.connected ? this.renderConnectChoice() : this.renderConnectedActions()}
       ${this.error ? html`<p class="error">${this.error}</p>` : ""}
     `;
   }
+
+  private renderInstallBanner() {
+    const isIos =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+      !(window as unknown as { MSStream?: unknown }).MSStream;
+
+    return html`
+      <section class="card install-card">
+        <h3>📲 Zainstaluj aplikację</h3>
+        ${isIos
+          ? html`<p class="muted">
+              Naciśnij <strong>Udostępnij</strong> (ikona strzałki na dole ekranu), potem
+              <strong>Dodaj do ekranu głównego</strong>.
+            </p>`
+          : html`<p class="muted">
+              Zainstaluj tę stronę jako aplikację — będzie działać offline i łączyć się z
+              czytnikiem bez internetu.
+            </p>
+            <button class="cta" @click=${this.triggerInstall}>Zainstaluj na telefonie</button>`}
+      </section>
+    `;
+  }
+
+  private triggerInstall = async () => {
+    // Try to use the deferred prompt from install-prompt component
+    const installEl = this.renderRoot?.querySelector("czytnik-install-prompt");
+    if (installEl && (installEl as unknown as { deferred: unknown }).deferred) {
+      (installEl as unknown as { install: () => void }).install();
+    } else {
+      // Fallback: show alert with instructions
+      alert(
+        "Aby zainstalować:\n\n" +
+          "Chrome/Edge: Menu (⋮) → Zainstaluj aplikację\n" +
+          "Samsung Internet: Menu → Dodaj stronę do → Ekran główny",
+      );
+    }
+  };
 
   private renderConnectChoice() {
     if (this.chosenTransport) return this.renderConnecting();
@@ -666,6 +708,11 @@ export class CzytnikApp extends LitElement {
       font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
       font-size: 1.2rem;
       color: var(--ink);
+    }
+
+    .install-card {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
     }
 
     .muted {

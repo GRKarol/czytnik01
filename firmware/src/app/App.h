@@ -9,6 +9,7 @@
 
 #include "app/AppState.h"
 #include "app/Localization.h"
+#include "app/Translations.h"
 #include "audio/AudioManager.h"
 #include "display/DisplayManager.h"
 #include "input/ButtonHandler.h"
@@ -23,6 +24,8 @@
 #include "usb/UsbMassStorageManager.h"
 
 class App {
+  friend class BleApi;
+
  public:
   enum class ReaderMode : uint8_t {
     Rsvp = 0,
@@ -98,6 +101,7 @@ class App {
     FocusTimerSession,
     WelcomeLanguage,
     WelcomeTheme,
+    WelcomeConnect,
   };
 
   enum class FooterMetricMode : uint8_t {
@@ -291,6 +295,10 @@ class App {
   /// tłumaczenia w Localization.h: "Wroc", "Jasnosc", itd.).
   const char *polish(const char *pl, const char *en) const;
 
+  /// Pełna lokalizacja 6-językowa przez TrKey (Translations.h).
+  const char *tr(TrKey key) const;
+  const char *tr2(TrKey2 key) const;
+
   /// Nowe ekrany ustawień zorganizowane wokół codziennego użycia (a nie
   /// odziedziczonej hierarchii rsvpnano). Otwieranie + handlery wyboru.
   void openSettingsConnectivity();
@@ -304,6 +312,8 @@ class App {
   void selectWelcomeLanguageItem(uint32_t nowMs);
   void openWelcomeTheme();
   void selectWelcomeThemeItem(uint32_t nowMs);
+  void openWelcomeConnect(uint32_t nowMs);
+  void selectWelcomeConnectItem(uint32_t nowMs);
   void finishWelcomeWizard(uint32_t nowMs);
   String pacingDelayLabel(uint16_t delayMs) const;
   String firmwareUpdateMenuLabel() const;
@@ -473,6 +483,9 @@ class App {
   uint32_t batteryRuntimeAnchorMs_ = 0;
   uint32_t lastScrollAnimationRenderMs_ = 0;
   uint32_t lastCompanionSyncRenderMs_ = 0;
+  uint32_t autoSyncStartedMs_ = 0;
+  bool autoSyncActive_ = false;
+  bool autoSyncClientConnected_ = false;
   uint32_t lastReaderTapMs_ = 0;
   uint32_t standbyComboStartedMs_ = 0;
   uint32_t standbyEnteredMs_ = 0;

@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/Translations.h"
 #include "board/BoardConfig.h"
 
 #ifndef RSVP_USB_TRANSFER_ENABLED
@@ -787,7 +788,7 @@ void App::begin() {
   } else {
     currentBookTitle_ = storage_.bookDisplayName(pendingBootBookIndex_);
     if (currentBookTitle_.isEmpty()) {
-      currentBookTitle_ = polish("Wczytywanie ksiazki", "Loading book");
+      currentBookTitle_ = tr(TrKey::LoadingBook);
     }
   }
 
@@ -800,6 +801,23 @@ void App::begin() {
     ble_.begin(this);
     Serial.printf("[app] BLE auto-started (name=%s)\n", ble_.deviceName().c_str());
   }
+
+  // Auto-start companion sync AP for 30 seconds on boot.
+  // If no client connects within the timeout, AP shuts down to save power.
+  {
+    CompanionSyncManager::Config syncConfig;
+    syncConfig.wifiSsid = "";
+    syncConfig.wifiPassword = "";
+    if (companionSync_.begin(syncConfig)) {
+      autoSyncActive_ = true;
+      autoSyncStartedMs_ = millis();
+      autoSyncClientConnected_ = false;
+      Serial.println("[app] auto-sync AP started (30s timeout)");
+    } else {
+      Serial.println("[app] auto-sync AP failed to start");
+    }
+  }
+
   Serial.printf("[app] WPM=%u interval=%lu ms\n", reader_.wpm(),
                 static_cast<unsigned long>(reader_.wordIntervalMs()));
 
@@ -869,6 +887,23 @@ void App::update(uint32_t nowMs) {
       menuScreen_ == MenuScreen::SettingsConnectivity) {
     rebuildSettingsMenuItems();
     renderSettings();
+  }
+
+  // Auto-sync AP timeout: shut down if no client connects within 30 seconds.
+  // Once a client connects, keep AP alive until user manually exits sync
+  // or enters CompanionSync state from menu (which takes over).
+  if (autoSyncActive_ && state_ != AppState::CompanionSync) {
+    companionSync_.update();
+    const uint8_t clients = WiFi.softAPgetStationNum();
+    if (clients > 0 && !autoSyncClientConnected_) {
+      autoSyncClientConnected_ = true;
+      Serial.println("[app] auto-sync: client connected, keeping AP alive");
+    }
+    if (!autoSyncClientConnected_ && (nowMs - autoSyncStartedMs_ >= 30000)) {
+      Serial.println("[app] auto-sync: 30s timeout, no client — shutting down AP");
+      companionSync_.end();
+      autoSyncActive_ = false;
+    }
   }
 
   if (batteryChanged && (state_ == AppState::Paused || state_ == AppState::Playing)) {
@@ -963,8 +998,8 @@ void App::setState(AppState nextState, uint32_t nowMs) {
       display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
       break;
     case AppState::UsbTransfer:
-      display_.renderStatus("USB", polish("Przygotowuje SD", "Preparing SD"),
-                            polish("Wysun po skonczeniu", "Eject when done"));
+      display_.renderStatus("USB", tr(TrKey::PreparingSD),
+                            tr(TrKey::EjectWhenDone));
       break;
     case AppState::Standby:
       seedStandbyScreensaver(nowMs);
@@ -1665,8 +1700,8 @@ void App::handleBatteryProtection(uint32_t nowMs) {
     Serial.printf("[power] critical battery %.2f V %u%%; powering off\n",
                   static_cast<double>(batteryFilteredVoltage_),
                   static_cast<unsigned int>(batteryDisplayedPercent_));
-    display_.renderStatus(polish("NISKA BATERIA", "LOW BATTERY"),
-                          polish("Wylaczam", "Powering off"), line2);
+    display_.renderStatus(tr(TrKey::LowBattery),
+                          tr(TrKey::PoweringOff), line2);
     delay(kBatteryShutdownNoticeMs);
     enterPowerOff(millis());
     return;
@@ -1701,10 +1736,10 @@ void App::showLowBatteryWarning(uint32_t nowMs) {
 
   const String line1 =
       String(static_cast<unsigned int>(batteryDisplayedPercent_)) +
-      (uiLanguage_ == UiLanguage::Polish ? "% zostalo" : "% remaining");
-  display_.renderStatus(polish("NISKA BATERIA", "LOW BATTERY"), line1,
+      tr(TrKey::Remaining);
+  display_.renderStatus(tr(TrKey::LowBattery), line1,
                         batteryVoltageLabel() +
-                            polish(" naladuj wkrotce", " charge soon"));
+                            tr(TrKey::ChargeSoon));
   Serial.printf("[power] low battery warning %.2f V %u%%\n",
                 static_cast<double>(batteryFilteredVoltage_),
                 static_cast<unsigned int>(batteryDisplayedPercent_));
@@ -2467,7 +2502,7 @@ void App::moveMenuSelection(int direction) {
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout ||
-      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme) {
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeConnect) {
     selectedIndex = &settingsSelectedIndex_;
     itemCount = settingsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
@@ -2514,7 +2549,7 @@ void App::moveMenuSelection(int direction) {
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout ||
-      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme) {
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeConnect) {
     Serial.printf("[settings] selected=%s\n", settingsMenuItems_[settingsSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     Serial.printf("[wifi] selected=%s\n", wifiNetworkMenuItems_[wifiNetworkSelectedIndex_].title.c_str());
@@ -2560,25 +2595,25 @@ void App::moveMenuSelection(int direction) {
         selectedLabel = uiText(UiText::Chapters);
         break;
       case MenuBooks:
-        selectedLabel = "Books";
+        selectedLabel = tr2(TrKey2::Books);
         break;
       case MenuArticles:
-        selectedLabel = "Articles";
+        selectedLabel = tr2(TrKey2::Articles);
         break;
       case MenuFocusTimer:
-        selectedLabel = "Focus Timer";
+        selectedLabel = tr2(TrKey2::FocusTimer);
         break;
       case MenuSettings:
         selectedLabel = uiText(UiText::Settings);
         break;
       case MenuSdCardCheck:
-        selectedLabel = "SD card check";
+        selectedLabel = tr2(TrKey2::SdCardCheck);
         break;
       case MenuRssFeeds:
-        selectedLabel = "RSS feeds";
+        selectedLabel = tr2(TrKey2::RssFeeds);
         break;
       case MenuCompanionSync:
-        selectedLabel = "Companion sync";
+        selectedLabel = tr2(TrKey2::CompanionSync);
         break;
 #if RSVP_USB_TRANSFER_ENABLED
       case MenuUsbTransfer:
@@ -2750,6 +2785,11 @@ void App::selectSettingsItem(uint32_t nowMs) {
 
   if (menuScreen_ == MenuScreen::WelcomeTheme) {
     selectWelcomeThemeItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::WelcomeConnect) {
+    selectWelcomeConnectItem(nowMs);
     return;
   }
 
@@ -2954,7 +2994,7 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
     case kWifiSettingsForgetIndex:
       preferences_.remove(kPrefWifiSsid);
       preferences_.remove(kPrefWifiPass);
-      display_.renderStatus("Wi-Fi", "Credentials cleared", "");
+      display_.renderStatus("Wi-Fi", tr2(TrKey2::CredentialsCleared), "");
       delay(900);
       rebuildSettingsMenuItems();
       renderSettings();
@@ -3006,7 +3046,7 @@ void App::scanWifiNetworks() {
   WiFi.mode(WIFI_OFF);
 
   if (wifiNetworks_.empty()) {
-    display_.renderStatus("Wi-Fi", "No networks found", "");
+    display_.renderStatus("Wi-Fi", tr2(TrKey2::NoNetworksFound), "");
     delay(1200);
     openWifiSettings();
     return;
@@ -3040,7 +3080,7 @@ void App::scanWifiNetworks() {
 
 void App::renderWifiNetworks() {
   if (wifiNetworkMenuItems_.empty()) {
-    display_.renderStatus("Wi-Fi", "No networks found", "");
+    display_.renderStatus("Wi-Fi", tr2(TrKey2::NoNetworksFound), "");
     return;
   }
 
@@ -3075,7 +3115,7 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
 
   preferences_.putString(kPrefWifiSsid, network.ssid);
   preferences_.putString(kPrefWifiPass, "");
-  display_.renderStatus("Wi-Fi", "Network saved", network.ssid);
+  display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), network.ssid);
   delay(900);
   openWifiSettings();
 }
@@ -3299,7 +3339,7 @@ void App::commitTextEntry(uint32_t nowMs) {
   switch (textEntrySession_.purpose) {
     case TextEntryPurpose::WifiPassword: {
       if (textEntrySession_.value.isEmpty()) {
-        display_.renderStatus("Wi-Fi", "Password required", textEntrySession_.contextValue);
+        display_.renderStatus("Wi-Fi", tr2(TrKey2::PasswordRequired), textEntrySession_.contextValue);
         delay(1000);
         renderTextEntry();
         return;
@@ -3310,7 +3350,7 @@ void App::commitTextEntry(uint32_t nowMs) {
       preferences_.putString(kPrefWifiPass, textEntrySession_.value);
       textEntrySession_ = TextEntrySession();
       textEntryButtons_.clear();
-      display_.renderStatus("Wi-Fi", "Network saved", ssid);
+      display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), ssid);
       delay(900);
       openWifiSettings();
       return;
@@ -3319,10 +3359,10 @@ void App::commitTextEntry(uint32_t nowMs) {
       const String owner = textEntrySession_.value;
       if (owner.isEmpty()) {
         preferences_.remove(kPrefOtaOwner);
-        display_.renderStatus("OTA", "Reset to default", "");
+        display_.renderStatus("OTA", tr2(TrKey2::ResetToDefault), "");
       } else {
         preferences_.putString(kPrefOtaOwner, owner);
-        display_.renderStatus("OTA", "Owner saved", owner);
+        display_.renderStatus("OTA", tr2(TrKey2::OwnerSaved), owner);
       }
       delay(900);
       textEntrySession_ = TextEntrySession();
@@ -3444,29 +3484,29 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::WordPacing));      // 1 = Reading
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
-    settingsMenuItems_.push_back(polish("Polaczenia", "Connectivity"));      // 3
-    settingsMenuItems_.push_back(polish("Informacje", "About / Help"));      // 4
+    settingsMenuItems_.push_back(tr(TrKey::Connectivity));      // 3
+    settingsMenuItems_.push_back(tr(TrKey::AboutHelp));      // 4
     if (devModeEnabled()) {
       settingsMenuItems_.push_back(uiText(UiText::TypographyTune));          // 5 dev
-      settingsMenuItems_.push_back(polish("Wi-Fi (zaaw.)", "Wi-Fi (advanced)"));// 6 dev
+      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));// 6 dev
       settingsMenuItems_.push_back(firmwareUpdateMenuLabel());               // 7 dev
     }
   } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     const bool syncActive = state_ == AppState::CompanionSync;
     settingsMenuItems_.push_back(
-        String(polish("Sync z tel.: ", "Phone sync: ")) +
-        (syncActive ? polish("WLACZONY", "ON") : polish("WYLACZONY", "OFF")));
+        String(tr(TrKey::PhoneSync)) +
+        (syncActive ? tr(TrKey::Yes) : tr(TrKey::No)));
     if (syncActive) {
       settingsMenuItems_.push_back(
           String("    ") + companionSync_.statusLine1() + " / " + companionSync_.statusLine2());
     } else {
       settingsMenuItems_.push_back(
-          polish("    (wlacz aby zobaczyc kod Wi-Fi)", "    (turn on to see Wi-Fi code)"));
+          tr(TrKey::TurnOnToSeeWifi));
     }
-    settingsMenuItems_.push_back(String(polish("Wi-Fi domowe: ", "Home Wi-Fi: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::HomeWifi)) +
                                  storedOrFallbackLabel(configuredWifiSsid(),
-                                                       polish("Brak", "Not set")));
+                                                       tr(TrKey::NotSet)));
 #if FLOWER_BLE_ENABLED
     // BLE pozycja pokazywana tylko gdy faktycznie skompilowana — w stub
     // build (FLOWER_BLE_ENABLED=0) toggle by był no-opem, więc lepiej go
@@ -3474,20 +3514,18 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(
         String("Bluetooth: ") +
         (ble_.isActive()
-             ? (ble_.isConnected() ? polish("POLACZONY", "CONNECTED")
-                                   : polish("WLACZONY", "ON"))
-             : polish("WYLACZONY", "OFF")));
+             ? (ble_.isConnected() ? tr(TrKey::Connected)
+                                   : tr(TrKey::Yes))
+             : tr(TrKey::No)));
 #endif
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back(String(polish("Wersja: ", "Version: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::Version)) +
                                  otaUpdater_.currentVersion());
-    settingsMenuItems_.push_back(polish("Marka: Flower (Czytnik01)",
-                                        "Brand: Flower (Czytnik01)"));
-    settingsMenuItems_.push_back(polish("Aplikacja: grkarol.github.io/czytnik01/app",
-                                        "Phone app: grkarol.github.io/czytnik01/app"));
+    settingsMenuItems_.push_back(tr(TrKey::BrandLabel));
+    settingsMenuItems_.push_back(tr(TrKey::PhoneAppLabel));
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back(polish("Tryb dev: WL (wylacz)", "Developer mode: ON (turn off)"));
+      settingsMenuItems_.push_back(tr(TrKey::DevModeOn));
     }
   } else if (menuScreen_ == MenuScreen::WelcomeLanguage) {
     // First-run wizard — krok 1/2. Lista języków po ich własnych nazwach
@@ -3499,36 +3537,45 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back("Francais");
     settingsMenuItems_.push_back("Romana");
   } else if (menuScreen_ == MenuScreen::WelcomeTheme) {
-    // First-run wizard — krok 2/2. Po wyborze języka w step 1 (już zapisanym
+    // First-run wizard — krok 2/3. Po wyborze języka w step 1 (już zapisanym
     // w uiLanguage_), te labele lecą przez UiText więc są przetłumaczone.
     settingsMenuItems_.push_back(uiText(UiText::Light));
     settingsMenuItems_.push_back(uiText(UiText::Dark));
     settingsMenuItems_.push_back(uiText(UiText::Night));
+  } else if (menuScreen_ == MenuScreen::WelcomeConnect) {
+    // First-run wizard — krok 3/3. Połączenie z telefonem.
+    // Więcej pozycji żeby scroll nie przeskakiwał od razu na "Pomiń".
+    const String ssid = companionSync_.active() ? companionSync_.statusLine1() : "Flower";
+    settingsMenuItems_.push_back(String("Wi-Fi: ") + ssid);
+    settingsMenuItems_.push_back("IP: 192.168.4.1");
+    settingsMenuItems_.push_back("---");
+    settingsMenuItems_.push_back(tr2(TrKey2::CompanionSync));
+    settingsMenuItems_.push_back(tr2(TrKey2::SkipForNow));
   } else if (menuScreen_ == MenuScreen::SettingsDisplay) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(uiText(UiText::Theme)) + ": " + themeModeLabel());
     settingsMenuItems_.push_back(uiText(UiText::Brightness) + ": " +
                                  String(currentBrightnessPercent()) + "%");
-    settingsMenuItems_.push_back(String(polish("Dlon: ", "Reader hand: ")) + handednessLabel());
-    settingsMenuItems_.push_back(String(polish("Stopka: ", "Footer label: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::ReaderHand)) + handednessLabel());
+    settingsMenuItems_.push_back(String(tr(TrKey::FooterLabel)) +
                                  footerMetricModeLabel());
-    settingsMenuItems_.push_back(String(polish("Bateria: ", "Battery label: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::BatteryLabel)) +
                                  batteryLabelModeLabel());
-    settingsMenuItems_.push_back(String(polish("Wygaszacz: ", "Screensaver: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::Screensaver)) +
                                  screensaverModeLabel());
-    settingsMenuItems_.push_back(String(polish("Bateria w czyt.: ", "Reading battery: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::ReadingBattery)) +
                                  onOffLabel(readerBatteryVisibleWhilePlaying_));
-    settingsMenuItems_.push_back(String(polish("Rozdz. w czyt.: ", "Reading chapter: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::ReadingChapter)) +
                                  onOffLabel(readerChapterVisibleWhilePlaying_));
-    settingsMenuItems_.push_back(String(polish("Procent w czyt.: ", "Reading percent: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::ReadingPercent)) +
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::ReadingMode) + ": " + readerModeLabel());
-    settingsMenuItems_.push_back(String(polish("Pauza: ", "Pause behaviour: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::PauseBehaviour)) +
                                  pauseModeLabel());
-    settingsMenuItems_.push_back(String(polish("Tempo: ", "Base speed: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::BaseSpeed)) +
                                  String(reader_.wpm()) + " WPM");
     settingsMenuItems_.push_back(uiText(UiText::LongWords) + ": " +
                                  pacingDelayLabel(pacingLongWordDelayMs_));
@@ -3539,16 +3586,16 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
   } else if (menuScreen_ == MenuScreen::WifiSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back(String(polish("Siec: ", "Network: ")) +
+    settingsMenuItems_.push_back(String(tr(TrKey::Network)) +
                                  storedOrFallbackLabel(configuredWifiSsid(),
-                                                       polish("Brak", "Not set")));
-    settingsMenuItems_.push_back(polish("Wybierz siec", "Choose network"));
-    settingsMenuItems_.push_back(polish("Zapomnij siec", "Forget network"));
+                                                       tr(TrKey::NotSet)));
+    settingsMenuItems_.push_back(tr(TrKey::ChooseNetwork));
+    settingsMenuItems_.push_back(tr(TrKey::ForgetNetwork));
     // Advanced — pokazywane tylko w trybie developera. Klient nie potrzebuje
     // grzebać w „OTA Owner" ani „Auto OTA"; te rzeczy steruje się z aplikacji.
     if (devModeEnabled()) {
       settingsMenuItems_.push_back(String("Auto OTA: ") +
-                                   (otaAutoCheckEnabled() ? polish("Tak", "On") : polish("Nie", "Off")));
+                                   (otaAutoCheckEnabled() ? tr(TrKey::Yes) : tr(TrKey::No)));
       settingsMenuItems_.push_back(String("OTA Owner: ") + otaOwnerLabel());
     }
   }
@@ -3615,11 +3662,21 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::SettingsAbout ||
          menuScreen_ == MenuScreen::WifiSettings ||
          menuScreen_ == MenuScreen::WelcomeLanguage ||
-         menuScreen_ == MenuScreen::WelcomeTheme;
+         menuScreen_ == MenuScreen::WelcomeTheme ||
+         menuScreen_ == MenuScreen::WelcomeConnect;
 }
 
 const char *App::polish(const char *pl, const char *en) const {
+  // DEPRECATED — use tr(TrKey) instead. Kept temporarily for any stragglers.
   return uiLanguage_ == UiLanguage::Polish ? pl : en;
+}
+
+const char *App::tr(TrKey key) const {
+  return Translations::tr(uiLanguage_, key);
+}
+
+const char *App::tr2(TrKey2 key) const {
+  return Translations2::tr2(uiLanguage_, key);
 }
 
 // ─── SettingsConnectivity ────────────────────────────────────────────────────
@@ -3789,6 +3846,47 @@ void App::selectWelcomeThemeItem(uint32_t nowMs) {
   Serial.printf("[welcome] theme dark=%d night=%d\n",
                 static_cast<int>(darkMode_), static_cast<int>(nightMode_));
   applyDisplayPreferences(nowMs);
+  openWelcomeConnect(nowMs);
+}
+
+void App::openWelcomeConnect(uint32_t nowMs) {
+  (void)nowMs;
+  menuScreen_ = MenuScreen::WelcomeConnect;
+  settingsSelectedIndex_ = 0;
+  rebuildSettingsMenuItems();
+  renderSettings();
+
+  // Start AP if not already running from auto-sync
+  if (!autoSyncActive_ && !companionSync_.active()) {
+    CompanionSyncManager::Config syncConfig;
+    syncConfig.wifiSsid = "";
+    syncConfig.wifiPassword = "";
+    if (companionSync_.begin(syncConfig)) {
+      autoSyncActive_ = true;
+      autoSyncStartedMs_ = millis();
+      autoSyncClientConnected_ = false;
+      Serial.println("[welcome] started AP for phone pairing");
+    }
+  }
+}
+
+void App::selectWelcomeConnectItem(uint32_t nowMs) {
+  // 0 = Wi-Fi name (info), 1 = IP (info), 2 = separator, 3 = Connect, 4 = Skip
+  if (settingsSelectedIndex_ <= 2) {
+    // Info rows — do nothing on tap
+    return;
+  }
+  if (settingsSelectedIndex_ == 4) {
+    // User chose to skip — shut down AP if it was started for wizard
+    if (autoSyncActive_ && !autoSyncClientConnected_) {
+      companionSync_.end();
+      autoSyncActive_ = false;
+      Serial.println("[welcome] user skipped phone connect, AP stopped");
+    }
+  } else {
+    // User chose "Connect" (index 3) — keep AP alive
+    Serial.println("[welcome] user confirmed phone connect, AP stays active");
+  }
   finishWelcomeWizard(nowMs);
 }
 
@@ -3980,8 +4078,8 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
 
   if (!otaUpdater_.isConfigured(config)) {
     if (!automatic) {
-      display_.renderStatus("OTA", polish("Brak Wi-Fi", "Wi-Fi not set"),
-                            polish("Ustawienia -> Wi-Fi", "Settings -> Wi-Fi"));
+      display_.renderStatus("OTA", tr(TrKey::WifiNotSet),
+                            tr(TrKey::SettingsWifi));
       delay(1600);
       if (state_ == AppState::Menu && isSettingsListScreen()) {
         rebuildSettingsMenuItems();
@@ -4003,7 +4101,7 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
                 result.latestVersion.c_str(), result.summary.c_str(), result.detail.c_str());
 
   if (result.rebootRequired) {
-    display_.renderStatus("OTA", polish("Restartuje", "Restarting"), result.latestVersion);
+    display_.renderStatus("OTA", tr(TrKey::Restarting), result.latestVersion);
     delay(300);
     ESP.restart();
     return;
@@ -4033,7 +4131,7 @@ void App::runRssFeedCheck(uint32_t nowMs) {
 
   saveReadingPosition(true);
 
-  display_.renderStatus("RSS", "Checking feeds", "Please wait");
+  display_.renderStatus("RSS", tr2(TrKey2::CheckingFeeds), tr(TrKey::PleaseWait));
   const RssFeedManager::Result result =
       rssFeedManager_.checkFeeds(preferredOtaConfig(), preferences_, &App::handleStorageStatus, this);
 
@@ -4052,7 +4150,7 @@ void App::runRssFeedCheck(uint32_t nowMs) {
 String App::pacingDelayLabel(uint16_t delayMs) const { return String(delayMs) + " ms"; }
 
 String App::firmwareUpdateMenuLabel() const {
-  return polish("Aktualizacja firmware", "Firmware update");
+  return tr(TrKey::FirmwareUpdate);
 }
 
 String App::uiText(UiText key) const { return Localization::text(uiLanguage_, key); }
@@ -4085,13 +4183,13 @@ String App::readerModeLabel() const {
 }
 
 String App::pauseModeLabel() const {
-  return pauseMode_ == PauseMode::Instant ? polish("Natychm.", "Instant")
-                                          : polish("Zdanie", "Sentence");
+  return pauseMode_ == PauseMode::Instant ? tr(TrKey::Instant)
+                                          : tr(TrKey::Sentence);
 }
 
 String App::handednessLabel() const {
-  return handednessMode_ == HandednessMode::Left ? polish("Lewa", "Left")
-                                                 : polish("Prawa", "Right");
+  return handednessMode_ == HandednessMode::Left ? tr(TrKey::LeftHand)
+                                                 : tr(TrKey::RightHand);
 }
 
 String App::readerFontSizeLabel() const {
@@ -4404,7 +4502,16 @@ void App::enterCompanionSync(uint32_t nowMs) {
   pausedTouch_.active = false;
   pausedTouchIntent_ = TouchIntent::None;
   wpmFeedbackVisible_ = false;
-  display_.renderStatus("Sync", polish("Wlaczam Wi-Fi", "Starting Wi-Fi"), "");
+  display_.renderStatus("Sync", tr(TrKey::StartingWifi), "");
+
+  // If auto-sync AP is already running, just transition to CompanionSync state.
+  if (autoSyncActive_) {
+    Serial.println("[app] reusing auto-sync AP for companion sync mode");
+    autoSyncActive_ = false;
+    lastCompanionSyncRenderMs_ = 0;
+    setState(AppState::CompanionSync, nowMs);
+    return;
+  }
 
   OtaUpdater::Config wifiConfig = preferredOtaConfig();
   CompanionSyncManager::Config syncConfig;
@@ -4413,8 +4520,8 @@ void App::enterCompanionSync(uint32_t nowMs) {
 
   if (!companionSync_.begin(syncConfig)) {
     Serial.println("[app] companion sync failed");
-    display_.renderStatus("Sync", polish("Nie udalo sie", "Could not start"),
-                          polish("Wracam", "Returning"));
+    display_.renderStatus("Sync", tr(TrKey::CouldNotStart),
+                          tr(TrKey::Returning));
     delay(1400);
     menuScreen_ = MenuScreen::Main;
     setState(AppState::Menu, nowMs);
@@ -4442,7 +4549,7 @@ void App::updateCompanionSync(uint32_t nowMs) {
 
 void App::exitCompanionSync(uint32_t nowMs) {
   Serial.println("[app] leaving companion sync mode");
-  display_.renderStatus("Sync", polish("Zatrzymuje", "Stopping"), "");
+  display_.renderStatus("Sync", tr(TrKey::Stopping), "");
   companionSync_.end();
   preferences_.end();
   preferences_.begin(kPrefsNamespace, false);
@@ -4455,11 +4562,11 @@ void App::exitCompanionSync(uint32_t nowMs) {
 void App::runSdCardCheck(uint32_t nowMs) {
   (void)nowMs;
   Serial.println("[app] running SD card check");
-  display_.renderStatus("SD check", "Starting", "");
+  display_.renderStatus("SD", tr2(TrKey2::Starting), "");
   const StorageManager::DiagnosticResult result = storage_.diagnoseSdCard();
 
   if (sdCardFolderRepairNeeded(result)) {
-    display_.renderStatus("SD check", "Folders missing", "Confirm repair");
+    display_.renderStatus("SD", tr2(TrKey2::FoldersMissing), tr2(TrKey2::ConfirmRepair));
     delay(900);
     openSdCardRepairConfirm();
     return;
@@ -4479,17 +4586,17 @@ void App::runSdCardCheck(uint32_t nowMs) {
 void App::runSdCardRepair(uint32_t nowMs) {
   (void)nowMs;
   Serial.println("[app] repairing SD card folder layout");
-  display_.renderStatus("SD check", "Repairing folders", "Please wait");
+  display_.renderStatus("SD", tr2(TrKey2::RepairingFolders), tr(TrKey::PleaseWait));
   const bool repaired = storage_.repairSdCardFolders();
   if (!repaired) {
-    display_.renderStatus("SD check", "Folder repair failed", "Format FAT32 MBR");
+    display_.renderStatus("SD", tr2(TrKey2::FolderRepairFailed), tr2(TrKey2::FormatFat32));
     delay(2600);
     menuScreen_ = MenuScreen::Main;
     renderMenu();
     return;
   }
 
-  display_.renderStatus("SD check", "Folders repaired", "Checking card");
+  display_.renderStatus("SD", tr2(TrKey2::FoldersRepaired), tr2(TrKey2::CheckingCard));
   delay(900);
 
   const StorageManager::DiagnosticResult result = storage_.diagnoseSdCard();
@@ -4517,7 +4624,7 @@ void App::enterUsbTransfer(uint32_t nowMs) {
   storage_.end();
   if (!usbTransfer_.begin(true)) {
     Serial.printf("[app] USB transfer failed: %s\n", usbTransfer_.statusMessage());
-    display_.renderStatus("USB", "SD not ready", "Returning");
+    display_.renderStatus("USB", tr2(TrKey2::SdNotReady), tr(TrKey::Returning));
     storageReady_ = storage_.begin();
     if (storageReady_ && usingStorageBook_ && !currentBookPath_.isEmpty()) {
       const int refreshedBookIndex = findBookIndexByPath(currentBookPath_);
@@ -4534,7 +4641,7 @@ void App::enterUsbTransfer(uint32_t nowMs) {
   const uint64_t sizeMb = usbTransfer_.cardSizeBytes() / (1024ULL * 1024ULL);
   Serial.printf("[app] USB transfer active (%llu MB). Eject from computer when finished.\n",
                 sizeMb);
-  display_.renderStatus("USB", "Copy books now", "Eject then hold PWR");
+  display_.renderStatus("USB", tr2(TrKey2::CopyBooksNow), tr2(TrKey2::EjectThenHoldPwr));
 }
 
 void App::updateUsbTransfer(uint32_t nowMs) {
@@ -4561,7 +4668,7 @@ void App::updateUsbTransfer(uint32_t nowMs) {
 
 void App::exitUsbTransfer(uint32_t nowMs) {
   Serial.println("[app] USB transfer ejected; remounting SD");
-  display_.renderStatus("USB", "Remounting SD", "");
+  display_.renderStatus("USB", tr2(TrKey2::RemountingSd), "");
   usbTransfer_.end();
 
   storageReady_ = storage_.begin();
@@ -5065,7 +5172,7 @@ void App::enterPowerOff(uint32_t nowMs) {
   menuScreen_ = MenuScreen::Main;
   state_ = AppState::Sleeping;
 
-  display_.renderStatus("OFF", "Release PWR", "Hold PWR to start");
+  display_.renderStatus("OFF", tr2(TrKey2::ReleasePwr), tr2(TrKey2::HoldPwrToStart));
   delay(300);
   display_.prepareForSleep();
 
@@ -5206,8 +5313,8 @@ void App::loadPendingBootBook(uint32_t nowMs) {
   }
 
   pendingBootBookLoad_ = false;
-  display_.renderStatus(polish("Wczytywanie", "Loading book"), currentBookTitle_,
-                        polish("Czekaj", "Please wait"));
+  display_.renderStatus(tr(TrKey::LoadingBook), currentBookTitle_,
+                        tr(TrKey::PleaseWait));
   const uint32_t startedMs = millis();
   const bool allowIndexBuild = pendingBootBookLegacyFallback_;
   const bool loaded = loadBookAtIndex(pendingBootBookIndex_, nowMs,
@@ -5462,13 +5569,13 @@ void App::renderMainMenu() {
   items.reserve(MenuItemCount);
   items.push_back(uiText(UiText::Resume));
   items.push_back(uiText(UiText::Chapters));
-  items.push_back("Books");
-  items.push_back("Articles");
-  items.push_back("Focus Timer");
+  items.push_back(tr2(TrKey2::Books));
+  items.push_back(tr2(TrKey2::Articles));
+  items.push_back(tr2(TrKey2::FocusTimer));
   items.push_back(uiText(UiText::Settings));
-  items.push_back("SD card check");
-  items.push_back("RSS feeds");
-  items.push_back("Companion sync");
+  items.push_back(tr2(TrKey2::SdCardCheck));
+  items.push_back(tr2(TrKey2::RssFeeds));
+  items.push_back(tr2(TrKey2::CompanionSync));
 #if RSVP_USB_TRANSFER_ENABLED
   items.push_back(uiText(UiText::UsbTransfer));
 #endif
@@ -5547,9 +5654,9 @@ void App::renderRestartConfirm() {
 void App::renderSdCardRepairConfirm() {
   std::vector<String> items;
   items.reserve(SdCardRepairConfirmItemCount + kSdCardRepairConfirmHeaderRows);
-  items.push_back("Repair folders?");
-  items.push_back("Not now");
-  items.push_back("Create folders");
+  items.push_back(tr2(TrKey2::RepairFolders));
+  items.push_back(tr2(TrKey2::NotNow));
+  items.push_back(tr2(TrKey2::CreateFolders));
 
   display_.renderMenu(items, sdCardRepairConfirmSelectedIndex_ + kSdCardRepairConfirmHeaderRows);
 }
@@ -5557,10 +5664,10 @@ void App::renderSdCardRepairConfirm() {
 void App::renderUpdateConfirm() {
   std::vector<String> items;
   items.reserve(UpdateConfirmItemCount + kUpdateConfirmHeaderRows);
-  items.push_back("Update available");
+  items.push_back(tr2(TrKey2::UpdateAvailable));
   items.push_back(pendingUpdateCurrentVersion_ + " -> " + pendingUpdateNewVersion_);
-  items.push_back("Skip for now");
-  items.push_back("Update");
+  items.push_back(tr2(TrKey2::SkipForNow));
+  items.push_back(tr2(TrKey2::Update));
 
   display_.renderMenu(items, updateConfirmSelectedIndex_ + kUpdateConfirmHeaderRows);
 }
@@ -5803,38 +5910,38 @@ String App::currentBatteryLabel() const {
 String App::footerMetricModeLabel() const {
   switch (footerMetricMode_) {
     case FooterMetricMode::ChapterTime:
-      return polish("Czas rozdz.", "Chapter time");
+      return tr(TrKey::ChapterTime);
     case FooterMetricMode::BookTime:
-      return polish("Czas ksiazki", "Book time");
+      return tr(TrKey::BookTime);
     case FooterMetricMode::Percentage:
     default:
-      return polish("Procent", "Percent read");
+      return tr(TrKey::PercentRead);
   }
 }
 
 String App::batteryLabelModeLabel() const {
   switch (batteryLabelMode_) {
     case BatteryLabelMode::TimeRemaining:
-      return polish("Czas pracy", "Time remaining");
+      return tr(TrKey::TimeRemaining);
     case BatteryLabelMode::Voltage:
-      return polish("Napiecie", "Voltage");
+      return tr(TrKey::Voltage);
     case BatteryLabelMode::Percent:
     default:
-      return polish("Procent", "Percentage");
+      return tr(TrKey::Percentage);
   }
 }
 
 String App::screensaverModeLabel() const {
   switch (screensaverMode_) {
     case ScreensaverMode::Maze:
-      return polish("Labirynt", "Maze");
+      return tr(TrKey::Maze);
     case ScreensaverMode::Voronoi:
       return "Voronoi";
     case ScreensaverMode::ScreenOff:
-      return polish("Wylacz", "Screen off");
+      return tr(TrKey::ScreenOff);
     case ScreensaverMode::Life:
     default:
-      return polish("Zycie", "Life");
+      return tr(TrKey::Life);
   }
 }
 
@@ -6156,8 +6263,10 @@ void App::playFocusTimerCompletionCue() {
 bool App::scrollModeEnabled() const { return readerMode_ == ReaderMode::Scroll; }
 
 bool App::uiRotated180() const {
-  return handednessMode_ == HandednessMode::Right ? BoardConfig::UI_ROTATED_180
-                                                  : !BoardConfig::UI_ROTATED_180;
+  // Always keep the same screen orientation regardless of handedness.
+  // Left/right hand setting only affects touch zones and anchor offset,
+  // not physical screen rotation.
+  return BoardConfig::UI_ROTATED_180;
 }
 
 uint8_t App::effectiveAnchorPercent() const {
@@ -6267,8 +6376,8 @@ String App::phantomAfterText() const {
 
 void App::renderActiveReader(uint32_t nowMs) {
   if (pendingBootBookLoad_) {
-    display_.renderStatus(polish("Wczytywanie", "Loading book"), currentBookTitle_,
-                        polish("Czekaj", "Please wait"));
+    display_.renderStatus(tr(TrKey::LoadingBook), currentBookTitle_,
+                        tr(TrKey::PleaseWait));
     return;
   }
 
