@@ -1432,8 +1432,34 @@ bool chapterTitleFromLine(const String &line, String &title) {
 
   String lowered = trimmed;
   lowered.toLowerCase();
+  // English
   if (prefixHasBoundary(lowered, "chapter") || prefixHasBoundary(lowered, "part") ||
       prefixHasBoundary(lowered, "book")) {
+    title = trimmed;
+    return true;
+  }
+  // Polish (without diacritics — embedded fonts don't support them)
+  if (prefixHasBoundary(lowered, "rozdzial") || prefixHasBoundary(lowered, "czesc")) {
+    title = trimmed;
+    return true;
+  }
+  // German
+  if (prefixHasBoundary(lowered, "kapitel") || prefixHasBoundary(lowered, "teil")) {
+    title = trimmed;
+    return true;
+  }
+  // French
+  if (prefixHasBoundary(lowered, "chapitre") || prefixHasBoundary(lowered, "partie")) {
+    title = trimmed;
+    return true;
+  }
+  // Spanish
+  if (prefixHasBoundary(lowered, "capitulo")) {
+    title = trimmed;
+    return true;
+  }
+  // Romanian
+  if (prefixHasBoundary(lowered, "capitolul") || prefixHasBoundary(lowered, "partea")) {
     title = trimmed;
     return true;
   }

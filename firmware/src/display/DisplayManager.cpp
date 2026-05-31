@@ -273,7 +273,8 @@ bool shouldDrawInvertedGlyph(char c) {
 String readerChromeKey(const DisplayManager::ReaderChrome &chrome) {
   return String(chrome.showBattery ? 1 : 0) + String(chrome.showChapter ? 1 : 0) +
          String(chrome.showProgress ? 1 : 0) +
-         String(chrome.showPreviousSentenceHint ? 1 : 0);
+         String(chrome.showPreviousSentenceHint ? 1 : 0) +
+         String(chrome.showSavePointButton ? 1 : 0);
 }
 
 int baseGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
@@ -1613,6 +1614,20 @@ void DisplayManager::drawPreviousSentenceHint() {
   drawTinyTextAt("<<", kFooterMarginX, kFooterMarginBottom, footerColor(), kTinyScale);
 }
 
+void DisplayManager::drawSavePointButton() {
+  drawSavePointButton(kDisplayWidth, kDisplayHeight);
+}
+
+void DisplayManager::drawSavePointButton(int logicalWidth, int logicalHeight) {
+  (void)logicalWidth;
+  (void)logicalHeight;
+  // Draw "SP" text label in the top area, to the right of the "<<" hint
+  // Position: after "<<" which is at x=12, so we start at x~50
+  const int spX = 52;
+  const int spY = 8;  // same Y as "<<" (top of screen)
+  drawTinyTextAt("SP", spX, spY, focusColor(), kTinyScale);
+}
+
 void DisplayManager::drawFooter(const String &chapterLabel, const String &statusLabel,
                                 const ReaderChrome &chrome) {
   if (!chrome.showChapter && !chrome.showProgress) {
@@ -1902,6 +1917,9 @@ void DisplayManager::renderRsvpWord(const String &word, const String &chapterLab
   if (chrome.showPreviousSentenceHint) {
     drawPreviousSentenceHint();
   }
+  if (chrome.showSavePointButton) {
+    drawSavePointButton();
+  }
   if (chrome.showBattery) {
     drawBatteryBadge(virtualWidth, virtualHeight);
   }
@@ -1946,6 +1964,9 @@ void DisplayManager::renderRsvpWordWithWpm(const String &word, uint16_t wpm,
   }
   if (chrome.showPreviousSentenceHint) {
     drawPreviousSentenceHint();
+  }
+  if (chrome.showSavePointButton) {
+    drawSavePointButton();
   }
   if (chrome.showBattery) {
     drawBatteryBadge();
@@ -2005,6 +2026,9 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
     if (chrome.showPreviousSentenceHint) {
       drawPreviousSentenceHint();
     }
+    if (chrome.showSavePointButton) {
+      drawSavePointButton();
+    }
     if (chrome.showBattery) {
       drawBatteryBadge();
     }
@@ -2049,6 +2073,9 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
   }
   if (chrome.showPreviousSentenceHint) {
     drawPreviousSentenceHint();
+  }
+  if (chrome.showSavePointButton) {
+    drawSavePointButton();
   }
   if (chrome.showBattery) {
     drawBatteryBadge();
@@ -2258,6 +2285,9 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
   if (chrome.showPreviousSentenceHint) {
     drawPreviousSentenceHint();
   }
+  if (chrome.showSavePointButton) {
+    drawSavePointButton();
+  }
   if (!canUseBandOnly) {
     if (chrome.showBattery) {
       drawBatteryBadge();
@@ -2429,6 +2459,9 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
     if (chrome.showPreviousSentenceHint) {
       drawPreviousSentenceHint();
     }
+    if (chrome.showSavePointButton) {
+      drawSavePointButton();
+    }
     if (chrome.showBattery) {
       drawBatteryBadge();
     }
@@ -2476,6 +2509,9 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
   }
   if (chrome.showPreviousSentenceHint) {
     drawPreviousSentenceHint();
+  }
+  if (chrome.showSavePointButton) {
+    drawSavePointButton();
   }
   if (chrome.showBattery) {
     drawBatteryBadge();
@@ -2662,6 +2698,9 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
   if (chrome.showPreviousSentenceHint) {
     drawPreviousSentenceHint();
   }
+  if (chrome.showSavePointButton) {
+    drawSavePointButton();
+  }
   if (chrome.showBattery) {
     drawBatteryBadge();
   }
@@ -2731,6 +2770,9 @@ void DisplayManager::renderMenu(const std::vector<String> &items, size_t selecte
   int y = std::max(0, (virtualHeight - totalHeight) / 2);
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
+
+  // Draw back arrow "<" in top-left corner as navigation hint
+  drawTinyTextAt("<", 4, 4, dimColor(), kTinyScale);
 
   for (size_t row = 0; row < visibleCount; ++row) {
     const size_t itemIndex = firstVisible + row;
@@ -2984,6 +3026,8 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
                               line1Y + kTinyGlyphHeight * kTinyScale + 10);
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
+  // Back arrow hint in top-left
+  drawTinyTextAt("<", 4, 4, dimColor(), kTinyScale);
   drawWordLine(title, titleY, wordColor());
   if (!line1.isEmpty()) {
     drawTinyTextCentered(line1, line1Y, dimColor(), kTinyScale);

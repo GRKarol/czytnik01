@@ -85,18 +85,11 @@ constexpr size_t kBrightnessLevelCount = sizeof(kBrightnessLevels) / sizeof(kBri
 namespace {
 
 enum MenuItem : size_t {
-  MenuResume,
-  MenuChapters,
-  MenuBooks,
-  MenuArticles,
-  MenuFocusTimer,
+  MenuRead,
+  MenuLibrary,
+  MenuSavePoints,
   MenuSettings,
-  MenuSdCardCheck,
-  MenuRssFeeds,
-  MenuCompanionSync,
-#if RSVP_USB_TRANSFER_ENABLED
-  MenuUsbTransfer,
-#endif
+  MenuPlugins,
   MenuPowerOff,
   MenuItemCount,
 };
@@ -168,16 +161,24 @@ constexpr size_t kSettingsHomeUpdateIndex = 7;        // dev only (PWA Aktualiza
 // które do niej odwołują się dla cofania z głębszych ekranów.
 constexpr size_t kSettingsHomePacingIndex = kSettingsHomeReadingIndex;
 
-// SettingsConnectivity items
-constexpr size_t kSettingsConnSyncToggleIndex = 1;  // start/stop Companion sync (AP)
-constexpr size_t kSettingsConnSyncInfoIndex = 2;    // pokazuje SSID + IP gdy sync aktywny
-constexpr size_t kSettingsConnHomeWifiIndex = 3;    // klient WiFi (dla OTA/RSS)
-constexpr size_t kSettingsConnBluetoothIndex = 4;   // placeholder „wkrótce"
+// SettingsConnectivity items (new layout per menu reorganization)
+constexpr size_t kSettingsConnWifiIndex = 1;        // Wi-Fi (opens sub-screen)
+#if FLOWER_BLE_ENABLED
+constexpr size_t kSettingsConnBluetoothIndex = 2;   // Bluetooth toggle
+constexpr size_t kSettingsConnSyncToggleIndex = 3;  // Synchronizacja z telefonem
+constexpr size_t kSettingsConnRssIndex = 4;         // Kanaly RSS
+constexpr size_t kSettingsConnUsbIndex = 5;         // Kopiuj przez USB
+#else
+constexpr size_t kSettingsConnBluetoothIndex = 99;  // not shown
+constexpr size_t kSettingsConnSyncToggleIndex = 2;  // Synchronizacja z telefonem
+constexpr size_t kSettingsConnRssIndex = 3;         // Kanaly RSS
+constexpr size_t kSettingsConnUsbIndex = 4;         // Kopiuj przez USB
+#endif
 
 // SettingsAbout items
 constexpr size_t kSettingsAboutVersionIndex = 1;   // tap-target dla dev mode
 constexpr size_t kSettingsAboutBrandIndex = 2;
-constexpr size_t kSettingsAboutAppHintIndex = 3;
+constexpr size_t kSettingsAboutSdCardIndex = 3;    // SD card check (moved from main menu)
 constexpr size_t kSettingsAboutDevModeIndex = 4;   // pokazywane gdy dev mode
 
 constexpr const char *kPrefSetupDone = "setup_done";
@@ -192,6 +193,7 @@ constexpr size_t kSettingsDisplayReaderChapterIndex = 8;
 constexpr size_t kSettingsDisplayReaderProgressIndex = 9;
 constexpr size_t kSettingsDisplayLanguageIndex = 10;
 constexpr size_t kSettingsDisplayFocusColorIndex = 11;
+constexpr size_t kSettingsDisplaySavePointBtnIndex = 12;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
 constexpr size_t kSettingsPacingPauseModeIndex = 2;
 constexpr size_t kSettingsPacingWpmIndex = 3;
@@ -201,8 +203,9 @@ constexpr size_t kSettingsPacingPunctuationIndex = 6;
 constexpr size_t kSettingsPacingResetIndex = 7;
 constexpr size_t kWifiSettingsNetworkIndex = 1;
 constexpr size_t kWifiSettingsChooseIndex = 2;
-constexpr size_t kWifiSettingsAutoUpdateIndex = 3;
-constexpr size_t kWifiSettingsForgetIndex = 4;
+constexpr size_t kWifiSettingsForgetIndex = 3;
+// Dev-only items start after ForgetNetwork
+constexpr size_t kWifiSettingsAutoUpdateIndex = 4;
 constexpr size_t kWifiSettingsOtaOwnerIndex = 5;
 
 constexpr size_t kBookPickerBackIndex = 0;
@@ -229,6 +232,7 @@ constexpr const char *kPrefScreensaverMode = "scrn_sv";
 constexpr const char *kPrefReaderBatteryVisible = "read_bat";
 constexpr const char *kPrefReaderChapterVisible = "read_ch";
 constexpr const char *kPrefReaderProgressVisible = "read_pct";
+constexpr const char *kPrefSavePointButtonVisible = "sp_btn";
 constexpr const char *kPrefReaderFontSize = "font_size";
 constexpr const char *kPrefReaderTypeface = "typeface";
 constexpr const char *kPrefTypographyFocusHighlight = "type_hlt";
@@ -652,6 +656,8 @@ void App::begin() {
       preferences_.getBool(kPrefReaderChapterVisible, readerChapterVisibleWhilePlaying_);
   readerProgressVisibleWhilePlaying_ =
       preferences_.getBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
+  savePointButtonVisible_ =
+      preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
@@ -1293,6 +1299,26 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
 
   if (state_ == AppState::Menu) {
     if (menuScreen_ == MenuScreen::Main) {
+      // Check for triple-tap save point: if we just opened the menu via PWR
+      // and get another PWR tap quickly, count towards triple-tap.
+      constexpr uint32_t kTripleTapWindowMs = 900;
+      if (pwrTapCount_ > 0 && nowMs - pwrFirstTapMs_ <= kTripleTapWindowMs) {
+        pwrTapCount_++;
+        if (pwrTapCount_ >= 3) {
+          pwrTapCount_ = 0;
+          createSavePoint(nowMs);
+          display_.renderStatus(uiText(UiText::SavePoints),
+                                polish("Punkt zapisu dodany", "Save point added"), "");
+          delay(1500);
+          setState(AppState::Paused, nowMs);
+          return;
+        }
+        // 2nd tap — go back to reading, wait for 3rd
+        setState(AppState::Paused, nowMs);
+        return;
+      }
+      // Normal single tap on Main menu = go back to reading
+      pwrTapCount_ = 0;
       setState(AppState::Paused, nowMs);
     } else {
       if (menuScreen_ == MenuScreen::WelcomeConnect ||
@@ -1300,9 +1326,6 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
           menuScreen_ == MenuScreen::WelcomeTheme ||
           menuScreen_ == MenuScreen::WelcomeHighlightColor ||
           menuScreen_ == MenuScreen::WelcomePacing) {
-        // Bug fix: power button on any welcome wizard screen must finish
-        // the wizard (persist kPrefSetupDone = true) before navigating away.
-        // Without this, the wizard reappears on every boot.
         finishWelcomeWizard(nowMs);
         return;
       }
@@ -1315,6 +1338,9 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
     return;
   }
 
+  // Opening menu from Paused/Playing — start triple-tap tracking
+  pwrTapCount_ = 1;
+  pwrFirstTapMs_ = nowMs;
   openMainMenu(nowMs);
 }
 
@@ -1323,7 +1349,7 @@ void App::openMainMenu(uint32_t nowMs) {
   pausedTouchIntent_ = TouchIntent::None;
   touchPlayHeld_ = false;
   menuScreen_ = MenuScreen::Main;
-  menuSelectedIndex_ = MenuResume;
+  menuSelectedIndex_ = MenuRead;
   wpmFeedbackVisible_ = false;
   contextViewVisible_ = false;
   if (state_ == AppState::Playing) {
@@ -1393,6 +1419,8 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       preferences_.getBool(kPrefReaderChapterVisible, readerChapterVisibleWhilePlaying_);
   readerProgressVisibleWhilePlaying_ =
       preferences_.getBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
+  savePointButtonVisible_ =
+      preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
@@ -1801,7 +1829,13 @@ bool App::isBatteryBadgeTap(uint16_t x, uint16_t y) const {
 }
 
 bool App::isPreviousSentenceTap(uint16_t x, uint16_t y) const {
-  return x < kPreviousSentenceTapWidthPx && y < kPreviousSentenceTapHeightPx;
+  // Left portion of top area only (not overlapping with SP button)
+  return x < 38 && y < 30;
+}
+
+bool App::isSavePointButtonTap(uint16_t x, uint16_t y) const {
+  // Right of "<<", top area: matches "SP" text at (52, 8)
+  return savePointButtonVisible_ && x >= 38 && x < 120 && y < 30;
 }
 
 bool App::isActivelyReading() const { return state_ == AppState::Playing; }
@@ -1813,6 +1847,7 @@ DisplayManager::ReaderChrome App::readerChrome() const {
   chrome.showChapter = !reading || readerChapterVisibleWhilePlaying_;
   chrome.showProgress = !reading || readerProgressVisibleWhilePlaying_;
   chrome.showPreviousSentenceHint = !contextViewVisible_ || scrollModeEnabled();
+  chrome.showSavePointButton = savePointButtonVisible_;
   return chrome;
 }
 
@@ -1832,8 +1867,7 @@ String App::readerFooterStatusLabel() const {
 String App::onOffLabel(bool enabled) const { return enabled ? uiText(UiText::On) : uiText(UiText::Off); }
 
 bool App::handlePreviousSentenceTap(uint16_t x, uint16_t y, uint32_t nowMs) {
-  const bool previewBrowseMode = contextViewVisible_ && !scrollModeEnabled();
-  if (previewBrowseMode || !isPreviousSentenceTap(x, y)) {
+  if (!isPreviousSentenceTap(x, y)) {
     return false;
   }
 
@@ -1841,6 +1875,7 @@ bool App::handlePreviousSentenceTap(uint16_t x, uint16_t y, uint32_t nowMs) {
   pausedTouch_.active = false;
   pausedTouchIntent_ = TouchIntent::None;
   wpmFeedbackVisible_ = false;
+  contextViewVisible_ = false;
   reader_.rewindSentence();
 
   if (state_ == AppState::Playing) {
@@ -2047,6 +2082,8 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     pausedTouch_.active = false;
     pausedTouchIntent_ = TouchIntent::None;
     touchPlayHeld_ = false;
+    // Auto-save position when releasing hold-to-read
+    saveReadingPosition(true);
     requestReaderPauseAtSentenceEnd(nowMs);
     return;
   }
@@ -2100,6 +2137,31 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           return;
         }
         if (handlePreviousSentenceTap(event.x, event.y, nowMs)) {
+          return;
+        }
+        if (isSavePointButtonTap(event.x, event.y)) {
+          resetReaderTapTracking();
+          // Pause reading and open name entry for save point
+          if (state_ == AppState::Playing) {
+            setState(AppState::Paused, nowMs);
+          }
+          saveReadingPosition(true);
+          const String chapter = currentChapterLabel();
+          String defaultName;
+          if (chapter.isEmpty() || chapter == currentBookTitle_) {
+            defaultName = currentBookTitle_.substring(0, 16) + " " +
+                          String(static_cast<unsigned int>(readingProgressPercent())) + "%";
+          } else {
+            defaultName = chapter.substring(0, 20) + " " +
+                          String(static_cast<unsigned int>(readingProgressPercent())) + "%";
+          }
+          menuScreen_ = MenuScreen::Main;
+          setState(AppState::Menu, nowMs);
+          openTextEntry(TextEntryPurpose::SavePointName,
+                        polish("Nazwij zakladke", "Name bookmark"),
+                        polish("Wpisz nazwe:", "Enter name:"),
+                        "", defaultName, "", false, 30,
+                        MenuScreen::SavePointsList);
           return;
         }
         if (playLocked_ || pauseAtSentenceEndRequested_) {
@@ -2187,6 +2249,27 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       return;
     }
     if (tapLike && handlePreviousSentenceTap(event.x, event.y, nowMs)) {
+      return;
+    }
+    if (tapLike && isSavePointButtonTap(event.x, event.y)) {
+      resetReaderTapTracking();
+      saveReadingPosition(true);
+      const String chapter = currentChapterLabel();
+      String defaultName;
+      if (chapter.isEmpty() || chapter == currentBookTitle_) {
+        defaultName = currentBookTitle_.substring(0, 16) + " " +
+                      String(static_cast<unsigned int>(readingProgressPercent())) + "%";
+      } else {
+        defaultName = chapter.substring(0, 20) + " " +
+                      String(static_cast<unsigned int>(readingProgressPercent())) + "%";
+      }
+      menuScreen_ = MenuScreen::Main;
+      setState(AppState::Menu, nowMs);
+      openTextEntry(TextEntryPurpose::SavePointName,
+                    polish("Nazwij zakladke", "Name bookmark"),
+                    polish("Wpisz nazwe:", "Enter name:"),
+                    "", defaultName, "", false, 30,
+                    MenuScreen::SavePointsList);
       return;
     }
     if (tapLike && previewBrowseMode) {
@@ -2352,6 +2435,39 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   }
 
   if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+    // Top-left corner tap = Back button on any menu screen
+    if (event.x < 80 && event.y < 35 && menuScreen_ != MenuScreen::Main) {
+      // Simulate selecting "Back" (index 0) for list-based screens
+      if (isSettingsListScreen() || menuScreen_ == MenuScreen::BookPicker ||
+          menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::ChapterPicker ||
+          menuScreen_ == MenuScreen::SavePointsList || menuScreen_ == MenuScreen::PluginsList ||
+          menuScreen_ == MenuScreen::FocusTimerGenres || menuScreen_ == MenuScreen::TypographyTuning) {
+        // Set selection to Back and select it
+        if (isSettingsListScreen()) {
+          settingsSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::BookPicker) {
+          bookPickerSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::BookDetails) {
+          bookDetailsSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::ChapterPicker) {
+          chapterPickerSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::SavePointsList) {
+          savePointSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::PluginsList) {
+          pluginsSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
+          focusTimerGenreSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::TypographyTuning) {
+          typographyTuningSelectedIndex_ = TypographyTuningBack;
+        }
+        selectMenuItem(nowMs);
+        return;
+      }
+      // For confirm screens, just go back to main
+      menuScreen_ = MenuScreen::Main;
+      renderMainMenu();
+      return;
+    }
     selectMenuItem(nowMs);
   }
 }
@@ -2407,6 +2523,14 @@ void App::applyFocusTimerTouch(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
+  // Top-left tap = back/exit from timer
+  if (tapLike && event.x < 80 && event.y < 35) {
+    resetFocusTimer();
+    menuScreen_ = MenuScreen::PluginsList;
+    openPluginsList();
+    return;
+  }
+
   (void)tapLike;
 }
 
@@ -2451,11 +2575,11 @@ void App::resetFocusTimer() {
 void App::rebuildFocusTimerGenreMenuItems() {
   focusTimerGenreMenuItems_.clear();
   focusTimerGenreMenuItems_.push_back(uiText(UiText::Back));
-  focusTimerGenreMenuItems_.push_back("Chores");
-  focusTimerGenreMenuItems_.push_back("Work");
-  focusTimerGenreMenuItems_.push_back("Fitness");
-  focusTimerGenreMenuItems_.push_back("Self Care");
-  focusTimerGenreMenuItems_.push_back("Other");
+  focusTimerGenreMenuItems_.push_back("Chores - 15 min");
+  focusTimerGenreMenuItems_.push_back("Work - 25 min");
+  focusTimerGenreMenuItems_.push_back("Fitness - 30 min");
+  focusTimerGenreMenuItems_.push_back("Self Care - 20 min");
+  focusTimerGenreMenuItems_.push_back("Other - 10 min");
 
   if (focusTimerGenreSelectedIndex_ >= focusTimerGenreMenuItems_.size()) {
     focusTimerGenreSelectedIndex_ =
@@ -2471,6 +2595,7 @@ void App::selectFocusTimerGenre(uint32_t nowMs) {
   if (focusTimerGenreSelectedIndex_ == kFocusTimerGenreBackIndex) {
     resetFocusTimer();
     menuScreen_ = MenuScreen::Main;
+    menuSelectedIndex_ = MenuPlugins;
     renderMainMenu();
     return;
   }
@@ -2529,9 +2654,18 @@ void App::moveMenuSelection(int direction) {
   } else if (menuScreen_ == MenuScreen::BookPicker) {
     selectedIndex = &bookPickerSelectedIndex_;
     itemCount = bookMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::BookDetails) {
+    selectedIndex = &bookDetailsSelectedIndex_;
+    itemCount = bookDetailsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::ChapterPicker) {
     selectedIndex = &chapterPickerSelectedIndex_;
     itemCount = chapterMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::SavePointsList) {
+    selectedIndex = &savePointSelectedIndex_;
+    itemCount = savePointMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::PluginsList) {
+    selectedIndex = &pluginsSelectedIndex_;
+    itemCount = pluginsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     selectedIndex = &restartConfirmSelectedIndex_;
     itemCount = RestartConfirmItemCount;
@@ -2601,40 +2735,23 @@ void App::moveMenuSelection(int direction) {
     Serial.printf("[timer] selected genre=%s\n",
                   focusTimerGenreMenuItems_[focusTimerGenreSelectedIndex_].c_str());
   } else {
-    String selectedLabel = uiText(UiText::Resume);
+    String selectedLabel = uiText(UiText::Read);
     switch (menuSelectedIndex_) {
-      case MenuResume:
-        selectedLabel = uiText(UiText::Resume);
+      case MenuRead:
+        selectedLabel = uiText(UiText::Read);
         break;
-      case MenuChapters:
-        selectedLabel = uiText(UiText::Chapters);
+      case MenuLibrary:
+        selectedLabel = uiText(UiText::Library);
         break;
-      case MenuBooks:
-        selectedLabel = tr2(TrKey2::Books);
-        break;
-      case MenuArticles:
-        selectedLabel = tr2(TrKey2::Articles);
-        break;
-      case MenuFocusTimer:
-        selectedLabel = tr2(TrKey2::FocusTimer);
+      case MenuSavePoints:
+        selectedLabel = uiText(UiText::SavePoints);
         break;
       case MenuSettings:
         selectedLabel = uiText(UiText::Settings);
         break;
-      case MenuSdCardCheck:
-        selectedLabel = tr2(TrKey2::SdCardCheck);
+      case MenuPlugins:
+        selectedLabel = uiText(UiText::Plugins);
         break;
-      case MenuRssFeeds:
-        selectedLabel = tr2(TrKey2::RssFeeds);
-        break;
-      case MenuCompanionSync:
-        selectedLabel = tr2(TrKey2::CompanionSync);
-        break;
-#if RSVP_USB_TRANSFER_ENABLED
-      case MenuUsbTransfer:
-        selectedLabel = uiText(UiText::UsbTransfer);
-        break;
-#endif
       case MenuPowerOff:
         selectedLabel = uiText(UiText::PowerOff);
         break;
@@ -2662,8 +2779,20 @@ void App::selectMenuItem(uint32_t nowMs) {
     selectBookPickerItem(nowMs);
     return;
   }
+  if (menuScreen_ == MenuScreen::BookDetails) {
+    selectBookDetailsItem(nowMs);
+    return;
+  }
   if (menuScreen_ == MenuScreen::ChapterPicker) {
     selectChapterPickerItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::SavePointsList) {
+    selectSavePointItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::PluginsList) {
+    selectPluginsItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::RestartConfirm) {
@@ -2687,40 +2816,23 @@ void App::selectMenuItem(uint32_t nowMs) {
   }
 
   switch (menuSelectedIndex_) {
-    case MenuResume:
+    case MenuRead:
       setState(AppState::Paused, nowMs);
       return;
-    case MenuPowerOff:
-      enterPowerOff(nowMs);
-      return;
-    case MenuCompanionSync:
-      enterCompanionSync(nowMs);
-      return;
-    case MenuSdCardCheck:
-      runSdCardCheck(nowMs);
-      return;
-    case MenuRssFeeds:
-      runRssFeedCheck(nowMs);
-      return;
-#if RSVP_USB_TRANSFER_ENABLED
-    case MenuUsbTransfer:
-      enterUsbTransfer(nowMs);
-      return;
-#endif
-    case MenuChapters:
-      openChapterPicker();
-      return;
-    case MenuBooks:
+    case MenuLibrary:
       openBookPicker(false);
       return;
-    case MenuArticles:
-      openBookPicker(true);
-      return;
-    case MenuFocusTimer:
-      openFocusTimer();
+    case MenuSavePoints:
+      openSavePointsList();
       return;
     case MenuSettings:
       openSettings();
+      return;
+    case MenuPlugins:
+      openPluginsList();
+      return;
+    case MenuPowerOff:
+      enterPowerOff(nowMs);
       return;
     default:
       return;
@@ -2728,7 +2840,7 @@ void App::selectMenuItem(uint32_t nowMs) {
 }
 
 void App::openSettings() {
-  settingsSelectedIndex_ = kSettingsHomeDisplayIndex;
+  settingsSelectedIndex_ = kSettingsHomeReadingIndex;
   menuScreen_ = MenuScreen::SettingsHome;
   rebuildSettingsMenuItems();
   renderSettings();
@@ -2921,6 +3033,12 @@ void App::selectSettingsItem(uint32_t nowMs) {
         rebuildSettingsMenuItems();
         renderSettings();
         return;
+      case kSettingsDisplaySavePointBtnIndex:
+        savePointButtonVisible_ = !savePointButtonVisible_;
+        preferences_.putBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
       default:
         return;
     }
@@ -2995,8 +3113,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
 }
 
 void App::openWifiSettings() {
-  settingsSelectedIndex_ = configuredWifiSsid().isEmpty() ? kWifiSettingsChooseIndex
-                                                          : kWifiSettingsAutoUpdateIndex;
+  settingsSelectedIndex_ = kWifiSettingsChooseIndex;
   menuScreen_ = MenuScreen::WifiSettings;
   rebuildSettingsMenuItems();
   renderSettings();
@@ -3024,6 +3141,7 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
     case kWifiSettingsForgetIndex:
       preferences_.remove(kPrefWifiSsid);
       preferences_.remove(kPrefWifiPass);
+      WiFi.disconnect(true, true);  // disconnect + erase stored credentials
       display_.renderStatus("Wi-Fi", tr2(TrKey2::CredentialsCleared), "");
       delay(900);
       rebuildSettingsMenuItems();
@@ -3400,6 +3518,38 @@ void App::commitTextEntry(uint32_t nowMs) {
       openWifiSettings();
       return;
     }
+    case TextEntryPurpose::SavePointName: {
+      // Create save point with the entered name
+      String name = textEntrySession_.value;
+      if (name.isEmpty()) {
+        // Use context value as default name
+        name = textEntrySession_.contextValue;
+      }
+      textEntrySession_ = TextEntrySession();
+      textEntryButtons_.clear();
+
+      if (usingStorageBook_ && !currentBookPath_.isEmpty()) {
+        SavePoint sp;
+        sp.bookPath = currentBookPath_;
+        sp.bookTitle = currentBookTitle_;
+        sp.wordIndex = reader_.currentIndex();
+        sp.progressPercent = readingProgressPercent();
+        sp.name = name;
+        loadSavePoints();
+        savePoints_.insert(savePoints_.begin(), sp);
+        if (savePoints_.size() > kMaxSavePoints) {
+          savePoints_.pop_back();
+        }
+        persistSavePoints();
+        Serial.printf("[save-point] created: %s word=%u\n", sp.name.c_str(),
+                      static_cast<unsigned int>(sp.wordIndex));
+        display_.renderStatus(uiText(UiText::SavePoints),
+                              polish("Zakladka dodana", "Bookmark added"), name);
+        delay(1200);
+      }
+      openSavePointsList();
+      return;
+    }
     case TextEntryPurpose::None:
     default:
       menuScreen_ = textEntrySession_.returnScreen;
@@ -3512,7 +3662,7 @@ void App::rebuildSettingsMenuItems() {
   if (menuScreen_ == MenuScreen::SettingsHome) {
     // Nowy układ: 4 pozycje codzienne dla klienta, reszta za dev mode.
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back(uiText(UiText::WordPacing));      // 1 = Reading
+    settingsMenuItems_.push_back(polish("Czytanie", "Reading"));   // 1 = Reading settings
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
     settingsMenuItems_.push_back(tr(TrKey::Connectivity));      // 3
     settingsMenuItems_.push_back(tr(TrKey::AboutHelp));      // 4
@@ -3523,24 +3673,12 @@ void App::rebuildSettingsMenuItems() {
     }
   } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    const bool syncActive = state_ == AppState::CompanionSync;
-    settingsMenuItems_.push_back(
-        String(tr(TrKey::PhoneSync)) +
-        (syncActive ? tr(TrKey::Yes) : tr(TrKey::No)));
-    if (syncActive) {
-      settingsMenuItems_.push_back(
-          String("    ") + companionSync_.statusLine1() + " / " + companionSync_.statusLine2());
-    } else {
-      settingsMenuItems_.push_back(
-          tr(TrKey::TurnOnToSeeWifi));
-    }
+    // 1. Wi-Fi
     settingsMenuItems_.push_back(String(tr(TrKey::HomeWifi)) +
                                  storedOrFallbackLabel(configuredWifiSsid(),
                                                        tr(TrKey::NotSet)));
 #if FLOWER_BLE_ENABLED
-    // BLE pozycja pokazywana tylko gdy faktycznie skompilowana — w stub
-    // build (FLOWER_BLE_ENABLED=0) toggle by był no-opem, więc lepiej go
-    // schować, niż pozwolić klientowi tapać w niedziałającą pozycję.
+    // 2. Bluetooth
     settingsMenuItems_.push_back(
         String("Bluetooth: ") +
         (ble_.isActive()
@@ -3548,12 +3686,23 @@ void App::rebuildSettingsMenuItems() {
                                    : tr(TrKey::Yes))
              : tr(TrKey::No)));
 #endif
+    // 3. Synchronizacja z telefonem
+    const bool syncActive = state_ == AppState::CompanionSync;
+    settingsMenuItems_.push_back(
+        String(tr(TrKey::PhoneSync)) +
+        (syncActive ? tr(TrKey::Yes) : tr(TrKey::No)));
+    // 4. Kanaly RSS
+    settingsMenuItems_.push_back(tr2(TrKey2::RssFeeds));
+#if RSVP_USB_TRANSFER_ENABLED
+    // 5. Kopiuj przez USB
+    settingsMenuItems_.push_back(uiText(UiText::UsbTransfer));
+#endif
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::Version)) +
                                  otaUpdater_.currentVersion());
     settingsMenuItems_.push_back(tr(TrKey::BrandLabel));
-    settingsMenuItems_.push_back(tr(TrKey::PhoneAppLabel));
+    settingsMenuItems_.push_back(tr2(TrKey2::SdCardCheck));
     if (devModeEnabled()) {
       settingsMenuItems_.push_back(tr(TrKey::DevModeOn));
     }
@@ -3616,6 +3765,8 @@ void App::rebuildSettingsMenuItems() {
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
     settingsMenuItems_.push_back(polish("Kolor litery: ", "Focus color: ") + focusColorLabel());
+    settingsMenuItems_.push_back(polish("Przycisk zapisu: ", "Save btn: ") +
+                                 onOffLabel(savePointButtonVisible_));
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::ReadingMode) + ": " + readerModeLabel());
@@ -3731,7 +3882,7 @@ const char *App::tr2(TrKey2 key) const {
 
 void App::openSettingsConnectivity() {
   menuScreen_ = MenuScreen::SettingsConnectivity;
-  settingsSelectedIndex_ = kSettingsConnSyncToggleIndex;
+  settingsSelectedIndex_ = kSettingsConnWifiIndex;
   rebuildSettingsMenuItems();
   renderSettings();
 }
@@ -3744,35 +3895,11 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
       rebuildSettingsMenuItems();
       renderSettings();
       return;
-    case kSettingsConnSyncToggleIndex:
-      // Włącz / wyłącz tryb sync — to dokładnie companion sync (AP + HTTP).
-      // Po włączeniu wracamy do tego samego ekranu, żeby klient zobaczył
-      // SSID i IP — handler companion sync zmienia state_ na CompanionSync,
-      // ale i tak najpierw renderuje swój własny status splash; rebuild
-      // settings nastąpi gdy klient wróci do menu.
-      if (state_ == AppState::CompanionSync) {
-        exitCompanionSync(nowMs);
-      } else {
-        enterCompanionSync(nowMs);
-      }
-      return;
-    case kSettingsConnSyncInfoIndex:
-      // Pozycja informacyjna — tap nic nie robi, ale można zaktualizować
-      // wyświetlanie gdyby SSID zdążył się zmienić.
-      rebuildSettingsMenuItems();
-      renderSettings();
-      return;
-    case kSettingsConnHomeWifiIndex:
+    case kSettingsConnWifiIndex:
       openWifiSettings();
       return;
 #if FLOWER_BLE_ENABLED
     case kSettingsConnBluetoothIndex: {
-      // Toggle BLE peripheral. Stan trzymamy w preferencji, żeby przeżył
-      // restart — klient włącza raz i jego telefon „znajduje" Flower za
-      // każdym razem (a nie po każdym tapnięciu w sync menu).
-      // Gate'owane na FLOWER_BLE_ENABLED — w stub build pozycja menu też
-      // nie istnieje (patrz rebuildSettingsMenuItems), więc ten case po
-      // prostu nigdy nie trafi.
       const bool wasOn = ble_.isActive();
       if (wasOn) {
         ble_.stop();
@@ -3787,6 +3914,21 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
       renderSettings();
       return;
     }
+#endif
+    case kSettingsConnSyncToggleIndex:
+      if (state_ == AppState::CompanionSync) {
+        exitCompanionSync(nowMs);
+      } else {
+        enterCompanionSync(nowMs);
+      }
+      return;
+    case kSettingsConnRssIndex:
+      runRssFeedCheck(nowMs);
+      return;
+#if RSVP_USB_TRANSFER_ENABLED
+    case kSettingsConnUsbIndex:
+      enterUsbTransfer(nowMs);
+      return;
 #endif
     default:
       return;
@@ -3830,6 +3972,9 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
       renderSettings();
       return;
     }
+    case kSettingsAboutSdCardIndex:
+      runSdCardCheck(nowMs);
+      return;
     case kSettingsAboutDevModeIndex:
       // Pokazane tylko gdy dev mode jest już włączone — pozwala wyłączyć.
       if (devModeEnabled()) {
@@ -3839,7 +3984,6 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
       renderSettings();
       return;
     case kSettingsAboutBrandIndex:
-    case kSettingsAboutAppHintIndex:
     default:
       return;
   }
@@ -4395,9 +4539,8 @@ void App::openBookPicker(bool articlesOnly) {
   std::vector<size_t> sortedBookIndices;
   sortedBookIndices.reserve(count);
   for (size_t i = 0; i < count; ++i) {
-    if (storage_.bookIsArticle(i) != articlesOnly) {
-      continue;
-    }
+    // Library shows all items (books + articles together)
+    (void)articlesOnly;
     sortedBookIndices.push_back(i);
   }
 
@@ -4452,6 +4595,7 @@ void App::openBookPicker(bool articlesOnly) {
 void App::selectBookPickerItem(uint32_t nowMs) {
   if (bookPickerSelectedIndex_ == kBookPickerBackIndex || bookMenuItems_.size() <= 1) {
     menuScreen_ = MenuScreen::Main;
+    menuSelectedIndex_ = MenuLibrary;
     renderMainMenu();
     return;
   }
@@ -4463,19 +4607,7 @@ void App::selectBookPickerItem(uint32_t nowMs) {
   }
 
   const size_t bookIndex = bookPickerBookIndices_[rowIndex];
-  saveReadingPosition(true);
-  if (!loadBookAtIndex(bookIndex, nowMs)) {
-    Serial.println("[book-picker] Failed to load selected book");
-    display_.renderStatus("Book open failed", storage_.bookDisplayName(bookIndex),
-                          "Check serial log");
-    delay(1800);
-    renderBookPicker();
-    return;
-  }
-
-  menuScreen_ = MenuScreen::Main;
-  setState(AppState::Paused, nowMs);
-  saveReadingPosition(true);
+  openBookDetails(bookIndex, nowMs);
 }
 
 void App::openChapterPicker() {
@@ -4509,8 +4641,14 @@ void App::openChapterPicker() {
 
 void App::selectChapterPickerItem(uint32_t nowMs) {
   if (chapterPickerSelectedIndex_ == kChapterPickerBackIndex || chapterMenuItems_.size() <= 1) {
-    menuScreen_ = MenuScreen::Main;
-    renderMainMenu();
+    // Return to book details if we came from there, otherwise main menu
+    if (bookDetailsMenuItems_.size() > 0) {
+      menuScreen_ = MenuScreen::BookDetails;
+      renderBookDetails();
+    } else {
+      menuScreen_ = MenuScreen::Main;
+      renderMainMenu();
+    }
     return;
   }
 
@@ -4535,6 +4673,8 @@ void App::selectChapterPickerItem(uint32_t nowMs) {
     return;
   }
 
+  // Save current position as auto save point before jumping
+  saveReadingPosition(true);
   reader_.seekTo(chapterMarkers_[chapterIndex].wordIndex);
   menuScreen_ = MenuScreen::Main;
   setState(AppState::Paused, nowMs);
@@ -4542,6 +4682,339 @@ void App::selectChapterPickerItem(uint32_t nowMs) {
   Serial.printf("[chapter-picker] jumped to %s at word %u\n",
                 chapterMarkers_[chapterIndex].title.c_str(),
                 static_cast<unsigned int>(chapterMarkers_[chapterIndex].wordIndex));
+}
+
+// ─── Book Details ────────────────────────────────────────────────────────────
+
+void App::openBookDetails(size_t bookIndex, uint32_t nowMs) {
+  (void)nowMs;
+  bookDetailsBookIndex_ = bookIndex;
+  bookDetailsMenuItems_.clear();
+  bookDetailsMenuItems_.push_back(uiText(UiText::Back));
+
+  const String title = storage_.bookDisplayName(bookIndex);
+  const String author = storage_.bookAuthorName(bookIndex);
+  uint8_t percent = 0;
+  bookProgressPercent(bookIndex, percent);
+
+  bookDetailsMenuItems_.push_back(title + (author.isEmpty() ? "" : " - " + author));
+  bookDetailsMenuItems_.push_back(String(static_cast<unsigned int>(percent)) + "% " +
+                                  polish("ukonczone", "complete"));
+  bookDetailsMenuItems_.push_back(polish("Czytaj od miejsca", "Read from place"));
+  bookDetailsMenuItems_.push_back(uiText(UiText::Chapters));
+  bookDetailsMenuItems_.push_back(uiText(UiText::RestartBook));
+
+  bookDetailsSelectedIndex_ = 3;  // "Czytaj od miejsca"
+  menuScreen_ = MenuScreen::BookDetails;
+  renderBookDetails();
+}
+
+void App::selectBookDetailsItem(uint32_t nowMs) {
+  switch (bookDetailsSelectedIndex_) {
+    case 0:  // Back
+      menuScreen_ = MenuScreen::BookPicker;
+      renderBookPicker();
+      return;
+    case 1:  // Title (info only)
+    case 2:  // Progress (info only)
+      return;
+    case 3: {  // Czytaj od miejsca
+      saveReadingPosition(true);
+      if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
+        display_.renderStatus(polish("Blad", "Error"),
+                              storage_.bookDisplayName(bookDetailsBookIndex_), "");
+        delay(1400);
+        renderBookDetails();
+        return;
+      }
+      bookDetailsMenuItems_.clear();  // signal we left book details
+      menuScreen_ = MenuScreen::Main;
+      setState(AppState::Paused, nowMs);
+      return;
+    }
+    case 4: {  // Rozdzialy
+      // Load the book so we have chapter markers available
+      saveReadingPosition(true);
+      if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
+        display_.renderStatus(polish("Blad", "Error"),
+                              storage_.bookDisplayName(bookDetailsBookIndex_), "");
+        delay(1400);
+        renderBookDetails();
+        return;
+      }
+      openChapterPicker();
+      return;
+    }
+    case 5:  // Restart
+      saveReadingPosition(true);
+      if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
+        display_.renderStatus(polish("Blad", "Error"),
+                              storage_.bookDisplayName(bookDetailsBookIndex_), "");
+        delay(1400);
+        renderBookDetails();
+        return;
+      }
+      openRestartConfirm();
+      return;
+    default:
+      return;
+  }
+}
+
+void App::renderBookDetails() {
+  display_.renderMenu(bookDetailsMenuItems_, bookDetailsSelectedIndex_);
+}
+
+// ─── Save Points ─────────────────────────────────────────────────────────────
+
+void App::loadSavePoints() {
+  savePoints_.clear();
+  // Save points stored in preferences as: sp_count, sp_N_name, sp_N_book,
+  // sp_N_title, sp_N_word, sp_N_pct
+  const size_t count = preferences_.getUChar("sp_count", 0);
+  for (size_t i = 0; i < count && i < kMaxSavePoints; ++i) {
+    SavePoint sp;
+    const String prefix = "sp_" + String(static_cast<unsigned int>(i)) + "_";
+    sp.name = preferences_.getString((prefix + "name").c_str(), "");
+    sp.bookPath = preferences_.getString((prefix + "book").c_str(), "");
+    sp.bookTitle = preferences_.getString((prefix + "titl").c_str(), "");
+    sp.wordIndex = preferences_.getUInt((prefix + "word").c_str(), 0);
+    sp.progressPercent = preferences_.getUChar((prefix + "pct").c_str(), 0);
+    if (!sp.bookPath.isEmpty()) {
+      savePoints_.push_back(sp);
+    }
+  }
+}
+
+void App::persistSavePoints() {
+  const size_t count = std::min(savePoints_.size(), kMaxSavePoints);
+  preferences_.putUChar("sp_count", static_cast<uint8_t>(count));
+  for (size_t i = 0; i < count; ++i) {
+    const String prefix = "sp_" + String(static_cast<unsigned int>(i)) + "_";
+    preferences_.putString((prefix + "name").c_str(), savePoints_[i].name);
+    preferences_.putString((prefix + "book").c_str(), savePoints_[i].bookPath);
+    preferences_.putString((prefix + "titl").c_str(), savePoints_[i].bookTitle);
+    preferences_.putUInt((prefix + "word").c_str(), static_cast<uint32_t>(savePoints_[i].wordIndex));
+    preferences_.putUChar((prefix + "pct").c_str(), savePoints_[i].progressPercent);
+  }
+  // Clear any leftover entries beyond current count
+  for (size_t i = count; i < kMaxSavePoints; ++i) {
+    const String prefix = "sp_" + String(static_cast<unsigned int>(i)) + "_";
+    preferences_.remove((prefix + "name").c_str());
+    preferences_.remove((prefix + "book").c_str());
+    preferences_.remove((prefix + "titl").c_str());
+    preferences_.remove((prefix + "word").c_str());
+    preferences_.remove((prefix + "pct").c_str());
+  }
+}
+
+void App::createSavePoint(uint32_t nowMs) {
+  (void)nowMs;
+  if (!usingStorageBook_ || currentBookPath_.isEmpty()) {
+    return;
+  }
+
+  SavePoint sp;
+  sp.bookPath = currentBookPath_;
+  sp.bookTitle = currentBookTitle_;
+  sp.wordIndex = reader_.currentIndex();
+  sp.progressPercent = readingProgressPercent();
+
+  // Build meaningful default name: chapter name + percentage
+  const String chapter = currentChapterLabel();
+  if (chapter.isEmpty() || chapter == currentBookTitle_) {
+    sp.name = currentBookTitle_ + " " + String(static_cast<unsigned int>(sp.progressPercent)) + "%";
+  } else {
+    sp.name = chapter + " " + String(static_cast<unsigned int>(sp.progressPercent)) + "%";
+  }
+
+  // Add to front (newest first)
+  savePoints_.insert(savePoints_.begin(), sp);
+  if (savePoints_.size() > kMaxSavePoints) {
+    savePoints_.pop_back();
+  }
+  persistSavePoints();
+  Serial.printf("[save-point] created: %s word=%u\n", sp.name.c_str(),
+                static_cast<unsigned int>(sp.wordIndex));
+}
+
+void App::deleteSavePoint(size_t index) {
+  if (index >= savePoints_.size()) return;
+  savePoints_.erase(savePoints_.begin() + static_cast<int>(index));
+  persistSavePoints();
+}
+
+void App::openSavePointsList() {
+  loadSavePoints();
+  savePointMenuItems_.clear();
+  savePointMenuItems_.push_back(uiText(UiText::Back));
+  savePointMenuItems_.push_back(polish("+ Dodaj punkt zapisu", "+ Add save point"));
+
+  for (size_t i = 0; i < savePoints_.size(); ++i) {
+    const auto &sp = savePoints_[i];
+    String label = sp.name.isEmpty() ? sp.bookTitle : sp.name;
+    savePointMenuItems_.push_back(label);
+    savePointMenuItems_.push_back(polish("Usun: ", "Delete: ") + label);
+  }
+
+  savePointSelectedIndex_ = savePoints_.empty() ? 1 : 2;
+  menuScreen_ = MenuScreen::SavePointsList;
+  renderSavePointsList();
+}
+
+void App::selectSavePointItem(uint32_t nowMs) {
+  if (savePointSelectedIndex_ == 0) {
+    // Back
+    menuScreen_ = MenuScreen::Main;
+    menuSelectedIndex_ = MenuSavePoints;
+    renderMainMenu();
+    return;
+  }
+
+  if (savePointSelectedIndex_ == 1) {
+    // Add save point — open name entry
+    if (!usingStorageBook_ || currentBookPath_.isEmpty()) {
+      display_.renderStatus(uiText(UiText::SavePoints),
+                            polish("Najpierw otworz ksiazke", "Open a book first"), "");
+      delay(1400);
+      renderSavePointsList();
+      return;
+    }
+    // Generate default name
+    const String chapter = currentChapterLabel();
+    String defaultName;
+    if (chapter.isEmpty() || chapter == currentBookTitle_) {
+      defaultName = currentBookTitle_.substring(0, 16) + " " +
+                    String(static_cast<unsigned int>(readingProgressPercent())) + "%";
+    } else {
+      defaultName = chapter.substring(0, 20) + " " +
+                    String(static_cast<unsigned int>(readingProgressPercent())) + "%";
+    }
+    openTextEntry(TextEntryPurpose::SavePointName,
+                  polish("Nazwij zakladke", "Name bookmark"),
+                  polish("Wpisz nazwe:", "Enter name:"),
+                  "", defaultName, "", false, 30,
+                  MenuScreen::SavePointsList);
+    return;
+  }
+
+  // Items after index 1: alternating save point / delete
+  const size_t itemOffset = savePointSelectedIndex_ - 2;
+  const size_t spIndex = itemOffset / 2;
+  const bool isDeleteButton = (itemOffset % 2) == 1;
+
+  if (spIndex >= savePoints_.size()) {
+    return;
+  }
+
+  if (isDeleteButton) {
+    // Delete — confirm
+    deleteSavePoint(spIndex);
+    display_.renderStatus(uiText(UiText::SavePoints),
+                          polish("Usunieto", "Deleted"), "");
+    delay(800);
+    openSavePointsList();
+    return;
+  }
+
+  // Navigate to save point
+  const SavePoint &sp = savePoints_[spIndex];
+  saveReadingPosition(true);
+
+  const int bookIdx = findBookIndexByPath(sp.bookPath);
+  if (bookIdx < 0) {
+    display_.renderStatus(polish("Blad", "Error"),
+                          polish("Ksiazka nie znaleziona", "Book not found"), sp.bookTitle);
+    delay(1400);
+    renderSavePointsList();
+    return;
+  }
+
+  if (!loadBookAtIndex(static_cast<size_t>(bookIdx), nowMs, true, true, true, true)) {
+    display_.renderStatus(polish("Blad", "Error"),
+                          polish("Nie mozna otworzyc", "Cannot open"), sp.bookTitle);
+    delay(1400);
+    renderSavePointsList();
+    return;
+  }
+
+  reader_.seekTo(sp.wordIndex);
+  menuScreen_ = MenuScreen::Main;
+  setState(AppState::Paused, nowMs);
+  saveReadingPosition(true);
+  Serial.printf("[save-point] jumped to %s word=%u\n", sp.name.c_str(),
+                static_cast<unsigned int>(sp.wordIndex));
+}
+
+void App::renderSavePointsList() {
+  display_.renderMenu(savePointMenuItems_, savePointSelectedIndex_);
+}
+
+// ─── Plugins ─────────────────────────────────────────────────────────────────
+
+void App::openPluginsList() {
+  pluginsMenuItems_.clear();
+  pluginsMenuItems_.push_back(uiText(UiText::Back));
+  pluginsMenuItems_.push_back(tr2(TrKey2::FocusTimer));
+  pluginsMenuItems_.push_back(polish("Usun Klepsydre", "Remove Timer"));
+  pluginsMenuItems_.push_back(polish("---", "---"));
+  pluginsMenuItems_.push_back(polish("Biblioteka funkcji", "Function library"));
+
+  pluginsSelectedIndex_ = 1;  // Focus Timer
+  menuScreen_ = MenuScreen::PluginsList;
+  renderPluginsList();
+}
+
+void App::selectPluginsItem(uint32_t nowMs) {
+  (void)nowMs;
+  if (pluginsSelectedIndex_ == 0) {
+    menuScreen_ = MenuScreen::Main;
+    menuSelectedIndex_ = MenuPlugins;
+    renderMainMenu();
+    return;
+  }
+
+  if (pluginsSelectedIndex_ == 1) {
+    // Focus Timer (Klepsydra) — open it
+    openFocusTimer();
+    return;
+  }
+
+  if (pluginsSelectedIndex_ == 2) {
+    // Remove Klepsydra — it's built-in
+    display_.renderStatus(uiText(UiText::Plugins),
+                          polish("Wbudowany plugin", "Built-in plugin"),
+                          polish("Nie mozna usunac", "Cannot remove"));
+    delay(1400);
+    renderPluginsList();
+    return;
+  }
+
+  if (pluginsSelectedIndex_ == 3) {
+    // Separator — do nothing
+    return;
+  }
+
+  if (pluginsSelectedIndex_ == 4) {
+    // Biblioteka funkcji — wymaga Wi-Fi
+    if (configuredWifiSsid().isEmpty()) {
+      display_.renderStatus(uiText(UiText::Plugins),
+                            tr(TrKey::WifiNotSet), tr(TrKey::SettingsWifi));
+      delay(1600);
+      renderPluginsList();
+    } else {
+      display_.renderStatus(uiText(UiText::Plugins),
+                            polish("Brak nowych funkcji", "No new functions"),
+                            polish("Sprawdz pozniej", "Check later"));
+      delay(1600);
+      renderPluginsList();
+    }
+    return;
+  }
+}
+
+void App::renderPluginsList() {
+  display_.renderMenu(pluginsMenuItems_, pluginsSelectedIndex_);
 }
 
 void App::openRestartConfirm() {
@@ -4650,9 +5123,17 @@ void App::updateCompanionSync(uint32_t nowMs) {
     return;
   }
 
+  // Touch anywhere = exit sync (back button)
+  TouchEvent ev;
+  if (touch_.poll(ev) && ev.phase == TouchPhase::End) {
+    exitCompanionSync(nowMs);
+    return;
+  }
+
   if (nowMs - lastCompanionSyncRenderMs_ >= 1000) {
     lastCompanionSyncRenderMs_ = nowMs;
-    display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
+    display_.renderStatus(polish("< Wroc | Sync", "< Back | Sync"),
+                          companionSync_.statusLine1(), companionSync_.statusLine2());
   }
 }
 
@@ -4750,11 +5231,20 @@ void App::enterUsbTransfer(uint32_t nowMs) {
   const uint64_t sizeMb = usbTransfer_.cardSizeBytes() / (1024ULL * 1024ULL);
   Serial.printf("[app] USB transfer active (%llu MB). Eject from computer when finished.\n",
                 sizeMb);
-  display_.renderStatus("USB", tr2(TrKey2::CopyBooksNow), tr2(TrKey2::EjectThenHoldPwr));
+  display_.renderStatus(polish("< Wroc | USB", "< Back | USB"),
+                        tr2(TrKey2::CopyBooksNow), tr2(TrKey2::EjectThenHoldPwr));
 }
 
 void App::updateUsbTransfer(uint32_t nowMs) {
   if (!usbTransfer_.active()) {
+    return;
+  }
+
+  // Touch anywhere = exit USB transfer (back button)
+  TouchEvent ev;
+  if (touch_.poll(ev) && ev.phase == TouchPhase::End) {
+    powerButtonLongPressHandled_ = true;
+    exitUsbTransfer(nowMs);
     return;
   }
 
@@ -5659,8 +6149,14 @@ void App::renderMenu() {
     renderTypographyTuning();
   } else if (menuScreen_ == MenuScreen::BookPicker) {
     renderBookPicker();
+  } else if (menuScreen_ == MenuScreen::BookDetails) {
+    renderBookDetails();
   } else if (menuScreen_ == MenuScreen::ChapterPicker) {
     renderChapterPicker();
+  } else if (menuScreen_ == MenuScreen::SavePointsList) {
+    renderSavePointsList();
+  } else if (menuScreen_ == MenuScreen::PluginsList) {
+    renderPluginsList();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     renderRestartConfirm();
   } else if (menuScreen_ == MenuScreen::SdCardRepairConfirm) {
@@ -5679,18 +6175,11 @@ void App::renderMenu() {
 void App::renderMainMenu() {
   std::vector<String> items;
   items.reserve(MenuItemCount);
-  items.push_back(uiText(UiText::Resume));
-  items.push_back(uiText(UiText::Chapters));
-  items.push_back(tr2(TrKey2::Books));
-  items.push_back(tr2(TrKey2::Articles));
-  items.push_back(tr2(TrKey2::FocusTimer));
+  items.push_back(uiText(UiText::Read));
+  items.push_back(uiText(UiText::Library));
+  items.push_back(uiText(UiText::SavePoints));
   items.push_back(uiText(UiText::Settings));
-  items.push_back(tr2(TrKey2::SdCardCheck));
-  items.push_back(tr2(TrKey2::RssFeeds));
-  items.push_back(tr2(TrKey2::CompanionSync));
-#if RSVP_USB_TRANSFER_ENABLED
-  items.push_back(uiText(UiText::UsbTransfer));
-#endif
+  items.push_back(uiText(UiText::Plugins));
   items.push_back(uiText(UiText::PowerOff));
   display_.renderMenu(items, menuSelectedIndex_);
 }

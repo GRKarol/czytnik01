@@ -93,7 +93,11 @@ class App {
     TextEntry,
     TypographyTuning,
     BookPicker,
+    BookDetails,
     ChapterPicker,
+    SavePointsList,
+    SavePointNameEntry,
+    PluginsList,
     RestartConfirm,
     SdCardRepairConfirm,
     UpdateConfirm,
@@ -134,6 +138,7 @@ class App {
     None,
     WifiPassword,
     OtaOwner,
+    SavePointName,
   };
 
   enum class KeyboardMode : uint8_t {
@@ -182,6 +187,17 @@ class App {
     bool revealValue = false;
   };
 
+  struct SavePoint {
+    String name;
+    String bookPath;
+    String bookTitle;
+    size_t wordIndex = 0;
+    size_t chapterIndex = 0;
+    uint8_t progressPercent = 0;
+  };
+
+  static constexpr size_t kMaxSavePoints = 20;
+
   void setState(AppState nextState, uint32_t nowMs);
   void updateState(uint32_t nowMs);
   void updateReader(uint32_t nowMs);
@@ -220,6 +236,7 @@ class App {
   bool isFooterMetricTap(uint16_t x, uint16_t y) const;
   bool isBatteryBadgeTap(uint16_t x, uint16_t y) const;
   bool isPreviousSentenceTap(uint16_t x, uint16_t y) const;
+  bool isSavePointButtonTap(uint16_t x, uint16_t y) const;
   bool isActivelyReading() const;
   bool readerFooterVisible() const;
   DisplayManager::ReaderChrome readerChrome() const;
@@ -339,8 +356,19 @@ class App {
   String uiText(UiText key) const;
   void openBookPicker(bool articlesOnly = false);
   void selectBookPickerItem(uint32_t nowMs);
+  void openBookDetails(size_t bookIndex, uint32_t nowMs);
+  void selectBookDetailsItem(uint32_t nowMs);
   void openChapterPicker();
+  void openChapterPickerForBook(size_t bookIndex);
   void selectChapterPickerItem(uint32_t nowMs);
+  void openSavePointsList();
+  void selectSavePointItem(uint32_t nowMs);
+  void createSavePoint(uint32_t nowMs);
+  void deleteSavePoint(size_t index);
+  void loadSavePoints();
+  void persistSavePoints();
+  void openPluginsList();
+  void selectPluginsItem(uint32_t nowMs);
   void openRestartConfirm();
   void selectRestartConfirmItem(uint32_t nowMs);
   void openSdCardRepairConfirm();
@@ -392,7 +420,10 @@ class App {
   void renderSettings();
   void renderTypographyTuning();
   void renderBookPicker();
+  void renderBookDetails();
   void renderChapterPicker();
+  void renderSavePointsList();
+  void renderPluginsList();
   void renderRestartConfirm();
   void renderSdCardRepairConfirm();
   void renderUpdateConfirm();
@@ -540,6 +571,14 @@ class App {
   std::vector<String> chapterMenuItems_;
   std::vector<ChapterMarker> chapterMarkers_;
   std::vector<size_t> paragraphStarts_;
+  std::vector<SavePoint> savePoints_;
+  std::vector<String> savePointMenuItems_;
+  size_t savePointSelectedIndex_ = 0;
+  std::vector<String> bookDetailsMenuItems_;
+  size_t bookDetailsSelectedIndex_ = 0;
+  size_t bookDetailsBookIndex_ = 0;
+  std::vector<String> pluginsMenuItems_;
+  size_t pluginsSelectedIndex_ = 0;
   std::vector<uint32_t> wordBonusBlockPrefixSumMs_;
   String timeEstimateBuildBookPath_;
   size_t timeEstimateBuildWordCount_ = 0;
@@ -596,6 +635,8 @@ class App {
   bool focusTimerCancelHoldTriggered_ = false;
   bool otaCheckInProgress_ = false;
   bool otaUpdatePromptPending_ = false;
+  uint8_t pwrTapCount_ = 0;
+  uint32_t pwrFirstTapMs_ = 0;
   bool contextViewVisible_ = false;
   bool contextPreviewWindowValid_ = false;
   bool wpmFeedbackVisible_ = false;
@@ -611,6 +652,7 @@ class App {
   bool readerBatteryVisibleWhilePlaying_ = true;
   bool readerChapterVisibleWhilePlaying_ = false;
   bool readerProgressVisibleWhilePlaying_ = false;
+  bool savePointButtonVisible_ = true;
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;
   BatteryLabelMode batteryLabelMode_ = BatteryLabelMode::Percent;
   ScreensaverMode screensaverMode_ = ScreensaverMode::Life;

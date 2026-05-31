@@ -19,6 +19,9 @@ enum class UiText : uint8_t {
   Settings,
   UsbTransfer,
   PowerOff,
+  Read,
+  SavePoints,
+  Plugins,
   Back,
   Display,
   TypographyTune,
@@ -120,6 +123,12 @@ inline const char *text(UiLanguage language, UiText key) {
           return "USB";
         case UiText::PowerOff:
           return "Apagar";
+        case UiText::Read:
+          return "Leer";
+        case UiText::SavePoints:
+          return "Puntos guardados";
+        case UiText::Plugins:
+          return "Plugins";
         case UiText::Back:
           return "Atras";
         case UiText::Display:
@@ -236,6 +245,12 @@ inline const char *text(UiLanguage language, UiText key) {
           return "USB";
         case UiText::PowerOff:
           return "Eteindre";
+        case UiText::Read:
+          return "Lire";
+        case UiText::SavePoints:
+          return "Points de sauveg.";
+        case UiText::Plugins:
+          return "Plugins";
         case UiText::Back:
           return "Retour";
         case UiText::Display:
@@ -352,6 +367,12 @@ inline const char *text(UiLanguage language, UiText key) {
           return "USB";
         case UiText::PowerOff:
           return "Ausschalten";
+        case UiText::Read:
+          return "Lesen";
+        case UiText::SavePoints:
+          return "Lesezeichen";
+        case UiText::Plugins:
+          return "Plugins";
         case UiText::Back:
           return "Zuruck";
         case UiText::Display:
@@ -468,6 +489,12 @@ inline const char *text(UiLanguage language, UiText key) {
           return "USB";
         case UiText::PowerOff:
           return "Oprire";
+        case UiText::Read:
+          return "Citeste";
+        case UiText::SavePoints:
+          return "Puncte salvate";
+        case UiText::Plugins:
+          return "Pluginuri";
         case UiText::Back:
           return "Inapoi";
         case UiText::Display:
@@ -584,6 +611,12 @@ inline const char *text(UiLanguage language, UiText key) {
           return "USB";
         case UiText::PowerOff:
           return "Wylacz";
+        case UiText::Read:
+          return "Czytaj";
+        case UiText::SavePoints:
+          return "Punkty zapisu";
+        case UiText::Plugins:
+          return "Pluginy";
         case UiText::Back:
           return "Wroc";
         case UiText::Display:
@@ -701,6 +734,12 @@ inline const char *text(UiLanguage language, UiText key) {
           return "USB transfer";
         case UiText::PowerOff:
           return "Power off";
+        case UiText::Read:
+          return "Read";
+        case UiText::SavePoints:
+          return "Save points";
+        case UiText::Plugins:
+          return "Plugins";
         case UiText::Back:
           return "Back";
         case UiText::Display:
