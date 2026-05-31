@@ -5,3 +5,28 @@
 [build.environment]
   VITE_BASE = "/"
   NODE_VERSION = "20"
+
+# SPA fallback for Reader App — all /app/* routes serve app/index.html
+[[redirects]]
+  from = "/app/*"
+  to = "/app/index.html"
+  status = 200
+  force = false
+
+# Cache-Control for Service Worker — always revalidate
+[[headers]]
+  for = "/app/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Cache-Control for manifest — always revalidate
+[[headers]]
+  for = "/app/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Immutable cache for hashed assets
+[[headers]]
+  for = "/app/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

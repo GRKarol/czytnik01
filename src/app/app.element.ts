@@ -5,13 +5,13 @@ import type { DeviceLink } from "./device/device-link";
 import { WifiLink } from "./device/wifi-link";
 import { BluetoothLink } from "./device/bluetooth-link";
 import { SerialLink } from "./device/serial-link";
-import "./components/install-prompt.element";
 import "./components/flower-decor.element";
 import "./components/converter-panel.element";
 import "./components/updates-panel.element";
 import "./components/library-panel.element";
 import "./components/settings-panel.element";
 import "./components/onboarding.element";
+import "./components/pwa-install-dialog.element";
 import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from "./device/api";
 import { HttpDeviceApi, pingDevice } from "./device/http-api";
 
@@ -137,8 +137,8 @@ export class CzytnikApp extends LitElement {
 
   render() {
     return html`
-      <czytnik-install-prompt></czytnik-install-prompt>
       <onboarding-wizard></onboarding-wizard>
+      <pwa-install-dialog></pwa-install-dialog>
 
       <div class="sky">
         <flower-decor density="medium"></flower-decor>
@@ -207,10 +207,6 @@ export class CzytnikApp extends LitElement {
   // ─── Home ──────────────────────────────────────────────────────────────────
 
   private renderHome() {
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true;
-
     return html`
       <section class="hero">
         <div class="hero-flower">${iconFlower(96)}</div>
@@ -221,48 +217,10 @@ export class CzytnikApp extends LitElement {
         </p>
       </section>
 
-      ${!isStandalone ? this.renderInstallBanner() : ""}
       ${!this.connected ? this.renderConnectChoice() : this.renderConnectedActions()}
       ${this.error ? html`<p class="error">${this.error}</p>` : ""}
     `;
   }
-
-  private renderInstallBanner() {
-    const isIos =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-      !(window as unknown as { MSStream?: unknown }).MSStream;
-
-    return html`
-      <section class="card install-card">
-        <h3>📲 Zainstaluj aplikację</h3>
-        ${isIos
-          ? html`<p class="muted">
-              Naciśnij <strong>Udostępnij</strong> (ikona strzałki na dole ekranu), potem
-              <strong>Dodaj do ekranu głównego</strong>.
-            </p>`
-          : html`<p class="muted">
-              Zainstaluj tę stronę jako aplikację — będzie działać offline i łączyć się z
-              czytnikiem bez internetu.
-            </p>
-            <button class="cta" @click=${this.triggerInstall}>Zainstaluj na telefonie</button>`}
-      </section>
-    `;
-  }
-
-  private triggerInstall = async () => {
-    // Try to use the deferred prompt from install-prompt component
-    const installEl = this.renderRoot?.querySelector("czytnik-install-prompt");
-    if (installEl && (installEl as unknown as { deferred: unknown }).deferred) {
-      (installEl as unknown as { install: () => void }).install();
-    } else {
-      // Fallback: show alert with instructions
-      alert(
-        "Aby zainstalować:\n\n" +
-          "Chrome/Edge: Menu (⋮) → Zainstaluj aplikację\n" +
-          "Samsung Internet: Menu → Dodaj stronę do → Ekran główny",
-      );
-    }
-  };
 
   private renderConnectChoice() {
     if (this.chosenTransport) return this.renderConnecting();
@@ -421,8 +379,8 @@ export class CzytnikApp extends LitElement {
       <section class="card">
         <h3>${iconPlug(22)} Pluginy</h3>
         <p class="muted">
-          Dodatkowe funkcje, które możesz wgrać na urządzenie — klepsydra, dyktafon,
-          odtwarzacz muzyki, itd. Nowe pluginy pojawiają się tu sukcesywnie.
+          Dodatkowe funkcje, które możesz wgrać na urządzenie — klepsydra, dyktafon, odtwarzacz
+          muzyki, itd. Nowe pluginy pojawiają się tu sukcesywnie.
         </p>
         <div class="plugin-list">
           ${this.pluginCard("Klepsydra", "Sesja czytania z timerem 25/5.", "Gotowy")}
@@ -549,8 +507,7 @@ export class CzytnikApp extends LitElement {
       min-height: 100vh;
       min-height: 100dvh;
       color: var(--ink);
-      font-family:
-        "Iowan Old Style", "Hoefler Text", "Georgia", "Times New Roman", ui-serif, serif;
+      font-family: "Iowan Old Style", "Hoefler Text", "Georgia", "Times New Roman", ui-serif, serif;
       background:
         radial-gradient(circle at 18% 4%, rgba(255, 214, 110, 0.35), transparent 36rem),
         radial-gradient(circle at 90% 12%, rgba(255, 182, 200, 0.3), transparent 30rem),
@@ -619,7 +576,10 @@ export class CzytnikApp extends LitElement {
     .badge {
       padding: 4px 8px;
       border-radius: 6px;
-      font: 800 0.7rem/1 ui-sans-serif, system-ui, sans-serif;
+      font:
+        800 0.7rem/1 ui-sans-serif,
+        system-ui,
+        sans-serif;
       letter-spacing: 0.1em;
     }
     .badge.dev {
@@ -635,7 +595,10 @@ export class CzytnikApp extends LitElement {
       border-radius: 999px;
       background: rgba(107, 124, 151, 0.12);
       color: var(--muted);
-      font: 600 0.74rem/1 ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.74rem/1 ui-sans-serif,
+        system-ui,
+        sans-serif;
       letter-spacing: 0.02em;
     }
     .pill.ok {
@@ -708,11 +671,6 @@ export class CzytnikApp extends LitElement {
       font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
       font-size: 1.2rem;
       color: var(--ink);
-    }
-
-    .install-card {
-      border-color: var(--accent);
-      background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
     }
 
     .muted {
@@ -788,7 +746,10 @@ export class CzytnikApp extends LitElement {
       color: var(--accent);
       padding: 4px 0;
       cursor: pointer;
-      font: 600 0.88rem/1 ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.88rem/1 ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
 
     .steps {
@@ -813,7 +774,10 @@ export class CzytnikApp extends LitElement {
       border-radius: 999px;
       color: #fff;
       background: var(--accent);
-      font: 700 0.98rem/1 ui-sans-serif, system-ui, sans-serif;
+      font:
+        700 0.98rem/1 ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
       box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
     }
@@ -915,7 +879,10 @@ export class CzytnikApp extends LitElement {
       border-radius: 999px;
       background: var(--sky-2);
       color: var(--ink-soft);
-      font: 600 0.7rem/1 ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.7rem/1 ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .badge.ok {
       background: rgba(45, 190, 117, 0.18);
@@ -972,7 +939,10 @@ export class CzytnikApp extends LitElement {
       background: transparent;
       border: 0;
       color: var(--muted);
-      font: 600 0.65rem/1.1 ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.65rem/1.1 ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
       letter-spacing: 0.02em;
     }

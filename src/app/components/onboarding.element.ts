@@ -1,6 +1,7 @@
 import { LitElement, css, html, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { BRAND_NAME, DEVICE_LABEL } from "../../shared/config";
+import type { PwaInstallDialog } from "./pwa-install-dialog.element";
 
 const STORAGE_KEY = "flower.onboarded.v1";
 
@@ -17,11 +18,28 @@ const STORAGE_KEY = "flower.onboarded.v1";
 export class OnboardingWizard extends LitElement {
   @state() private step = 0;
   @state() private dismissed = false;
+  @state() private installAvailable = false;
+  @state() private isStandalone = false;
 
   connectedCallback(): void {
     super.connectedCallback();
     this.dismissed = !!localStorage.getItem(STORAGE_KEY);
+
+    this.isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as any).standalone === true;
+
+    window.addEventListener("pwa-install-available", this.handleInstallAvailable);
   }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("pwa-install-available", this.handleInstallAvailable);
+  }
+
+  private handleInstallAvailable = () => {
+    this.installAvailable = true;
+  };
 
   render() {
     if (this.dismissed) return null;
@@ -56,43 +74,57 @@ export class OnboardingWizard extends LitElement {
           <div class="hero">${this.flower(120)}</div>
           <h2>Cześć, tu ${BRAND_NAME}.</h2>
           <p>
-            Aplikacja Twojego ${DEVICE_LABEL.toLowerCase()}a. Stąd wysyłasz książki,
-            zarządzasz ustawieniami i pobierasz pluginy. Bezprzewodowo, bez kabli.
+            Aplikacja Twojego ${DEVICE_LABEL.toLowerCase()}a. Stąd wysyłasz książki, zarządzasz
+            ustawieniami i pobierasz pluginy. Bezprzewodowo, bez kabli.
           </p>
         `;
       case 1: {
-        const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        return html`
-          <div class="hero soft">${this.iconAdd()}</div>
-          <h2>Dodaj do ekranu głównego</h2>
-          ${isIos
-            ? html`
-                <p>
-                  Otwórz menu udostępniania na dole Safari (ikona kwadratu ze strzałką)
-                  i wybierz <strong>„Do ekranu początkowego"</strong>. Aplikacja zachowa się
-                  jak natywna — bez paska adresu i bez tabów.
-                </p>
-              `
-            : html`
-                <p>
-                  Twoja przeglądarka zapyta o instalację za chwilę. Możesz też zrobić
-                  to ręcznie: menu (⋮) → <strong>„Zainstaluj aplikację"</strong>.
-                </p>
-              `}
-        `;
+        // If standalone → skip install step entirely (proceed to step 2)
+        if (this.isStandalone) {
+          this.step = 2;
+          return this.renderStep();
+        }
+
+        const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
+
+        if (isIos) {
+          // iOS → show numbered Share Sheet instructions (at least 2 steps)
+          return html`
+            <div class="hero soft">${this.iconAdd()}</div>
+            <h2>Dodaj do ekranu głównego</h2>
+            <ol class="ios-steps">
+              <li>Naciśnij ikonę <strong>Udostępnij</strong> (kwadrat ze strzałką)</li>
+              <li>Wybierz <strong>„Dodaj do ekranu początkowego"</strong></li>
+            </ol>
+          `;
+        }
+
+        // Check if beforeinstallprompt is available via pwa-install-dialog
+        if (this.installAvailable) {
+          return html`
+            <div class="hero soft">${this.iconAdd()}</div>
+            <h2>Zainstaluj aplikację</h2>
+            <p>Dodaj ${BRAND_NAME} do ekranu głównego — będzie działać jak natywna aplikacja.</p>
+            <button class="cta" @click=${this.handleOnboardingInstall}>Zainstaluj</button>
+          `;
+        }
+
+        // No prompt available and not iOS → skip install step
+        this.step = 2;
+        return this.renderStep();
       }
       case 2:
         return html`
           <div class="hero soft">${this.iconWifi()}</div>
           <h2>Połącz urządzenie</h2>
           <p>
-            Na ekranie startowym wybierz <strong>WiFi</strong>. Telefon przełączy się
-            na chwilę do sieci urządzenia (<code>${BRAND_NAME}-XXXX</code>) i zaczniecie
-            się komunikować. iPhone i Android działają tak samo.
+            Na ekranie startowym wybierz <strong>WiFi</strong>. Telefon przełączy się na chwilę do
+            sieci urządzenia (<code>${BRAND_NAME}-XXXX</code>) i zaczniecie się komunikować. iPhone
+            i Android działają tak samo.
           </p>
           <p class="hint">
-            Na razie aplikacja działa też bez urządzenia — pełen interfejs z mockowanymi
-            danymi, żeby było co testować.
+            Na razie aplikacja działa też bez urządzenia — pełen interfejs z mockowanymi danymi,
+            żeby było co testować.
           </p>
         `;
     }
@@ -112,6 +144,15 @@ export class OnboardingWizard extends LitElement {
     localStorage.setItem(STORAGE_KEY, new Date().toISOString());
     this.dismissed = true;
   }
+
+  private handleOnboardingInstall = async () => {
+    const dialog = document.querySelector("pwa-install-dialog") as PwaInstallDialog | null;
+    if (dialog) {
+      await dialog.triggerInstall();
+    }
+    // Regardless of outcome (accepted, dismissed, unavailable), proceed to next step
+    this.step += 1;
+  };
 
   // ─── ikony ────────────────────────────────────────────────────────────────
 
@@ -185,8 +226,7 @@ export class OnboardingWizard extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 14px;
-      font-family:
-        "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
     }
     .dots {
       display: flex;
@@ -233,7 +273,10 @@ export class OnboardingWizard extends LitElement {
       margin: 0;
       max-width: 38ch;
       color: #3d5278;
-      font: 1rem/1.55 ui-sans-serif, system-ui, sans-serif;
+      font:
+        1rem/1.55 ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .hint {
       font-style: italic;
@@ -251,7 +294,10 @@ export class OnboardingWizard extends LitElement {
       background: transparent;
       border: 0;
       color: #6b7c97;
-      font: 600 0.9rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.9rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
       padding: 8px 4px;
     }
@@ -261,7 +307,10 @@ export class OnboardingWizard extends LitElement {
       border-radius: 999px;
       color: #fff;
       background: #2e8eff;
-      font: 700 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        700 0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
       box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
     }
@@ -278,6 +327,19 @@ export class OnboardingWizard extends LitElement {
     }
     strong {
       color: #0c2340;
+    }
+    .ios-steps {
+      margin: 0;
+      padding-left: 1.4rem;
+      text-align: left;
+      color: #3d5278;
+      font:
+        0.95rem/1.6 ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .ios-steps li {
+      margin-bottom: 6px;
     }
   `;
 }

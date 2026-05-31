@@ -101,6 +101,8 @@ class App {
     FocusTimerSession,
     WelcomeLanguage,
     WelcomeTheme,
+    WelcomeHighlightColor,
+    WelcomePacing,
     WelcomeConnect,
   };
 
@@ -312,6 +314,10 @@ class App {
   void selectWelcomeLanguageItem(uint32_t nowMs);
   void openWelcomeTheme();
   void selectWelcomeThemeItem(uint32_t nowMs);
+  void openWelcomeHighlightColor();
+  void selectWelcomeHighlightColorItem(uint32_t nowMs);
+  void openWelcomePacing();
+  void selectWelcomePacingItem(uint32_t nowMs);
   void openWelcomeConnect(uint32_t nowMs);
   void selectWelcomeConnectItem(uint32_t nowMs);
   void finishWelcomeWizard(uint32_t nowMs);
@@ -320,6 +326,8 @@ class App {
   String themeModeLabel() const;
   String phantomWordsLabel() const;
   String focusHighlightLabel() const;
+  String focusColorLabel() const;
+  void cycleFocusColor(uint32_t nowMs);
   String uiLanguageLabel() const;
   String readerModeLabel() const;
   String pauseModeLabel() const;

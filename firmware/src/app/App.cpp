@@ -53,7 +53,7 @@ constexpr uint32_t kFocusTimerCancelHoldMs = 850;
 constexpr size_t kContextPreviewWindowWords = 288;
 constexpr size_t kContextPreviewAnchorLeadWords = 112;
 constexpr size_t kContextPreviewMaxParagraphSnapWords = 48;
-constexpr uint32_t kProgressSaveIntervalMs = 15000;
+constexpr uint32_t kProgressSaveIntervalMs = 10000;
 constexpr uint32_t kUsbTransferExitHoldMs = 1200;
 constexpr size_t kTimeEstimateBlockWords = 256;
 constexpr size_t kTimeEstimateBlocksPerUpdate = 1;
@@ -191,6 +191,7 @@ constexpr size_t kSettingsDisplayReaderBatteryIndex = 7;
 constexpr size_t kSettingsDisplayReaderChapterIndex = 8;
 constexpr size_t kSettingsDisplayReaderProgressIndex = 9;
 constexpr size_t kSettingsDisplayLanguageIndex = 10;
+constexpr size_t kSettingsDisplayFocusColorIndex = 11;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
 constexpr size_t kSettingsPacingPauseModeIndex = 2;
 constexpr size_t kSettingsPacingWpmIndex = 3;
@@ -231,6 +232,7 @@ constexpr const char *kPrefReaderProgressVisible = "read_pct";
 constexpr const char *kPrefReaderFontSize = "font_size";
 constexpr const char *kPrefReaderTypeface = "typeface";
 constexpr const char *kPrefTypographyFocusHighlight = "type_hlt";
+constexpr const char *kPrefFocusColorIndex = "foc_clr";
 constexpr const char *kPrefLegacyPacingLong = "pace_len";
 constexpr const char *kPrefLegacyPacingComplex = "pace_cpx";
 constexpr const char *kPrefLegacyPacingPunctuation = "pace_pnc";
@@ -737,6 +739,7 @@ void App::begin() {
       kTypographyGuideGapMin, kTypographyGuideGapMax));
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
+  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
   applyHandednessSettings(0, false);
   applyDisplayPreferences(0, false);
   applyTypographySettings(0, false);
@@ -1292,6 +1295,17 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
     if (menuScreen_ == MenuScreen::Main) {
       setState(AppState::Paused, nowMs);
     } else {
+      if (menuScreen_ == MenuScreen::WelcomeConnect ||
+          menuScreen_ == MenuScreen::WelcomeLanguage ||
+          menuScreen_ == MenuScreen::WelcomeTheme ||
+          menuScreen_ == MenuScreen::WelcomeHighlightColor ||
+          menuScreen_ == MenuScreen::WelcomePacing) {
+        // Bug fix: power button on any welcome wizard screen must finish
+        // the wizard (persist kPrefSetupDone = true) before navigating away.
+        // Without this, the wizard reappears on every boot.
+        finishWelcomeWizard(nowMs);
+        return;
+      }
       if (isFocusTimerMenuScreen(menuScreen_)) {
         resetFocusTimer();
       }
@@ -1472,6 +1486,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       kTypographyGuideGapMin, kTypographyGuideGapMax));
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
+  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
 
   reader_.setWpm(preferences_.getUShort(kPrefWpm, reader_.wpm()));
   applyReaderUiOrientation();
@@ -2502,7 +2517,7 @@ void App::moveMenuSelection(int direction) {
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout ||
-      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeConnect) {
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomePacing || menuScreen_ == MenuScreen::WelcomeConnect) {
     selectedIndex = &settingsSelectedIndex_;
     itemCount = settingsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
@@ -2549,7 +2564,7 @@ void App::moveMenuSelection(int direction) {
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout ||
-      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeConnect) {
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomePacing || menuScreen_ == MenuScreen::WelcomeConnect) {
     Serial.printf("[settings] selected=%s\n", settingsMenuItems_[settingsSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     Serial.printf("[wifi] selected=%s\n", wifiNetworkMenuItems_[wifiNetworkSelectedIndex_].title.c_str());
@@ -2788,6 +2803,16 @@ void App::selectSettingsItem(uint32_t nowMs) {
     return;
   }
 
+  if (menuScreen_ == MenuScreen::WelcomeHighlightColor) {
+    selectWelcomeHighlightColorItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::WelcomePacing) {
+    selectWelcomePacingItem(nowMs);
+    return;
+  }
+
   if (menuScreen_ == MenuScreen::WelcomeConnect) {
     selectWelcomeConnectItem(nowMs);
     return;
@@ -2890,6 +2915,11 @@ void App::selectSettingsItem(uint32_t nowMs) {
         return;
       case kSettingsDisplayLanguageIndex:
         cycleUiLanguage(nowMs);
+        return;
+      case kSettingsDisplayFocusColorIndex:
+        cycleFocusColor(nowMs);
+        rebuildSettingsMenuItems();
+        renderSettings();
         return;
       default:
         return;
@@ -3537,13 +3567,28 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back("Francais");
     settingsMenuItems_.push_back("Romana");
   } else if (menuScreen_ == MenuScreen::WelcomeTheme) {
-    // First-run wizard — krok 2/3. Po wyborze języka w step 1 (już zapisanym
+    // First-run wizard — krok 2/5. Po wyborze języka w step 1 (już zapisanym
     // w uiLanguage_), te labele lecą przez UiText więc są przetłumaczone.
     settingsMenuItems_.push_back(uiText(UiText::Light));
     settingsMenuItems_.push_back(uiText(UiText::Dark));
     settingsMenuItems_.push_back(uiText(UiText::Night));
+  } else if (menuScreen_ == MenuScreen::WelcomeHighlightColor) {
+    // First-run wizard — krok 3/5. Kolor podświetlenia litery.
+    settingsMenuItems_.push_back(polish("Czerwony", "Red"));
+    settingsMenuItems_.push_back(polish("Niebieski", "Blue"));
+    settingsMenuItems_.push_back(polish("Zielony", "Green"));
+    settingsMenuItems_.push_back(polish("Zolty", "Yellow"));
+    settingsMenuItems_.push_back(polish("Pomaranczowy", "Orange"));
+    settingsMenuItems_.push_back(polish("Fioletowy", "Purple"));
+  } else if (menuScreen_ == MenuScreen::WelcomePacing) {
+    // First-run wizard — krok 4/5. Spowolnienie po kropkach/długich słowach.
+    settingsMenuItems_.push_back(polish("Brak (0 ms)", "None (0 ms)"));
+    settingsMenuItems_.push_back(polish("Lekkie (100 ms)", "Light (100 ms)"));
+    settingsMenuItems_.push_back(polish("Srednie (200 ms)", "Medium (200 ms)"));
+    settingsMenuItems_.push_back(polish("Mocne (300 ms)", "Strong (300 ms)"));
+    settingsMenuItems_.push_back(polish("Bardzo mocne (400 ms)", "Very strong (400 ms)"));
   } else if (menuScreen_ == MenuScreen::WelcomeConnect) {
-    // First-run wizard — krok 3/3. Połączenie z telefonem.
+    // First-run wizard — krok 5/5. Połączenie z telefonem.
     // Więcej pozycji żeby scroll nie przeskakiwał od razu na "Pomiń".
     const String ssid = companionSync_.active() ? companionSync_.statusLine1() : "Flower";
     settingsMenuItems_.push_back(String("Wi-Fi: ") + ssid);
@@ -3570,6 +3615,7 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(String(tr(TrKey::ReadingPercent)) +
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
+    settingsMenuItems_.push_back(polish("Kolor litery: ", "Focus color: ") + focusColorLabel());
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::ReadingMode) + ": " + readerModeLabel());
@@ -3663,6 +3709,8 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::WifiSettings ||
          menuScreen_ == MenuScreen::WelcomeLanguage ||
          menuScreen_ == MenuScreen::WelcomeTheme ||
+         menuScreen_ == MenuScreen::WelcomeHighlightColor ||
+         menuScreen_ == MenuScreen::WelcomePacing ||
          menuScreen_ == MenuScreen::WelcomeConnect;
 }
 
@@ -3846,6 +3894,45 @@ void App::selectWelcomeThemeItem(uint32_t nowMs) {
   Serial.printf("[welcome] theme dark=%d night=%d\n",
                 static_cast<int>(darkMode_), static_cast<int>(nightMode_));
   applyDisplayPreferences(nowMs);
+  openWelcomeHighlightColor();
+}
+
+void App::openWelcomeHighlightColor() {
+  menuScreen_ = MenuScreen::WelcomeHighlightColor;
+  settingsSelectedIndex_ = display_.focusColorIndex();
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectWelcomeHighlightColorItem(uint32_t /*nowMs*/) {
+  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple
+  const uint8_t colorIndex = static_cast<uint8_t>(settingsSelectedIndex_);
+  display_.setFocusColorIndex(colorIndex);
+  preferences_.putUChar(kPrefFocusColorIndex, colorIndex);
+  Serial.printf("[welcome] highlight color=%u\n", static_cast<unsigned>(colorIndex));
+  openWelcomePacing();
+}
+
+void App::openWelcomePacing() {
+  menuScreen_ = MenuScreen::WelcomePacing;
+  // Default selection: Medium (200ms) = index 2
+  settingsSelectedIndex_ = 2;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectWelcomePacingItem(uint32_t nowMs) {
+  // 0=None(0ms), 1=Light(100ms), 2=Medium(200ms), 3=Strong(300ms), 4=VeryStrong(400ms)
+  constexpr uint16_t kPacingValues[] = {0, 100, 200, 300, 400};
+  const uint16_t delayMs = kPacingValues[settingsSelectedIndex_ < 5 ? settingsSelectedIndex_ : 2];
+  pacingLongWordDelayMs_ = delayMs;
+  pacingComplexWordDelayMs_ = delayMs;
+  pacingPunctuationDelayMs_ = delayMs;
+  preferences_.putUShort(kPrefPacingLongMs, delayMs);
+  preferences_.putUShort(kPrefPacingComplexMs, delayMs);
+  preferences_.putUShort(kPrefPacingPunctuationMs, delayMs);
+  applyPacingSettings();
+  Serial.printf("[welcome] pacing delay=%u ms\n", static_cast<unsigned>(delayMs));
   openWelcomeConnect(nowMs);
 }
 
@@ -3873,8 +3960,10 @@ void App::openWelcomeConnect(uint32_t nowMs) {
 void App::selectWelcomeConnectItem(uint32_t nowMs) {
   // 0 = Wi-Fi name (info), 1 = IP (info), 2 = separator, 3 = Connect, 4 = Skip
   if (settingsSelectedIndex_ <= 2) {
-    // Info rows — do nothing on tap
-    return;
+    // Info rows — treat tap as "Skip" so the UI never feels frozen.
+    // Previously these did nothing, leaving the user stuck without
+    // an obvious touch-based exit path.
+    settingsSelectedIndex_ = 4;
   }
   if (settingsSelectedIndex_ == 4) {
     // User chose to skip — shut down AP if it was started for wizard
@@ -4168,6 +4257,26 @@ String App::phantomWordsLabel() const {
 
 String App::focusHighlightLabel() const {
   return typographyConfig_.focusHighlight ? uiText(UiText::On) : uiText(UiText::Off);
+}
+
+String App::focusColorLabel() const {
+  switch (display_.focusColorIndex()) {
+    case 0: return polish("Czerwony", "Red");
+    case 1: return polish("Niebieski", "Blue");
+    case 2: return polish("Zielony", "Green");
+    case 3: return polish("Zolty", "Yellow");
+    case 4: return polish("Pomaranczowy", "Orange");
+    case 5: return polish("Fioletowy", "Purple");
+    default: return polish("Czerwony", "Red");
+  }
+}
+
+void App::cycleFocusColor(uint32_t nowMs) {
+  uint8_t next = display_.focusColorIndex() + 1;
+  if (next >= 6) next = 0;
+  display_.setFocusColorIndex(next);
+  preferences_.putUChar(kPrefFocusColorIndex, next);
+  applyDisplayPreferences(nowMs);
 }
 
 String App::uiLanguageLabel() const { return Localization::languageName(uiLanguage_); }
@@ -5537,7 +5646,10 @@ void App::renderMenu() {
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout ||
       menuScreen_ == MenuScreen::WelcomeLanguage ||
-      menuScreen_ == MenuScreen::WelcomeTheme) {
+      menuScreen_ == MenuScreen::WelcomeTheme ||
+      menuScreen_ == MenuScreen::WelcomeHighlightColor ||
+      menuScreen_ == MenuScreen::WelcomePacing ||
+      menuScreen_ == MenuScreen::WelcomeConnect) {
     renderSettings();
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     renderWifiNetworks();

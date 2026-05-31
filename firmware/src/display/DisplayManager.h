@@ -61,6 +61,8 @@ class DisplayManager {
   bool begin();
   void setBatteryLabel(const String &label);
   void setBrightnessPercent(uint8_t percent);
+  void setFocusColorIndex(uint8_t index);
+  uint8_t focusColorIndex() const;
   void setDarkMode(bool darkMode);
   void setNightMode(bool nightMode);
   void setUiOrientation(BoardConfig::UiOrientation orientation);
@@ -193,6 +195,7 @@ class DisplayManager {
   size_t txBufferBytes_ = 0;
   bool initialized_ = false;
   uint8_t brightnessPercent_ = 100;
+  uint8_t focusColorIndex_ = 0;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple
   bool darkMode_ = true;
   bool nightMode_ = false;
   BoardConfig::UiOrientation uiOrientation_ =

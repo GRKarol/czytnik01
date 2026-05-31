@@ -33,6 +33,25 @@ constexpr uint16_t kLightWordColor = 0x0000;
 constexpr uint16_t kFocusLetterColor = 0xF800;
 constexpr uint16_t kNightWordColor = 0xFCE0;
 constexpr uint16_t kNightFocusColor = 0xFA80;
+
+// Focus color palette (RGB565): red, blue, green, yellow, orange, purple
+constexpr uint16_t kFocusColorPalette[] = {
+    0xF800,  // red
+    0x001F,  // blue
+    0x07E0,  // green
+    0xFFE0,  // yellow
+    0xFD20,  // orange
+    0xA01F,  // purple
+};
+constexpr uint16_t kNightFocusColorPalette[] = {
+    0xFA80,  // red (warm)
+    0x541F,  // blue (muted)
+    0x5FE0,  // green (muted)
+    0xFEA0,  // yellow (warm)
+    0xFC80,  // orange (warm)
+    0x9817,  // purple (muted)
+};
+constexpr size_t kFocusColorCount = sizeof(kFocusColorPalette) / sizeof(kFocusColorPalette[0]);
 constexpr uint16_t kDarkMenuDimColor = 0x8410;
 constexpr uint16_t kLightMenuDimColor = 0x6B4D;
 constexpr uint16_t kDarkFooterColor = 0x528A;
@@ -882,6 +901,15 @@ void DisplayManager::setBrightnessPercent(uint8_t percent) {
   }
 }
 
+void DisplayManager::setFocusColorIndex(uint8_t index) {
+  if (index >= kFocusColorCount) {
+    index = 0;
+  }
+  focusColorIndex_ = index;
+}
+
+uint8_t DisplayManager::focusColorIndex() const { return focusColorIndex_; }
+
 void DisplayManager::setDarkMode(bool darkMode) {
   if (darkMode_ == darkMode) {
     return;
@@ -1076,10 +1104,11 @@ uint16_t DisplayManager::wordColor() const {
 }
 
 uint16_t DisplayManager::focusColor() const {
+  const uint8_t idx = focusColorIndex_ < kFocusColorCount ? focusColorIndex_ : 0;
   if (nightMode_) {
-    return kNightFocusColor;
+    return kNightFocusColorPalette[idx];
   }
-  return kFocusLetterColor;
+  return kFocusColorPalette[idx];
 }
 
 uint16_t DisplayManager::dimColor() const {
@@ -1097,7 +1126,7 @@ uint16_t DisplayManager::footerColor() const {
 }
 
 uint16_t DisplayManager::selectedBarColor() const {
-  return nightMode_ ? focusColor() : kFocusLetterColor;
+  return nightMode_ ? focusColor() : kFocusColorPalette[focusColorIndex_ < kFocusColorCount ? focusColorIndex_ : 0];
 }
 
 uint16_t DisplayManager::focusTimerBreakColor() const {
