@@ -1,4 +1,4 @@
-import { LitElement, css, html, svg } from "lit";
+import { LitElement, css, html, svg, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { BRAND_NAME, DEVICE_LABEL } from "../../shared/config";
 import type { PwaInstallDialog } from "./pwa-install-dialog.element";
@@ -67,7 +67,7 @@ export class OnboardingWizard extends LitElement {
     `;
   }
 
-  private renderStep() {
+  private renderStep(): TemplateResult {
     switch (this.step) {
       case 0:
         return html`
@@ -127,6 +127,8 @@ export class OnboardingWizard extends LitElement {
             żeby było co testować.
           </p>
         `;
+      default:
+        return html``;
     }
   }
 
