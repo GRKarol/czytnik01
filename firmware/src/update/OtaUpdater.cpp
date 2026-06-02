@@ -596,3 +596,152 @@ OtaUpdater::Result OtaUpdater::checkAndInstall(const Config &config, StatusCallb
       return result;
   }
 }
+
+// ─── Plugin / variant install ────────────────────────────────────────────────
+
+OtaUpdater::Result OtaUpdater::installAsset(const Config &config, const String &assetName,
+                                             const String &tagName, StatusCallback callback,
+                                             void *context) const {
+  Result result;
+  result.currentVersion = currentVersion();
+
+  if (!isConfigured(config)) {
+    result.code = ResultCode::NotConfigured;
+    result.summary = "Wi-Fi not set";
+    result.detail = "Settings -> Wi-Fi";
+    return result;
+  }
+
+  if (!connectWiFi(config, callback, context)) {
+    disconnectWiFi();
+    result.code = ResultCode::ConnectFailed;
+    result.summary = "Wi-Fi failed";
+    result.detail = "Check credentials";
+    return result;
+  }
+
+  // Build release API URL — either specific tag or latest
+  const String releaseUrl = tagName.isEmpty()
+      ? "https://api.github.com/repos/" + config.githubOwner + "/" + config.githubRepo +
+            "/releases/latest"
+      : "https://api.github.com/repos/" + config.githubOwner + "/" + config.githubRepo +
+            "/releases/tags/" + tagName;
+
+  reportStatus(callback, context, "Plugin", "Checking release", config.githubRepo, 22);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setHandshakeTimeout(15);
+
+  HTTPClient http;
+  http.setUserAgent(userAgentForVersion(currentVersion()));
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(15000);
+  if (!http.begin(client, releaseUrl)) {
+    disconnectWiFi();
+    result.code = ResultCode::MetadataFailed;
+    result.summary = "HTTP begin failed";
+    result.detail = releaseUrl;
+    return result;
+  }
+
+  http.addHeader("Accept", "application/vnd.github+json");
+  const int statusCode = http.GET();
+  if (statusCode != HTTP_CODE_OK) {
+    http.end();
+    disconnectWiFi();
+    result.code = ResultCode::MetadataFailed;
+    result.summary = "GitHub HTTP " + String(statusCode);
+    result.detail = assetName;
+    return result;
+  }
+
+  const String body = readBodyLimited(http, kMaxReleaseJsonBytes);
+  http.end();
+
+  // Extract tag name from response
+  String resolvedTag;
+  if (!extractJsonStringValue(body, "tag_name", 0, resolvedTag) || resolvedTag.isEmpty()) {
+    disconnectWiFi();
+    result.code = ResultCode::MetadataFailed;
+    result.summary = "Release tag missing";
+    result.detail = assetName;
+    return result;
+  }
+  result.latestVersion = resolvedTag;
+
+  // Find the asset URL
+  String assetUrl;
+  if (!extractAssetDownloadUrl(body, assetName, assetUrl) || assetUrl.isEmpty()) {
+    disconnectWiFi();
+    result.code = ResultCode::AssetMissing;
+    result.summary = "Asset missing";
+    result.detail = assetName;
+    return result;
+  }
+
+  reportStatus(callback, context, "Plugin", "Resolving asset", assetName, 28);
+
+  String resolvedUrl;
+  String resolveError;
+  if (!resolveDownloadUrl(assetUrl, resolvedTag, resolvedUrl, resolveError, callback, context)) {
+    disconnectWiFi();
+    result.code = ResultCode::InstallFailed;
+    result.summary = "Asset failed";
+    result.detail = resolveError;
+    return result;
+  }
+
+  WiFiClientSecure flashClient;
+  flashClient.setInsecure();
+  flashClient.setHandshakeTimeout(15);
+
+  HTTPUpdate updater;
+  updater.rebootOnUpdate(false);
+  updater.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+  int lastReportedProgress = -1;
+  const String &assetNameRef = assetName;
+  updater.onProgress([this, callback, context, &assetNameRef,
+                      &lastReportedProgress](int current, int total) {
+    if (total <= 0) {
+      reportStatus(callback, context, "Plugin", "Downloading", assetNameRef, -1);
+      return;
+    }
+    const int progress = 30 + static_cast<int>((static_cast<int64_t>(current) * 65) / total);
+    if (progress == lastReportedProgress) {
+      return;
+    }
+    lastReportedProgress = progress;
+    reportStatus(callback, context, "Plugin", "Downloading", assetNameRef, progress);
+  });
+
+  const String version = result.currentVersion;
+  const t_httpUpdate_return updateResult =
+      updater.update(flashClient, resolvedUrl, version, [version](HTTPClient *http) {
+        http->setUserAgent(userAgentForVersion(version));
+        http->addHeader("Accept", "application/octet-stream");
+      });
+
+  disconnectWiFi();
+
+  switch (updateResult) {
+    case HTTP_UPDATE_OK:
+      result.code = ResultCode::Success;
+      result.summary = "Plugin ready";
+      result.detail = resolvedTag;
+      result.rebootRequired = true;
+      return result;
+    case HTTP_UPDATE_NO_UPDATES:
+      result.code = ResultCode::NoUpdate;
+      result.summary = "No change";
+      result.detail = resolvedTag;
+      return result;
+    case HTTP_UPDATE_FAILED:
+    default:
+      result.code = ResultCode::InstallFailed;
+      result.summary = "Install failed";
+      result.detail = updater.getLastErrorString();
+      return result;
+  }
+}

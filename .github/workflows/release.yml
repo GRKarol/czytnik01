@@ -5,11 +5,12 @@ name: Release firmware
 #   - ręcznie z UI: Actions → "Release firmware" → Run workflow → wpisz tag
 #
 # Release zawiera:
-#   - czytnik01.bin       (scalony obraz dla web flashera)
-#   - flower-firmware.bin (sama aplikacja, do OTA przez PWA "Aktualizacje")
-#
-# PWA "Aktualizacje" panel czyta `releases/latest` z tego repo i pokazuje
-# nową wersję klientom.
+#   - czytnik01.bin                 (scalony obraz dla web flashera)
+#   - flower-firmware.bin           (bazowa aplikacja OTA, bez pluginów)
+#   - flower-firmware-timer.bin     (wariant z Focus Timer)
+#   - flower-firmware-rss.bin       (wariant z RSS)
+#   - flower-firmware-timer-rss.bin (wariant z oboma pluginami)
+#   - plugins.json                  (manifest pluginów dla urządzenia)
 
 on:
   push:
@@ -22,11 +23,13 @@ on:
         required: true
 
 permissions:
-  contents: write # potrzebne do tworzenia release'a
+  contents: write
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,16 +65,16 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
-      - name: Build firmware
+      - name: Build firmware (web flasher + base OTA binary)
         run: python3 firmware/tools/export_web_firmware.py --version "${{ steps.tag.outputs.name }}"
 
-      - name: Verify artifacts
+      - name: Verify base artifacts
         run: |
           ls -lh public/firmware/
           test -f public/firmware/czytnik01.bin
           test -f public/firmware/flower-firmware.bin
 
-      - name: Create / update GitHub Release
+      - name: Create / update GitHub Release (base binaries)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
@@ -80,3 +83,11 @@ jobs:
           files: |
             public/firmware/czytnik01.bin
             public/firmware/flower-firmware.bin
+
+  build-plugin-variants:
+    needs: build-and-release
+    uses: ./.github/workflows/build-variants.yml
+    with:
+      tag: ${{ needs.build-and-release.outputs.tag }}
+    permissions:
+      contents: write

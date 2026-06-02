@@ -604,6 +604,20 @@ enum class TrKey2 : uint8_t {
   RemountingSd,
   ReleasePwr,
   HoldPwrToStart,
+  // Plugin system
+  PluginLibrary,
+  PluginInstalled,
+  PluginInstall,
+  PluginRemove,
+  PluginBuiltIn,
+  PluginCannotRemove,
+  PluginInstalling,
+  PluginRemoving,
+  PluginRestartRequired,
+  PluginNoWifi,
+  PluginFetchFailed,
+  PluginInstallFailed,
+  PluginRemoveFailed,
 };
 
 namespace Translations2 {
@@ -906,6 +920,123 @@ inline const char *tr2(UiLanguage lang, TrKey2 key) {
         case UiLanguage::German: return "PWR halten zum Starten";
         case UiLanguage::Romanian: return "Tine PWR pt. pornire";
         default: return "Hold PWR to start";
+      }
+    case TrKey2::PluginLibrary:
+      switch (lang) {
+        case UiLanguage::Polish: return "Biblioteka funkcji";
+        case UiLanguage::Spanish: return "Biblioteca de funciones";
+        case UiLanguage::French: return "Bibliotheque de fonctions";
+        case UiLanguage::German: return "Funktionsbibliothek";
+        case UiLanguage::Romanian: return "Biblioteca de functii";
+        default: return "Function library";
+      }
+    case TrKey2::PluginInstalled:
+      switch (lang) {
+        case UiLanguage::Polish: return "[zainstalowany]";
+        case UiLanguage::Spanish: return "[instalado]";
+        case UiLanguage::French: return "[installe]";
+        case UiLanguage::German: return "[installiert]";
+        case UiLanguage::Romanian: return "[instalat]";
+        default: return "[installed]";
+      }
+    case TrKey2::PluginInstall:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zainstaluj: ";
+        case UiLanguage::Spanish: return "Instalar: ";
+        case UiLanguage::French: return "Installer: ";
+        case UiLanguage::German: return "Installieren: ";
+        case UiLanguage::Romanian: return "Instaleaza: ";
+        default: return "Install: ";
+      }
+    case TrKey2::PluginRemove:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usun: ";
+        case UiLanguage::Spanish: return "Quitar: ";
+        case UiLanguage::French: return "Retirer: ";
+        case UiLanguage::German: return "Entfernen: ";
+        case UiLanguage::Romanian: return "Elimina: ";
+        default: return "Remove: ";
+      }
+    case TrKey2::PluginBuiltIn:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wbudowany";
+        case UiLanguage::Spanish: return "Integrado";
+        case UiLanguage::French: return "Integre";
+        case UiLanguage::German: return "Eingebaut";
+        case UiLanguage::Romanian: return "Integrat";
+        default: return "Built-in";
+      }
+    case TrKey2::PluginCannotRemove:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nie mozna usunac";
+        case UiLanguage::Spanish: return "No se puede quitar";
+        case UiLanguage::French: return "Impossible de retirer";
+        case UiLanguage::German: return "Kann nicht entfernt werden";
+        case UiLanguage::Romanian: return "Nu se poate elimina";
+        default: return "Cannot remove";
+      }
+    case TrKey2::PluginInstalling:
+      switch (lang) {
+        case UiLanguage::Polish: return "Instalowanie...";
+        case UiLanguage::Spanish: return "Instalando...";
+        case UiLanguage::French: return "Installation...";
+        case UiLanguage::German: return "Installiere...";
+        case UiLanguage::Romanian: return "Se instaleaza...";
+        default: return "Installing...";
+      }
+    case TrKey2::PluginRemoving:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usuwanie...";
+        case UiLanguage::Spanish: return "Quitando...";
+        case UiLanguage::French: return "Retrait...";
+        case UiLanguage::German: return "Entferne...";
+        case UiLanguage::Romanian: return "Se elimina...";
+        default: return "Removing...";
+      }
+    case TrKey2::PluginRestartRequired:
+      switch (lang) {
+        case UiLanguage::Polish: return "Restart za chwile...";
+        case UiLanguage::Spanish: return "Reiniciando...";
+        case UiLanguage::French: return "Redemarrage...";
+        case UiLanguage::German: return "Neustart...";
+        case UiLanguage::Romanian: return "Repornire...";
+        default: return "Restarting...";
+      }
+    case TrKey2::PluginNoWifi:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wymagane Wi-Fi";
+        case UiLanguage::Spanish: return "Wi-Fi requerido";
+        case UiLanguage::French: return "Wi-Fi requis";
+        case UiLanguage::German: return "Wi-Fi erforderlich";
+        case UiLanguage::Romanian: return "Wi-Fi necesar";
+        default: return "Wi-Fi required";
+      }
+    case TrKey2::PluginFetchFailed:
+      switch (lang) {
+        case UiLanguage::Polish: return "Blad pobierania";
+        case UiLanguage::Spanish: return "Error de descarga";
+        case UiLanguage::French: return "Erreur de telechargement";
+        case UiLanguage::German: return "Download fehlgeschlagen";
+        case UiLanguage::Romanian: return "Eroare descarcare";
+        default: return "Download failed";
+      }
+    case TrKey2::PluginInstallFailed:
+      switch (lang) {
+        case UiLanguage::Polish: return "Instalacja nieudana";
+        case UiLanguage::Spanish: return "Instalacion fallida";
+        case UiLanguage::French: return "Echec installation";
+        case UiLanguage::German: return "Installation fehlgeschlagen";
+        case UiLanguage::Romanian: return "Instalare esuata";
+        default: return "Install failed";
+      }
+    case TrKey2::PluginRemoveFailed:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usuwanie nieudane";
+        case UiLanguage::Spanish: return "Error al quitar";
+        case UiLanguage::French: return "Echec du retrait";
+        case UiLanguage::German: return "Entfernen fehlgeschlagen";
+        case UiLanguage::Romanian: return "Eliminare esuata";
+        default: return "Remove failed";
       }
   }
   return "";

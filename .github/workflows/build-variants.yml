@@ -1,0 +1,89 @@
+name: Build plugin variants
+
+# Buduje wszystkie warianty firmware z pluginami i dodaje je do GitHub Release.
+#
+# Triggerowany AUTOMATYCZNIE przez release.yml (workflow_call) po zbudowaniu
+# bazowego firmware. Można też uruchomić ręcznie podając tag.
+#
+# Artefakty uploadowane do Release:
+#   flower-firmware.bin           (baza, bez pluginów)
+#   flower-firmware-timer.bin     (z Focus Timer)
+#   flower-firmware-rss.bin       (z RSS)
+#   flower-firmware-timer-rss.bin (z oboma pluginami)
+#   plugins.json                  (manifest dla urządzenia)
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.0"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-variants:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            firmware/.pio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build all plugin variants
+        run: |
+          python3 firmware/tools/build_plugin_variants.py \
+            --version "${{ inputs.tag }}"
+
+      - name: Verify artifacts
+        run: |
+          echo "=== Plugin variant binaries ==="
+          ls -lh public/firmware/flower-firmware*.bin
+          test -f public/firmware/flower-firmware.bin
+          test -f public/firmware/flower-firmware-timer.bin
+          test -f public/firmware/flower-firmware-rss.bin
+          test -f public/firmware/flower-firmware-timer-rss.bin
+          test -f public/firmware/plugins.json
+          echo ""
+          echo "=== plugins.json ==="
+          cat public/firmware/plugins.json
+
+      - name: Upload variants to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: |
+            public/firmware/flower-firmware.bin
+            public/firmware/flower-firmware-timer.bin
+            public/firmware/flower-firmware-rss.bin
+            public/firmware/flower-firmware-timer-rss.bin
+            public/firmware/plugins.json
