@@ -645,6 +645,7 @@ void App::begin() {
   powerButtonLongPressHandled_ = false;
   storage_.setStatusCallback(&App::handleStorageStatus, this);
   preferences_.begin(kPrefsNamespace, false);
+  pluginManager_.begin(preferences_);
   brightnessLevelIndex_ = preferences_.getUChar(kPrefBrightness, brightnessLevelIndex_);
   if (brightnessLevelIndex_ >= kBrightnessLevelCount) {
     brightnessLevelIndex_ = kBrightnessLevelCount - 1;
@@ -4952,65 +4953,243 @@ void App::renderSavePointsList() {
 
 // ─── Plugins ─────────────────────────────────────────────────────────────────
 
+// Indeksy w pluginsMenuItems_:
+//   0: Back
+//   1: Focus Timer  (built-in, zawsze zainstalowany)
+//   2: "Zainstaluj RSS" lub "Usun RSS"  (zależnie od stanu)
+//   3: separator "---"
+//   4: Biblioteka funkcji (placeholder)
+
+static constexpr size_t kPluginItemBackIndex      = 0;
+static constexpr size_t kPluginItemTimerIndex     = 1;
+static constexpr size_t kPluginItemRssIndex       = 2;
+static constexpr size_t kPluginItemSeparatorIndex = 3;
+static constexpr size_t kPluginItemLibraryIndex   = 4;
+
 void App::openPluginsList() {
   pluginsMenuItems_.clear();
-  pluginsMenuItems_.push_back(uiText(UiText::Back));
-  pluginsMenuItems_.push_back(tr2(TrKey2::FocusTimer));
-  pluginsMenuItems_.push_back(polish("Usun Klepsydre", "Remove Timer"));
-  pluginsMenuItems_.push_back(polish("---", "---"));
-  pluginsMenuItems_.push_back(polish("Biblioteka funkcji", "Function library"));
 
-  pluginsSelectedIndex_ = 1;  // Focus Timer
+  // [0] Back
+  pluginsMenuItems_.push_back(uiText(UiText::Back));
+
+  // [1] Focus Timer — wbudowany, zawsze zainstalowany
+  {
+    const bool installed = pluginManager_.isInstalled(PluginManager::PluginId::Timer);
+    String label = tr2(TrKey2::FocusTimer);
+    if (installed) {
+      label += " " + String(tr2(TrKey2::PluginInstalled));
+    }
+    pluginsMenuItems_.push_back(label);
+  }
+
+  // [2] RSS Feeds — zainstaluj lub usuń
+  {
+    const bool installed = pluginManager_.isInstalled(PluginManager::PluginId::Rss);
+    String label;
+    if (installed) {
+      label = String(tr2(TrKey2::PluginRemove)) + tr2(TrKey2::RssFeeds);
+    } else {
+      label = String(tr2(TrKey2::PluginInstall)) + tr2(TrKey2::RssFeeds);
+    }
+    pluginsMenuItems_.push_back(label);
+  }
+
+  // [3] Separator
+  pluginsMenuItems_.push_back("---");
+
+  // [4] Biblioteka funkcji
+  pluginsMenuItems_.push_back(tr2(TrKey2::PluginLibrary));
+
+  pluginsSelectedIndex_ = kPluginItemTimerIndex;
   menuScreen_ = MenuScreen::PluginsList;
   renderPluginsList();
 }
 
 void App::selectPluginsItem(uint32_t nowMs) {
-  (void)nowMs;
-  if (pluginsSelectedIndex_ == 0) {
+  if (pluginsSelectedIndex_ == kPluginItemBackIndex) {
     menuScreen_ = MenuScreen::Main;
     menuSelectedIndex_ = MenuPlugins;
     renderMainMenu();
     return;
   }
 
-  if (pluginsSelectedIndex_ == 1) {
-    // Focus Timer (Klepsydra) — open it
-    openFocusTimer();
-    return;
-  }
-
-  if (pluginsSelectedIndex_ == 2) {
-    // Remove Klepsydra — it's built-in
-    display_.renderStatus(uiText(UiText::Plugins),
-                          polish("Wbudowany plugin", "Built-in plugin"),
-                          polish("Nie mozna usunac", "Cannot remove"));
-    delay(1400);
-    renderPluginsList();
-    return;
-  }
-
-  if (pluginsSelectedIndex_ == 3) {
-    // Separator — do nothing
-    return;
-  }
-
-  if (pluginsSelectedIndex_ == 4) {
-    // Biblioteka funkcji — wymaga Wi-Fi
-    if (configuredWifiSsid().isEmpty()) {
-      display_.renderStatus(uiText(UiText::Plugins),
-                            tr(TrKey::WifiNotSet), tr(TrKey::SettingsWifi));
-      delay(1600);
-      renderPluginsList();
+  if (pluginsSelectedIndex_ == kPluginItemTimerIndex) {
+    // Focus Timer jest wbudowany — otwieramy sesję timera
+    if (pluginManager_.isInstalled(PluginManager::PluginId::Timer)) {
+      openFocusTimer();
     } else {
       display_.renderStatus(uiText(UiText::Plugins),
-                            polish("Brak nowych funkcji", "No new functions"),
-                            polish("Sprawdz pozniej", "Check later"));
-      delay(1600);
+                            tr2(TrKey2::PluginBuiltIn),
+                            tr2(TrKey2::PluginCannotRemove));
+      delay(1400);
       renderPluginsList();
     }
     return;
   }
+
+  if (pluginsSelectedIndex_ == kPluginItemRssIndex) {
+    const bool installed = pluginManager_.isInstalled(PluginManager::PluginId::Rss);
+    if (installed) {
+      runPluginRemove(PluginManager::PluginId::Rss, nowMs);
+    } else {
+      runPluginInstall(PluginManager::PluginId::Rss, nowMs);
+    }
+    return;
+  }
+
+  if (pluginsSelectedIndex_ == kPluginItemSeparatorIndex) {
+    // Separator — ignoruj
+    return;
+  }
+
+  if (pluginsSelectedIndex_ == kPluginItemLibraryIndex) {
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginLibrary),
+                          configuredWifiSsid().isEmpty()
+                              ? tr2(TrKey2::PluginNoWifi)
+                              : tr(TrKey::NotSet));
+    delay(1400);
+    renderPluginsList();
+    return;
+  }
+}
+
+void App::runPluginInstall(PluginManager::PluginId id, uint32_t nowMs) {
+  (void)nowMs;
+
+  if (configuredWifiSsid().isEmpty()) {
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginNoWifi),
+                          tr(TrKey::SettingsWifi));
+    delay(1800);
+    renderPluginsList();
+    return;
+  }
+
+  const uint32_t targetMask = pluginManager_.maskAfterInstall(id);
+  const String assetName = PluginManager::variantFilename(targetMask);
+  const bool isPolish = (uiLanguage_ == UiLanguage::Polish);
+
+  display_.renderStatus(uiText(UiText::Plugins),
+                        tr2(TrKey2::PluginInstalling),
+                        PluginManager::pluginName(id, isPolish));
+
+  saveReadingPosition(true);
+
+  OtaUpdater::Config config = preferredOtaConfig();
+  const OtaUpdater::Result result =
+      otaUpdater_.installAsset(config, assetName, "", &App::handleStorageStatus, this);
+
+  Serial.printf("[plugin] install id=%u asset=%s code=%u summary=%s detail=%s\n",
+                static_cast<unsigned int>(id), assetName.c_str(),
+                static_cast<unsigned int>(result.code),
+                result.summary.c_str(), result.detail.c_str());
+
+  if (result.code == OtaUpdater::ResultCode::Success && result.rebootRequired) {
+    pluginManager_.setMask(targetMask);
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginRestartRequired),
+                          PluginManager::pluginName(id, isPolish));
+    delay(800);
+    ESP.restart();
+    return;
+  }
+
+  if (result.code == OtaUpdater::ResultCode::AssetMissing) {
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginFetchFailed),
+                          assetName);
+    delay(2000);
+    openPluginsList();
+    return;
+  }
+
+  if (result.code == OtaUpdater::ResultCode::NoUpdate) {
+    // Ten wariant jest już wgrany — wystarczy zaktualizować maskę
+    pluginManager_.setMask(targetMask);
+    display_.renderStatus(uiText(UiText::Plugins),
+                          PluginManager::pluginName(id, isPolish),
+                          tr2(TrKey2::PluginInstalled));
+    delay(1400);
+    openPluginsList();
+    return;
+  }
+
+  // Inny błąd
+  const String detail = result.detail.isEmpty() ? result.summary : result.detail;
+  display_.renderStatus(uiText(UiText::Plugins),
+                        tr2(TrKey2::PluginInstallFailed),
+                        detail);
+  delay(2000);
+  openPluginsList();
+}
+
+void App::runPluginRemove(PluginManager::PluginId id, uint32_t nowMs) {
+  (void)nowMs;
+
+  if (configuredWifiSsid().isEmpty()) {
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginNoWifi),
+                          tr(TrKey::SettingsWifi));
+    delay(1800);
+    renderPluginsList();
+    return;
+  }
+
+  const uint32_t targetMask = pluginManager_.maskAfterRemove(id);
+  const String assetName = PluginManager::variantFilename(targetMask);
+  const bool isPolish = (uiLanguage_ == UiLanguage::Polish);
+
+  display_.renderStatus(uiText(UiText::Plugins),
+                        tr2(TrKey2::PluginRemoving),
+                        PluginManager::pluginName(id, isPolish));
+
+  saveReadingPosition(true);
+
+  OtaUpdater::Config config = preferredOtaConfig();
+  const OtaUpdater::Result result =
+      otaUpdater_.installAsset(config, assetName, "", &App::handleStorageStatus, this);
+
+  Serial.printf("[plugin] remove id=%u asset=%s code=%u summary=%s detail=%s\n",
+                static_cast<unsigned int>(id), assetName.c_str(),
+                static_cast<unsigned int>(result.code),
+                result.summary.c_str(), result.detail.c_str());
+
+  if (result.code == OtaUpdater::ResultCode::Success && result.rebootRequired) {
+    pluginManager_.setMask(targetMask);
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginRestartRequired),
+                          PluginManager::pluginName(id, isPolish));
+    delay(800);
+    ESP.restart();
+    return;
+  }
+
+  if (result.code == OtaUpdater::ResultCode::AssetMissing) {
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginFetchFailed),
+                          assetName);
+    delay(2000);
+    openPluginsList();
+    return;
+  }
+
+  if (result.code == OtaUpdater::ResultCode::NoUpdate) {
+    pluginManager_.setMask(targetMask);
+    display_.renderStatus(uiText(UiText::Plugins),
+                          PluginManager::pluginName(id, isPolish),
+                          tr(TrKey::NotSet));
+    delay(1400);
+    openPluginsList();
+    return;
+  }
+
+  const String detail = result.detail.isEmpty() ? result.summary : result.detail;
+  display_.renderStatus(uiText(UiText::Plugins),
+                        tr2(TrKey2::PluginRemoveFailed),
+                        detail);
+  delay(2000);
+  openPluginsList();
 }
 
 void App::renderPluginsList() {
@@ -5143,6 +5322,7 @@ void App::exitCompanionSync(uint32_t nowMs) {
   companionSync_.end();
   preferences_.end();
   preferences_.begin(kPrefsNamespace, false);
+  pluginManager_.begin(preferences_);
   reloadRuntimePreferences(nowMs, false);
   storage_.refreshBooks();
   menuScreen_ = MenuScreen::Main;

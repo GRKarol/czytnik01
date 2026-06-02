@@ -14,6 +14,7 @@
 #include "display/DisplayManager.h"
 #include "input/ButtonHandler.h"
 #include "input/TouchHandler.h"
+#include "plugins/PluginManager.h"
 #include "reader/ReadingLoop.h"
 #include "rss/RssFeedManager.h"
 #include "storage/StorageManager.h"
@@ -369,6 +370,8 @@ class App {
   void persistSavePoints();
   void openPluginsList();
   void selectPluginsItem(uint32_t nowMs);
+  void runPluginInstall(PluginManager::PluginId id, uint32_t nowMs);
+  void runPluginRemove(PluginManager::PluginId id, uint32_t nowMs);
   void openRestartConfirm();
   void selectRestartConfirmItem(uint32_t nowMs);
   void openSdCardRepairConfirm();
@@ -510,6 +513,7 @@ class App {
   CompanionSyncManager companionSync_;
   BleApi ble_;
   UsbMassStorageManager usbTransfer_;
+  PluginManager pluginManager_;
   Preferences preferences_;
   PausedTouchSession pausedTouch_;
   TouchIntent pausedTouchIntent_ = TouchIntent::None;

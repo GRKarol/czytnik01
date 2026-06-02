@@ -44,6 +44,15 @@ class OtaUpdater {
   Result checkAndInstall(const Config &config, StatusCallback callback = nullptr,
                          void *context = nullptr) const;
 
+  /**
+   * Pobiera i flashuje konkretny plik z GitHub Releases dla podanego tagu.
+   * Nie sprawdza wersji — używane przez system pluginów.
+   * assetName: np. "flower-firmware-timer.bin"
+   * tagName: np. "v0.3.0" (pusty = "latest" release)
+   */
+  Result installAsset(const Config &config, const String &assetName, const String &tagName,
+                      StatusCallback callback = nullptr, void *context = nullptr) const;
+
  private:
   struct LatestRelease {
     String tagName;
