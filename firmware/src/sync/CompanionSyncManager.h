@@ -35,6 +35,11 @@ class CompanionSyncManager {
     String author;
   };
 
+  struct RsvpChapter {
+    String title;
+    size_t startWord = 0;
+  };
+
   static void handleInfoStatic();
   static void handleHelloStatic();
   static void handleRootStatic();
@@ -47,6 +52,11 @@ class CompanionSyncManager {
   static void handleBookUploadStatic();
   static void handleOtaStatic();
   static void handleOtaUploadStatic();
+  static void handleCapabilitiesStatic();
+  static void handlePluginsStatic();
+  static void handlePluginsDeleteStatic();
+  static void handlePowerWifiTimeoutStatic();
+  static void handleOptionsStatic();
   static void handleNotFoundStatic();
 
   bool startAccessPoint();
@@ -64,6 +74,11 @@ class CompanionSyncManager {
   void handleBookUpload();
   void handleOta();
   void handleOtaUpload();
+  void handleCapabilities();
+  void handlePlugins();
+  void handlePluginsDelete();
+  void handlePowerWifiTimeout();
+  void handleOptions();
   void handleNotFound();
   String settingsJson();
   bool applySettingsJson(const String &body, String &error);
@@ -75,11 +90,13 @@ class CompanionSyncManager {
   String jsonEscape(const String &value) const;
   String sanitizeFilename(const String &name) const;
   RsvpMetadata readRsvpMetadata(const String &path) const;
+  std::vector<RsvpChapter> readRsvpChapters(const String &path) const;
   bool progressPercentForPath(const String &path, uint8_t &percent);
   String bookPositionKey(const String &bookPath) const;
   String bookWordCountKey(const String &bookPath) const;
   uint32_t hashBookPath(const String &path) const;
   void finishUpload(bool success);
+  void sendCorsHeaders();
 
   static CompanionSyncManager *instance_;
 
@@ -99,4 +116,5 @@ class CompanionSyncManager {
   bool serverStarted_ = false;
   bool qrData_[64 * 64] = {};  // Bufor dla QR kodu (max 64x64 moduły)
   uint8_t qrSize_ = 0;
+  uint32_t wifiTimeoutMs_ = 0;  // 0 = brak timeoutu
 };

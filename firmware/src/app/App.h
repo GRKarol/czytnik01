@@ -89,6 +89,7 @@ class App {
     SettingsPacing,
     SettingsConnectivity,
     SettingsAbout,
+    ScreensaverSettings,
     WifiSettings,
     WifiNetworks,
     TextEntry,
@@ -127,6 +128,8 @@ class App {
     Life = 0,
     Maze = 2,
     Voronoi = 3,
+    Stars = 4,
+    Matrix = 5,
     ScreenOff = 6,
   };
 
@@ -399,6 +402,16 @@ class App {
   void renderStandbyVoronoi();
   void seedStandbyScreenOff(uint32_t nowMs);
   void updateStandbyScreensaver(uint32_t nowMs, bool force = false);
+  void seedStandbyStars(uint32_t nowMs);
+  void stepStandbyStars();
+  void seedStandbyMatrix(uint32_t nowMs);
+  void stepStandbyMatrix();
+  void openScreensaverSettings();
+  void selectScreensaverSettingsItem(uint32_t nowMs);
+  void renderScreensaverSettings();
+  String screensaverTimeoutLabel() const;
+  String screensaverAutoOffLabel() const;
+  String screensaverSleepGuardLabel() const;
   void enterPowerOff(uint32_t nowMs);
   void enterSleep(uint32_t nowMs);
   void wakeFromSleep();
@@ -532,6 +545,7 @@ class App {
   uint32_t lastReaderTapMs_ = 0;
   uint32_t standbyComboStartedMs_ = 0;
   uint32_t standbyEnteredMs_ = 0;
+  uint32_t lastActivityMs_ = 0;
   uint32_t lastStandbyFrameMs_ = 0;
   uint32_t standbyLifeGeneration_ = 0;
   uint32_t standbyScreensaverRng_ = 1;
@@ -607,6 +621,13 @@ class App {
   std::vector<int16_t> standbyVoronoiY_;
   std::vector<int16_t> standbyVoronoiDx_;
   std::vector<int16_t> standbyVoronoiDy_;
+  std::vector<int16_t> standbyStarsX_;
+  std::vector<int16_t> standbyStarsY_;
+  std::vector<int8_t> standbyStarsSpeed_;
+  std::vector<uint8_t> standbyStarsBright_;
+  std::vector<uint8_t> standbyMatrixColumns_;
+  std::vector<uint8_t> standbyMatrixHeads_;
+  std::vector<uint8_t> standbyMatrixTrails_;
   String currentBookPath_;
   String currentBookTitle_;
   String pendingUpdateCurrentVersion_;
@@ -660,6 +681,10 @@ class App {
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;
   BatteryLabelMode batteryLabelMode_ = BatteryLabelMode::Percent;
   ScreensaverMode screensaverMode_ = ScreensaverMode::Life;
+  uint8_t screensaverTimeoutIndex_ = 2;   // default: 5 min
+  uint8_t screensaverAutoOffIndex_ = 0;   // default: off (never)
+  uint8_t screensaverSleepGuardIndex_ = 0; // default: off (never)
+  size_t screensaverSettingsSelectedIndex_ = 1;
   PauseMode pauseMode_ = PauseMode::SentenceEnd;
   bool darkMode_ = true;
   bool nightMode_ = false;

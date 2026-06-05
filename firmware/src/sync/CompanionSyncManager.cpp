@@ -8,7 +8,16 @@
 #include <cstdio>
 #include <vector>
 
+#include "plugins/PluginManager.h"
 #include "sync/WifiQrCode.h"
+
+#ifndef RSVP_FIRMWARE_VERSION
+#define RSVP_FIRMWARE_VERSION "dev"
+#endif
+
+#ifndef FLOWER_BLE_ENABLED
+#define FLOWER_BLE_ENABLED 0
+#endif
 
 namespace {
 
@@ -633,9 +642,20 @@ void CompanionSyncManager::handleHelloStatic() {
 }
 
 void CompanionSyncManager::handleHello() {
-  server_.sendHeader("Access-Control-Allow-Origin", "*");
-  server_.send(200, "application/json",
-               "{\"ok\":true,\"name\":\"Flower\",\"api\":1}");
+  sendCorsHeaders();
+  String body;
+  body.reserve(256);
+  body += "{\"ok\":true,\"name\":\"Flower Reader\"";
+  body += ",\"api\":1";
+  body += ",\"ssid\":\"";
+  body += jsonEscape(networkSsid_);
+  body += "\",\"host\":\"";
+  body += ipToString(networkMode_ == NetworkMode::Station ? WiFi.localIP() : WiFi.softAPIP());
+  body += "\",\"wifiOpen\":true";
+  body += ",\"firmwareVersion\":\"";
+  body += RSVP_FIRMWARE_VERSION;
+  body += "\"}";
+  server_.send(200, "application/json", body);
 }
 
 void CompanionSyncManager::handleRootStatic() {
@@ -704,6 +724,36 @@ void CompanionSyncManager::handleNotFoundStatic() {
   }
 }
 
+void CompanionSyncManager::handleCapabilitiesStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleCapabilities();
+  }
+}
+
+void CompanionSyncManager::handlePluginsStatic() {
+  if (instance_ != nullptr) {
+    instance_->handlePlugins();
+  }
+}
+
+void CompanionSyncManager::handlePluginsDeleteStatic() {
+  if (instance_ != nullptr) {
+    instance_->handlePluginsDelete();
+  }
+}
+
+void CompanionSyncManager::handlePowerWifiTimeoutStatic() {
+  if (instance_ != nullptr) {
+    instance_->handlePowerWifiTimeout();
+  }
+}
+
+void CompanionSyncManager::handleOptionsStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleOptions();
+  }
+}
+
 bool CompanionSyncManager::startAccessPoint() {
   const String ssid = "Flower-" + deviceSuffix();
   statusLine1_ = "Sync Wi-Fi";
@@ -718,7 +768,7 @@ bool CompanionSyncManager::startAccessPoint() {
   networkMode_ = NetworkMode::AccessPoint;
   Serial.printf("[sync] softAP ssid=%s ip=%s\n", ssid.c_str(), ipToString(WiFi.softAPIP()).c_str());
 
-  // Generuj QR kod dla WiFi bez hasła (otwarte AP)
+  // Generuj QR kod — WiFi format (kompatybilność z telefonami do połączenia)
   qrSize_ = WifiQrCode::generate(ssid, "", qrData_, 64);
   if (qrSize_ > 0) {
     Serial.printf("[sync] QR code generated: %dx%d\n", qrSize_, qrSize_);
@@ -735,6 +785,7 @@ bool CompanionSyncManager::startServer() {
   // jednoznacznie że to nasze urządzenie (a nie czyjeś AP o podobnej nazwie).
   server_.on("/api/hello", HTTP_GET, handleHelloStatic);
   server_.on("/api/info", HTTP_GET, handleInfoStatic);
+  server_.on("/api/capabilities", HTTP_GET, handleCapabilitiesStatic);
   server_.on("/api/books", HTTP_GET, handleBooksListStatic);
   server_.on("/api/books", HTTP_DELETE, handleBookDeleteStatic);
   server_.on("/api/books", HTTP_POST, handleBooksStatic, handleBookUploadStatic);
@@ -750,6 +801,20 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/wifi", HTTP_DELETE, handleWifiStatic);
   server_.on("/api/rss-feeds", HTTP_GET, handleRssFeedsStatic);
   server_.on("/api/rss-feeds", HTTP_PUT, handleRssFeedsStatic);
+  server_.on("/api/plugins", HTTP_GET, handlePluginsStatic);
+  server_.on("/api/plugins", HTTP_DELETE, handlePluginsDeleteStatic);
+  server_.on("/api/power/wifi-timeout", HTTP_POST, handlePowerWifiTimeoutStatic);
+  // CORS preflight dla wszystkich endpointów
+  server_.on("/api/hello", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/info", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/capabilities", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/books", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/ota", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/settings", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/wifi", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/rss-feeds", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/plugins", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/power/wifi-timeout", HTTP_OPTIONS, handleOptionsStatic);
   server_.onNotFound(handleNotFoundStatic);
   server_.begin();
   serverStarted_ = true;
@@ -770,13 +835,18 @@ void CompanionSyncManager::stopServer() {
 }
 
 void CompanionSyncManager::handleInfo() {
+  sendCorsHeaders();
   const String mode = networkMode_ == NetworkMode::Station ? "station" : "access_point";
-  const String body = String("{") + "\"name\":\"Flower\"," +
+  const String body = String("{") + "\"ok\":true," +
+                      "\"name\":\"Flower\"," +
                       "\"mode\":\"" + mode + "\"," +
                       "\"baseUrl\":\"" + jsonEscape(baseUrl()) + "\"," +
                       "\"networkSsid\":\"" + jsonEscape(networkSsid_) + "\"," +
                       "\"pairingCode\":\"" + pairingCode_ + "\"," +
-                      "\"uploadPath\":\"/api/books\"" + "}";
+                      "\"uploadPath\":\"/api/books\"," +
+                      "\"api\":1," +
+                      "\"firmwareVersion\":\"" + jsonEscape(RSVP_FIRMWARE_VERSION) + "\"" +
+                      "}";
   server_.send(200, "application/json", body);
 }
 
@@ -786,7 +856,8 @@ void CompanionSyncManager::handleRoot() {
 }
 
 void CompanionSyncManager::handleBooksList() {
-  String body = "{\"books\":[";
+  sendCorsHeaders();
+  String body = "{\"ok\":true,\"books\":[";
   bool first = true;
 
   const auto appendDirectory = [&](const char *directoryPath) {
@@ -821,6 +892,19 @@ void CompanionSyncManager::handleBooksList() {
           if (hasProgress) {
             body += ",\"progressPercent\":" + String(progressPercent);
           }
+          // Include chapters if available (only for .rsvp files)
+          if (lowered.endsWith(".rsvp")) {
+            const std::vector<RsvpChapter> chapters = readRsvpChapters(path);
+            if (!chapters.empty()) {
+              body += ",\"chapters\":[";
+              for (size_t i = 0; i < chapters.size(); ++i) {
+                if (i > 0) body += ",";
+                body += "{\"title\":\"" + jsonEscape(chapters[i].title) +
+                        "\",\"startWord\":" + String(static_cast<uint32_t>(chapters[i].startWord)) + "}";
+              }
+              body += "]";
+            }
+          }
           body += "}";
         }
       }
@@ -840,6 +924,7 @@ void CompanionSyncManager::handleBooksList() {
 }
 
 void CompanionSyncManager::handleSettings() {
+  sendCorsHeaders();
   if (server_.method() == HTTP_GET) {
     server_.send(200, "application/json", settingsJson());
     return;
@@ -851,6 +936,12 @@ void CompanionSyncManager::handleSettings() {
     return;
   }
 
+  // Detect changes that require restart (typeface, font size)
+  String prevTypeface;
+  readJsonString(body, "typeface", prevTypeface);
+  int prevFontSize = -1;
+  readJsonInt(body, "fontSizeIndex", prevFontSize);
+
   String error;
   if (!applySettingsJson(body, error)) {
     server_.send(400, "application/json",
@@ -858,10 +949,28 @@ void CompanionSyncManager::handleSettings() {
     return;
   }
 
-  server_.send(200, "application/json", settingsJson());
+  // Check if restart-worthy settings were changed
+  bool restartRequired = false;
+  String restartReason;
+  if (!prevTypeface.isEmpty()) {
+    restartRequired = true;
+    restartReason = "Typeface change requires display reload";
+  }
+
+  String response = settingsJson();
+  // Inject restartRequired before final closing brace if needed
+  if (restartRequired) {
+    // settingsJson ends with "}" — insert before it
+    response = response.substring(0, response.length() - 1) +
+               ",\"restartRequired\":true,\"restartReason\":\"" +
+               jsonEscape(restartReason) + "\"}";
+  }
+
+  server_.send(200, "application/json", response);
 }
 
 void CompanionSyncManager::handleWifi() {
+  sendCorsHeaders();
   if (server_.method() == HTTP_GET) {
     server_.send(200, "application/json", wifiJson());
     return;
@@ -889,6 +998,7 @@ void CompanionSyncManager::handleWifi() {
 }
 
 void CompanionSyncManager::handleRssFeeds() {
+  sendCorsHeaders();
   if (server_.method() == HTTP_GET) {
     server_.send(200, "application/json", rssFeedsJson());
     return;
@@ -907,6 +1017,7 @@ void CompanionSyncManager::handleRssFeeds() {
 }
 
 void CompanionSyncManager::handleBooks() {
+  sendCorsHeaders();
   finishUpload(uploadError_.isEmpty());
   if (!uploadError_.isEmpty()) {
     server_.send(400, "application/json",
@@ -921,6 +1032,7 @@ void CompanionSyncManager::handleBooks() {
 }
 
 void CompanionSyncManager::handleBookDelete() {
+  sendCorsHeaders();
   String requested = server_.arg("name");
   requested.trim();
   if (requested.isEmpty()) {
@@ -1059,6 +1171,7 @@ void CompanionSyncManager::handleBookUpload() {
 // przełącza na nią.
 
 void CompanionSyncManager::handleOta() {
+  sendCorsHeaders();
   // Wywołane gdy całe multipart body zostało już zjedzone przez
   // handleOtaUpload. Tu tylko zwracamy status i restartujemy.
   if (!otaError_.isEmpty()) {
@@ -1127,7 +1240,238 @@ void CompanionSyncManager::handleOtaUpload() {
 }
 
 void CompanionSyncManager::handleNotFound() {
+  sendCorsHeaders();
   server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Not found\"}");
+}
+
+// ─── CORS preflight ──────────────────────────────────────────────────────────
+
+void CompanionSyncManager::handleOptions() {
+  sendCorsHeaders();
+  server_.sendHeader("Access-Control-Max-Age", "86400");
+  server_.send(204);
+}
+
+void CompanionSyncManager::sendCorsHeaders() {
+  server_.sendHeader("Access-Control-Allow-Origin", "*");
+  server_.sendHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  server_.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+// ─── /api/capabilities ───────────────────────────────────────────────────────
+
+void CompanionSyncManager::handleCapabilities() {
+  sendCorsHeaders();
+  String body;
+  body.reserve(512);
+  body += "{\"ok\":true,\"api\":1";
+  body += ",\"firmwareVersion\":\"";
+  body += RSVP_FIRMWARE_VERSION;
+  body += "\"";
+  body += ",\"features\":{";
+  body += "\"settings\":true";
+  body += ",\"books\":true";
+  body += ",\"ota\":true";
+  body += ",\"pluginsList\":true";
+  body += ",\"pluginsRemove\":true";
+  body += ",\"pluginsInstallPackage\":false";
+  body += ",\"bluetoothTransfer\":";
+#if FLOWER_BLE_ENABLED
+  body += "true";
+#else
+  body += "false";
+#endif
+  body += ",\"rss\":";
+#if PLUGIN_RSS_ENABLED
+  body += "true";
+#else
+  body += "false";
+#endif
+  body += ",\"focusTimer\":";
+  // Timer is always built-in (see PluginManager)
+  body += "true";
+  body += ",\"wifiTimeout\":true";
+  body += "}}";
+  server_.send(200, "application/json", body);
+}
+
+// ─── /api/plugins ────────────────────────────────────────────────────────────
+
+void CompanionSyncManager::handlePlugins() {
+  sendCorsHeaders();
+  String body;
+  body.reserve(512);
+  body += "{\"ok\":true,\"plugins\":[";
+
+  // Timer plugin — always available (built-in)
+  body += "{\"id\":\"focus-timer\",\"name\":\"Focus Timer\"";
+  body += ",\"installed\":true,\"builtin\":true";
+  body += ",\"active\":true}";
+
+  // RSS plugin
+  body += ",{\"id\":\"rss\",\"name\":\"RSS Feeds\"";
+  body += ",\"installed\":";
+  body += PluginManager::isActive(PluginManager::PluginId::Rss) ? "true" : "false";
+  body += ",\"builtin\":true";
+  body += ",\"active\":";
+  body += PluginManager::isActive(PluginManager::PluginId::Rss) ? "true" : "false";
+  body += "}";
+
+  body += "]}";
+  server_.send(200, "application/json", body);
+}
+
+void CompanionSyncManager::handlePluginsDelete() {
+  sendCorsHeaders();
+  String pluginId = server_.arg("id");
+  pluginId.trim();
+  if (pluginId.isEmpty()) {
+    // Try to parse from URL path — /api/plugins?id=xxx
+    pluginId = server_.arg("plain");
+  }
+
+  if (pluginId.isEmpty()) {
+    server_.send(400, "application/json",
+                 "{\"ok\":false,\"error\":\"Missing plugin id\"}");
+    return;
+  }
+
+  // Plugins are firmware variants — can't be truly "removed" at runtime.
+  // We inform the app that a firmware variant switch (OTA) is needed.
+  if (pluginId == "focus-timer") {
+    server_.send(400, "application/json",
+                 "{\"ok\":false,\"error\":\"Focus Timer is built-in and cannot be removed\"}");
+    return;
+  }
+
+  if (pluginId == "rss") {
+    // RSS can be "removed" by flashing a variant without it
+    server_.send(200, "application/json",
+                 "{\"ok\":true,\"requiresOta\":true,\"message\":\"Flash firmware variant without RSS to remove\"}");
+    return;
+  }
+
+  server_.send(404, "application/json",
+               "{\"ok\":false,\"error\":\"Unknown plugin\"}");
+}
+
+// ─── /api/power/wifi-timeout ─────────────────────────────────────────────────
+
+void CompanionSyncManager::handlePowerWifiTimeout() {
+  sendCorsHeaders();
+  const String body = server_.arg("plain");
+  int timeoutSeconds = 0;
+  if (readJsonInt(body, "timeout", timeoutSeconds)) {
+    if (timeoutSeconds < 0) timeoutSeconds = 0;
+    if (timeoutSeconds > 3600) timeoutSeconds = 3600;
+    wifiTimeoutMs_ = static_cast<uint32_t>(timeoutSeconds) * 1000UL;
+  }
+  server_.send(200, "application/json",
+               String("{\"ok\":true,\"timeoutSeconds\":") +
+               String(wifiTimeoutMs_ / 1000UL) + "}");
+}
+
+// ─── Chapter reading for /api/books ──────────────────────────────────────────
+
+std::vector<CompanionSyncManager::RsvpChapter> CompanionSyncManager::readRsvpChapters(
+    const String &path) const {
+  std::vector<RsvpChapter> chapters;
+  String loweredPath = path;
+  loweredPath.toLowerCase();
+  if (!loweredPath.endsWith(".rsvp")) {
+    return chapters;
+  }
+
+  File file = SD_MMC.open(path);
+  if (!file || file.isDirectory()) {
+    if (file) {
+      file.close();
+    }
+    return chapters;
+  }
+
+  String line;
+  size_t wordCount = 0;
+  bool inBody = false;
+
+  while (file.available()) {
+    const char c = static_cast<char>(file.read());
+    if (c == '\r') {
+      continue;
+    }
+
+    if (c != '\n') {
+      line += c;
+      if (line.length() > 256) {
+        // Skip overly long lines
+        while (file.available()) {
+          const char skip = static_cast<char>(file.read());
+          if (skip == '\n') break;
+        }
+        if (inBody) {
+          // Count approximate words in this long line
+          wordCount += line.length() / 5;
+        }
+        line = "";
+        continue;
+      }
+      continue;
+    }
+
+    // Process line
+    String trimmed = line;
+    trimmed.trim();
+
+    if (trimmed.startsWith("@chapter")) {
+      String title = trimmed.substring(8);
+      title.trim();
+      if (title.isEmpty()) title = "Chapter " + String(chapters.size() + 1);
+      RsvpChapter ch;
+      ch.title = title;
+      ch.startWord = wordCount;
+      chapters.push_back(ch);
+      inBody = true;
+    } else if (!trimmed.startsWith("@") && inBody) {
+      // Count words in body lines
+      bool inWord = false;
+      for (size_t i = 0; i < trimmed.length(); ++i) {
+        const char wc = trimmed[i];
+        if (wc == ' ' || wc == '\t') {
+          if (inWord) {
+            ++wordCount;
+            inWord = false;
+          }
+        } else {
+          inWord = true;
+        }
+      }
+      if (inWord) ++wordCount;
+    } else if (!trimmed.isEmpty() && !trimmed.startsWith("@")) {
+      inBody = true;
+      // Count words
+      bool inWord = false;
+      for (size_t i = 0; i < trimmed.length(); ++i) {
+        const char wc = trimmed[i];
+        if (wc == ' ' || wc == '\t') {
+          if (inWord) {
+            ++wordCount;
+            inWord = false;
+          }
+        } else {
+          inWord = true;
+        }
+      }
+      if (inWord) ++wordCount;
+    }
+
+    line = "";
+
+    // Limit chapters to prevent excessive memory use
+    if (chapters.size() >= 200) break;
+  }
+
+  file.close();
+  return chapters;
 }
 
 String CompanionSyncManager::settingsJson() {

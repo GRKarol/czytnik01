@@ -121,7 +121,8 @@ class DisplayManager {
                       int progressPercent = -1);
   void renderLifeScreensaver(const std::vector<uint32_t> &cells, uint16_t columns, uint16_t rows,
                              uint32_t generation,
-                             const std::vector<uint32_t> *dimCells = nullptr);
+                             const std::vector<uint32_t> *dimCells = nullptr,
+                             const String &hintText = "", uint8_t hintAlpha = 0);
   void renderFocusTimerScreen(const String &mode, const String &genre, const String &timer,
                               const String &instruction, const String &footer = "",
                               int progressPercent = -1, bool breakAccent = false);

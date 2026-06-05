@@ -208,6 +208,26 @@ constexpr size_t kWifiSettingsForgetIndex = 3;
 constexpr size_t kWifiSettingsAutoUpdateIndex = 4;
 constexpr size_t kWifiSettingsOtaOwnerIndex = 5;
 
+// ScreensaverSettings submenu indices
+constexpr size_t kScreensaverSettingsBackIndex = 0;
+constexpr size_t kScreensaverSettingsStyleIndex = 1;
+constexpr size_t kScreensaverSettingsTimeoutIndex = 2;
+constexpr size_t kScreensaverSettingsAutoOffIndex = 3;
+constexpr size_t kScreensaverSettingsSleepGuardIndex = 4;
+constexpr size_t kScreensaverSettingsPreviewIndex = 5;
+
+// Screensaver timeout values in minutes: 1, 2, 3, 5, 10, 15, 20, 30
+constexpr uint8_t kScreensaverTimeoutCount = 8;
+constexpr uint16_t kScreensaverTimeoutMinutes[] = {1, 2, 3, 5, 10, 15, 20, 30};
+
+// Screensaver auto-off values in minutes: 0=Never, 5, 10, 15, 20, 30, 45, 60
+constexpr uint8_t kScreensaverAutoOffCount = 8;
+constexpr uint16_t kScreensaverAutoOffMinutes[] = {0, 5, 10, 15, 20, 30, 45, 60};
+
+// Sleep guard (reading protection) values in minutes: 0=Off, 5, 10, 15, 20, 30, 45, 60
+constexpr uint8_t kScreensaverSleepGuardCount = 8;
+constexpr uint16_t kScreensaverSleepGuardMinutes[] = {0, 5, 10, 15, 20, 30, 45, 60};
+
 constexpr size_t kBookPickerBackIndex = 0;
 constexpr size_t kChapterPickerBackIndex = 0;
 constexpr size_t kChapterPickerFallbackIndex = 1;
@@ -249,6 +269,9 @@ constexpr const char *kPrefTypographyTracking = "type_trk";
 constexpr const char *kPrefTypographyAnchor = "type_anc";
 constexpr const char *kPrefTypographyGuideWidth = "type_wid";
 constexpr const char *kPrefTypographyGuideGap = "type_gap";
+constexpr const char *kPrefScreensaverTimeout = "scrn_tmo";
+constexpr const char *kPrefScreensaverAutoOff = "scrn_aof";
+constexpr const char *kPrefScreensaverSleepGuard = "scrn_slp";
 constexpr const char *kPrefRecentSeq = "seq";
 constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
@@ -703,6 +726,12 @@ void App::begin() {
     case static_cast<uint8_t>(ScreensaverMode::Voronoi):
       screensaverMode_ = ScreensaverMode::Voronoi;
       break;
+    case static_cast<uint8_t>(ScreensaverMode::Stars):
+      screensaverMode_ = ScreensaverMode::Stars;
+      break;
+    case static_cast<uint8_t>(ScreensaverMode::Matrix):
+      screensaverMode_ = ScreensaverMode::Matrix;
+      break;
     case static_cast<uint8_t>(ScreensaverMode::ScreenOff):
       screensaverMode_ = ScreensaverMode::ScreenOff;
       break;
@@ -710,6 +739,18 @@ void App::begin() {
     default:
       screensaverMode_ = ScreensaverMode::Life;
       break;
+  }
+  screensaverTimeoutIndex_ = preferences_.getUChar(kPrefScreensaverTimeout, 2);
+  if (screensaverTimeoutIndex_ >= kScreensaverTimeoutCount) {
+    screensaverTimeoutIndex_ = 2;
+  }
+  screensaverAutoOffIndex_ = preferences_.getUChar(kPrefScreensaverAutoOff, 0);
+  if (screensaverAutoOffIndex_ >= kScreensaverAutoOffCount) {
+    screensaverAutoOffIndex_ = 0;
+  }
+  screensaverSleepGuardIndex_ = preferences_.getUChar(kPrefScreensaverSleepGuard, 0);
+  if (screensaverSleepGuardIndex_ >= kScreensaverSleepGuardCount) {
+    screensaverSleepGuardIndex_ = 0;
   }
   switch (preferences_.getUChar(kPrefPauseMode, static_cast<uint8_t>(pauseMode_))) {
     case static_cast<uint8_t>(PauseMode::Instant):
@@ -832,6 +873,7 @@ void App::begin() {
                 static_cast<unsigned long>(reader_.wordIntervalMs()));
 
   state_ = AppState::Booting;
+  lastActivityMs_ = millis();
   Serial.println("[app] READY splash active");
 }
 
@@ -884,6 +926,37 @@ void App::update(uint32_t nowMs) {
   updateFocusTimer(nowMs);
   updateReader(nowMs);
   handleTouch(nowMs);
+
+  // Screensaver idle timeout: activate screensaver if user hasn't interacted
+  if (lastActivityMs_ > 0 && state_ != AppState::Booting &&
+      state_ != AppState::UsbTransfer && state_ != AppState::CompanionSync &&
+      state_ != AppState::Sleeping && !powerOffStarted_) {
+    const uint32_t timeoutMs =
+        static_cast<uint32_t>(kScreensaverTimeoutMinutes[screensaverTimeoutIndex_]) * 60000UL;
+    const uint32_t elapsed = nowMs - lastActivityMs_;
+
+    if (state_ == AppState::Playing) {
+      // Sleep guard: if reading and no touch for X minutes, pause and enter standby
+      if (screensaverSleepGuardIndex_ > 0) {
+        const uint32_t sleepGuardMs =
+            static_cast<uint32_t>(kScreensaverSleepGuardMinutes[screensaverSleepGuardIndex_]) * 60000UL;
+        if (elapsed >= sleepGuardMs) {
+          Serial.println("[app] sleep guard: no touch while reading, entering standby");
+          saveReadingPosition(true);
+          enterStandby(nowMs);
+          return;
+        }
+      }
+    } else if (state_ == AppState::Paused || state_ == AppState::Menu) {
+      // Normal idle timeout: enter screensaver when paused/menu idle
+      if (elapsed >= timeoutMs) {
+        Serial.println("[app] idle timeout: entering standby screensaver");
+        enterStandby(nowMs);
+        return;
+      }
+    }
+  }
+
   updateWpmFeedback(nowMs);
   maybeSaveReadingPosition(nowMs);
   updateTimeEstimateBuild(nowMs);
@@ -968,6 +1041,9 @@ void App::setState(AppState nextState, uint32_t nowMs) {
   if (nextState == state_) {
     return;
   }
+
+  // Reset activity timer on any state change (user interaction drove us here)
+  lastActivityMs_ = nowMs;
 
   const AppState previousState = state_;
   if (previousState == AppState::Menu && nextState != AppState::Menu) {
@@ -1220,6 +1296,10 @@ void App::handleBootButton(uint32_t nowMs) {
     return;
   }
 
+  if (button_.isHeld() || button_.wasPressedEvent() || button_.wasReleasedEvent()) {
+    lastActivityMs_ = nowMs;
+  }
+
   if (button_.isHeld() && !bootButtonLongPressHandled_ &&
       button_.heldDurationMs(nowMs) >= kThemeToggleHoldMs) {
     bootButtonLongPressHandled_ = true;
@@ -1267,6 +1347,10 @@ void App::handlePowerButton(uint32_t nowMs) {
 
   if (powerButtonLongPressHandled_ && powerButton_.isHeld()) {
     return;
+  }
+
+  if (powerButton_.isHeld() || powerButton_.wasPressedEvent() || powerButton_.wasReleasedEvent()) {
+    lastActivityMs_ = nowMs;
   }
 
   if (state_ == AppState::Menu && isFocusTimerMenuScreen(menuScreen_) &&
@@ -1474,6 +1558,12 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
     case static_cast<uint8_t>(ScreensaverMode::Voronoi):
       screensaverMode_ = ScreensaverMode::Voronoi;
       break;
+    case static_cast<uint8_t>(ScreensaverMode::Stars):
+      screensaverMode_ = ScreensaverMode::Stars;
+      break;
+    case static_cast<uint8_t>(ScreensaverMode::Matrix):
+      screensaverMode_ = ScreensaverMode::Matrix;
+      break;
     case static_cast<uint8_t>(ScreensaverMode::ScreenOff):
       screensaverMode_ = ScreensaverMode::ScreenOff;
       break;
@@ -1481,6 +1571,18 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
     default:
       screensaverMode_ = ScreensaverMode::Life;
       break;
+  }
+  screensaverTimeoutIndex_ = preferences_.getUChar(kPrefScreensaverTimeout, screensaverTimeoutIndex_);
+  if (screensaverTimeoutIndex_ >= kScreensaverTimeoutCount) {
+    screensaverTimeoutIndex_ = 2;
+  }
+  screensaverAutoOffIndex_ = preferences_.getUChar(kPrefScreensaverAutoOff, screensaverAutoOffIndex_);
+  if (screensaverAutoOffIndex_ >= kScreensaverAutoOffCount) {
+    screensaverAutoOffIndex_ = 0;
+  }
+  screensaverSleepGuardIndex_ = preferences_.getUChar(kPrefScreensaverSleepGuard, screensaverSleepGuardIndex_);
+  if (screensaverSleepGuardIndex_ >= kScreensaverSleepGuardCount) {
+    screensaverSleepGuardIndex_ = 0;
   }
 
   switch (preferences_.getUChar(kPrefPauseMode, static_cast<uint8_t>(pauseMode_))) {
@@ -2053,7 +2155,6 @@ void App::handleTouch(uint32_t nowMs) {
   }
 
   if (state_ == AppState::Booting || state_ == AppState::UsbTransfer ||
-      state_ == AppState::Standby ||
       state_ == AppState::Sleeping) {
     touch_.cancel();
     pausedTouch_.active = false;
@@ -2063,10 +2164,21 @@ void App::handleTouch(uint32_t nowMs) {
     return;
   }
 
+  if (state_ == AppState::Standby) {
+    TouchEvent ev;
+    if (touch_.poll(ev)) {
+      // Ignore touch during standby — only physical buttons wake the device
+      // to prevent accidental wake in pocket
+    }
+    return;
+  }
+
   TouchEvent ev;
   if (!touch_.poll(ev)) {
     return;
   }
+
+  lastActivityMs_ = nowMs;
 
   Serial.printf("[touch] phase=%s touched=%u x=%u y=%u gesture=%u state=%s\n",
                 touchPhaseName(ev.phase), ev.touched ? 1 : 0, ev.x, ev.y, ev.gesture,
@@ -2647,7 +2759,7 @@ void App::moveMenuSelection(int direction) {
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
-      menuScreen_ == MenuScreen::SettingsAbout ||
+      menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomePacing || menuScreen_ == MenuScreen::WelcomeConnect) {
     selectedIndex = &settingsSelectedIndex_;
     itemCount = settingsMenuItems_.size();
@@ -2703,7 +2815,7 @@ void App::moveMenuSelection(int direction) {
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
-      menuScreen_ == MenuScreen::SettingsAbout ||
+      menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomePacing || menuScreen_ == MenuScreen::WelcomeConnect) {
     Serial.printf("[settings] selected=%s\n", settingsMenuItems_[settingsSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
@@ -2994,24 +3106,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         renderSettings();
         return;
       case kSettingsDisplayScreensaverIndex:
-        switch (screensaverMode_) {
-          case ScreensaverMode::Life:
-            screensaverMode_ = ScreensaverMode::Maze;
-            break;
-          case ScreensaverMode::Maze:
-            screensaverMode_ = ScreensaverMode::Voronoi;
-            break;
-          case ScreensaverMode::Voronoi:
-            screensaverMode_ = ScreensaverMode::ScreenOff;
-            break;
-          case ScreensaverMode::ScreenOff:
-          default:
-            screensaverMode_ = ScreensaverMode::Life;
-            break;
-        }
-        preferences_.putUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_));
-        rebuildSettingsMenuItems();
-        renderSettings();
+        openScreensaverSettings();
         return;
       case kSettingsDisplayReaderBatteryIndex:
         readerBatteryVisibleWhilePlaying_ = !readerBatteryVisibleWhilePlaying_;
@@ -3048,6 +3143,11 @@ void App::selectSettingsItem(uint32_t nowMs) {
       default:
         return;
     }
+  }
+
+  if (menuScreen_ == MenuScreen::ScreensaverSettings) {
+    selectScreensaverSettingsItem(nowMs);
+    return;
   }
 
   if (menuScreen_ != MenuScreen::SettingsPacing) {
@@ -3762,7 +3862,7 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(String(tr(TrKey::BatteryLabel)) +
                                  batteryLabelModeLabel());
     settingsMenuItems_.push_back(String(tr(TrKey::Screensaver)) +
-                                 screensaverModeLabel());
+                                 screensaverModeLabel() + " >");
     settingsMenuItems_.push_back(String(tr(TrKey::ReadingBattery)) +
                                  onOffLabel(readerBatteryVisibleWhilePlaying_));
     settingsMenuItems_.push_back(String(tr(TrKey::ReadingChapter)) +
@@ -3773,6 +3873,17 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(polish("Kolor litery: ", "Focus color: ") + focusColorLabel());
     settingsMenuItems_.push_back(polish("Przycisk zapisu: ", "Save btn: ") +
                                  onOffLabel(savePointButtonVisible_));
+  } else if (menuScreen_ == MenuScreen::ScreensaverSettings) {
+    settingsMenuItems_.push_back(uiText(UiText::Back));
+    settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverStyle)) +
+                                 screensaverModeLabel());
+    settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverTimeout)) +
+                                 screensaverTimeoutLabel());
+    settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverAutoOff)) +
+                                 screensaverAutoOffLabel());
+    settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverSleepGuard)) +
+                                 screensaverSleepGuardLabel());
+    settingsMenuItems_.push_back(tr(TrKey::ScreensaverPreview));
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::ReadingMode) + ": " + readerModeLabel());
@@ -3863,6 +3974,7 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::SettingsPacing ||
          menuScreen_ == MenuScreen::SettingsConnectivity ||
          menuScreen_ == MenuScreen::SettingsAbout ||
+         menuScreen_ == MenuScreen::ScreensaverSettings ||
          menuScreen_ == MenuScreen::WifiSettings ||
          menuScreen_ == MenuScreen::WelcomeLanguage ||
          menuScreen_ == MenuScreen::WelcomeTheme ||
@@ -5559,6 +5671,12 @@ void App::seedStandbyScreensaver(uint32_t nowMs) {
     case ScreensaverMode::Voronoi:
       seedStandbyVoronoi(nowMs);
       return;
+    case ScreensaverMode::Stars:
+      seedStandbyStars(nowMs);
+      return;
+    case ScreensaverMode::Matrix:
+      seedStandbyMatrix(nowMs);
+      return;
     case ScreensaverMode::ScreenOff:
       seedStandbyScreenOff(nowMs);
       return;
@@ -5577,6 +5695,12 @@ void App::stepStandbyScreensaver(uint32_t nowMs) {
       return;
     case ScreensaverMode::Voronoi:
       stepStandbyVoronoi();
+      return;
+    case ScreensaverMode::Stars:
+      stepStandbyStars();
+      return;
+    case ScreensaverMode::Matrix:
+      stepStandbyMatrix();
       return;
     case ScreensaverMode::ScreenOff:
       return;
@@ -5911,14 +6035,338 @@ void App::seedStandbyScreenOff(uint32_t nowMs) {
   standbyVoronoiY_.clear();
   standbyVoronoiDx_.clear();
   standbyVoronoiDy_.clear();
+  standbyStarsX_.clear();
+  standbyStarsY_.clear();
+  standbyStarsSpeed_.clear();
+  standbyStarsBright_.clear();
+  standbyMatrixColumns_.clear();
+  standbyMatrixHeads_.clear();
+  standbyMatrixTrails_.clear();
   standbyLifeGeneration_ = 0;
   standbyScreenOffActive_ = true;
   display_.prepareForSleep();
 }
 
+void App::seedStandbyStars(uint32_t nowMs) {
+  const size_t cellCount =
+      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
+  const size_t wordCount = packedLifeWordCount(cellCount);
+  standbyLifeCells_.assign(wordCount, 0);
+  standbyLifeNextCells_.assign(wordCount, 0);
+  standbyScreensaverDimCells_.assign(wordCount, 0);
+  standbyMazeVisited_.clear();
+  standbyMazeStack_.clear();
+  standbyLifeGeneration_ = 0;
+
+  standbyScreensaverRng_ =
+      nowMs ^ micros() ^ (static_cast<uint32_t>(reader_.currentIndex() + 1) * 2246822519UL) ^
+      0x57A25EEDUL;
+
+  // Initialize 60 stars at random positions with random speeds and brightness
+  constexpr size_t kStarCount = 60;
+  standbyStarsX_.resize(kStarCount);
+  standbyStarsY_.resize(kStarCount);
+  standbyStarsSpeed_.resize(kStarCount);
+  standbyStarsBright_.resize(kStarCount);
+
+  for (size_t i = 0; i < kStarCount; ++i) {
+    standbyStarsX_[i] = static_cast<int16_t>(
+        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeColumns);
+    standbyStarsY_[i] = static_cast<int16_t>(
+        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeRows);
+    standbyStarsSpeed_[i] = static_cast<int8_t>(
+        1 + ((advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3));
+    standbyStarsBright_[i] = static_cast<uint8_t>(
+        (advanceStandbyRng(standbyScreensaverRng_) >> 16) % 2);
+  }
+
+  // Render initial frame
+  std::fill(standbyLifeCells_.begin(), standbyLifeCells_.end(), 0);
+  for (size_t i = 0; i < kStarCount; ++i) {
+    const size_t idx = static_cast<size_t>(standbyStarsY_[i]) * kStandbyLifeColumns +
+                       static_cast<size_t>(standbyStarsX_[i]);
+    if (idx < cellCount) {
+      setPackedLifeCell(standbyLifeCells_, idx, true);
+      if (standbyStarsBright_[i]) {
+        setPackedLifeCell(standbyScreensaverDimCells_, idx, true);
+      }
+    }
+  }
+}
+
+void App::stepStandbyStars() {
+  constexpr size_t kStarCount = 60;
+  const size_t cellCount =
+      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
+
+  if (standbyStarsX_.size() != kStarCount) return;
+
+  std::fill(standbyLifeCells_.begin(), standbyLifeCells_.end(), 0);
+  std::fill(standbyScreensaverDimCells_.begin(), standbyScreensaverDimCells_.end(), 0);
+
+  for (size_t i = 0; i < kStarCount; ++i) {
+    // Move star down by its speed (simulating falling stars / starfield)
+    standbyStarsY_[i] += standbyStarsSpeed_[i];
+    if (standbyStarsY_[i] >= static_cast<int16_t>(kStandbyLifeRows)) {
+      // Respawn at top with new random x
+      standbyStarsY_[i] = 0;
+      standbyStarsX_[i] = static_cast<int16_t>(
+          (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeColumns);
+      standbyStarsSpeed_[i] = static_cast<int8_t>(
+          1 + ((advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3));
+      standbyStarsBright_[i] = static_cast<uint8_t>(
+          (advanceStandbyRng(standbyScreensaverRng_) >> 16) % 2);
+    }
+
+    const size_t idx = static_cast<size_t>(standbyStarsY_[i]) * kStandbyLifeColumns +
+                       static_cast<size_t>(standbyStarsX_[i]);
+    if (idx < cellCount) {
+      setPackedLifeCell(standbyLifeCells_, idx, true);
+      if (standbyStarsBright_[i]) {
+        setPackedLifeCell(standbyScreensaverDimCells_, idx, true);
+      }
+    }
+
+    // Draw a short trail behind
+    for (int8_t t = 1; t <= 2; ++t) {
+      const int16_t trailY = standbyStarsY_[i] - t * standbyStarsSpeed_[i];
+      if (trailY >= 0 && trailY < static_cast<int16_t>(kStandbyLifeRows)) {
+        const size_t trailIdx = static_cast<size_t>(trailY) * kStandbyLifeColumns +
+                                static_cast<size_t>(standbyStarsX_[i]);
+        if (trailIdx < cellCount) {
+          setPackedLifeCell(standbyScreensaverDimCells_, trailIdx, true);
+        }
+      }
+    }
+  }
+
+  // Occasionally twinkle: randomly toggle a few dim cells
+  for (uint8_t t = 0; t < 4; ++t) {
+    const size_t twinkleIdx =
+        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % cellCount;
+    setPackedLifeCell(standbyScreensaverDimCells_, twinkleIdx,
+                      !packedLifeCellAlive(standbyScreensaverDimCells_, twinkleIdx));
+  }
+
+  standbyLifeGeneration_++;
+}
+
+void App::seedStandbyMatrix(uint32_t nowMs) {
+  const size_t cellCount =
+      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
+  const size_t wordCount = packedLifeWordCount(cellCount);
+  standbyLifeCells_.assign(wordCount, 0);
+  standbyLifeNextCells_.assign(wordCount, 0);
+  standbyScreensaverDimCells_.assign(wordCount, 0);
+  standbyMazeVisited_.clear();
+  standbyMazeStack_.clear();
+  standbyLifeGeneration_ = 0;
+
+  standbyScreensaverRng_ =
+      nowMs ^ micros() ^ (static_cast<uint32_t>(reader_.currentIndex() + 1) * 3266489917UL) ^
+      0xAA7E1CEDUL;
+
+  // Initialize column raindrop heads
+  const uint16_t numCols = kStandbyLifeColumns;
+  standbyMatrixColumns_.resize(numCols);
+  standbyMatrixHeads_.resize(numCols);
+  standbyMatrixTrails_.resize(numCols);
+
+  for (uint16_t c = 0; c < numCols; ++c) {
+    standbyMatrixHeads_[c] = static_cast<uint8_t>(
+        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeRows);
+    standbyMatrixTrails_[c] = static_cast<uint8_t>(
+        4 + ((advanceStandbyRng(standbyScreensaverRng_) >> 16) % 8));
+    // Speed: 0 = slow (skip some frames), 1 = normal, 2 = fast
+    standbyMatrixColumns_[c] = static_cast<uint8_t>(
+        (advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3);
+  }
+}
+
+void App::stepStandbyMatrix() {
+  const size_t cellCount =
+      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
+  const uint16_t numCols = kStandbyLifeColumns;
+  const uint16_t numRows = kStandbyLifeRows;
+
+  if (standbyMatrixHeads_.size() != numCols) return;
+
+  std::fill(standbyLifeCells_.begin(), standbyLifeCells_.end(), 0);
+  std::fill(standbyScreensaverDimCells_.begin(), standbyScreensaverDimCells_.end(), 0);
+
+  standbyLifeGeneration_++;
+
+  for (uint16_t c = 0; c < numCols; ++c) {
+    // Determine if this column should advance this frame based on speed
+    const uint8_t speed = standbyMatrixColumns_[c];
+    bool shouldAdvance = true;
+    if (speed == 0) {
+      shouldAdvance = (standbyLifeGeneration_ % 3) == 0;
+    } else if (speed == 1) {
+      shouldAdvance = (standbyLifeGeneration_ % 2) == 0;
+    }
+
+    if (shouldAdvance) {
+      standbyMatrixHeads_[c]++;
+      if (standbyMatrixHeads_[c] >= numRows + standbyMatrixTrails_[c]) {
+        // Respawn from top with new trail length and speed
+        standbyMatrixHeads_[c] = 0;
+        standbyMatrixTrails_[c] = static_cast<uint8_t>(
+            4 + ((advanceStandbyRng(standbyScreensaverRng_) >> 16) % 8));
+        standbyMatrixColumns_[c] = static_cast<uint8_t>(
+            (advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3);
+      }
+    }
+
+    // Draw the head (bright pixel)
+    const int16_t headY = static_cast<int16_t>(standbyMatrixHeads_[c]);
+    if (headY >= 0 && headY < numRows) {
+      const size_t headIdx = static_cast<size_t>(headY) * numCols + c;
+      setPackedLifeCell(standbyLifeCells_, headIdx, true);
+    }
+
+    // Draw the trail (dimmer pixels)
+    const uint8_t trail = standbyMatrixTrails_[c];
+    for (uint8_t t = 1; t <= trail; ++t) {
+      const int16_t trailY = headY - static_cast<int16_t>(t);
+      if (trailY >= 0 && trailY < numRows) {
+        const size_t trailIdx = static_cast<size_t>(trailY) * numCols + c;
+        if (t <= 2) {
+          // Near-head trail: bright
+          setPackedLifeCell(standbyLifeCells_, trailIdx, true);
+        } else {
+          // Far trail: dim
+          setPackedLifeCell(standbyScreensaverDimCells_, trailIdx, true);
+        }
+      }
+    }
+  }
+
+  // Add occasional random bright flickers for the "digital rain" effect
+  for (uint8_t f = 0; f < 3; ++f) {
+    const size_t flickerIdx =
+        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % cellCount;
+    setPackedLifeCell(standbyScreensaverDimCells_, flickerIdx, true);
+  }
+}
+
+void App::openScreensaverSettings() {
+  screensaverSettingsSelectedIndex_ = kScreensaverSettingsStyleIndex;
+  menuScreen_ = MenuScreen::ScreensaverSettings;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::selectScreensaverSettingsItem(uint32_t nowMs) {
+  (void)nowMs;
+  switch (settingsSelectedIndex_) {
+    case kScreensaverSettingsBackIndex:
+      settingsSelectedIndex_ = kSettingsDisplayScreensaverIndex;
+      menuScreen_ = MenuScreen::SettingsDisplay;
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kScreensaverSettingsStyleIndex:
+      // Cycle through all screensaver modes
+      switch (screensaverMode_) {
+        case ScreensaverMode::Life:
+          screensaverMode_ = ScreensaverMode::Maze;
+          break;
+        case ScreensaverMode::Maze:
+          screensaverMode_ = ScreensaverMode::Voronoi;
+          break;
+        case ScreensaverMode::Voronoi:
+          screensaverMode_ = ScreensaverMode::Stars;
+          break;
+        case ScreensaverMode::Stars:
+          screensaverMode_ = ScreensaverMode::Matrix;
+          break;
+        case ScreensaverMode::Matrix:
+          screensaverMode_ = ScreensaverMode::ScreenOff;
+          break;
+        case ScreensaverMode::ScreenOff:
+        default:
+          screensaverMode_ = ScreensaverMode::Life;
+          break;
+      }
+      preferences_.putUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_));
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kScreensaverSettingsTimeoutIndex:
+      screensaverTimeoutIndex_ =
+          (screensaverTimeoutIndex_ + 1) % kScreensaverTimeoutCount;
+      preferences_.putUChar(kPrefScreensaverTimeout, screensaverTimeoutIndex_);
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kScreensaverSettingsAutoOffIndex:
+      screensaverAutoOffIndex_ =
+          (screensaverAutoOffIndex_ + 1) % kScreensaverAutoOffCount;
+      preferences_.putUChar(kPrefScreensaverAutoOff, screensaverAutoOffIndex_);
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kScreensaverSettingsSleepGuardIndex:
+      screensaverSleepGuardIndex_ =
+          (screensaverSleepGuardIndex_ + 1) % kScreensaverSleepGuardCount;
+      preferences_.putUChar(kPrefScreensaverSleepGuard, screensaverSleepGuardIndex_);
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+    case kScreensaverSettingsPreviewIndex:
+      // Enter standby to preview the screensaver
+      enterStandby(nowMs);
+      return;
+    default:
+      return;
+  }
+}
+
+void App::renderScreensaverSettings() {
+  renderSettings();
+}
+
+String App::screensaverTimeoutLabel() const {
+  if (screensaverTimeoutIndex_ >= kScreensaverTimeoutCount) return "5 min";
+  const uint16_t minutes = kScreensaverTimeoutMinutes[screensaverTimeoutIndex_];
+  return String(minutes) + " min";
+}
+
+String App::screensaverAutoOffLabel() const {
+  if (screensaverAutoOffIndex_ >= kScreensaverAutoOffCount) return tr(TrKey::Never);
+  if (screensaverAutoOffIndex_ == 0) return tr(TrKey::Never);
+  const uint16_t minutes = kScreensaverAutoOffMinutes[screensaverAutoOffIndex_];
+  if (minutes >= 60) {
+    return String(minutes / 60) + "h";
+  }
+  return String(minutes) + " min";
+}
+
+String App::screensaverSleepGuardLabel() const {
+  if (screensaverSleepGuardIndex_ >= kScreensaverSleepGuardCount) return tr(TrKey::No);
+  if (screensaverSleepGuardIndex_ == 0) return tr(TrKey::No);
+  const uint16_t minutes = kScreensaverSleepGuardMinutes[screensaverSleepGuardIndex_];
+  if (minutes >= 60) {
+    return String(minutes / 60) + "h";
+  }
+  return String(minutes) + " min";
+}
+
 void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
   if (state_ != AppState::Standby) {
     return;
+  }
+
+  // Auto power-off: check if standby has been active long enough
+  if (screensaverAutoOffIndex_ > 0) {
+    const uint32_t autoOffMs =
+        static_cast<uint32_t>(kScreensaverAutoOffMinutes[screensaverAutoOffIndex_]) * 60000UL;
+    if (nowMs - standbyEnteredMs_ >= autoOffMs) {
+      Serial.println("[app] screensaver auto power-off triggered");
+      enterPowerOff(nowMs);
+      return;
+    }
   }
 
   if (screensaverMode_ == ScreensaverMode::ScreenOff) {
@@ -5940,10 +6388,32 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
   }
 
   lastStandbyFrameMs_ = nowMs;
+  
+  // Hint text: fade in/out every 10 seconds
+  // Cycle: 10s total. First 1s = fade in, 1s-3s = visible, 3s-4s = fade out, 4s-10s = hidden
+  const uint32_t standbyElapsed = nowMs - standbyEnteredMs_;
+  const uint32_t hintCycleMs = standbyElapsed % 10000UL;
+  uint8_t hintAlpha = 0;
+  String hintText;
+  if (hintCycleMs < 1000) {
+    // Fade in: 0→255 over 1 second
+    hintAlpha = static_cast<uint8_t>((hintCycleMs * 255UL) / 1000UL);
+  } else if (hintCycleMs < 3000) {
+    // Fully visible
+    hintAlpha = 255;
+  } else if (hintCycleMs < 4000) {
+    // Fade out: 255→0 over 1 second
+    hintAlpha = static_cast<uint8_t>(255 - ((hintCycleMs - 3000UL) * 255UL) / 1000UL);
+  }
+  if (hintAlpha > 0) {
+    hintText = tr(TrKey::ScreensaverHint);
+  }
+
   display_.renderLifeScreensaver(standbyLifeCells_, kStandbyLifeColumns, kStandbyLifeRows,
                                  standbyLifeGeneration_,
                                  standbyScreensaverDimCells_.empty() ? nullptr
-                                                                      : &standbyScreensaverDimCells_);
+                                                                      : &standbyScreensaverDimCells_,
+                                 hintText, hintAlpha);
 }
 
 void App::enterPowerOff(uint32_t nowMs) {
@@ -6325,7 +6795,7 @@ void App::renderMenu() {
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
-      menuScreen_ == MenuScreen::SettingsAbout ||
+      menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage ||
       menuScreen_ == MenuScreen::WelcomeTheme ||
       menuScreen_ == MenuScreen::WelcomeHighlightColor ||
@@ -6729,6 +7199,10 @@ String App::screensaverModeLabel() const {
       return tr(TrKey::Maze);
     case ScreensaverMode::Voronoi:
       return "Voronoi";
+    case ScreensaverMode::Stars:
+      return tr(TrKey::Stars);
+    case ScreensaverMode::Matrix:
+      return tr(TrKey::MatrixRain);
     case ScreensaverMode::ScreenOff:
       return tr(TrKey::ScreenOff);
     case ScreensaverMode::Life:
