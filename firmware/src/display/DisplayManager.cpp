@@ -3171,7 +3171,8 @@ void DisplayManager::renderProgress(const String &title, const String &line1, co
 
 void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, uint16_t columns,
                                            uint16_t rows, uint32_t generation,
-                                           const std::vector<uint32_t> *dimCells) {
+                                           const std::vector<uint32_t> *dimCells,
+                                           const String &hintText, uint8_t hintAlpha) {
   const String renderKey = "life|" + String(generation) + "|" + String(columns) + "|" +
                            String(rows) + "|d:" + String(darkMode_ ? 1 : 0) + "|n:" +
                            String(nightMode_ ? 1 : 0) + "|w0:" +
@@ -3183,7 +3184,8 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
                            "|dw0:" +
                            String((dimCells == nullptr || dimCells->empty())
                                       ? 0UL
-                                      : static_cast<unsigned long>((*dimCells)[0]));
+                                      : static_cast<unsigned long>((*dimCells)[0])) +
+                           "|h:" + String(hintAlpha);
   if (!initialized_ || renderKey == lastRenderKey_ || columns == 0 || rows == 0) {
     return;
   }
@@ -3200,8 +3202,8 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
   const int renderHeight = std::min(virtualHeight, static_cast<int>(rows) * cellSize);
   const int xOffset = std::max(0, (virtualWidth - renderWidth) / 2);
   const int yOffset = std::max(0, (virtualHeight - renderHeight) / 2);
-  const uint16_t lifeColor = panelColor(wordColor());
-  const uint16_t dimLifeColor = panelColor(blendOverBackground(wordColor(), nightMode_ ? 82 : 96));
+  const uint16_t lifeColor = panelColor(focusColor());
+  const uint16_t dimLifeColor = panelColor(blendOverBackground(focusColor(), nightMode_ ? 60 : 72));
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
   auto drawPackedCells = [&](const std::vector<uint32_t> &source, uint16_t color) {
@@ -3234,6 +3236,13 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
     drawPackedCells(*dimCells, dimLifeColor);
   }
   drawPackedCells(cells, lifeColor);
+
+  // Draw hint text with fade-in/fade-out alpha
+  if (hintText.length() > 0 && hintAlpha > 0) {
+    const uint16_t hintColor = panelColor(blendOverBackground(wordColor(), hintAlpha));
+    const int hintY = virtualHeight - 20;
+    drawTinyTextCentered(hintText, hintY, hintColor, 1);
+  }
 
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }

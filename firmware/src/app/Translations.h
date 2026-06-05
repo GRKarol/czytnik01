@@ -60,6 +60,23 @@ enum class TrKey : uint8_t {
   Restarting,
   Yes,
   No,
+  ScreensaverTimeout,
+  ScreensaverAutoOff,
+  ScreensaverSleepGuard,
+  ScreensaverStyle,
+  ScreensaverPreview,
+  Stars,
+  MatrixRain,
+  ScreensaverHint,
+  Minutes1,
+  Minutes2,
+  Minutes3,
+  Minutes5,
+  Minutes10,
+  Minutes15,
+  Minutes20,
+  Minutes30,
+  Never,
 };
 
 namespace Translations {
@@ -560,6 +577,159 @@ inline const char *tr(UiLanguage lang, TrKey key) {
         case UiLanguage::German: return "Nein";
         case UiLanguage::Romanian: return "Nu";
         default: return "Off";
+      }
+    case TrKey::ScreensaverTimeout:
+      switch (lang) {
+        case UiLanguage::Polish: return "Czas wygaszacza: ";
+        case UiLanguage::Spanish: return "Tiempo: ";
+        case UiLanguage::French: return "Delai: ";
+        case UiLanguage::German: return "Wartezeit: ";
+        case UiLanguage::Romanian: return "Timp: ";
+        default: return "Timeout: ";
+      }
+    case TrKey::ScreensaverAutoOff:
+      switch (lang) {
+        case UiLanguage::Polish: return "Auto-wylacz: ";
+        case UiLanguage::Spanish: return "Auto-apagar: ";
+        case UiLanguage::French: return "Auto-eteindre: ";
+        case UiLanguage::German: return "Auto-aus: ";
+        case UiLanguage::Romanian: return "Auto-oprire: ";
+        default: return "Auto power-off: ";
+      }
+    case TrKey::ScreensaverSleepGuard:
+      switch (lang) {
+        case UiLanguage::Polish: return "Ochrona snu: ";
+        case UiLanguage::Spanish: return "Protec. sueno: ";
+        case UiLanguage::French: return "Protec. sommeil: ";
+        case UiLanguage::German: return "Schlafschutz: ";
+        case UiLanguage::Romanian: return "Protectie somn: ";
+        default: return "Sleep guard: ";
+      }
+    case TrKey::ScreensaverStyle:
+      switch (lang) {
+        case UiLanguage::Polish: return "Styl: ";
+        case UiLanguage::Spanish: return "Estilo: ";
+        case UiLanguage::French: return "Style: ";
+        case UiLanguage::German: return "Stil: ";
+        case UiLanguage::Romanian: return "Stil: ";
+        default: return "Style: ";
+      }
+    case TrKey::ScreensaverPreview:
+      switch (lang) {
+        case UiLanguage::Polish: return ">> Podglad <<";
+        case UiLanguage::Spanish: return ">> Vista previa <<";
+        case UiLanguage::French: return ">> Apercu <<";
+        case UiLanguage::German: return ">> Vorschau <<";
+        case UiLanguage::Romanian: return ">> Previz. <<";
+        default: return ">> Preview <<";
+      }
+    case TrKey::Stars:
+      switch (lang) {
+        case UiLanguage::Polish: return "Gwiazdy";
+        case UiLanguage::Spanish: return "Estrellas";
+        case UiLanguage::French: return "Etoiles";
+        case UiLanguage::German: return "Sterne";
+        case UiLanguage::Romanian: return "Stele";
+        default: return "Stars";
+      }
+    case TrKey::MatrixRain:
+      switch (lang) {
+        case UiLanguage::Polish: return "Matrix";
+        case UiLanguage::Spanish: return "Matrix";
+        case UiLanguage::French: return "Matrix";
+        case UiLanguage::German: return "Matrix";
+        case UiLanguage::Romanian: return "Matrix";
+        default: return "Matrix";
+      }
+    case TrKey::ScreensaverHint:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nacisnij przycisk by wybudzic";
+        case UiLanguage::Spanish: return "Pulsa un boton para despertar";
+        case UiLanguage::French: return "Appuyez pour reveiller";
+        case UiLanguage::German: return "Taste drucken zum Aufwecken";
+        case UiLanguage::Romanian: return "Apasa un buton pt. trezire";
+        default: return "Press button to wake";
+      }
+    case TrKey::Minutes1:
+      switch (lang) {
+        case UiLanguage::Polish: return "1 min";
+        case UiLanguage::Spanish: return "1 min";
+        case UiLanguage::French: return "1 min";
+        case UiLanguage::German: return "1 Min";
+        case UiLanguage::Romanian: return "1 min";
+        default: return "1 min";
+      }
+    case TrKey::Minutes2:
+      switch (lang) {
+        case UiLanguage::Polish: return "2 min";
+        case UiLanguage::Spanish: return "2 min";
+        case UiLanguage::French: return "2 min";
+        case UiLanguage::German: return "2 Min";
+        case UiLanguage::Romanian: return "2 min";
+        default: return "2 min";
+      }
+    case TrKey::Minutes3:
+      switch (lang) {
+        case UiLanguage::Polish: return "3 min";
+        case UiLanguage::Spanish: return "3 min";
+        case UiLanguage::French: return "3 min";
+        case UiLanguage::German: return "3 Min";
+        case UiLanguage::Romanian: return "3 min";
+        default: return "3 min";
+      }
+    case TrKey::Minutes5:
+      switch (lang) {
+        case UiLanguage::Polish: return "5 min";
+        case UiLanguage::Spanish: return "5 min";
+        case UiLanguage::French: return "5 min";
+        case UiLanguage::German: return "5 Min";
+        case UiLanguage::Romanian: return "5 min";
+        default: return "5 min";
+      }
+    case TrKey::Minutes10:
+      switch (lang) {
+        case UiLanguage::Polish: return "10 min";
+        case UiLanguage::Spanish: return "10 min";
+        case UiLanguage::French: return "10 min";
+        case UiLanguage::German: return "10 Min";
+        case UiLanguage::Romanian: return "10 min";
+        default: return "10 min";
+      }
+    case TrKey::Minutes15:
+      switch (lang) {
+        case UiLanguage::Polish: return "15 min";
+        case UiLanguage::Spanish: return "15 min";
+        case UiLanguage::French: return "15 min";
+        case UiLanguage::German: return "15 Min";
+        case UiLanguage::Romanian: return "15 min";
+        default: return "15 min";
+      }
+    case TrKey::Minutes20:
+      switch (lang) {
+        case UiLanguage::Polish: return "20 min";
+        case UiLanguage::Spanish: return "20 min";
+        case UiLanguage::French: return "20 min";
+        case UiLanguage::German: return "20 Min";
+        case UiLanguage::Romanian: return "20 min";
+        default: return "20 min";
+      }
+    case TrKey::Minutes30:
+      switch (lang) {
+        case UiLanguage::Polish: return "30 min";
+        case UiLanguage::Spanish: return "30 min";
+        case UiLanguage::French: return "30 min";
+        case UiLanguage::German: return "30 Min";
+        case UiLanguage::Romanian: return "30 min";
+        default: return "30 min";
+      }
+    case TrKey::Never:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nigdy";
+        case UiLanguage::Spanish: return "Nunca";
+        case UiLanguage::French: return "Jamais";
+        case UiLanguage::German: return "Nie";
+        case UiLanguage::Romanian: return "Niciodata";
+        default: return "Never";
       }
   }
   return "";
