@@ -115,6 +115,8 @@ class DisplayManager {
   void renderTextEntry(const String &title, const String &prompt, const String &value,
                        const String &helperText, const std::vector<Button> &buttons);
   void renderStatus(const String &title, const String &line1 = "", const String &line2 = "");
+  void renderStatusWithQr(const String &title, const String &line1, const bool *qrData,
+                          uint8_t qrSize);
   void renderProgress(const String &title, const String &line1 = "", const String &line2 = "",
                       int progressPercent = -1);
   void renderLifeScreensaver(const std::vector<uint32_t> &cells, uint16_t columns, uint16_t rows,

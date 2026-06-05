@@ -3040,6 +3040,87 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
+void DisplayManager::renderStatusWithQr(const String &title, const String &line1,
+                                        const bool *qrData, uint8_t qrSize) {
+  if (!initialized_ || qrData == nullptr || qrSize == 0) {
+    return;
+  }
+
+  // Nie używamy cache renderKey - zawsze renderujemy QR gdy się wywołuje
+  lastRenderKey_ = "";
+
+  const int scale = 1;
+  const int virtualWidth = kDisplayWidth;    // 640
+  const int virtualHeight = kDisplayHeight;  // 172
+
+  clearVirtualBuffer(virtualWidth, virtualHeight);
+
+  // QR kod — quiet zone musi mieć minimum 4 moduły dookoła
+  // Dobieramy rozmiar modułu: (172 - 2*4*module) / qrSize = module
+  // module * (qrSize + 8) <= 172 → module <= 172/(29+8) = 4
+  const int quietZoneModules = 4;
+  const int totalModules = qrSize + 2 * quietZoneModules;  // np. 29 + 8 = 37
+  int qrModuleSize = virtualHeight / totalModules;          // 172/37 = 4
+  if (qrModuleSize < 2) qrModuleSize = 2;
+  if (qrModuleSize > 6) qrModuleSize = 6;
+
+  const int qrPixelSize = qrSize * qrModuleSize;
+  const int quietZonePx = quietZoneModules * qrModuleSize;
+  const int totalQrWithQuiet = qrPixelSize + 2 * quietZonePx;
+
+  // QR po lewej stronie, wyśrodkowany w pionie
+  const int qrBlockX = 8;
+  const int qrBlockY = (virtualHeight - totalQrWithQuiet) / 2;
+
+  // Kolor QR: ZAWSZE czarne moduły na białym tle (standard QR)
+  const uint16_t qrBlack = 0x0000;
+  const uint16_t qrWhite = 0xFFFF;
+
+  // Białe tło (quiet zone + dane QR)
+  fillVirtualRect(qrBlockX, qrBlockY, totalQrWithQuiet, totalQrWithQuiet, qrWhite);
+
+  // Rysuj czarne moduły QR
+  const int qrDataX = qrBlockX + quietZonePx;
+  const int qrDataY = qrBlockY + quietZonePx;
+
+  for (uint8_t y = 0; y < qrSize; y++) {
+    for (uint8_t x = 0; x < qrSize; x++) {
+      if (qrData[y * qrSize + x]) {
+        const int px = qrDataX + x * qrModuleSize;
+        const int py = qrDataY + y * qrModuleSize;
+        fillVirtualRect(px, py, qrModuleSize, qrModuleSize, qrBlack);
+      }
+    }
+  }
+
+  // Tekst po prawej stronie QR kodu
+  const int textAreaX = qrBlockX + totalQrWithQuiet + 14;
+  const int textAreaWidth = virtualWidth - textAreaX - 8;
+
+  const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(title));
+  const int titleY = std::max(0, (virtualHeight - glyphHeight) / 2 - 16);
+  const int line1Y = titleY + glyphHeight + 12;
+  const int line2Y = line1Y + kTinyGlyphHeight * kTinyScale + 8;
+
+  // Tytuł wyśrodkowany w obszarze tekstowym po prawej
+  drawSerifTextScaledCentered(title, titleY, wordColor(), 50, textAreaWidth, textAreaX);
+
+  // Linia 1 (SSID)
+  if (!line1.isEmpty()) {
+    drawTinyTextCentered(line1, line1Y, focusColor(), kTinyScale, textAreaWidth, textAreaX);
+  }
+
+  // Instrukcja "Zeskanuj telefonem"
+  const String hint = "Scan to connect";
+  drawTinyTextCentered(hint, line2Y, dimColor(), kTinyScale, textAreaWidth, textAreaX);
+
+  // Wskazówka nawigacji
+  drawTinyTextAt("<", 4, 4, dimColor(), kTinyScale);
+  drawBatteryBadge();
+
+  flushScaledFrame(scale, virtualWidth, virtualHeight);
+}
+
 void DisplayManager::renderProgress(const String &title, const String &line1, const String &line2,
                                     int progressPercent) {
   progressPercent = std::max(-1, std::min(100, progressPercent));

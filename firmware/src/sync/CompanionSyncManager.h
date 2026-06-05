@@ -19,6 +19,9 @@ class CompanionSyncManager {
   String statusLine1() const;
   String statusLine2() const;
   String baseUrl() const;
+  bool hasQrCode() const;
+  const bool *qrCodeData() const;
+  uint8_t qrCodeSize() const;
 
  private:
   enum class NetworkMode : uint8_t {
@@ -94,4 +97,6 @@ class CompanionSyncManager {
   NetworkMode networkMode_ = NetworkMode::None;
   bool active_ = false;
   bool serverStarted_ = false;
+  bool qrData_[64 * 64] = {};  // Bufor dla QR kodu (max 64x64 moduły)
+  uint8_t qrSize_ = 0;
 };

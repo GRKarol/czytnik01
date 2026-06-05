@@ -1005,7 +1005,12 @@ void App::setState(AppState nextState, uint32_t nowMs) {
       renderMenu();
       break;
     case AppState::CompanionSync:
-      display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
+      if (companionSync_.hasQrCode()) {
+        display_.renderStatusWithQr("Wi-Fi", companionSync_.statusLine1(),
+                                    companionSync_.qrCodeData(), companionSync_.qrCodeSize());
+      } else {
+        display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
+      }
       break;
     case AppState::UsbTransfer:
       display_.renderStatus("USB", tr(TrKey::PreparingSD),
@@ -5311,8 +5316,14 @@ void App::updateCompanionSync(uint32_t nowMs) {
 
   if (nowMs - lastCompanionSyncRenderMs_ >= 1000) {
     lastCompanionSyncRenderMs_ = nowMs;
-    display_.renderStatus(polish("< Wroc | Sync", "< Back | Sync"),
-                          companionSync_.statusLine1(), companionSync_.statusLine2());
+    if (companionSync_.hasQrCode()) {
+      display_.renderStatusWithQr(polish("< Wroc | Wi-Fi", "< Back | Wi-Fi"),
+                                  companionSync_.statusLine1(),
+                                  companionSync_.qrCodeData(), companionSync_.qrCodeSize());
+    } else {
+      display_.renderStatus(polish("< Wroc | Sync", "< Back | Sync"),
+                            companionSync_.statusLine1(), companionSync_.statusLine2());
+    }
   }
 }
 

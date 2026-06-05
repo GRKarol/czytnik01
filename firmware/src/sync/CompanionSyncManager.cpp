@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <vector>
 
+#include "sync/WifiQrCode.h"
+
 namespace {
 
 constexpr const char *kMdnsName = "rsvp-nano";
@@ -592,6 +594,7 @@ void CompanionSyncManager::end() {
   active_ = false;
   statusLine1_ = "Idle";
   statusLine2_ = "";
+  qrSize_ = 0;
   instance_ = nullptr;
 }
 
@@ -610,6 +613,12 @@ String CompanionSyncManager::baseUrl() const {
   }
   return "";
 }
+
+bool CompanionSyncManager::hasQrCode() const { return qrSize_ > 0; }
+
+const bool *CompanionSyncManager::qrCodeData() const { return qrData_; }
+
+uint8_t CompanionSyncManager::qrCodeSize() const { return qrSize_; }
 
 void CompanionSyncManager::handleInfoStatic() {
   if (instance_ != nullptr) {
@@ -708,6 +717,15 @@ bool CompanionSyncManager::startAccessPoint() {
 
   networkMode_ = NetworkMode::AccessPoint;
   Serial.printf("[sync] softAP ssid=%s ip=%s\n", ssid.c_str(), ipToString(WiFi.softAPIP()).c_str());
+
+  // Generuj QR kod dla WiFi bez hasła (otwarte AP)
+  qrSize_ = WifiQrCode::generate(ssid, "", qrData_, 64);
+  if (qrSize_ > 0) {
+    Serial.printf("[sync] QR code generated: %dx%d\n", qrSize_, qrSize_);
+  } else {
+    Serial.println("[sync] QR code generation failed");
+  }
+
   return true;
 }
 
