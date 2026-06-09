@@ -28,6 +28,9 @@ export interface DeviceSettings {
   showChapterWhileReading: boolean;
   showPercentWhileReading: boolean;
   devMode: boolean;
+  scrollFontSize: number; // 0–8 (numeric scale, 0=tiny, 8=maximum)
+  scrollLineSpacing: number; // 0–2 (Compact → Relaxed)
+  scrollMargin: number; // 0–2 (Narrow → Wide)
 }
 
 export interface Book {
@@ -55,6 +58,9 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   showChapterWhileReading: true,
   showPercentWhileReading: true,
   devMode: false,
+  scrollFontSize: 4, // Medium (level 4 of 0-8)
+  scrollLineSpacing: 1, // Normal
+  scrollMargin: 1, // Normal
 };
 
 export interface DeviceApi {
@@ -150,7 +156,10 @@ export class MockDeviceApi implements DeviceApi {
 
   async deleteBook(name: string): Promise<void> {
     const list = read<Book[]>(STORE_BOOKS, MOCK_BOOKS_SEED);
-    write(STORE_BOOKS, list.filter((b) => b.name !== name));
+    write(
+      STORE_BOOKS,
+      list.filter((b) => b.name !== name),
+    );
     await this.delay(undefined, 200);
   }
 

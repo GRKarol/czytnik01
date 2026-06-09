@@ -12,8 +12,10 @@ import "./components/library-panel.element";
 import "./components/settings-panel.element";
 import "./components/onboarding.element";
 import "./components/pwa-install-dialog.element";
+import "./components/tutorial-wizard.element";
 import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from "./device/api";
 import { HttpDeviceApi, pingDevice } from "./device/http-api";
+import { getTutorialStatus } from "./onboarding/onboarding-store";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
 type Transport = "wifi" | "bluetooth" | "serial";
@@ -109,6 +111,7 @@ export class CzytnikApp extends LitElement {
   @state() private chosenTransport: Transport | null = null;
   @state() private showAdvanced = false;
   @state() private devMode = false;
+  @state() private showTutorial = false;
 
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
@@ -118,12 +121,24 @@ export class CzytnikApp extends LitElement {
     this.refreshDevMode();
     this.unsubApi = onDeviceApiChange(() => this.refreshDevMode());
     this.addEventListener("device-settings-changed", () => this.refreshDevMode());
+    this.addEventListener("tutorial-close", this.handleTutorialClose);
+    this.addEventListener("restart-tutorial", this.handleRestartTutorial);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.unsubApi?.();
+    this.removeEventListener("tutorial-close", this.handleTutorialClose);
+    this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
   }
+
+  private handleTutorialClose = () => {
+    this.showTutorial = false;
+  };
+
+  private handleRestartTutorial = () => {
+    this.showTutorial = true;
+  };
 
   /** Sprawdza w API czy dev mode jest włączony — odświeża badge w header. */
   private async refreshDevMode(): Promise<void> {
@@ -139,6 +154,7 @@ export class CzytnikApp extends LitElement {
     return html`
       <onboarding-wizard></onboarding-wizard>
       <pwa-install-dialog></pwa-install-dialog>
+      ${this.showTutorial ? html`<tutorial-wizard></tutorial-wizard>` : ""}
 
       <div class="sky">
         <flower-decor density="medium"></flower-decor>
@@ -455,6 +471,12 @@ export class CzytnikApp extends LitElement {
             : new SerialLink();
       await this.link.connect();
       this.connected = true;
+
+      // Show tutorial wizard if not yet seen (after first device connection)
+      if (getTutorialStatus() === "not_seen") {
+        this.showTutorial = true;
+      }
+
       // Przełącz API komponentów na real HTTP — biblioteka i ustawienia
       // od teraz gadają z urządzeniem zamiast z mockiem.
       // (BLE i USB jeszcze nie mają back-end API, więc dopiero WiFi to robi.)

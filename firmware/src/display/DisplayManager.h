@@ -70,12 +70,16 @@ class DisplayManager {
   void setUiOrientation(BoardConfig::UiOrientation orientation);
   void setUiRotated180(bool rotated180);
   void setTypographyConfig(const TypographyConfig &config);
+  void setScrollFontSize(uint8_t level);
+  void setScrollLineSpacing(uint8_t level);
+  void setScrollMargin(uint8_t level);
   TypographyConfig typographyConfig() const;
   bool darkMode() const;
   bool nightMode() const;
   void prepareForSleep();
   bool wakeFromSleep();
   void renderCenteredWord(const String &word, uint16_t color = 0xFFFF);
+  void renderBootSplash();
   void renderRsvpWord(const String &word, const String &chapterLabel = "",
                       uint8_t progressPercent = 0, bool showFooter = true,
                       const String &footerStatusLabel = "",
@@ -211,4 +215,13 @@ class DisplayManager {
   bool tickerPlaybackFrameActive_ = false;
   String lastRenderKey_;
   String batteryLabel_;
+
+  uint8_t scrollFontSize_ = 4;
+  uint8_t scrollLineSpacing_ = 1;
+  uint8_t scrollMargin_ = 1;
+
+  int scrollLineHeightPx() const;
+  int scrollMarginPx() const;
+  int scrollSerifDivisor() const;
+  uint8_t scrollScalePercent() const;
 };

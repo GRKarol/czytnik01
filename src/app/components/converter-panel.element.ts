@@ -7,6 +7,7 @@ import {
   type ParsedBook,
   type SupportedFormat,
 } from "../converter";
+import "./first-use-hint.element";
 
 type Stage = "idle" | "parsing" | "ready" | "error";
 
@@ -23,6 +24,7 @@ export class ConverterPanel extends LitElement {
 
   render() {
     return html`
+      <first-use-hint screen-key="converter"></first-use-hint>
       <div
         class=${`drop ${this.dragOver ? "over" : ""}`}
         @dragover=${this.onDragOver}
@@ -39,7 +41,9 @@ export class ConverterPanel extends LitElement {
         <label for="picker" class="picker">
           <strong>Wybierz plik</strong>
           <span>lub upuść go tutaj</span>
-          <span class="formats">EPUB · PDF · TXT · MD · HTML &nbsp;·&nbsp; <i>MOBI wkrótce</i></span>
+          <span class="formats"
+            >EPUB · PDF · TXT · MD · HTML &nbsp;·&nbsp; <i>MOBI wkrótce</i></span
+          >
         </label>
       </div>
 
@@ -185,7 +189,9 @@ export class ConverterPanel extends LitElement {
       border-radius: 18px;
       padding: 28px 18px;
       text-align: center;
-      transition: border-color 0.15s ease, background 0.15s ease;
+      transition:
+        border-color 0.15s ease,
+        background 0.15s ease;
       background: var(--paper-tint);
     }
     .drop.over {
@@ -205,7 +211,10 @@ export class ConverterPanel extends LitElement {
     }
     .picker span {
       color: var(--muted);
-      font: 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .formats {
       margin-top: 6px;
@@ -214,12 +223,18 @@ export class ConverterPanel extends LitElement {
     .status {
       margin: 0;
       color: var(--muted);
-      font: 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .error {
       margin: 0;
       color: var(--err);
-      font: 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .result {
       display: flex;
@@ -239,7 +254,10 @@ export class ConverterPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      font: 600 0.78rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--muted);
     }
     .meta input {
@@ -247,7 +265,10 @@ export class ConverterPanel extends LitElement {
       border: 1px solid var(--line);
       border-radius: 12px;
       background: #fff;
-      font: 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--ink);
     }
     .meta input:focus {
@@ -270,7 +291,10 @@ export class ConverterPanel extends LitElement {
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--paper-tint);
-      font: 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--muted);
     }
     .stats strong {
@@ -292,7 +316,10 @@ export class ConverterPanel extends LitElement {
       border-radius: 999px;
       color: #fff;
       background: var(--accent);
-      font: 700 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        700 0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
     }
     .cta:hover {
@@ -312,7 +339,10 @@ export class ConverterPanel extends LitElement {
       border-radius: 12px;
       padding: 10px 12px;
       background: var(--paper-tint);
-      font: 0.82rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.82rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .preview summary {
       cursor: pointer;
@@ -320,7 +350,10 @@ export class ConverterPanel extends LitElement {
     }
     .preview pre {
       margin: 8px 0 0;
-      font: 0.78rem/1.5 ui-monospace, SFMono-Regular, monospace;
+      font:
+        0.78rem/1.5 ui-monospace,
+        SFMono-Regular,
+        monospace;
       color: var(--ink-soft);
       white-space: pre-wrap;
       max-height: 220px;

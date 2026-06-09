@@ -148,7 +148,7 @@ void begin() {
   gpio_deep_sleep_hold_dis();
   gpio_hold_dis(static_cast<gpio_num_t>(PIN_LCD_BACKLIGHT));
   pinMode(PIN_LCD_BACKLIGHT, OUTPUT);
-  digitalWrite(PIN_LCD_BACKLIGHT, LOW);
+  digitalWrite(PIN_LCD_BACKLIGHT, HIGH);  // HIGH = backlight OFF (active-low)
 
   Wire.begin(PIN_TOUCH_SDA, PIN_TOUCH_SCL);
   Wire.setClock(300000);

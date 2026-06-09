@@ -72,6 +72,8 @@ enum class UiText : uint8_t {
   TimeEstimate,
   TimeEstimateAccurate,
   TimeEstimateFast,
+  ScrollLineSpacing,
+  ScrollMargins,
 };
 
 namespace Localization {
@@ -229,6 +231,10 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Preciso";
         case UiText::TimeEstimateFast:
           return "Rapido";
+        case UiText::ScrollLineSpacing:
+          return "Interlineado";
+        case UiText::ScrollMargins:
+          return "Margenes";
       }
       break;
     case UiLanguage::French:
@@ -351,6 +357,10 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Precis";
         case UiText::TimeEstimateFast:
           return "Rapide";
+        case UiText::ScrollLineSpacing:
+          return "Interligne";
+        case UiText::ScrollMargins:
+          return "Marges";
       }
       break;
     case UiLanguage::German:
@@ -473,6 +483,10 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Genau";
         case UiText::TimeEstimateFast:
           return "Schnell";
+        case UiText::ScrollLineSpacing:
+          return "Zeilenabst.";
+        case UiText::ScrollMargins:
+          return "Raender";
       }
       break;
     case UiLanguage::Romanian:
@@ -595,6 +609,10 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Exact";
         case UiText::TimeEstimateFast:
           return "Rapid";
+        case UiText::ScrollLineSpacing:
+          return "Spatiere";
+        case UiText::ScrollMargins:
+          return "Margini";
       }
       break;
     case UiLanguage::Polish:
@@ -717,6 +735,10 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Dokladny";
         case UiText::TimeEstimateFast:
           return "Szybki";
+        case UiText::ScrollLineSpacing:
+          return "Interlinia";
+        case UiText::ScrollMargins:
+          return "Marginesy";
       }
       break;
     case UiLanguage::English:
@@ -840,6 +862,10 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Accurate";
         case UiText::TimeEstimateFast:
           return "Fast";
+        case UiText::ScrollLineSpacing:
+          return "Line spacing";
+        case UiText::ScrollMargins:
+          return "Margins";
       }
       break;
   }

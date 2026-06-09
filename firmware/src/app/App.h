@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "app/AppState.h"
+#include "app/HelpTexts.h"
 #include "app/Localization.h"
 #include "app/Translations.h"
 #include "audio/AudioManager.h"
@@ -17,6 +18,7 @@
 #include "plugins/PluginManager.h"
 #include "reader/ReadingLoop.h"
 #include "rss/RssFeedManager.h"
+#include "storage/PresetManager.h"
 #include "storage/StorageManager.h"
 #include "ble/BleApi.h"
 #include "sync/CompanionSyncManager.h"
@@ -110,6 +112,13 @@ class App {
     WelcomeHighlightColor,
     WelcomePacing,
     WelcomeConnect,
+    TutorialStep1,
+    TutorialStep2,
+    TutorialStep3,
+    TutorialStep4,
+    TutorialStep5,
+    Presets,
+    PresetsDeleteConfirm,
   };
 
   enum class FooterMetricMode : uint8_t {
@@ -143,6 +152,7 @@ class App {
     WifiPassword,
     OtaOwner,
     SavePointName,
+    PresetName,
   };
 
   enum class KeyboardMode : uint8_t {
@@ -342,6 +352,14 @@ class App {
   void openWelcomeConnect(uint32_t nowMs);
   void selectWelcomeConnectItem(uint32_t nowMs);
   void finishWelcomeWizard(uint32_t nowMs);
+  void openTutorialStep1();
+  void openTutorialStep2();
+  void openTutorialStep3();
+  void openTutorialStep4();
+  void openTutorialStep5();
+  void finishTutorial(uint32_t nowMs);
+  void renderTutorialStep();
+  void handleTutorialTap(uint32_t nowMs);
   String pacingDelayLabel(uint16_t delayMs) const;
   String firmwareUpdateMenuLabel() const;
   String themeModeLabel() const;
@@ -351,6 +369,9 @@ class App {
   void cycleFocusColor(uint32_t nowMs);
   String uiLanguageLabel() const;
   String readerModeLabel() const;
+  String scrollFontSizeLabel() const;
+  String scrollLineSpacingLabel() const;
+  String scrollMarginLabel() const;
   String pauseModeLabel() const;
   String handednessLabel() const;
   String readerFontSizeLabel() const;
@@ -375,6 +396,12 @@ class App {
   void selectPluginsItem(uint32_t nowMs);
   void runPluginInstall(PluginManager::PluginId id, uint32_t nowMs);
   void runPluginRemove(PluginManager::PluginId id, uint32_t nowMs);
+  void openPresets();
+  void selectPresetsItem(uint32_t nowMs);
+  void confirmDeletePreset(size_t index, uint32_t nowMs);
+  void executeDeletePreset(uint32_t nowMs);
+  void executeSavePreset(uint32_t nowMs);
+  void executeRestorePreset(size_t index, uint32_t nowMs);
   void openRestartConfirm();
   void selectRestartConfirmItem(uint32_t nowMs);
   void openSdCardRepairConfirm();
@@ -409,6 +436,8 @@ class App {
   void openScreensaverSettings();
   void selectScreensaverSettingsItem(uint32_t nowMs);
   void renderScreensaverSettings();
+  void showHelpForCurrentItem();
+  void dismissHelpPopup(uint32_t nowMs);
   String screensaverTimeoutLabel() const;
   String screensaverAutoOffLabel() const;
   String screensaverSleepGuardLabel() const;
@@ -434,6 +463,7 @@ class App {
   void renderMenu();
   void renderMainMenu();
   void renderSettings();
+  void showScrollSettingsPreview();
   void renderTypographyTuning();
   void renderBookPicker();
   void renderBookDetails();
@@ -527,6 +557,7 @@ class App {
   BleApi ble_;
   UsbMassStorageManager usbTransfer_;
   PluginManager pluginManager_;
+  PresetManager presetManager_;
   Preferences preferences_;
   PausedTouchSession pausedTouch_;
   TouchIntent pausedTouchIntent_ = TouchIntent::None;
@@ -573,6 +604,9 @@ class App {
   size_t focusTimerGenreSelectedIndex_ = 0;
   uint8_t brightnessLevelIndex_ = 4;
   uint8_t readerFontSizeIndex_ = 0;
+  uint8_t scrollFontSize_ = 4;
+  uint8_t scrollLineSpacing_ = 1;
+  uint8_t scrollMargin_ = 1;
   uint16_t pacingLongWordDelayMs_ = 200;
   uint16_t pacingComplexWordDelayMs_ = 200;
   uint16_t pacingPunctuationDelayMs_ = 200;
@@ -592,6 +626,9 @@ class App {
   std::vector<SavePoint> savePoints_;
   std::vector<String> savePointMenuItems_;
   size_t savePointSelectedIndex_ = 0;
+  std::vector<String> presetFilenames_;
+  size_t presetsDeleteTargetIndex_ = 0;
+  size_t presetsSelectedIndex_ = 0;
   std::vector<String> bookDetailsMenuItems_;
   size_t bookDetailsSelectedIndex_ = 0;
   size_t bookDetailsBookIndex_ = 0;
@@ -678,6 +715,11 @@ class App {
   bool readerChapterVisibleWhilePlaying_ = false;
   bool readerProgressVisibleWhilePlaying_ = false;
   bool savePointButtonVisible_ = true;
+  bool showHelpHints_ = true;
+  bool showingHelpPopup_ = false;
+  bool tutorialCompleted_ = false;
+  const char* helpPopupTitle_ = nullptr;
+  const char* helpPopupDesc_ = nullptr;
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;
   BatteryLabelMode batteryLabelMode_ = BatteryLabelMode::Percent;
   ScreensaverMode screensaverMode_ = ScreensaverMode::Life;

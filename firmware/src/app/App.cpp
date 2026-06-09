@@ -50,6 +50,8 @@ constexpr int kMaxScrubStepsPerGesture = 96;
 constexpr uint32_t kBrowseMinWordsPerSecondPermille = 4000;
 constexpr uint32_t kBrowseMaxWordsPerSecondPermille = 72000;
 constexpr uint32_t kFocusTimerCancelHoldMs = 850;
+constexpr uint32_t kHelpLongPressMs = 600;
+constexpr uint16_t kHelpLongPressMaxDriftPx = 20;
 constexpr size_t kContextPreviewWindowWords = 288;
 constexpr size_t kContextPreviewAnchorLeadWords = 112;
 constexpr size_t kContextPreviewMaxParagraphSnapWords = 48;
@@ -148,14 +150,15 @@ constexpr size_t kSdCardRepairConfirmHeaderRows = 1;
 constexpr size_t kUpdateConfirmHeaderRows = 2;
 constexpr size_t kSettingsBackIndex = 0;
 // SettingsHome — nowy układ, ułożony pod codzienne użycie.
-// Indeksy 1–4 są zawsze widoczne; 5–7 tylko gdy `devModeEnabled()`.
+// Indeksy 1–5 są zawsze widoczne; 6 (About) też; 7–8 tylko gdy `devModeEnabled()`.
 constexpr size_t kSettingsHomeReadingIndex = 1;       // = stare Pacing
 constexpr size_t kSettingsHomeDisplayIndex = 2;
-constexpr size_t kSettingsHomeConnectivityIndex = 3;  // NEW
-constexpr size_t kSettingsHomeAboutIndex = 4;         // NEW
-constexpr size_t kSettingsHomeTypographyIndex = 5;    // dev only
-constexpr size_t kSettingsHomeWifiIndex = 6;          // dev only (Wi-Fi advanced)
-constexpr size_t kSettingsHomeUpdateIndex = 7;        // dev only (PWA Aktualizacje ma to lepiej)
+constexpr size_t kSettingsHomeTypographyIndex = 3;    // always visible (moved from dev-only)
+constexpr size_t kSettingsHomeConnectivityIndex = 4;
+constexpr size_t kSettingsHomePresetsIndex = 5;       // Presets
+constexpr size_t kSettingsHomeAboutIndex = 6;
+constexpr size_t kSettingsHomeWifiIndex = 7;          // dev only
+constexpr size_t kSettingsHomeUpdateIndex = 8;        // dev only
 
 // Zachowujemy starą nazwę dla kompatybilności z pozostałymi miejscami,
 // które do niej odwołują się dla cofania z głębszych ekranów.
@@ -179,9 +182,11 @@ constexpr size_t kSettingsConnUsbIndex = 4;         // Kopiuj przez USB
 constexpr size_t kSettingsAboutVersionIndex = 1;   // tap-target dla dev mode
 constexpr size_t kSettingsAboutBrandIndex = 2;
 constexpr size_t kSettingsAboutSdCardIndex = 3;    // SD card check (moved from main menu)
-constexpr size_t kSettingsAboutDevModeIndex = 4;   // pokazywane gdy dev mode
+constexpr size_t kSettingsAboutTutorialIndex = 4;  // restart tutorial
+constexpr size_t kSettingsAboutDevModeIndex = 5;   // pokazywane gdy dev mode
 
 constexpr const char *kPrefSetupDone = "setup_done";
+constexpr const char *kPrefTutorialDone = "tut_done";
 constexpr size_t kSettingsDisplayThemeIndex = 1;
 constexpr size_t kSettingsDisplayBrightnessIndex = 2;
 constexpr size_t kSettingsDisplayHandednessIndex = 3;
@@ -194,6 +199,7 @@ constexpr size_t kSettingsDisplayReaderProgressIndex = 9;
 constexpr size_t kSettingsDisplayLanguageIndex = 10;
 constexpr size_t kSettingsDisplayFocusColorIndex = 11;
 constexpr size_t kSettingsDisplaySavePointBtnIndex = 12;
+constexpr size_t kSettingsDisplayHelpHintsIndex = 13;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
 constexpr size_t kSettingsPacingPauseModeIndex = 2;
 constexpr size_t kSettingsPacingWpmIndex = 3;
@@ -201,6 +207,11 @@ constexpr size_t kSettingsPacingLongWordsIndex = 4;
 constexpr size_t kSettingsPacingComplexityIndex = 5;
 constexpr size_t kSettingsPacingPunctuationIndex = 6;
 constexpr size_t kSettingsPacingResetIndex = 7;
+// Scroll-specific indices (when readerMode_ == Scroll, these replace RSVP items)
+constexpr size_t kSettingsPacingScrollFontSizeIndex = 2;
+constexpr size_t kSettingsPacingScrollLineSpacingIndex = 3;
+constexpr size_t kSettingsPacingScrollMarginIndex = 4;
+constexpr size_t kSettingsPacingScrollPreviewIndex = 5;
 constexpr size_t kWifiSettingsNetworkIndex = 1;
 constexpr size_t kWifiSettingsChooseIndex = 2;
 constexpr size_t kWifiSettingsForgetIndex = 3;
@@ -269,6 +280,9 @@ constexpr const char *kPrefTypographyTracking = "type_trk";
 constexpr const char *kPrefTypographyAnchor = "type_anc";
 constexpr const char *kPrefTypographyGuideWidth = "type_wid";
 constexpr const char *kPrefTypographyGuideGap = "type_gap";
+constexpr const char *kPrefScrollFontSize = "sc_font";
+constexpr const char *kPrefScrollLineSpacing = "sc_line_sp";
+constexpr const char *kPrefScrollMargin = "sc_margin";
 constexpr const char *kPrefScreensaverTimeout = "scrn_tmo";
 constexpr const char *kPrefScreensaverAutoOff = "scrn_aof";
 constexpr const char *kPrefScreensaverSleepGuard = "scrn_slp";
@@ -279,6 +293,7 @@ constexpr const char *kPrefOtaAuto = "ota_auto";
 constexpr const char *kPrefOtaOwner = "ota_owner";
 constexpr const char *kPrefDevMode = "dev_mode";
 constexpr const char *kPrefBleEnabled = "ble_on";
+constexpr const char *kPrefShowHelpHints = "help_hints";
 constexpr size_t kReaderFontSizeCount = 3;
 constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144};
 constexpr size_t kPhantomAfterCharTargets[] = {96, 144, 208};
@@ -682,6 +697,7 @@ void App::begin() {
       preferences_.getBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
   savePointButtonVisible_ =
       preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
+  showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
@@ -693,6 +709,12 @@ void App::begin() {
   if (readerFontSizeIndex_ >= kReaderFontSizeCount) {
     readerFontSizeIndex_ = 0;
   }
+  scrollFontSize_ = preferences_.getUChar(kPrefScrollFontSize, scrollFontSize_);
+  if (scrollFontSize_ > 8) scrollFontSize_ = 4;
+  scrollLineSpacing_ = preferences_.getUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
+  if (scrollLineSpacing_ > 2) scrollLineSpacing_ = 1;
+  scrollMargin_ = preferences_.getUChar(kPrefScrollMargin, scrollMargin_);
+  if (scrollMargin_ > 2) scrollMargin_ = 1;
   switch (preferences_.getUChar(kPrefFooterMetricMode,
                                 static_cast<uint8_t>(footerMetricMode_))) {
     case static_cast<uint8_t>(FooterMetricMode::ChapterTime):
@@ -799,16 +821,19 @@ void App::begin() {
 
   logApp("Initializing hardware modules");
   const bool displayReady = display_.begin();
-  updateBatteryStatus(bootStartedMs_, true);
 
+  // Show boot splash immediately after display init — before anything else.
+  // This ensures the user sees the animation ASAP with no black screen gap.
   if (displayReady) {
-    display_.renderCenteredWord("READY");
+    display_.renderBootSplash();
     logApp("Display init ok");
   } else {
     ESP_LOGE(kAppTag, "Display init failed");
     Serial.println("[app] Display init failed");
   }
 
+  // Initialize remaining hardware while FLOWER is still visible on screen.
+  updateBatteryStatus(bootStartedMs_, true);
   touchInitialized_ = touch_.begin();
   audio_.begin();
   focusTimer_.begin();
@@ -820,7 +845,6 @@ void App::begin() {
   return;
 #endif
 
-  display_.renderProgress("SD", "Loading books", "Use SD converter for EPUB", 0);
   storageReady_ = storage_.begin();
   const uint16_t savedWpm = preferences_.getUShort(kPrefWpm, reader_.wpm());
   reader_.setWpm(savedWpm);
@@ -1131,6 +1155,14 @@ void App::updateState(uint32_t nowMs) {
       return;
     }
 
+    // Setup done but tutorial not finished — resume tutorial
+    tutorialCompleted_ = preferences_.getBool(kPrefTutorialDone, false);
+    if (!tutorialCompleted_) {
+      menuScreen_ = MenuScreen::TutorialStep1;
+      setState(AppState::Menu, nowMs);
+      return;
+    }
+
     setState((touchPlayHeld_ || playLocked_ || pauseAtSentenceEndRequested_) ? AppState::Playing
                                                                               : AppState::Paused,
              nowMs);
@@ -1289,6 +1321,15 @@ void App::handleBootButton(uint32_t nowMs) {
     return;
   }
 
+  if (showingHelpPopup_) {
+    // Only dismiss on actual button press, not every frame
+    if (button_.wasPressedEvent() || button_.wasReleasedEvent()) {
+      dismissHelpPopup(nowMs);
+      bootButtonLongPressHandled_ = true;
+    }
+    return;
+  }
+
   if (!bootButtonReleasedSinceBoot_) {
     if (!button_.isHeld()) {
       bootButtonReleasedSinceBoot_ = true;
@@ -1317,6 +1358,12 @@ void App::handleBootButton(uint32_t nowMs) {
   }
 
   if (button_.lastHoldDurationMs() < kThemeToggleHoldMs) {
+    // In settings menu with help enabled → show help instead of cycling brightness
+    if (state_ == AppState::Menu && showHelpHints_ && !showingHelpPopup_ &&
+        (menuScreen_ == MenuScreen::SettingsDisplay || menuScreen_ == MenuScreen::SettingsPacing)) {
+      showHelpForCurrentItem();
+      if (showingHelpPopup_) return;  // help was shown, don't cycle brightness
+    }
     cycleBrightness();
   }
 }
@@ -1419,6 +1466,14 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
         finishWelcomeWizard(nowMs);
         return;
       }
+      if (menuScreen_ == MenuScreen::TutorialStep1 ||
+          menuScreen_ == MenuScreen::TutorialStep2 ||
+          menuScreen_ == MenuScreen::TutorialStep3 ||
+          menuScreen_ == MenuScreen::TutorialStep4 ||
+          menuScreen_ == MenuScreen::TutorialStep5) {
+        finishTutorial(nowMs);
+        return;
+      }
       if (isFocusTimerMenuScreen(menuScreen_)) {
         resetFocusTimer();
       }
@@ -1457,6 +1512,9 @@ void App::applyDisplayPreferences(uint32_t nowMs, bool rerender) {
   display_.setDarkMode(darkMode_);
   display_.setNightMode(nightMode_);
   display_.setBrightnessPercent(currentBrightnessPercent());
+  display_.setScrollFontSize(scrollFontSize_);
+  display_.setScrollLineSpacing(scrollLineSpacing_);
+  display_.setScrollMargin(scrollMargin_);
 
   if (!rerender) {
     return;
@@ -1511,6 +1569,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       preferences_.getBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
   savePointButtonVisible_ =
       preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
+  showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
@@ -1522,6 +1581,12 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   if (readerFontSizeIndex_ >= kReaderFontSizeCount) {
     readerFontSizeIndex_ = 0;
   }
+  scrollFontSize_ = preferences_.getUChar(kPrefScrollFontSize, scrollFontSize_);
+  if (scrollFontSize_ > 8) scrollFontSize_ = 4;
+  scrollLineSpacing_ = preferences_.getUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
+  if (scrollLineSpacing_ > 2) scrollLineSpacing_ = 1;
+  scrollMargin_ = preferences_.getUChar(kPrefScrollMargin, scrollMargin_);
+  if (scrollMargin_ > 2) scrollMargin_ = 1;
 
   switch (preferences_.getUChar(kPrefFooterMetricMode,
                                 static_cast<uint8_t>(footerMetricMode_))) {
@@ -2521,6 +2586,15 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   pausedTouch_.lastY = event.y;
   pausedTouch_.lastMs = nowMs;
 
+  // Help popup dismiss: any touch while popup is showing dismisses it
+  if (showingHelpPopup_ && event.phase == TouchPhase::End) {
+    pausedTouch_.active = false;
+    dismissHelpPopup(nowMs);
+    return;
+  }
+
+
+
   if (event.phase != TouchPhase::End) {
     return;
   }
@@ -2561,7 +2635,9 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           menuScreen_ == MenuScreen::SavePointsList || menuScreen_ == MenuScreen::PluginsList ||
           menuScreen_ == MenuScreen::FocusTimerGenres || menuScreen_ == MenuScreen::TypographyTuning) {
         // Set selection to Back and select it
-        if (isSettingsListScreen()) {
+        if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+          presetsSelectedIndex_ = 0;
+        } else if (isSettingsListScreen()) {
           settingsSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::BookPicker) {
           bookPickerSelectedIndex_ = 0;
@@ -2756,7 +2832,10 @@ void App::moveMenuSelection(int direction) {
 
   size_t *selectedIndex = &menuSelectedIndex_;
   size_t itemCount = MenuItemCount;
-  if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
+  if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+    selectedIndex = &presetsSelectedIndex_;
+    itemCount = settingsMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
@@ -2812,7 +2891,9 @@ void App::moveMenuSelection(int direction) {
   }
 
   renderMenu();
-  if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
+  if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+    Serial.printf("[presets] selected=%s\n", settingsMenuItems_[presetsSelectedIndex_].c_str());
+  } else if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
@@ -2881,6 +2962,14 @@ void App::moveMenuSelection(int direction) {
 }
 
 void App::selectMenuItem(uint32_t nowMs) {
+  if (menuScreen_ == MenuScreen::TutorialStep1 ||
+      menuScreen_ == MenuScreen::TutorialStep2 ||
+      menuScreen_ == MenuScreen::TutorialStep3 ||
+      menuScreen_ == MenuScreen::TutorialStep4 ||
+      menuScreen_ == MenuScreen::TutorialStep5) {
+    handleTutorialTap(nowMs);
+    return;
+  }
   if (isSettingsListScreen()) {
     selectSettingsItem(nowMs);
     return;
@@ -2995,13 +3084,17 @@ void App::selectSettingsItem(uint32_t nowMs) {
       case kSettingsHomeConnectivityIndex:
         openSettingsConnectivity();
         return;
+      case kSettingsHomePresetsIndex:
+        openPresets();
+        return;
       case kSettingsHomeAboutIndex:
         openSettingsAbout();
         return;
-      // Pozycje dev-only — branchują tylko gdy menu je faktycznie pokazało.
+      // Typography is now always visible (not dev-only)
       case kSettingsHomeTypographyIndex:
-        if (devModeEnabled()) openTypographyTuning();
+        openTypographyTuning();
         return;
+      // Pozycje dev-only — branchują tylko gdy menu je faktycznie pokazało.
       case kSettingsHomeWifiIndex:
         if (devModeEnabled()) openWifiSettings();
         return;
@@ -3011,6 +3104,25 @@ void App::selectSettingsItem(uint32_t nowMs) {
       default:
         return;
     }
+  }
+
+  if (menuScreen_ == MenuScreen::Presets) {
+    selectPresetsItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+    if (presetsSelectedIndex_ == 0) {
+      // Back → return to presets list
+      openPresets();
+    } else if (presetsSelectedIndex_ == 1) {
+      // Apply → restore the preset
+      executeRestorePreset(presetsDeleteTargetIndex_, nowMs);
+    } else if (presetsSelectedIndex_ == 2) {
+      // Delete → delete the preset
+      executeDeletePreset(nowMs);
+    }
+    return;
   }
 
   if (menuScreen_ == MenuScreen::SettingsConnectivity) {
@@ -3140,6 +3252,12 @@ void App::selectSettingsItem(uint32_t nowMs) {
         rebuildSettingsMenuItems();
         renderSettings();
         return;
+      case kSettingsDisplayHelpHintsIndex:
+        showHelpHints_ = !showHelpHints_;
+        preferences_.putBool(kPrefShowHelpHints, showHelpHints_);
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
       default:
         return;
     }
@@ -3166,6 +3284,44 @@ void App::selectSettingsItem(uint32_t nowMs) {
     case kSettingsPacingReadingModeIndex:
       cycleReaderMode(nowMs);
       return;
+  }
+
+  // Scroll mode settings (indices 2, 3, 4, 5 when in Scroll mode)
+  if (readerMode_ == ReaderMode::Scroll) {
+    switch (settingsSelectedIndex_) {
+      case kSettingsPacingScrollFontSizeIndex:
+        scrollFontSize_ = static_cast<uint8_t>((scrollFontSize_ + 1) % 9);
+        preferences_.putUChar(kPrefScrollFontSize, scrollFontSize_);
+        display_.setScrollFontSize(scrollFontSize_);
+        Serial.printf("[settings] scroll font size=%u\n", scrollFontSize_);
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
+      case kSettingsPacingScrollLineSpacingIndex:
+        scrollLineSpacing_ = static_cast<uint8_t>((scrollLineSpacing_ + 1) % 3);
+        preferences_.putUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
+        display_.setScrollLineSpacing(scrollLineSpacing_);
+        Serial.printf("[settings] scroll line spacing=%s\n", scrollLineSpacingLabel().c_str());
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
+      case kSettingsPacingScrollMarginIndex:
+        scrollMargin_ = static_cast<uint8_t>((scrollMargin_ + 1) % 3);
+        preferences_.putUChar(kPrefScrollMargin, scrollMargin_);
+        display_.setScrollMargin(scrollMargin_);
+        Serial.printf("[settings] scroll margin=%s\n", scrollMarginLabel().c_str());
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
+      case kSettingsPacingScrollPreviewIndex:
+        showScrollSettingsPreview();
+        return;
+      default:
+        return;
+    }
+  }
+
+  switch (settingsSelectedIndex_) {
     case kSettingsPacingPauseModeIndex:
       pauseMode_ =
           pauseMode_ == PauseMode::SentenceEnd ? PauseMode::Instant : PauseMode::SentenceEnd;
@@ -3656,6 +3812,10 @@ void App::commitTextEntry(uint32_t nowMs) {
       openSavePointsList();
       return;
     }
+    case TextEntryPurpose::PresetName: {
+      executeSavePreset(nowMs);
+      return;
+    }
     case TextEntryPurpose::None:
     default:
       menuScreen_ = textEntrySession_.returnScreen;
@@ -3766,16 +3926,17 @@ void App::rebuildSettingsMenuItems() {
   settingsMenuItems_.clear();
   settingsMenuItems_.reserve(SettingsItemCount);
   if (menuScreen_ == MenuScreen::SettingsHome) {
-    // Nowy układ: 4 pozycje codzienne dla klienta, reszta za dev mode.
+    // Nowy układ: 6 pozycji zawsze widocznych, dev-only na końcu.
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(polish("Czytanie", "Reading"));   // 1 = Reading settings
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
-    settingsMenuItems_.push_back(tr(TrKey::Connectivity));      // 3
-    settingsMenuItems_.push_back(tr(TrKey::AboutHelp));      // 4
+    settingsMenuItems_.push_back(uiText(UiText::TypographyTune)); // 3 = Typography (always)
+    settingsMenuItems_.push_back(tr(TrKey::Connectivity));         // 4
+    settingsMenuItems_.push_back(polish("Presety", "Presets"));    // 5 = Presets
+    settingsMenuItems_.push_back(tr(TrKey::AboutHelp));            // 6
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back(uiText(UiText::TypographyTune));          // 5 dev
-      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));// 6 dev
-      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());               // 7 dev
+      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));       // 7 dev
+      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());     // 8 dev
     }
   } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
@@ -3809,6 +3970,7 @@ void App::rebuildSettingsMenuItems() {
                                  otaUpdater_.currentVersion());
     settingsMenuItems_.push_back(tr(TrKey::BrandLabel));
     settingsMenuItems_.push_back(tr2(TrKey2::SdCardCheck));
+    settingsMenuItems_.push_back(polish("Samouczek", "Tutorial"));
     if (devModeEnabled()) {
       settingsMenuItems_.push_back(tr(TrKey::DevModeOn));
     }
@@ -3873,6 +4035,8 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(polish("Kolor litery: ", "Focus color: ") + focusColorLabel());
     settingsMenuItems_.push_back(polish("Przycisk zapisu: ", "Save btn: ") +
                                  onOffLabel(savePointButtonVisible_));
+    settingsMenuItems_.push_back(polish("Pomoc (?): ", "Help (?): ") +
+                                 onOffLabel(showHelpHints_));
   } else if (menuScreen_ == MenuScreen::ScreensaverSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverStyle)) +
@@ -3887,17 +4051,24 @@ void App::rebuildSettingsMenuItems() {
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(uiText(UiText::ReadingMode) + ": " + readerModeLabel());
-    settingsMenuItems_.push_back(String(tr(TrKey::PauseBehaviour)) +
-                                 pauseModeLabel());
-    settingsMenuItems_.push_back(String(tr(TrKey::BaseSpeed)) +
-                                 String(reader_.wpm()) + " WPM");
-    settingsMenuItems_.push_back(uiText(UiText::LongWords) + ": " +
-                                 pacingDelayLabel(pacingLongWordDelayMs_));
-    settingsMenuItems_.push_back(uiText(UiText::Complexity) + ": " +
-                                 pacingDelayLabel(pacingComplexWordDelayMs_));
-    settingsMenuItems_.push_back(uiText(UiText::Punctuation) + ": " +
-                                 pacingDelayLabel(pacingPunctuationDelayMs_));
-    settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
+    if (readerMode_ == ReaderMode::Scroll) {
+      settingsMenuItems_.push_back(uiText(UiText::FontSize) + ": " + scrollFontSizeLabel());
+      settingsMenuItems_.push_back(uiText(UiText::ScrollLineSpacing) + ": " + scrollLineSpacingLabel());
+      settingsMenuItems_.push_back(uiText(UiText::ScrollMargins) + ": " + scrollMarginLabel());
+      settingsMenuItems_.push_back(String("Preview"));
+    } else {
+      settingsMenuItems_.push_back(String(tr(TrKey::PauseBehaviour)) +
+                                   pauseModeLabel());
+      settingsMenuItems_.push_back(String(tr(TrKey::BaseSpeed)) +
+                                   String(reader_.wpm()) + " WPM");
+      settingsMenuItems_.push_back(uiText(UiText::LongWords) + ": " +
+                                   pacingDelayLabel(pacingLongWordDelayMs_));
+      settingsMenuItems_.push_back(uiText(UiText::Complexity) + ": " +
+                                   pacingDelayLabel(pacingComplexWordDelayMs_));
+      settingsMenuItems_.push_back(uiText(UiText::Punctuation) + ": " +
+                                   pacingDelayLabel(pacingPunctuationDelayMs_));
+      settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
+    }
   } else if (menuScreen_ == MenuScreen::WifiSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::Network)) +
@@ -3976,11 +4147,50 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::SettingsAbout ||
          menuScreen_ == MenuScreen::ScreensaverSettings ||
          menuScreen_ == MenuScreen::WifiSettings ||
+         menuScreen_ == MenuScreen::Presets ||
+         menuScreen_ == MenuScreen::PresetsDeleteConfirm ||
          menuScreen_ == MenuScreen::WelcomeLanguage ||
          menuScreen_ == MenuScreen::WelcomeTheme ||
          menuScreen_ == MenuScreen::WelcomeHighlightColor ||
          menuScreen_ == MenuScreen::WelcomePacing ||
          menuScreen_ == MenuScreen::WelcomeConnect;
+}
+
+void App::showHelpForCurrentItem() {
+  if (!showHelpHints_) return;
+  if (settingsSelectedIndex_ == kSettingsBackIndex) return;
+
+  const HelpEntry* entry = nullptr;
+
+  if (menuScreen_ == MenuScreen::SettingsDisplay) {
+    entry = HelpTexts::getDisplayHelp(settingsSelectedIndex_ - 1);
+  } else if (menuScreen_ == MenuScreen::SettingsPacing) {
+    if (readerMode_ == ReaderMode::Scroll) {
+      entry = HelpTexts::getPacingScrollHelp(settingsSelectedIndex_ - 1);
+    } else {
+      entry = HelpTexts::getPacingHelp(settingsSelectedIndex_ - 1);
+    }
+  }
+
+  if (entry == nullptr) return;
+
+  const bool isPl = (uiLanguage_ == UiLanguage::Polish);
+  helpPopupTitle_ = isPl ? entry->titlePl : entry->titleEn;
+  helpPopupDesc_ = isPl ? entry->line1Pl : entry->line1En;
+  showingHelpPopup_ = true;
+
+  const char* line2 = isPl ? entry->line2Pl : entry->line2En;
+  display_.renderStatus(String(helpPopupTitle_), String(helpPopupDesc_),
+                        line2 ? String(line2) : "");
+}
+
+void App::dismissHelpPopup(uint32_t nowMs) {
+  (void)nowMs;
+  showingHelpPopup_ = false;
+  helpPopupTitle_ = nullptr;
+  helpPopupDesc_ = nullptr;
+  rebuildSettingsMenuItems();
+  renderSettings();
 }
 
 const char *App::polish(const char *pl, const char *en) const {
@@ -4092,6 +4302,9 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
     }
     case kSettingsAboutSdCardIndex:
       runSdCardCheck(nowMs);
+      return;
+    case kSettingsAboutTutorialIndex:
+      openTutorialStep1();
       return;
     case kSettingsAboutDevModeIndex:
       // Pokazane tylko gdy dev mode jest już włączone — pozwala wyłączyć.
@@ -4242,10 +4455,97 @@ void App::selectWelcomeConnectItem(uint32_t nowMs) {
 }
 
 void App::finishWelcomeWizard(uint32_t nowMs) {
+  (void)nowMs;
   preferences_.putBool(kPrefSetupDone, true);
-  // Po wizardzie zachowaj się jak zwykły boot: wpadnij w tryb czytnika
-  // (Paused/Playing), nie zostawiaj klienta w Main menu. Klient i tak
-  // może otworzyć menu kliknięciem power button.
+  // Start tutorial after wizard
+  openTutorialStep1();
+}
+
+// ─── Post-wizard tutorial ────────────────────────────────────────────────────
+
+void App::openTutorialStep1() {
+  menuScreen_ = MenuScreen::TutorialStep1;
+  renderTutorialStep();
+}
+
+void App::openTutorialStep2() {
+  menuScreen_ = MenuScreen::TutorialStep2;
+  renderTutorialStep();
+}
+
+void App::openTutorialStep3() {
+  menuScreen_ = MenuScreen::TutorialStep3;
+  renderTutorialStep();
+}
+
+void App::openTutorialStep4() {
+  menuScreen_ = MenuScreen::TutorialStep4;
+  renderTutorialStep();
+}
+
+void App::openTutorialStep5() {
+  menuScreen_ = MenuScreen::TutorialStep5;
+  renderTutorialStep();
+}
+
+void App::renderTutorialStep() {
+  const char *title = "";
+  const char *desc = "";
+  int step = 0;
+
+  switch (menuScreen_) {
+    case MenuScreen::TutorialStep1:
+      title = "RSVP";
+      desc = polish("Slowa jedno po drugim. Litera ORP kieruje wzrok.",
+                    "Words one at a time. ORP letter guides your eye.");
+      step = 1;
+      break;
+    case MenuScreen::TutorialStep2:
+      title = polish("Tempo", "Speed");
+      desc = polish("Przytrzymaj + gora/dol = zmiana predkosci.",
+                    "Hold + up/down = change speed.");
+      step = 2;
+      break;
+    case MenuScreen::TutorialStep3:
+      title = polish("Pauza", "Pause");
+      desc = polish("Dotknij ekranu by pauzowac/wznowic.",
+                    "Tap screen to pause/resume.");
+      step = 3;
+      break;
+    case MenuScreen::TutorialStep4:
+      title = "Menu";
+      desc = polish("Przycisk z boku otwiera menu.",
+                    "Side button opens the menu.");
+      step = 4;
+      break;
+    case MenuScreen::TutorialStep5:
+      title = polish("Pomoc ?", "Help ?");
+      desc = polish("W menu nacisnij boczny przycisk = opis.",
+                    "In menu press side button = description.");
+      step = 5;
+      break;
+    default:
+      return;
+  }
+
+  String progress = String(step) + "/5";
+  display_.renderStatus(title, desc, progress);
+}
+
+void App::handleTutorialTap(uint32_t nowMs) {
+  switch (menuScreen_) {
+    case MenuScreen::TutorialStep1: openTutorialStep2(); break;
+    case MenuScreen::TutorialStep2: openTutorialStep3(); break;
+    case MenuScreen::TutorialStep3: openTutorialStep4(); break;
+    case MenuScreen::TutorialStep4: openTutorialStep5(); break;
+    case MenuScreen::TutorialStep5: finishTutorial(nowMs); break;
+    default: break;
+  }
+}
+
+void App::finishTutorial(uint32_t nowMs) {
+  tutorialCompleted_ = true;
+  preferences_.putBool(kPrefTutorialDone, true);
   menuScreen_ = MenuScreen::Main;
   menuSelectedIndex_ = 0;
   settingsSelectedIndex_ = kSettingsBackIndex;
@@ -4551,6 +4851,75 @@ String App::readerModeLabel() const {
     default:
       return uiText(UiText::RsvpMode);
   }
+}
+
+void App::showScrollSettingsPreview() {
+  // Build sample words for preview
+  static const char *const kScrollPreviewText[] = {
+      "The", "quick", "brown", "fox", "jumps", "over",
+      "the", "lazy", "dog.", "Reading", "is", "a",
+      "wonderful", "way", "to", "explore", "new", "worlds.",
+      "Every", "book", "opens", "a", "door", "to",
+      "knowledge", "and", "imagination."
+  };
+  constexpr size_t kScrollPreviewWordCount = sizeof(kScrollPreviewText) / sizeof(kScrollPreviewText[0]);
+
+  std::vector<DisplayManager::ContextWord> previewWords;
+  previewWords.reserve(kScrollPreviewWordCount);
+  for (size_t i = 0; i < kScrollPreviewWordCount; ++i) {
+    DisplayManager::ContextWord w;
+    w.text = kScrollPreviewText[i];
+    w.paragraphStart = (i == 0 || i == 9 || i == 18);
+    w.current = (i == 5);  // highlight "over" as current word
+    previewWords.push_back(w);
+  }
+
+  // Apply current scroll display settings before rendering
+  display_.setScrollFontSize(scrollFontSize_);
+  display_.setScrollLineSpacing(scrollLineSpacing_);
+  display_.setScrollMargin(scrollMargin_);
+
+  // Build a label showing current setting values
+  String overlayText = "Font:" + scrollFontSizeLabel() +
+                       " Spacing:" + scrollLineSpacingLabel() +
+                       " Margin:" + scrollMarginLabel();
+
+  DisplayManager::ReaderChrome chrome;
+  chrome.showBattery = false;
+  chrome.showChapter = false;
+  chrome.showProgress = false;
+  chrome.showPreviousSentenceHint = false;
+  chrome.showSavePointButton = false;
+
+  // Force a fresh render by using a unique content token
+  static uint32_t previewToken = 90000;
+  ++previewToken;
+
+  display_.renderScrollView(previewWords, previewToken,
+                            0, 5, 0,
+                            "", 0, overlayText,
+                            "", chrome);
+
+  // Show preview for 1500ms then return to menu
+  delay(1500);
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+String App::scrollFontSizeLabel() const {
+  return String(scrollFontSize_);
+}
+
+String App::scrollLineSpacingLabel() const {
+  static const char *const labels[] = {"Compact", "Normal", "Relaxed"};
+  const uint8_t idx = scrollLineSpacing_ <= 2 ? scrollLineSpacing_ : 1;
+  return String(labels[idx]);
+}
+
+String App::scrollMarginLabel() const {
+  static const char *const labels[] = {"Narrow", "Normal", "Wide"};
+  const uint8_t idx = scrollMargin_ <= 2 ? scrollMargin_ : 1;
+  return String(labels[idx]);
 }
 
 String App::pauseModeLabel() const {
@@ -5311,6 +5680,160 @@ void App::runPluginRemove(PluginManager::PluginId id, uint32_t nowMs) {
 
 void App::renderPluginsList() {
   display_.renderMenu(pluginsMenuItems_, pluginsSelectedIndex_);
+}
+
+// ─── Presets ─────────────────────────────────────────────────────────────────
+
+void App::openPresets() {
+  menuScreen_ = MenuScreen::Presets;
+
+  auto presets = presetManager_.listPresets();
+  presetFilenames_.clear();
+  presetFilenames_.reserve(presets.size());
+
+  settingsMenuItems_.clear();
+  settingsMenuItems_.reserve(presets.size() + 2);
+
+  // [0] Back
+  settingsMenuItems_.push_back(uiText(UiText::Back));
+
+  // [1] Save Current / Limit reached
+  if (presets.size() < PresetManager::kMaxPresets) {
+    settingsMenuItems_.push_back(polish("+ Zapisz obecne", "+ Save Current"));
+  } else {
+    settingsMenuItems_.push_back(polish("(Limit 10 osiagniety)", "(Limit 10 reached)"));
+  }
+
+  // [2..] Preset names
+  for (const auto &p : presets) {
+    settingsMenuItems_.push_back(p.name);
+    presetFilenames_.push_back(p.filename);
+  }
+
+  presetsSelectedIndex_ = 0;
+  display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
+}
+
+void App::selectPresetsItem(uint32_t nowMs) {
+  if (presetsSelectedIndex_ == 0) {
+    // Back → return to SettingsHome
+    openSettings();
+    return;
+  }
+
+  if (presetsSelectedIndex_ == 1) {
+    // Save Current
+    if (presetFilenames_.size() < PresetManager::kMaxPresets) {
+      openTextEntry(TextEntryPurpose::PresetName,
+                    polish("Nazwa presetu", "Preset Name"),
+                    "", "", "", "", false,
+                    PresetManager::kMaxPresetNameLength,
+                    MenuScreen::Presets);
+    }
+    // If at limit, do nothing (item is informational)
+    return;
+  }
+
+  // Index >= 2: open preset detail screen (Apply / Delete)
+  const size_t presetIndex = presetsSelectedIndex_ - 2;
+  confirmDeletePreset(presetIndex, nowMs);
+}
+
+void App::executeSavePreset(uint32_t nowMs) {
+  (void)nowMs;
+
+  String validatedName = presetManager_.validateName(textEntrySession_.value);
+  textEntrySession_ = TextEntrySession();
+  textEntryButtons_.clear();
+
+  if (validatedName.isEmpty()) {
+    display_.renderStatus(polish("Presety", "Presets"),
+                          polish("Nieprawidlowa nazwa", "Invalid name"), "");
+    delay(1000);
+    openPresets();
+    return;
+  }
+
+  PresetManager::SaveResult result = presetManager_.savePreset(validatedName, preferences_);
+
+  switch (result) {
+    case PresetManager::SaveResult::Ok:
+      display_.renderStatus(polish("Presety", "Presets"),
+                            polish("Zapisano", "Saved"), validatedName);
+      delay(1000);
+      break;
+    case PresetManager::SaveResult::LimitReached:
+      display_.renderStatus(polish("Presety", "Presets"),
+                            polish("Limit osiagniety", "Limit reached"), "");
+      delay(1000);
+      break;
+    default:
+      display_.renderStatus(polish("Presety", "Presets"),
+                            polish("Blad karty SD", "SD card error"), "");
+      delay(1000);
+      break;
+  }
+
+  openPresets();
+}
+
+void App::executeRestorePreset(size_t index, uint32_t nowMs) {
+  const String &filename = presetFilenames_[index];
+  PresetManager::RestoreResult result = presetManager_.restorePreset(filename, preferences_);
+
+  if (result == PresetManager::RestoreResult::Ok) {
+    reloadRuntimePreferences(nowMs, true);
+    const String &presetName = settingsMenuItems_[index + 2];
+    display_.renderStatus(polish("Preset", "Preset"),
+                          polish("Wczytano", "Loaded"), presetName);
+    delay(1200);
+    openPresets();
+  } else {
+    display_.renderStatus(polish("Blad", "Error"),
+                          polish("Blad wczytywania presetu", "Error loading preset"), "");
+    delay(1400);
+    openPresets();
+  }
+}
+
+void App::confirmDeletePreset(size_t index, uint32_t nowMs) {
+  (void)nowMs;
+  presetsDeleteTargetIndex_ = index;
+  menuScreen_ = MenuScreen::PresetsDeleteConfirm;
+
+  // Build detail menu: Back + Apply + Delete
+  const String presetName = settingsMenuItems_[index + 2];  // offset by Back + Save Current
+
+  settingsMenuItems_.clear();
+  settingsMenuItems_.reserve(3);
+  settingsMenuItems_.push_back(uiText(UiText::Back));
+  settingsMenuItems_.push_back(polish("Zastosuj: ", "Apply: ") + presetName);
+  settingsMenuItems_.push_back(polish("Usun: ", "Delete: ") + presetName);
+
+  presetsSelectedIndex_ = 0;
+  display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
+}
+
+void App::executeDeletePreset(uint32_t nowMs) {
+  (void)nowMs;
+
+  const String &filename = presetFilenames_[presetsDeleteTargetIndex_];
+  PresetManager::DeleteResult result = presetManager_.deletePreset(filename);
+
+  switch (result) {
+    case PresetManager::DeleteResult::Ok:
+      display_.renderStatus(polish("Presety", "Presets"),
+                            polish("Usunieto", "Deleted"), "");
+      delay(800);
+      break;
+    default:
+      display_.renderStatus(polish("Presety", "Presets"),
+                            polish("Blad usuwania", "Delete failed"), "");
+      delay(1000);
+      break;
+  }
+
+  openPresets();
 }
 
 void App::openRestartConfirm() {
@@ -6802,6 +7325,8 @@ void App::renderMenu() {
       menuScreen_ == MenuScreen::WelcomePacing ||
       menuScreen_ == MenuScreen::WelcomeConnect) {
     renderSettings();
+  } else if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+    display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     renderWifiNetworks();
   } else if (menuScreen_ == MenuScreen::TextEntry) {
@@ -6828,6 +7353,12 @@ void App::renderMenu() {
     renderFocusTimerGenres();
   } else if (menuScreen_ == MenuScreen::FocusTimerSession) {
     renderFocusTimerSession();
+  } else if (menuScreen_ == MenuScreen::TutorialStep1 ||
+             menuScreen_ == MenuScreen::TutorialStep2 ||
+             menuScreen_ == MenuScreen::TutorialStep3 ||
+             menuScreen_ == MenuScreen::TutorialStep4 ||
+             menuScreen_ == MenuScreen::TutorialStep5) {
+    renderTutorialStep();
   } else {
     renderMainMenu();
   }
@@ -6849,7 +7380,24 @@ void App::renderSettings() {
   if (settingsMenuItems_.empty()) {
     rebuildSettingsMenuItems();
   }
-  display_.renderMenu(settingsMenuItems_, settingsSelectedIndex_);
+
+  // Show "?" indicator on selected item only if help is available
+  std::vector<String> renderItems = settingsMenuItems_;
+  if (showHelpHints_ && settingsSelectedIndex_ < renderItems.size() && settingsSelectedIndex_ > 0) {
+    bool hasHelp = false;
+    if (menuScreen_ == MenuScreen::SettingsDisplay) {
+      hasHelp = HelpTexts::getDisplayHelp(settingsSelectedIndex_ - 1) != nullptr;
+    } else if (menuScreen_ == MenuScreen::SettingsPacing) {
+      hasHelp = (readerMode_ == ReaderMode::Scroll)
+        ? HelpTexts::getPacingScrollHelp(settingsSelectedIndex_ - 1) != nullptr
+        : HelpTexts::getPacingHelp(settingsSelectedIndex_ - 1) != nullptr;
+    }
+    if (hasHelp) {
+      renderItems[settingsSelectedIndex_] += " ?";
+    }
+  }
+
+  display_.renderMenu(renderItems, settingsSelectedIndex_);
 }
 
 void App::renderTypographyTuning() {

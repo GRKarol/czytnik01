@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { deviceApi, onDeviceApiChange, type Book } from "../device/api";
+import "./first-use-hint.element";
 
 @customElement("library-panel")
 export class LibraryPanel extends LitElement {
@@ -27,33 +28,39 @@ export class LibraryPanel extends LitElement {
 
     const list = this.filtered();
     return html`
+      <first-use-hint screen-key="reading"></first-use-hint>
       <div class="actions">
-        <input
-          id="upload"
-          type="file"
-          accept=".rsvp,.txt,.epub"
-          hidden
-          @change=${this.onUpload}
-        />
+        <input id="upload" type="file" accept=".rsvp,.txt,.epub" hidden @change=${this.onUpload} />
         <label for="upload" class="btn">Wyślij plik na urządzenie</label>
         <button class="btn ghost" @click=${this.refresh}>Odśwież</button>
       </div>
 
       <div class="tabs">
         ${this.tabButton("all", "Wszystko", this.books.length)}
-        ${this.tabButton("book", "Książki", this.books.filter((b) => b.category !== "article").length)}
-        ${this.tabButton("article", "Artykuły", this.books.filter((b) => b.category === "article").length)}
+        ${this.tabButton(
+          "book",
+          "Książki",
+          this.books.filter((b) => b.category !== "article").length,
+        )}
+        ${this.tabButton(
+          "article",
+          "Artykuły",
+          this.books.filter((b) => b.category === "article").length,
+        )}
       </div>
 
       ${list.length === 0
         ? html`<p class="muted">
-            Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce <strong>Konwerter</strong>.
+            Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce
+            <strong>Konwerter</strong>.
           </p>`
-        : html`<ul class="list">${list.map((b) => this.row(b))}</ul>`}
+        : html`<ul class="list">
+            ${list.map((b) => this.row(b))}
+          </ul>`}
 
       <p class="hint muted">
-        Lista jest na razie symulowana w pamięci telefonu — kiedy firmware
-        zacznie odpowiadać przez WiFi, ta sama logika pójdzie na realne API.
+        Lista jest na razie symulowana w pamięci telefonu — kiedy firmware zacznie odpowiadać przez
+        WiFi, ta sama logika pójdzie na realne API.
       </p>
     `;
   }
@@ -136,12 +143,18 @@ export class LibraryPanel extends LitElement {
     }
     .muted {
       color: var(--muted);
-      font: 0.92rem/1.45 ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.92rem/1.45 ui-sans-serif,
+        system-ui,
+        sans-serif;
       margin: 0;
     }
     .error {
       color: var(--err);
-      font: 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       margin: 0;
     }
     .actions {
@@ -157,7 +170,10 @@ export class LibraryPanel extends LitElement {
       border-radius: 999px;
       color: #fff;
       background: var(--accent);
-      font: 700 0.9rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        700 0.9rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
     }
     .btn.ghost {
@@ -177,7 +193,10 @@ export class LibraryPanel extends LitElement {
       border-radius: 999px;
       background: var(--paper-tint);
       color: var(--ink-soft);
-      font: 600 0.78rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
     }
     .tab.active {
@@ -221,7 +240,10 @@ export class LibraryPanel extends LitElement {
       white-space: nowrap;
     }
     .meta span {
-      font: 0.78rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--muted);
     }
     .del {

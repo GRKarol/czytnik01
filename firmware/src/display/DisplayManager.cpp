@@ -973,6 +973,51 @@ DisplayManager::TypographyConfig DisplayManager::typographyConfig() const {
   return activeTypographyConfig();
 }
 
+void DisplayManager::setScrollFontSize(uint8_t level) {
+  scrollFontSize_ = level <= 8 ? level : 4;
+}
+
+void DisplayManager::setScrollLineSpacing(uint8_t level) {
+  scrollLineSpacing_ = level <= 2 ? level : 1;
+}
+
+void DisplayManager::setScrollMargin(uint8_t level) {
+  scrollMargin_ = level <= 2 ? level : 1;
+}
+
+int DisplayManager::scrollLineHeightPx() const {
+  // Line height for each of the 9 font size levels — proportional to text size + padding
+  static const int kLineHeights[] = {22, 25, 28, 31, 35, 39, 45, 53, 65};
+  // Line spacing: 0=Compact(-4), 1=Normal(0), 2=Relaxed(+8)
+  static const int kSpacingOffset[] = {-4, 0, 8};
+  const uint8_t fs = scrollFontSize_ <= 8 ? scrollFontSize_ : 4;
+  const uint8_t ls = scrollLineSpacing_ <= 2 ? scrollLineSpacing_ : 1;
+  return kLineHeights[fs] + kSpacingOffset[ls];
+}
+
+int DisplayManager::scrollMarginPx() const {
+  // Margin levels: 0=Narrow(8px), 1=Normal(18px), 2=Wide(32px)
+  static const int kMargins[] = {8, 18, 32};
+  const uint8_t m = scrollMargin_ <= 2 ? scrollMargin_ : 1;
+  return kMargins[m];
+}
+
+int DisplayManager::scrollSerifDivisor() const {
+  // Fallback for any code still using divisor — derived from scalePercent
+  const uint8_t pct = scrollScalePercent();
+  if (pct >= 80) return 1;
+  if (pct >= 40) return 2;
+  return 3;
+}
+
+uint8_t DisplayManager::scrollScalePercent() const {
+  // 9 levels (0-8), each a distinct scalePercent for truly different text sizes
+  // Level 0: ~19px, Level 4: ~31px (default), Level 8: ~59px
+  static const uint8_t kScalePercents[] = {30, 35, 40, 45, 50, 56, 64, 76, 95};
+  const uint8_t fs = scrollFontSize_ <= 8 ? scrollFontSize_ : 4;
+  return kScalePercents[fs];
+}
+
 bool DisplayManager::darkMode() const { return darkMode_; }
 
 bool DisplayManager::nightMode() const { return nightMode_; }
@@ -994,8 +1039,7 @@ bool DisplayManager::begin() {
   initialized_ = true;
   tickerPlaybackFrameActive_ = false;
   lastRenderKey_ = "";
-  fillScreen(backgroundColor());
-  applyBrightness();
+  fillScreen(kTrueBlack);
   ESP_LOGI(kDisplayTag, "AXS15231B LCD initialized");
   return true;
 }
@@ -1883,6 +1927,65 @@ void DisplayManager::renderCenteredWord(const String &word, uint16_t color) {
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
+void DisplayManager::renderBootSplash() {
+  if (!initialized_) {
+    return;
+  }
+
+  // Colors: green for "FLOW", blue for "ER" (RGB565)
+  constexpr uint16_t kSplashGreen = 0x07E0;
+  constexpr uint16_t kSplashBlue = 0x001F;
+  const String fullWord = "FLOWER";
+
+  const int scale = chooseTextScale(fullWord);
+  const int virtualWidth = (kDisplayWidth + scale - 1) / scale;
+  const int virtualHeight = (kDisplayHeight + scale - 1) / scale;
+  const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(fullWord));
+  const int y = std::max(0, (virtualHeight - glyphHeight) / 2);
+
+  // Measure full word to get centered starting X
+  const TextLayoutMetrics fullLayout = serifWordLayout(fullWord, -1);
+  const int fullTextWidth = textLayoutWidth(fullLayout);
+  const int startX = std::max(0, ((kVirtualBufferWidth - fullTextWidth) / 2) - fullLayout.minX);
+
+  // Animate: letters appear one by one with a longer delay for a smooth entrance
+  const ReaderTypeface typeface = effectiveReaderTypefaceForText(fullWord);
+  constexpr int kLetterDelayMs = 200;
+  constexpr int kFinalHoldMs = 600;
+
+  for (size_t letterCount = 1; letterCount <= fullWord.length(); ++letterCount) {
+    clearVirtualBuffer(virtualWidth, virtualHeight);
+
+    int cursorX = startX;
+    for (size_t i = 0; i < letterCount; ++i) {
+      const uint16_t color = (i < 4) ? kSplashGreen : kSplashBlue;
+      const ReaderGlyph glyph = glyphFor(fullWord[i], typeface);
+      drawGlyph(cursorX + glyph.xOffset, y, fullWord[i], color, typeface);
+      int tracked = trackedAdvance(glyph.xAdvance, i, fullWord.length());
+      if (i + 1 < fullWord.length()) {
+        const ReaderGlyph nextGlyph = glyphFor(fullWord[i + 1], typeface);
+        tracked -= opticalKerningAdjustment(fullWord[i], fullWord[i + 1], glyph.xOffset,
+                                            glyph.width, tracked, nextGlyph.xOffset,
+                                            regularDesiredGap());
+      }
+      cursorX += std::max(1, tracked);
+    }
+
+    flushScaledFrame(scale, virtualWidth, virtualHeight);
+
+    // Turn on backlight with the first letter — no black screen gap
+    if (letterCount == 1) {
+      applyBrightness();
+    }
+
+    delay(kLetterDelayMs);
+  }
+
+  // Hold the completed word
+  delay(kFinalHoldMs);
+  lastRenderKey_ = "";
+}
+
 void DisplayManager::renderRsvpWord(const String &word, const String &chapterLabel,
                                     uint8_t progressPercent, bool showFooter,
                                     const String &footerStatusLabel, ReaderChrome chrome) {
@@ -2546,10 +2649,10 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
   const int textTop = kScrollTop;
   const int textBottom = virtualHeight - footerReserve - overlayReserve;
   const ReaderTypeface contextTypeface = currentReaderTypeface();
-  const int contextGlyphHeight = std::max(
-      1, (baseGlyphHeightForTypeface(contextTypeface) + kScrollSerifDivisor - 1) /
-             kScrollSerifDivisor);
-  const int maxLineWidth = virtualWidth - (kScrollMarginX * 2);
+  const uint8_t scaleP = scrollScalePercent();
+  const int contextGlyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(contextTypeface), scaleP);
+  const int maxLineWidth = virtualWidth - (scrollMarginPx() * 2);
 
   size_t currentLocalIndex = 0;
   if (currentWordIndex >= windowStartIndex && currentWordIndex < windowStartIndex + words.size()) {
@@ -2582,7 +2685,7 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
         break;
       }
 
-      const int wordWidth = measureSerifTextWidth(words[index].text, kScrollSerifDivisor);
+      const int wordWidth = measureSerifTextWidthScaled(words[index].text, scaleP);
       const int gap = (index == line.start) ? 0 : kScrollSpaceWidth;
       if (index > line.start && lineWidth + gap + wordWidth > maxLineWidth) {
         break;
@@ -2637,7 +2740,7 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
     }
     lineTops.push_back(y);
     contentBottom = y + contextGlyphHeight;
-    y += kScrollLineHeight;
+    y += scrollLineHeightPx();
   }
 
   const int currentCenterY = lineTops[currentLineIndex] + (contextGlyphHeight / 2);
@@ -2673,16 +2776,16 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
       break;
     }
 
-    int x = kScrollMarginX + (line.paragraphStart ? kScrollParagraphIndent : 0);
+    int x = scrollMarginPx() + (line.paragraphStart ? kScrollParagraphIndent : 0);
     for (size_t wordIndex = line.start; wordIndex < line.end && wordIndex < words.size();
          ++wordIndex) {
       const ContextWord &word = words[wordIndex];
       const uint16_t color =
           (word.current && currentFocusHighlightEnabled()) ? focusColor() : wordColor();
       const String visibleWord =
-          fitSerifText(word.text, virtualWidth - x - kScrollMarginX, kScrollSerifDivisor);
-      drawSerifTextAt(visibleWord, x, lineY, color, kScrollSerifDivisor);
-      x += measureSerifTextWidth(visibleWord, kScrollSerifDivisor) + kScrollSpaceWidth;
+          fitSerifTextScaled(word.text, virtualWidth - x - scrollMarginPx(), scaleP);
+      drawSerifTextScaledAt(visibleWord, x, lineY, color, scaleP);
+      x += measureSerifTextWidthScaled(visibleWord, scaleP) + kScrollSpaceWidth;
     }
   }
 

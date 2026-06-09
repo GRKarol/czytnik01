@@ -57,6 +57,9 @@ constexpr const char *kPrefTypographyTracking = "type_trk";
 constexpr const char *kPrefTypographyAnchor = "type_anc";
 constexpr const char *kPrefTypographyGuideWidth = "type_wid";
 constexpr const char *kPrefTypographyGuideGap = "type_gap";
+constexpr const char *kPrefScrollFontSize = "sc_font";
+constexpr const char *kPrefScrollLineSpacing = "sc_line_sp";
+constexpr const char *kPrefScrollMargin = "sc_margin";
 constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
 constexpr uint16_t kDefaultWpm = 300;
@@ -85,6 +88,12 @@ constexpr uint8_t kDefaultTypographyGuideWidth = 30;
 constexpr uint8_t kMinTypographyGuideGap = 2;
 constexpr uint8_t kMaxTypographyGuideGap = 8;
 constexpr uint8_t kDefaultTypographyGuideGap = 5;
+constexpr uint8_t kMaxScrollFontSize = 8;
+constexpr uint8_t kDefaultScrollFontSize = 4;
+constexpr uint8_t kMaxScrollLineSpacing = 2;
+constexpr uint8_t kDefaultScrollLineSpacing = 1;
+constexpr uint8_t kMaxScrollMargin = 2;
+constexpr uint8_t kDefaultScrollMargin = 1;
 
 const char kWebCompanionHtml[] PROGMEM = R"HTML(<!doctype html>
 <html lang="en">
@@ -1525,6 +1534,14 @@ String CompanionSyncManager::settingsJson() {
       clampInt(preferences_.getUChar(kPrefTypographyGuideGap, kDefaultTypographyGuideGap),
                kMinTypographyGuideGap, kMaxTypographyGuideGap));
 
+  // Read scroll settings from NVS
+  const uint8_t scrollFontSize = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScrollFontSize, kDefaultScrollFontSize), 0, kMaxScrollFontSize));
+  const uint8_t scrollLineSpacing = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScrollLineSpacing, kDefaultScrollLineSpacing), 0, kMaxScrollLineSpacing));
+  const uint8_t scrollMargin = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScrollMargin, kDefaultScrollMargin), 0, kMaxScrollMargin));
+
   String body;
   body.reserve(1250);
   body += "{\"ok\":true,\"version\":1";
@@ -1590,6 +1607,11 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"guideGap\":{\"min\":" + String(kMinTypographyGuideGap) +
           ",\"max\":" + String(kMaxTypographyGuideGap) + "}";
   body += "}}";
+  body += ",\"scroll\":{";
+  body += "\"scrollFontSize\":" + String(scrollFontSize);
+  body += ",\"scrollLineSpacing\":" + String(scrollLineSpacing);
+  body += ",\"scrollMargin\":" + String(scrollMargin);
+  body += "}";
   // Developer mode — preferowana flaga ukrywająca advanced ustawienia na
   // urządzeniu i odsłaniająca je w aplikacji-towarzyszu. Dorzucamy na
   // końcu żeby nie ruszać istniejących sekcji.
@@ -1762,6 +1784,28 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
       return false;
     }
     preferences_.putUChar(kPrefTypographyGuideGap, static_cast<uint8_t>(intValue));
+  }
+
+  if (readJsonInt(body, "scrollFontSize", intValue)) {
+    if (intValue < 0 || intValue > kMaxScrollFontSize) {
+      error = "scrollFontSize must be between 0 and 8";
+      return false;
+    }
+    preferences_.putUChar(kPrefScrollFontSize, static_cast<uint8_t>(intValue));
+  }
+  if (readJsonInt(body, "scrollLineSpacing", intValue)) {
+    if (intValue < 0 || intValue > kMaxScrollLineSpacing) {
+      error = "scrollLineSpacing must be between 0 and 2";
+      return false;
+    }
+    preferences_.putUChar(kPrefScrollLineSpacing, static_cast<uint8_t>(intValue));
+  }
+  if (readJsonInt(body, "scrollMargin", intValue)) {
+    if (intValue < 0 || intValue > kMaxScrollMargin) {
+      error = "scrollMargin must be between 0 and 2";
+      return false;
+    }
+    preferences_.putUChar(kPrefScrollMargin, static_cast<uint8_t>(intValue));
   }
 
   // Developer mode toggle — odbierane przez PUT/PATCH z PWA.

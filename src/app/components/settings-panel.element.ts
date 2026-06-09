@@ -10,6 +10,10 @@ import {
   type ReaderMode,
   type PauseBehaviour,
 } from "../device/api";
+import { setLang } from "../i18n/index";
+import { deviceLangToSupported } from "../i18n/lang-map";
+import "./help-panel.element";
+import "./setting-tooltip.element";
 
 const THEME_LABEL: Record<Theme, string> = {
   light: "Jasny",
@@ -32,6 +36,32 @@ const PAUSE_LABEL: Record<PauseBehaviour, string> = {
   auto: "Auto",
 };
 
+const FONT_SIZE_LABEL: Record<number, string> = {
+  0: "0",
+  1: "1",
+  2: "2",
+  3: "3",
+  4: "4",
+  5: "5",
+  6: "6",
+  7: "7",
+  8: "8",
+};
+
+const LINE_SPACING_LABEL: Record<number, string> = {
+  0: "Compact",
+  1: "Normal",
+  2: "Relaxed",
+};
+
+const MARGIN_LABEL: Record<number, string> = {
+  0: "Narrow",
+  1: "Normal",
+  2: "Wide",
+};
+
+type SettingsSubView = "settings" | "help";
+
 @customElement("settings-panel")
 export class SettingsPanel extends LitElement {
   @state() private settings: DeviceSettings | null = null;
@@ -39,8 +69,14 @@ export class SettingsPanel extends LitElement {
   @state() private error = "";
   @state() private tapCount = 0;
   @state() private justUnlocked = false;
+  @state() private subView: SettingsSubView = "settings";
   private tapResetTimer: number | null = null;
   private unsubApi: (() => void) | null = null;
+
+  private get effectiveMode(): ReaderMode {
+    const m = this.settings?.readerMode;
+    return m === "scroll" ? "scroll" : "rsvp";
+  }
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -55,6 +91,15 @@ export class SettingsPanel extends LitElement {
   }
 
   render() {
+    if (this.subView === "help") {
+      return html`
+        <help-panel
+          @help-close=${this.handleHelpClose}
+          @restart-tutorial=${this.handleRestartTutorial}
+        ></help-panel>
+      `;
+    }
+
     if (!this.settings) {
       return html`<p class="muted">Wczytuję ustawienia z urządzenia…</p>`;
     }
@@ -74,42 +119,143 @@ export class SettingsPanel extends LitElement {
       ${this.error ? html`<p class="error">${this.error}</p>` : ""}
 
       <fieldset class="group">
-        <legend>Wyświetlanie</legend>
-        ${this.segmented("theme", s.theme, ["light", "dark", "night"], THEME_LABEL)}
-        ${this.slider("brightness", "Jasność", s.brightness, 10, 100, 5, "%")}
-        ${this.segmented("readerHand", s.readerHand, ["right", "left"], HAND_LABEL, "Dłoń")}
+        <legend>Tryb czytania</legend>
+        ${this.segmented(
+          "readerMode",
+          s.readerMode,
+          ["rsvp", "scroll"],
+          MODE_LABEL,
+          "Tryb",
+          "readingMode",
+        )}
       </fieldset>
 
+      ${this.effectiveMode === "rsvp"
+        ? html`
+            <fieldset class="group">
+              <legend>Ustawienia RSVP</legend>
+              ${this.segmented(
+                "pauseBehaviour",
+                s.pauseBehaviour,
+                ["tap", "long-press", "auto"],
+                PAUSE_LABEL,
+                "Pauza",
+                "pauseBehaviour",
+              )}
+              ${this.slider("baseWpm", "Tempo", s.baseWpm, 50, 1000, 25, "WPM", "baseWpm")}
+              ${this.slider(
+                "longWordDelayMs",
+                "Długie słowa",
+                s.longWordDelayMs,
+                0,
+                600,
+                50,
+                "ms",
+                "longWordDelay",
+              )}
+              ${this.slider(
+                "complexWordDelayMs",
+                "Złożone słowa",
+                s.complexWordDelayMs,
+                0,
+                600,
+                50,
+                "ms",
+                "complexWordDelay",
+              )}
+              ${this.slider(
+                "punctuationDelayMs",
+                "Interpunkcja",
+                s.punctuationDelayMs,
+                0,
+                600,
+                50,
+                "ms",
+                "punctuationDelay",
+              )}
+            </fieldset>
+          `
+        : html`
+            <fieldset class="group">
+              <legend>Ustawienia Scroll</legend>
+              ${this.segmented(
+                "scrollFontSize",
+                s.scrollFontSize,
+                [0, 1, 2, 3, 4, 5, 6, 7, 8],
+                FONT_SIZE_LABEL,
+                "Rozmiar czcionki",
+              )}
+              ${this.segmented(
+                "scrollLineSpacing",
+                s.scrollLineSpacing,
+                [0, 1, 2],
+                LINE_SPACING_LABEL,
+                "Interlinia",
+              )}
+              ${this.segmented(
+                "scrollMargin",
+                s.scrollMargin,
+                [0, 1, 2],
+                MARGIN_LABEL,
+                "Marginesy",
+              )}
+            </fieldset>
+          `}
+
       <fieldset class="group">
-        <legend>Czytanie</legend>
-        ${this.segmented("readerMode", s.readerMode, ["rsvp", "scroll"], MODE_LABEL, "Tryb")}
+        <legend>Wyświetlanie</legend>
         ${this.segmented(
-          "pauseBehaviour",
-          s.pauseBehaviour,
-          ["tap", "long-press", "auto"],
-          PAUSE_LABEL,
-          "Pauza",
+          "theme",
+          s.theme,
+          ["light", "dark", "night"],
+          THEME_LABEL,
+          undefined,
+          "theme",
         )}
-        ${this.slider("baseWpm", "Tempo", s.baseWpm, 50, 1000, 25, "WPM")}
-        ${this.slider("longWordDelayMs", "Długie słowa", s.longWordDelayMs, 0, 600, 50, "ms")}
-        ${this.slider("complexWordDelayMs", "Złożone słowa", s.complexWordDelayMs, 0, 600, 50, "ms")}
-        ${this.slider("punctuationDelayMs", "Interpunkcja", s.punctuationDelayMs, 0, 600, 50, "ms")}
+        ${this.slider("brightness", "Jasność", s.brightness, 10, 100, 5, "%", "brightness")}
+        ${this.segmented(
+          "readerHand",
+          s.readerHand,
+          ["right", "left"],
+          HAND_LABEL,
+          "Dłoń",
+          "readerHand",
+        )}
       </fieldset>
 
       <fieldset class="group">
         <legend>HUD podczas czytania</legend>
-        ${this.toggle("showBatteryWhileReading", "Bateria", s.showBatteryWhileReading)}
-        ${this.toggle("showChapterWhileReading", "Rozdział", s.showChapterWhileReading)}
-        ${this.toggle("showPercentWhileReading", "Procent", s.showPercentWhileReading)}
+        ${this.toggle(
+          "showBatteryWhileReading",
+          "Bateria",
+          s.showBatteryWhileReading,
+          "readingBattery",
+        )}
+        ${this.toggle(
+          "showChapterWhileReading",
+          "Rozdział",
+          s.showChapterWhileReading,
+          "readingChapter",
+        )}
+        ${this.toggle(
+          "showPercentWhileReading",
+          "Procent",
+          s.showPercentWhileReading,
+          "readingPercent",
+        )}
       </fieldset>
 
       <fieldset class="group">
         <legend>Język</legend>
         <label class="select">
           <span>Język interfejsu</span>
-          <select @change=${(e: Event) => this.put({ language: (e.target as HTMLSelectElement).value as Language })}>
+          <select
+            @change=${(e: Event) =>
+              this.put({ language: (e.target as HTMLSelectElement).value as Language })}
+          >
             ${(Object.keys(LANG_LABEL) as Language[]).map(
-              (l) => html`<option value=${l} ?selected=${l === s.language}>${LANG_LABEL[l]}</option>`,
+              (l) =>
+                html`<option value=${l} ?selected=${l === s.language}>${LANG_LABEL[l]}</option>`,
             )}
           </select>
         </label>
@@ -120,33 +266,71 @@ export class SettingsPanel extends LitElement {
             <fieldset class="group dev">
               <legend>Developer</legend>
               <p class="muted small">
-                Te opcje są ukryte przed klientem. Włączasz je tylko z aplikacji
-                — na samym urządzeniu też nic nie widzi, dopóki tu jest „On".
+                Te opcje są ukryte przed klientem. Włączasz je tylko z aplikacji — na samym
+                urządzeniu też nic nie widzi, dopóki tu jest „On".
               </p>
               ${this.toggle("devMode", "Tryb developera", s.devMode)}
               <p class="muted small">
-                Po wyłączeniu trybu developera advanced ustawienia (OTA owner,
-                Auto OTA, RSS feed editor, etc.) znikają zarówno z urządzenia
-                jak i z tej aplikacji.
+                Po wyłączeniu trybu developera advanced ustawienia (OTA owner, Auto OTA, RSS feed
+                editor, etc.) znikają zarówno z urządzenia jak i z tej aplikacji.
               </p>
             </fieldset>
           `
         : ""}
 
+      <button class="help-link" @click=${this.openHelp}>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="10" cy="10" r="8" />
+          <path d="M7.5 7.5a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 3" />
+          <circle cx="10" cy="14.5" r="0.5" fill="currentColor" />
+        </svg>
+        <span>Pomoc / Przewodnik</span>
+      </button>
+
       ${this.saving ? html`<p class="muted small">Zapisuję…</p>` : ""}
     `;
   }
 
+  // ─── help-panel navigation ────────────────────────────────────────────────
+
+  private openHelp(): void {
+    this.subView = "help";
+  }
+
+  private handleHelpClose(): void {
+    this.subView = "settings";
+  }
+
+  private handleRestartTutorial(): void {
+    this.subView = "settings";
+    this.dispatchEvent(new CustomEvent("restart-tutorial", { bubbles: true, composed: true }));
+  }
+
   // ─── helpers UI ───────────────────────────────────────────────────────────
 
-  private toggle(key: keyof DeviceSettings, label: string, value: boolean) {
+  private toggle(key: keyof DeviceSettings, label: string, value: boolean, tooltipKey?: string) {
     return html`
       <label class="toggle">
-        <span>${label}</span>
+        <span class="label-with-tooltip"
+          >${label}${tooltipKey
+            ? html`<setting-tooltip settingKey=${tooltipKey}></setting-tooltip>`
+            : ""}</span
+        >
         <input
           type="checkbox"
           ?checked=${value}
-          @change=${(e: Event) => this.put({ [key]: (e.target as HTMLInputElement).checked } as Partial<DeviceSettings>)}
+          @change=${(e: Event) =>
+            this.put({ [key]: (e.target as HTMLInputElement).checked } as Partial<DeviceSettings>)}
         />
       </label>
     `;
@@ -160,10 +344,15 @@ export class SettingsPanel extends LitElement {
     max: number,
     step: number,
     unit: string,
+    tooltipKey?: string,
   ) {
     return html`
       <label class="slider">
-        <span>${label}<small>${value} ${unit}</small></span>
+        <span
+          >${label}${tooltipKey
+            ? html`<setting-tooltip settingKey=${tooltipKey}></setting-tooltip>`
+            : ""}<small>${value} ${unit}</small></span
+        >
         <input
           type="range"
           min=${min}
@@ -171,7 +360,9 @@ export class SettingsPanel extends LitElement {
           step=${step}
           .value=${String(value)}
           @input=${(e: Event) =>
-            this.put({ [key]: Number((e.target as HTMLInputElement).value) } as Partial<DeviceSettings>)}
+            this.put({
+              [key]: Number((e.target as HTMLInputElement).value),
+            } as Partial<DeviceSettings>)}
         />
       </label>
     `;
@@ -183,10 +374,18 @@ export class SettingsPanel extends LitElement {
     options: ReadonlyArray<DeviceSettings[K]>,
     labels: Record<string, string>,
     title?: string,
+    tooltipKey?: string,
   ) {
+    const showHeader = title || tooltipKey;
     return html`
       <label class="seg">
-        ${title ? html`<span>${title}</span>` : ""}
+        ${showHeader
+          ? html`<span class="label-with-tooltip"
+              >${title ?? ""}${tooltipKey
+                ? html`<setting-tooltip settingKey=${tooltipKey}></setting-tooltip>`
+                : ""}</span
+            >`
+          : ""}
         <div class="seg-buttons">
           ${options.map(
             (opt) => html`
@@ -208,6 +407,10 @@ export class SettingsPanel extends LitElement {
   private async load() {
     try {
       this.settings = await deviceApi.getSettings();
+      // Sync i18n module with device language on initial load
+      if (this.settings) {
+        setLang(deviceLangToSupported(this.settings.language));
+      }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     }
@@ -220,6 +423,12 @@ export class SettingsPanel extends LitElement {
     this.settings = { ...previous, ...patch };
     this.saving = true;
     this.error = "";
+
+    // Sync i18n when language changes
+    if ("language" in patch && patch.language) {
+      setLang(deviceLangToSupported(patch.language));
+    }
+
     try {
       this.settings = await deviceApi.putSettings(patch);
       // Powiedz rodzicowi (app.element.ts) żeby odświeżył DEV badge w header.
@@ -235,6 +444,10 @@ export class SettingsPanel extends LitElement {
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.settings = previous;
+      // Revert i18n on failure
+      if ("language" in patch) {
+        setLang(deviceLangToSupported(previous.language));
+      }
     } finally {
       this.saving = false;
     }
@@ -270,14 +483,20 @@ export class SettingsPanel extends LitElement {
     .muted {
       color: var(--muted);
       margin: 0;
-      font: 0.92rem/1.5 ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.92rem/1.5 ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .small {
       font-size: 0.8rem;
     }
     .error {
       color: var(--err);
-      font: 0.9rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.9rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       margin: 0;
     }
     .brand {
@@ -298,12 +517,18 @@ export class SettingsPanel extends LitElement {
       color: var(--accent);
     }
     .brand span {
-      font: 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--muted);
     }
     .tap-hint {
       margin-top: 4px;
-      font: 600 0.75rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.75rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--accent);
     }
     .tap-hint.ok {
@@ -325,7 +550,10 @@ export class SettingsPanel extends LitElement {
     }
     legend {
       padding: 0 6px;
-      font: 700 0.78rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        700 0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--muted);
@@ -335,7 +563,10 @@ export class SettingsPanel extends LitElement {
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      font: 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .toggle input {
       width: 44px;
@@ -368,7 +599,10 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font: 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .slider span {
       display: flex;
@@ -377,7 +611,10 @@ export class SettingsPanel extends LitElement {
     }
     .slider small {
       color: var(--muted);
-      font: 0.82rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.82rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .slider input[type="range"] {
       width: 100%;
@@ -387,7 +624,10 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font: 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .seg-buttons {
       display: grid;
@@ -404,7 +644,10 @@ export class SettingsPanel extends LitElement {
       border-radius: 999px;
       background: transparent;
       color: var(--ink-soft);
-      font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
     }
     .seg-buttons button.active {
@@ -416,15 +659,49 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font: 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .select select {
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: #fff;
-      font: 0.95rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--ink);
+    }
+    .help-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper-tint);
+      color: var(--ink);
+      font:
+        600 0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .help-link:hover {
+      border-color: var(--accent);
+    }
+    .help-link svg {
+      flex-shrink: 0;
+      color: var(--accent);
+    }
+    .label-with-tooltip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
   `;
 }
