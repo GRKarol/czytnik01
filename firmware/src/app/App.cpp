@@ -2717,6 +2717,9 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
         selectedIndex = &pluginLibrarySelectedIndex_;
         itemCount = pluginLibraryMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::PluginDetail) {
+        selectedIndex = &pluginDetailSelectedIndex_;
+        itemCount = pluginDetailMenuItems_.size();
       }
 
       if (itemCount > 0) {
@@ -2768,6 +2771,7 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::ChapterPicker ||
           menuScreen_ == MenuScreen::SavePointsList || menuScreen_ == MenuScreen::PluginsList ||
           menuScreen_ == MenuScreen::PluginLibraryScreen ||
+          menuScreen_ == MenuScreen::PluginDetail ||
           menuScreen_ == MenuScreen::TypographyTuning) {
         // Set selection to Back and select it
         if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
@@ -2786,6 +2790,8 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           pluginsSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
           pluginLibrarySelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::PluginDetail) {
+          pluginDetailSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::TypographyTuning) {
           typographyTuningSelectedIndex_ = TypographyTuningBack;
         }
@@ -2842,6 +2848,9 @@ void App::moveMenuSelection(int direction) {
   } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
     selectedIndex = &pluginLibrarySelectedIndex_;
     itemCount = pluginLibraryMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::PluginDetail) {
+    selectedIndex = &pluginDetailSelectedIndex_;
+    itemCount = pluginDetailMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     selectedIndex = &restartConfirmSelectedIndex_;
     itemCount = RestartConfirmItemCount;
@@ -2977,6 +2986,10 @@ void App::selectMenuItem(uint32_t nowMs) {
   }
   if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
     selectPluginLibraryItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::PluginDetail) {
+    selectPluginDetailItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::RestartConfirm) {
@@ -3362,10 +3375,15 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
 
   switch (settingsSelectedIndex_) {
     case kSettingsBackIndex:
-      settingsSelectedIndex_ = kSettingsHomeWifiIndex;
-      menuScreen_ = MenuScreen::SettingsHome;
-      rebuildSettingsMenuItems();
-      renderSettings();
+      if (wifiReturnScreen_ == MenuScreen::PluginsList) {
+        wifiReturnScreen_ = MenuScreen::SettingsHome;
+        openPluginsList();
+      } else {
+        settingsSelectedIndex_ = kSettingsHomeWifiIndex;
+        menuScreen_ = MenuScreen::SettingsHome;
+        rebuildSettingsMenuItems();
+        renderSettings();
+      }
       return;
     case kWifiSettingsNetworkIndex:
     case kWifiSettingsChooseIndex:
@@ -5495,10 +5513,10 @@ void App::openPluginLibraryScreen(uint32_t nowMs) {
 
   if (configuredWifiSsid().isEmpty()) {
     display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginNoWifi),
-                          tr(TrKey::SettingsWifi));
-    delay(1800);
-    renderPluginsList();
+                          polish("Polacz z WiFi", "Connect to WiFi"), "");
+    delay(900);
+    wifiReturnScreen_ = MenuScreen::PluginsList;
+    openWifiSettings();
     return;
   }
 
@@ -5572,34 +5590,86 @@ void App::selectPluginLibraryItem(uint32_t nowMs) {
     return;
   }
 
-  const auto& entry = registry[registryIdx];
-  const char* pluginId = entry.id.c_str();
-
-  // Download the plugin
-  display_.renderStatus(uiText(UiText::Plugins),
-                        tr2(TrKey2::PluginDownloading),
-                        entry.name.c_str());
-
-  bool downloadOk = pluginLibrary_.downloadPlugin(pluginId);
-  if (downloadOk) {
-    pluginLibrary_.scanInstalled();
-    display_.renderStatus(uiText(UiText::Plugins),
-                          entry.name.c_str(),
-                          tr2(TrKey2::PluginInstalled));
-    delay(1200);
-  } else {
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginInstallFailed),
-                          entry.name.c_str());
-    delay(2000);
-  }
-
-  // Rebuild library menu and re-render
-  openPluginLibraryScreen(nowMs);
+  // Open detail screen instead of immediately downloading
+  openPluginDetail(registryIdx);
 }
 
 void App::renderPluginLibraryScreen() {
   display_.renderMenu(pluginLibraryMenuItems_, pluginLibrarySelectedIndex_);
+}
+
+void App::openPluginDetail(size_t registryIndex) {
+  const auto& registry = pluginLibrary_.registry();
+  if (registryIndex >= registry.size()) {
+    return;
+  }
+
+  pluginDetailIndex_ = registryIndex;
+  const auto& entry = registry[registryIndex];
+
+  pluginDetailMenuItems_.clear();
+  pluginDetailMenuItems_.push_back(uiText(UiText::Back));
+  pluginDetailMenuItems_.push_back(entry.description.isEmpty() ? entry.name : entry.description);
+
+  if (pluginLibrary_.isInstalled(entry.id.c_str()) &&
+      pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
+    pluginDetailMenuItems_.push_back(polish("Aktualizuj", "Update"));
+  } else {
+    pluginDetailMenuItems_.push_back(polish("Zainstaluj", "Install"));
+  }
+
+  pluginDetailSelectedIndex_ = 2;  // default to Install/Update button
+  menuScreen_ = MenuScreen::PluginDetail;
+  renderPluginDetail();
+}
+
+void App::selectPluginDetailItem(uint32_t nowMs) {
+  // Back
+  if (pluginDetailSelectedIndex_ == 0) {
+    menuScreen_ = MenuScreen::PluginLibraryScreen;
+    renderPluginLibraryScreen();
+    return;
+  }
+
+  // Description line — non-selectable
+  if (pluginDetailSelectedIndex_ == 1) {
+    return;
+  }
+
+  // Install / Update
+  if (pluginDetailSelectedIndex_ == 2) {
+    const auto& registry = pluginLibrary_.registry();
+    if (pluginDetailIndex_ >= registry.size()) {
+      return;
+    }
+    const auto& entry = registry[pluginDetailIndex_];
+    const char* pluginId = entry.id.c_str();
+
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginDownloading),
+                          entry.name.c_str());
+
+    bool downloadOk = pluginLibrary_.downloadPlugin(pluginId);
+    if (downloadOk) {
+      pluginLibrary_.scanInstalled();
+      display_.renderStatus(uiText(UiText::Plugins),
+                            entry.name.c_str(),
+                            tr2(TrKey2::PluginInstalled));
+      delay(1200);
+    } else {
+      display_.renderStatus(uiText(UiText::Plugins),
+                            tr2(TrKey2::PluginInstallFailed),
+                            entry.name.c_str());
+      delay(2000);
+    }
+
+    // Return to library screen (refreshed)
+    openPluginLibraryScreen(nowMs);
+  }
+}
+
+void App::renderPluginDetail() {
+  display_.renderMenu(pluginDetailMenuItems_, pluginDetailSelectedIndex_);
 }
 
 void App::renderPluginsList() {
@@ -7270,6 +7340,8 @@ void App::renderMenu() {
     renderPluginsList();
   } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
     renderPluginLibraryScreen();
+  } else if (menuScreen_ == MenuScreen::PluginDetail) {
+    renderPluginDetail();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     renderRestartConfirm();
   } else if (menuScreen_ == MenuScreen::SdCardRepairConfirm) {

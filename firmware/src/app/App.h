@@ -107,6 +107,7 @@ class App {
     SavePointNameEntry,
     PluginsList,
     PluginLibraryScreen,
+    PluginDetail,
     RestartConfirm,
     SdCardRepairConfirm,
     UpdateConfirm,
@@ -396,6 +397,9 @@ class App {
   void openPluginLibraryScreen(uint32_t nowMs);
   void selectPluginLibraryItem(uint32_t nowMs);
   void renderPluginLibraryScreen();
+  void openPluginDetail(size_t registryIndex);
+  void selectPluginDetailItem(uint32_t nowMs);
+  void renderPluginDetail();
   void openPresets();
   void selectPresetsItem(uint32_t nowMs);
   void confirmDeletePreset(size_t index, uint32_t nowMs);
@@ -627,6 +631,10 @@ class App {
   size_t pluginsSelectedIndex_ = 0;
   std::vector<String> pluginLibraryMenuItems_;
   size_t pluginLibrarySelectedIndex_ = 0;
+  std::vector<String> pluginDetailMenuItems_;
+  size_t pluginDetailSelectedIndex_ = 0;
+  size_t pluginDetailIndex_ = 0;
+  MenuScreen wifiReturnScreen_ = MenuScreen::SettingsHome;
   std::vector<uint32_t> wordBonusBlockPrefixSumMs_;
   String timeEstimateBuildBookPath_;
   size_t timeEstimateBuildWordCount_ = 0;
