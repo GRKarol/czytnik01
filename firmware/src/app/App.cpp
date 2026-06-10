@@ -5609,7 +5609,32 @@ void App::openPluginDetail(size_t registryIndex) {
 
   pluginDetailMenuItems_.clear();
   pluginDetailMenuItems_.push_back(uiText(UiText::Back));
-  pluginDetailMenuItems_.push_back(entry.description.isEmpty() ? entry.name : entry.description);
+
+  // Split description into lines of ~35 chars, breaking at word boundaries
+  String desc = entry.description.isEmpty() ? entry.name : entry.description;
+  constexpr size_t kMaxLineChars = 35;
+
+  if (desc.length() <= kMaxLineChars) {
+    pluginDetailMenuItems_.push_back(desc);
+  } else {
+    // First line: break at last space within kMaxLineChars
+    int breakPos = kMaxLineChars;
+    for (int i = kMaxLineChars; i > 0; --i) {
+      if (desc.charAt(i) == ' ') {
+        breakPos = i;
+        break;
+      }
+    }
+    String line1 = desc.substring(0, breakPos);
+    String line2 = desc.substring(breakPos);
+    line2.trim();
+    // Truncate line2 if still too long
+    if (line2.length() > kMaxLineChars) {
+      line2 = line2.substring(0, kMaxLineChars - 3) + "...";
+    }
+    pluginDetailMenuItems_.push_back(line1);
+    pluginDetailMenuItems_.push_back(line2);
+  }
 
   if (pluginLibrary_.isInstalled(entry.id.c_str()) &&
       pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
@@ -5618,7 +5643,8 @@ void App::openPluginDetail(size_t registryIndex) {
     pluginDetailMenuItems_.push_back(polish("Zainstaluj", "Install"));
   }
 
-  pluginDetailSelectedIndex_ = 2;  // default to Install/Update button
+  // Default selection to the last item (Install/Update button)
+  pluginDetailSelectedIndex_ = pluginDetailMenuItems_.size() - 1;
   menuScreen_ = MenuScreen::PluginDetail;
   renderPluginDetail();
 }
@@ -5631,13 +5657,15 @@ void App::selectPluginDetailItem(uint32_t nowMs) {
     return;
   }
 
-  // Description line — non-selectable
-  if (pluginDetailSelectedIndex_ == 1) {
+  const size_t installButtonIndex = pluginDetailMenuItems_.size() - 1;
+
+  // Description lines — non-selectable (everything between Back and Install button)
+  if (pluginDetailSelectedIndex_ < installButtonIndex) {
     return;
   }
 
-  // Install / Update
-  if (pluginDetailSelectedIndex_ == 2) {
+  // Install / Update (last item)
+  if (pluginDetailSelectedIndex_ == installButtonIndex) {
     const auto& registry = pluginLibrary_.registry();
     if (pluginDetailIndex_ >= registry.size()) {
       return;
@@ -5657,8 +5685,9 @@ void App::selectPluginDetailItem(uint32_t nowMs) {
                             tr2(TrKey2::PluginInstalled));
       delay(1200);
     } else {
+      // Binary likely not yet available on GitHub (404) — show specific message
       display_.renderStatus(uiText(UiText::Plugins),
-                            tr2(TrKey2::PluginInstallFailed),
+                            tr2(TrKey2::PluginNotYetAvailable),
                             entry.name.c_str());
       delay(2000);
     }

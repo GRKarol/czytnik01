@@ -792,6 +792,7 @@ enum class TrKey2 : uint8_t {
   PluginDownloading,
   PluginFetchingRegistry,
   PluginUpdate,
+  PluginNotYetAvailable,
 };
 
 namespace Translations2 {
@@ -1247,6 +1248,15 @@ inline const char *tr2(UiLanguage lang, TrKey2 key) {
         case UiLanguage::German: return "[aktualisieren]";
         case UiLanguage::Romanian: return "[actualizare]";
         default: return "[update]";
+      }
+    case TrKey2::PluginNotYetAvailable:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wkrotce dostepny";
+        case UiLanguage::Spanish: return "Disponible pronto";
+        case UiLanguage::French: return "Bientot disponible";
+        case UiLanguage::German: return "Bald verfuegbar";
+        case UiLanguage::Romanian: return "Disponibil curand";
+        default: return "Coming soon";
       }
   }
   return "";
