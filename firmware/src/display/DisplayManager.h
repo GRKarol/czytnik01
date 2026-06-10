@@ -115,6 +115,7 @@ class DisplayManager {
                             ReaderChrome chrome = ReaderChrome());
   void renderMenu(const char *const *items, size_t itemCount, size_t selectedIndex);
   void renderMenu(const std::vector<String> &items, size_t selectedIndex);
+  void renderMenuWithDPad(const std::vector<String> &items, size_t selectedIndex);
   void renderLibrary(const std::vector<LibraryItem> &items, size_t selectedIndex);
   void renderTextEntry(const String &title, const String &prompt, const String &value,
                        const String &helperText, const std::vector<Button> &buttons);
@@ -215,7 +216,6 @@ class DisplayManager {
   bool tickerPlaybackFrameActive_ = false;
   String lastRenderKey_;
   String batteryLabel_;
-
   uint8_t scrollFontSize_ = 4;
   uint8_t scrollLineSpacing_ = 1;
   uint8_t scrollMargin_ = 1;

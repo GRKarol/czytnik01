@@ -200,6 +200,7 @@ constexpr size_t kSettingsDisplayLanguageIndex = 10;
 constexpr size_t kSettingsDisplayFocusColorIndex = 11;
 constexpr size_t kSettingsDisplaySavePointBtnIndex = 12;
 constexpr size_t kSettingsDisplayHelpHintsIndex = 13;
+constexpr size_t kSettingsDisplayNavModeIndex = 14;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
 constexpr size_t kSettingsPacingPauseModeIndex = 2;
 constexpr size_t kSettingsPacingWpmIndex = 3;
@@ -294,6 +295,7 @@ constexpr const char *kPrefOtaOwner = "ota_owner";
 constexpr const char *kPrefDevMode = "dev_mode";
 constexpr const char *kPrefBleEnabled = "ble_on";
 constexpr const char *kPrefShowHelpHints = "help_hints";
+constexpr const char *kPrefNavMode = "nav_mode";
 constexpr size_t kReaderFontSizeCount = 3;
 constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144};
 constexpr size_t kPhantomAfterCharTargets[] = {96, 144, 208};
@@ -698,6 +700,10 @@ void App::begin() {
   savePointButtonVisible_ =
       preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
   showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
+  {
+    uint8_t savedNavMode = preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
+    navMode_ = (savedNavMode == static_cast<uint8_t>(NavMode::DPad)) ? NavMode::DPad : NavMode::Swipe;
+  }
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
@@ -1570,6 +1576,10 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   savePointButtonVisible_ =
       preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
   showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
+  {
+    uint8_t savedNavMode = preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
+    navMode_ = (savedNavMode == static_cast<uint8_t>(NavMode::DPad)) ? NavMode::DPad : NavMode::Swipe;
+  }
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
@@ -2620,6 +2630,106 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
+  // D-Pad mode: handle taps on the D-Pad panel (right side of screen)
+  if (navMode_ == NavMode::DPad &&
+      absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+    constexpr uint16_t kDPadPanelStartX = 520;  // 640 - 120
+    if (event.x >= kDPadPanelStartX) {
+      // Determine which D-Pad button was tapped based on position
+      // Buttons are large zones dividing the panel into quadrants + center
+      const int padCenterX = kDPadPanelStartX + 60;  // center of 120px panel
+      const int padCenterY = 86;  // center of 172px screen
+      const int relX = static_cast<int>(event.x) - padCenterX;
+      const int relY = static_cast<int>(event.y) - padCenterY;
+      const int absRelX = abs(relX);
+      const int absRelY = abs(relY);
+
+      if (absRelX < 25 && absRelY < 25) {
+        // Center: OK/confirm
+        selectMenuItem(nowMs);
+      } else if (absRelY > absRelX) {
+        // Vertical: up or down
+        moveMenuSelection(relY < 0 ? -1 : 1);
+      } else {
+        // Horizontal: left (back) or right (enter/select)
+        if (relX < 0) {
+          // Left = go back (simulate selecting index 0)
+          settingsSelectedIndex_ = 0;
+          selectMenuItem(nowMs);
+        } else {
+          // Right = enter/select current item
+          selectMenuItem(nowMs);
+        }
+      }
+      return;
+    }
+
+    // D-Pad mode: tap directly on a menu item text row (left side)
+    if (event.x >= 28 && event.x < kDPadPanelStartX) {
+      // Determine item count and selected index for current screen
+      size_t *selectedIndex = &menuSelectedIndex_;
+      size_t itemCount = MenuItemCount;
+      if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+        selectedIndex = &presetsSelectedIndex_;
+        itemCount = settingsMenuItems_.size();
+      } else if (isSettingsListScreen()) {
+        selectedIndex = &settingsSelectedIndex_;
+        itemCount = settingsMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::BookPicker) {
+        selectedIndex = &bookPickerSelectedIndex_;
+        itemCount = bookMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::BookDetails) {
+        selectedIndex = &bookDetailsSelectedIndex_;
+        itemCount = bookDetailsMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::ChapterPicker) {
+        selectedIndex = &chapterPickerSelectedIndex_;
+        itemCount = chapterMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::SavePointsList) {
+        selectedIndex = &savePointSelectedIndex_;
+        itemCount = savePointMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::PluginsList) {
+        selectedIndex = &pluginsSelectedIndex_;
+        itemCount = pluginsMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
+        selectedIndex = &focusTimerGenreSelectedIndex_;
+        itemCount = focusTimerGenreMenuItems_.size();
+      }
+
+      if (itemCount > 0) {
+        const int rowHeight = 22;  // kCompactMenuRowHeight
+        const size_t visibleCount =
+            std::min(itemCount, static_cast<size_t>(std::max(1, 172 / rowHeight)));
+        size_t firstVisible = 0;
+        if (*selectedIndex >= visibleCount / 2) {
+          firstVisible = *selectedIndex - visibleCount / 2;
+        }
+        if (firstVisible + visibleCount > itemCount) {
+          firstVisible = itemCount - visibleCount;
+        }
+        const int totalHeight = rowHeight * static_cast<int>(visibleCount);
+        const int startY = std::max(0, (172 - totalHeight) / 2);
+        const int tapY = static_cast<int>(event.y);
+
+        if (tapY >= startY && tapY < startY + totalHeight) {
+          const size_t tappedRow = static_cast<size_t>((tapY - startY) / rowHeight);
+          const size_t tappedIndex = firstVisible + tappedRow;
+          if (tappedIndex < itemCount) {
+            *selectedIndex = tappedIndex;
+            selectMenuItem(nowMs);
+            return;
+          }
+        }
+      }
+    }
+    // In DPad mode, ignore taps that didn't hit anything
+    return;
+  }
+
+  // D-Pad mode: disable swipe navigation (only DPad buttons work)
+  if (navMode_ == NavMode::DPad) {
+    return;
+  }
+
   if (absDeltaY >= static_cast<int>(kSwipeThresholdPx) &&
       absDeltaY > absDeltaX + static_cast<int>(kAxisBiasPx)) {
     moveMenuSelection(deltaY < 0 ? -1 : 1);
@@ -3255,6 +3365,12 @@ void App::selectSettingsItem(uint32_t nowMs) {
       case kSettingsDisplayHelpHintsIndex:
         showHelpHints_ = !showHelpHints_;
         preferences_.putBool(kPrefShowHelpHints, showHelpHints_);
+        rebuildSettingsMenuItems();
+        renderSettings();
+        return;
+      case kSettingsDisplayNavModeIndex:
+        navMode_ = (navMode_ == NavMode::Swipe) ? NavMode::DPad : NavMode::Swipe;
+        preferences_.putUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
         rebuildSettingsMenuItems();
         renderSettings();
         return;
@@ -4037,6 +4153,7 @@ void App::rebuildSettingsMenuItems() {
                                  onOffLabel(savePointButtonVisible_));
     settingsMenuItems_.push_back(polish("Pomoc (?): ", "Help (?): ") +
                                  onOffLabel(showHelpHints_));
+    settingsMenuItems_.push_back(polish("Nawigacja: ", "Navigation: ") + navModeLabel());
   } else if (menuScreen_ == MenuScreen::ScreensaverSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverStyle)) +
@@ -4930,6 +5047,10 @@ String App::pauseModeLabel() const {
 String App::handednessLabel() const {
   return handednessMode_ == HandednessMode::Left ? tr(TrKey::LeftHand)
                                                  : tr(TrKey::RightHand);
+}
+
+String App::navModeLabel() const {
+  return navMode_ == NavMode::DPad ? "D-Pad" : "Swipe";
 }
 
 String App::readerFontSizeLabel() const {
@@ -7326,7 +7447,11 @@ void App::renderMenu() {
       menuScreen_ == MenuScreen::WelcomeConnect) {
     renderSettings();
   } else if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
-    display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
+    if (navMode_ == NavMode::DPad) {
+      display_.renderMenuWithDPad(settingsMenuItems_, presetsSelectedIndex_);
+    } else {
+      display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
+    }
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     renderWifiNetworks();
   } else if (menuScreen_ == MenuScreen::TextEntry) {
@@ -7373,7 +7498,11 @@ void App::renderMainMenu() {
   items.push_back(uiText(UiText::Settings));
   items.push_back(uiText(UiText::Plugins));
   items.push_back(uiText(UiText::PowerOff));
-  display_.renderMenu(items, menuSelectedIndex_);
+  if (navMode_ == NavMode::DPad) {
+    display_.renderMenuWithDPad(items, menuSelectedIndex_);
+  } else {
+    display_.renderMenu(items, menuSelectedIndex_);
+  }
 }
 
 void App::renderSettings() {
@@ -7397,7 +7526,11 @@ void App::renderSettings() {
     }
   }
 
-  display_.renderMenu(renderItems, settingsSelectedIndex_);
+  if (navMode_ == NavMode::DPad) {
+    display_.renderMenuWithDPad(renderItems, settingsSelectedIndex_);
+  } else {
+    display_.renderMenu(renderItems, settingsSelectedIndex_);
+  }
 }
 
 void App::renderTypographyTuning() {

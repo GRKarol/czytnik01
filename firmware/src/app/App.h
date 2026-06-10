@@ -40,6 +40,11 @@ class App {
     Left = 1,
   };
 
+  enum class NavMode : uint8_t {
+    Swipe = 0,
+    DPad = 1,
+  };
+
   App();
 
   void begin();
@@ -374,6 +379,7 @@ class App {
   String scrollMarginLabel() const;
   String pauseModeLabel() const;
   String handednessLabel() const;
+  String navModeLabel() const;
   String readerFontSizeLabel() const;
   String readerTypefaceLabel() const;
   String typographyTuningLabel() const;
@@ -733,5 +739,6 @@ class App {
   UiLanguage uiLanguage_ = UiLanguage::English;
   ReaderMode readerMode_ = ReaderMode::Rsvp;
   HandednessMode handednessMode_ = HandednessMode::Right;
+  NavMode navMode_ = NavMode::Swipe;
   DisplayManager::TypographyConfig typographyConfig_;
 };

@@ -2894,6 +2894,113 @@ void DisplayManager::renderMenu(const std::vector<String> &items, size_t selecte
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
+void DisplayManager::renderMenuWithDPad(const std::vector<String> &items, size_t selectedIndex) {
+  if (items.empty()) {
+    renderCenteredWord("MENU");
+    return;
+  }
+
+  if (selectedIndex >= items.size()) {
+    selectedIndex = items.size() - 1;
+  }
+
+  String renderKey = "menudpad|";
+  renderKey += String(selectedIndex);
+  renderKey += "|b:";
+  renderKey += batteryLabel_;
+  renderKey += "|d:";
+  renderKey += String(darkMode_ ? 1 : 0);
+  renderKey += "|n:";
+  renderKey += String(nightMode_ ? 1 : 0);
+  for (const String &item : items) {
+    renderKey += "|";
+    renderKey += item;
+  }
+
+  if (!initialized_ || renderKey == lastRenderKey_) {
+    return;
+  }
+
+  lastRenderKey_ = renderKey;
+
+  const int scale = 1;
+  const int virtualWidth = kDisplayWidth;
+  const int virtualHeight = kDisplayHeight;
+
+  // D-Pad panel takes the rightmost 120px
+  constexpr int kDPadPanelWidth = 120;
+  const int menuAreaWidth = virtualWidth - kDPadPanelWidth;
+
+  const size_t itemCount = items.size();
+  const size_t visibleCount =
+      std::min(itemCount, static_cast<size_t>(std::max(1, virtualHeight / kCompactMenuRowHeight)));
+  size_t firstVisible = 0;
+  if (selectedIndex >= visibleCount / 2) {
+    firstVisible = selectedIndex - visibleCount / 2;
+  }
+  if (firstVisible + visibleCount > itemCount) {
+    firstVisible = itemCount - visibleCount;
+  }
+
+  const int rowHeight = kCompactMenuRowHeight;
+  const int totalHeight = rowHeight * static_cast<int>(visibleCount);
+  int y = std::max(0, (virtualHeight - totalHeight) / 2);
+
+  clearVirtualBuffer(virtualWidth, virtualHeight);
+
+  // Draw back arrow "<" in top-left corner
+  drawTinyTextAt("<", 4, 4, dimColor(), kTinyScale);
+
+  // Draw menu items in left area
+  for (size_t row = 0; row < visibleCount; ++row) {
+    const size_t itemIndex = firstVisible + row;
+    const bool selected = itemIndex == selectedIndex;
+    const uint16_t color = selected ? focusColor() : dimColor();
+    const int maxWidth = menuAreaWidth - kCompactMenuX - 16;
+    if (selected) {
+      fillVirtualRect(10, y + 2, 5, kTinyGlyphHeight * kTinyScale + 2, selectedBarColor());
+    }
+    drawTinyTextAt(fitTinyText(items[itemIndex], maxWidth, kTinyScale), kCompactMenuX, y + 3, color,
+                   kTinyScale);
+    y += rowHeight;
+  }
+
+  // Draw D-Pad panel on the right side
+  const int padCenterX = menuAreaWidth + kDPadPanelWidth / 2;
+  const int padCenterY = virtualHeight / 2;
+  const int btnOffset = 38;
+  const uint16_t btnColor = dimColor();
+  const uint16_t okColor = focusColor();
+
+  // Draw large touch-friendly button indicators
+  // Up arrow - triangle hint using filled rect
+  fillVirtualRect(padCenterX - 8, padCenterY - btnOffset - 2, 16, 3, btnColor);
+  fillVirtualRect(padCenterX - 5, padCenterY - btnOffset - 5, 10, 3, btnColor);
+  fillVirtualRect(padCenterX - 2, padCenterY - btnOffset - 8, 4, 3, btnColor);
+  // Down arrow
+  fillVirtualRect(padCenterX - 8, padCenterY + btnOffset - 1, 16, 3, btnColor);
+  fillVirtualRect(padCenterX - 5, padCenterY + btnOffset + 2, 10, 3, btnColor);
+  fillVirtualRect(padCenterX - 2, padCenterY + btnOffset + 5, 4, 3, btnColor);
+  // Left arrow
+  fillVirtualRect(padCenterX - btnOffset - 2, padCenterY - 8, 3, 16, btnColor);
+  fillVirtualRect(padCenterX - btnOffset - 5, padCenterY - 5, 3, 10, btnColor);
+  fillVirtualRect(padCenterX - btnOffset - 8, padCenterY - 2, 3, 4, btnColor);
+  // Right arrow
+  fillVirtualRect(padCenterX + btnOffset - 1, padCenterY - 8, 3, 16, btnColor);
+  fillVirtualRect(padCenterX + btnOffset + 2, padCenterY - 5, 3, 10, btnColor);
+  fillVirtualRect(padCenterX + btnOffset + 5, padCenterY - 2, 3, 4, btnColor);
+  // OK button - filled circle-like square in center
+  fillVirtualRect(padCenterX - 10, padCenterY - 10, 20, 20, okColor);
+
+  // Separator line between menu and dpad
+  for (int lineY = 10; lineY < virtualHeight - 10; ++lineY) {
+    fillVirtualRect(menuAreaWidth, lineY, 1, 1, dimColor());
+  }
+
+  drawBatteryBadge();
+  flushScaledFrame(scale, virtualWidth, virtualHeight);
+}
+
 void DisplayManager::renderLibrary(const std::vector<LibraryItem> &items, size_t selectedIndex) {
   if (items.empty()) {
     renderCenteredWord("LIBRARY");
