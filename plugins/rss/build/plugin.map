@@ -1,0 +1,277 @@
+
+Discarded input sections
+
+ .comment       0x0000000000000000       0x87 build\merged.o
+ .xt.lit        0x0000000000000000       0xa0 build\merged.o
+ .xt.prop       0x0000000000000000      0xd08 build\merged.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+
+.plugin_header  0x0000000000000000       0x20
+ *(.plugin_header)
+ .plugin_header
+                0x0000000000000000       0x20 build\merged.o
+
+.literal        0x0000000000000020       0x64
+ *(.literal .literal.*)
+ .literal.plugin_destroy
+                0x0000000000000020        0x4 build\merged.o
+ .literal.plugin_get_info
+                0x0000000000000024        0x8 build\merged.o
+ .literal.plugin_init
+                0x000000000000002c        0x4 build\merged.o
+                                         0x10 (size before relaxing)
+ .literal.plugin_update
+                0x0000000000000030        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal.plugin_handle_button
+                0x0000000000000030        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal.plugin_handle_touch
+                0x0000000000000030        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal.plugin_draw
+                0x0000000000000030        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal._ZL7strCopyPcPKct$constprop$4
+                0x0000000000000030        0x0 build\merged.o
+ .literal._ZN13RssPluginCoreC2EP20PluginDisplayServiceP20PluginStorageService
+                0x0000000000000030        0x0 build\merged.o
+ .literal._ZN13RssPluginCore12handleButtonEPK17PluginButtonEvent
+                0x0000000000000030        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal._ZN13RssPluginCore15drawArticleListEv
+                0x0000000000000030        0x8 build\merged.o
+ .literal._ZN13RssPluginCore17drawArticleReaderEv
+                0x0000000000000038       0x14 build\merged.o
+ .literal._ZN13RssPluginCore14drawFeedConfigEv
+                0x000000000000004c        0xc build\merged.o
+ .literal._ZN13RssPluginCore4drawEv
+                0x0000000000000058        0x0 build\merged.o
+                                          0xc (size before relaxing)
+ .literal._ZN13RssPluginCore10loadConfigEv
+                0x0000000000000058        0x4 build\merged.o
+ .literal._ZN13RssPluginCore10saveConfigEv
+                0x000000000000005c        0x4 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal._ZN13RssPluginCore15loadArticleListEv
+                0x0000000000000060        0xc build\merged.o
+                                         0x10 (size before relaxing)
+ .literal._ZN13RssPluginCore5beginEv
+                0x000000000000006c        0x4 build\merged.o
+                                          0xc (size before relaxing)
+ .literal._ZN13RssPluginCore18loadArticleContentEh
+                0x0000000000000070        0x0 build\merged.o
+                                          0x4 (size before relaxing)
+ .literal._ZN13RssPluginCore12refreshFeedsEv
+                0x0000000000000070        0xc build\merged.o
+ .literal._ZN13RssPluginCore10selectItemEv
+                0x000000000000007c        0x4 build\merged.o
+                                         0x18 (size before relaxing)
+ .literal._ZN13RssPluginCore11handleTouchEPK16PluginTouchEvent
+                0x0000000000000080        0x4 build\merged.o
+                                         0x10 (size before relaxing)
+
+.text           0x0000000000000084      0xa16
+ *(.text .text.*)
+ .text.plugin_destroy
+                0x0000000000000084       0x10 build\merged.o
+                0x0000000000000084                plugin_destroy
+ .text.plugin_get_info
+                0x0000000000000094        0xf build\merged.o
+                0x0000000000000094                plugin_get_info
+ *fill*         0x00000000000000a3        0x1 
+ .text.plugin_init
+                0x00000000000000a4       0x26 build\merged.o
+                                         0x2e (size before relaxing)
+                0x00000000000000a4                plugin_init
+ *fill*         0x00000000000000ca        0x2 
+ .text.plugin_update
+                0x00000000000000cc       0x14 build\merged.o
+                0x00000000000000cc                plugin_update
+ .text.plugin_handle_button
+                0x00000000000000e0       0x14 build\merged.o
+                0x00000000000000e0                plugin_handle_button
+ .text.plugin_handle_touch
+                0x00000000000000f4       0x14 build\merged.o
+                0x00000000000000f4                plugin_handle_touch
+ .text.plugin_draw
+                0x0000000000000108        0xf build\merged.o
+                                         0x12 (size before relaxing)
+                0x0000000000000108                plugin_draw
+ *fill*         0x0000000000000117        0x1 
+ .text._ZN13RssPluginCore12handleButtonEPK17PluginButtonEvent
+                0x0000000000000118       0x20 build\merged.o
+                                         0x23 (size before relaxing)
+                0x0000000000000118                RssPluginCore::handleButton(PluginButtonEvent const*)
+ *fill*         0x0000000000000138        0x0 
+ .text._ZN13RssPluginCore15drawArticleListEv
+                0x0000000000000138       0x5b build\merged.o
+                0x0000000000000138                RssPluginCore::drawArticleList()
+ *fill*         0x0000000000000193        0x1 
+ .text._ZN13RssPluginCore17drawArticleReaderEv
+                0x0000000000000194       0xdc build\merged.o
+                0x0000000000000194                RssPluginCore::drawArticleReader()
+ .text._ZN13RssPluginCore14drawFeedConfigEv
+                0x0000000000000270       0x5b build\merged.o
+                0x0000000000000270                RssPluginCore::drawFeedConfig()
+ *fill*         0x00000000000002cb        0x1 
+ .text._ZN13RssPluginCore4drawEv
+                0x00000000000002cc       0x29 build\merged.o
+                                         0x30 (size before relaxing)
+                0x00000000000002cc                RssPluginCore::draw()
+ *fill*         0x00000000000002f5        0x3 
+ .text._ZN13RssPluginCore10loadConfigEv
+                0x00000000000002f8      0x136 build\merged.o
+                0x00000000000002f8                RssPluginCore::loadConfig()
+ *fill*         0x000000000000042e        0x2 
+ .text._ZN13RssPluginCore10saveConfigEv
+                0x0000000000000430       0xfc build\merged.o
+                0x0000000000000430                RssPluginCore::saveConfig()
+ .text._ZN13RssPluginCore15loadArticleListEv
+                0x000000000000052c      0x1d9 build\merged.o
+                0x000000000000052c                RssPluginCore::loadArticleList()
+ *fill*         0x0000000000000705        0x3 
+ .text._ZN13RssPluginCore5beginEv
+                0x0000000000000708       0x1d build\merged.o
+                                         0x21 (size before relaxing)
+                0x0000000000000708                RssPluginCore::begin()
+ *fill*         0x0000000000000725        0x3 
+ .text._ZN13RssPluginCore18loadArticleContentEh
+                0x0000000000000728       0x66 build\merged.o
+                0x0000000000000728                RssPluginCore::loadArticleContent(unsigned char)
+ *fill*         0x000000000000078e        0x2 
+ .text._ZN13RssPluginCore12refreshFeedsEv
+                0x0000000000000790       0x17 build\merged.o
+                0x0000000000000790                RssPluginCore::refreshFeeds()
+ *fill*         0x00000000000007a7        0x1 
+ .text._ZN13RssPluginCore10selectItemEv
+                0x00000000000007a8       0xce build\merged.o
+                                         0xde (size before relaxing)
+                0x00000000000007a8                RssPluginCore::selectItem()
+ *fill*         0x0000000000000876        0x2 
+ .text._ZN13RssPluginCore11handleTouchEPK16PluginTouchEvent
+                0x0000000000000878       0x50 build\merged.o
+                                         0x53 (size before relaxing)
+                0x0000000000000878                RssPluginCore::handleTouch(PluginTouchEvent const*)
+ .text          0x00000000000008c8        0x0 build\merged.o
+ *fill*         0x00000000000008c8        0x0 
+ *fill*         0x00000000000008c8        0x0 
+ *fill*         0x00000000000008c8        0x0 
+ .text._ZL7strCopyPcPKct$constprop$4
+                0x00000000000008c8       0x26 build\merged.o
+ *fill*         0x00000000000008ee        0x2 
+ .text._ZN13RssPluginCoreC2EP20PluginDisplayServiceP20PluginStorageService
+                0x00000000000008f0       0x55 build\merged.o
+                0x00000000000008f0                RssPluginCore::RssPluginCore(PluginDisplayService*, PluginStorageService*)
+                0x00000000000008f0                RssPluginCore::RssPluginCore(PluginDisplayService*, PluginStorageService*)
+ *fill*         0x0000000000000945        0x3 
+ .text._ZN13RssPluginCore6updateEj
+                0x0000000000000948        0x5 build\merged.o
+                0x0000000000000948                RssPluginCore::update(unsigned int)
+ *fill*         0x000000000000094d        0x3 
+ .text._ZN13RssPluginCore10navigateUpEv
+                0x0000000000000950       0x12 build\merged.o
+                0x0000000000000950                RssPluginCore::navigateUp()
+ *fill*         0x0000000000000962        0x2 
+ .text._ZN13RssPluginCore12navigateDownEv
+                0x0000000000000964       0x50 build\merged.o
+                0x0000000000000964                RssPluginCore::navigateDown()
+ .text._ZN13RssPluginCore6goBackEv
+                0x00000000000009b4       0x2d build\merged.o
+                0x00000000000009b4                RssPluginCore::goBack()
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x0 
+ *fill*         0x00000000000009e1        0x3 
+ .text.memset   0x00000000000009e4       0x14 build\merged.o
+                0x00000000000009e4                memset
+ .text.memcpy   0x00000000000009f8       0x19 build\merged.o
+                0x00000000000009f8                memcpy
+ *fill*         0x0000000000000a11        0x3 
+ .text.memmove  0x0000000000000a14       0x3d build\merged.o
+                0x0000000000000a14                memmove
+ *fill*         0x0000000000000a51        0x3 
+ .text.memcmp   0x0000000000000a54       0x26 build\merged.o
+                0x0000000000000a54                memcmp
+ *fill*         0x0000000000000a7a        0x2 
+ .text.strlen   0x0000000000000a7c       0x15 build\merged.o
+                0x0000000000000a7c                strlen
+ *fill*         0x0000000000000a91        0x3 
+ .text.__cxa_pure_virtual
+                0x0000000000000a94        0x6 build\merged.o
+                0x0000000000000a94                __cxa_pure_virtual
+
+.rodata         0x0000000000000a9a       0xd5
+ *(.rodata .rodata.*)
+ .rodata.plugin_get_info.str1.1
+                0x0000000000000a9a       0x10 build\merged.o
+ .rodata._ZN13RssPluginCore15drawArticleListEv.str1.1
+                0x0000000000000aaa       0x15 build\merged.o
+ .rodata._ZN13RssPluginCore17drawArticleReaderEv.str1.1
+                0x0000000000000abf        0x8 build\merged.o
+                                          0x9 (size before relaxing)
+ .rodata._ZN13RssPluginCore14drawFeedConfigEv.str1.1
+                0x0000000000000ac7       0x22 build\merged.o
+ .rodata._ZN13RssPluginCore10loadConfigEv.str1.1
+                0x0000000000000ae9        0xc build\merged.o
+ .rodata._ZN13RssPluginCore10saveConfigEv.str1.1
+                0x0000000000000af5        0xb build\merged.o
+ .rodata._ZN13RssPluginCore15loadArticleListEv.str1.1
+                0x0000000000000b00       0x17 build\merged.o
+ .rodata._ZN13RssPluginCore5beginEv.str1.1
+                0x0000000000000b17        0x9 build\merged.o
+ .rodata._ZN13RssPluginCore12refreshFeedsEv.str1.1
+                0x0000000000000b20       0x32 build\merged.o
+ .rodata._ZN13RssPluginCore10selectItemEv.str1.1
+                0x0000000000000b52       0x1d build\merged.o
+
+.plugin_vtable  0x0000000000000b70       0x1c
+                0x0000000000000b70                _plugin_vtable_start = .
+ *(.plugin_vtable)
+ .plugin_vtable
+                0x0000000000000b70       0x1c build\merged.o
+
+.data           0x0000000000000b8c        0x0
+ *(.data .data.*)
+ .data          0x0000000000000b8c        0x0 build\merged.o
+
+.bss            0x0000000000000b8c     0x16b4
+                0x0000000000000b8c                _bss_start = .
+ *(.bss .bss.*)
+ .bss           0x0000000000000b8c        0x0 build\merged.o
+ .bss._ZL4core  0x0000000000000b8c        0x4 build\merged.o
+ .bss._ZL11coreStorage
+                0x0000000000000b90     0x1610 build\merged.o
+ .bss._ZZN13RssPluginCore17drawArticleReaderEvE5l2Buf
+                0x00000000000021a0       0x50 build\merged.o
+ .bss._ZZN13RssPluginCore17drawArticleReaderEvE5l1Buf
+                0x00000000000021f0       0x50 build\merged.o
+ *(COMMON)
+                0x0000000000002240                _bss_end = .
+
+/DISCARD/
+ *(.comment)
+ *(.note*)
+ *(.eh_frame*)
+ *(.xt.lit)
+ *(.xt.prop)
+ *(.gnu.*)
+LOAD build\merged.o
+OUTPUT(build\plugin.elf elf32-xtensa-le)
+
+.xtensa.info    0x0000000000000000       0x38
+ .xtensa.info   0x0000000000000000       0x38 build\merged.o

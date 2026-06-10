@@ -1,0 +1,4 @@
+C:\Users\karol\.platformio\packages\toolchain-xtensa-esp32s3\bin\xtensa-esp32s3-elf-ld.exe: build\merged.o:(.literal._ZN14FocusTimerCore4drawEv+0x34): undefined reference to `memset'
+C:\Users\karol\.platformio\packages\toolchain-xtensa-esp32s3\bin\xtensa-esp32s3-elf-ld.exe: build\merged.o: in function `FocusTimerCore::draw()':
+(.text._ZN14FocusTimerCore4drawEv+0x87): undefined reference to `memset'
+C:\Users\karol\.platformio\packages\toolchain-xtensa-esp32s3\bin\xtensa-esp32s3-elf-ld.exe: (.text._ZN14FocusTimerCore4drawEv+0x122): undefined reference to `memset'

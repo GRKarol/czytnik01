@@ -1,23 +1,27 @@
 // plugins/rss/src/main.cpp
 #include "PluginSdk.h"
 #include "RssPluginCore.h"
+#include "plugin_new.h"
 
-static RssPluginCore* core = nullptr;
 static PluginContext* ctx = nullptr;
 
-// Forward declarations
-extern "C" PluginResult plugin_init(PluginContext* context);
-extern "C" void plugin_destroy();
-extern "C" void plugin_update(uint32_t nowMs);
-extern "C" void plugin_handle_button(const PluginButtonEvent* event);
-extern "C" void plugin_handle_touch(const PluginTouchEvent* event);
-extern "C" void plugin_draw();
-extern "C" PluginInfo plugin_get_info();
+// Static storage for the core instance (no heap allocation needed)
+static unsigned char coreStorage[sizeof(RssPluginCore)] __attribute__((aligned(4)));
+static RssPluginCore* core = nullptr;
 
 extern "C" {
 
+// Forward declarations
+PluginResult plugin_init(PluginContext* context);
+void plugin_destroy(void);
+void plugin_update(uint32_t nowMs);
+void plugin_handle_button(const PluginButtonEvent* event);
+void plugin_handle_touch(const PluginTouchEvent* event);
+void plugin_draw(void);
+PluginInfo plugin_get_info(void);
+
 // Place header in .plugin_header section
-__attribute__((section(".plugin_header")))
+__attribute__((used, section(".plugin_header")))
 const PluginBinaryHeader pluginHeader = {
     .magic = PLUGIN_HEADER_MAGIC,
     .sdkVersion = PLUGIN_SDK_VERSION,
@@ -27,7 +31,7 @@ const PluginBinaryHeader pluginHeader = {
 };
 
 // Place vtable in .plugin_vtable section
-__attribute__((section(".plugin_vtable")))
+__attribute__((used, section(".plugin_vtable")))
 const PluginVTable pluginVTable = {
     .init = plugin_init,
     .destroy = plugin_destroy,
@@ -40,15 +44,21 @@ const PluginVTable pluginVTable = {
 
 PluginResult plugin_init(PluginContext* context) {
     ctx = context;
-    core = new RssPluginCore(ctx->display, ctx->storage);
-    if (!core) return PLUGIN_ERROR_MEMORY;
-    if (!core->begin()) return PLUGIN_ERROR_INIT;
+    // Placement new into static buffer — no heap allocation
+    core = new (coreStorage) RssPluginCore(ctx->display, ctx->storage);
+    if (!core->begin()) {
+        core->~RssPluginCore();
+        core = nullptr;
+        return PLUGIN_ERROR_INIT;
+    }
     return PLUGIN_OK;
 }
 
-void plugin_destroy() {
-    delete core;
-    core = nullptr;
+void plugin_destroy(void) {
+    if (core) {
+        core->~RssPluginCore();
+        core = nullptr;
+    }
     ctx = nullptr;
 }
 
@@ -64,16 +74,16 @@ void plugin_handle_touch(const PluginTouchEvent* event) {
     if (core) core->handleTouch(event);
 }
 
-void plugin_draw() {
+void plugin_draw(void) {
     if (core) core->draw();
 }
 
-PluginInfo plugin_get_info() {
-    return {
-        .name = "RSS Feeds",
-        .version = "1.0.0",
-        .sdkVersion = PLUGIN_SDK_VERSION,
-    };
+PluginInfo plugin_get_info(void) {
+    PluginInfo info;
+    info.name = "RSS Feeds";
+    info.version = "1.0.0";
+    info.sdkVersion = PLUGIN_SDK_VERSION;
+    return info;
 }
 
 } // extern "C"

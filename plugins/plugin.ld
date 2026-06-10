@@ -1,30 +1,39 @@
-/* plugins/plugin.ld — Linker script for position-independent plugin binaries */
-ENTRY(_plugin_entry)
+/* plugins/plugin.ld — Linker script for ESP32-S3 plugin binaries */
 
 SECTIONS
 {
-    /* Plugin header at offset 0 */
-    .plugin_header 0x0 : {
+    /* Plugin header must be at the very start */
+    .plugin_header : {
         KEEP(*(.plugin_header))
     }
 
-    /* Code section — position independent */
+    /* Xtensa literal pools (must precede their .text counterparts) */
+    .literal : {
+        *(.literal .literal.*)
+    }
+
+    /* Code */
     .text : {
         *(.text .text.*)
+    }
+
+    /* Read-only data (string constants etc.) */
+    .rodata : {
         *(.rodata .rodata.*)
     }
 
-    /* VTable section */
+    /* Plugin VTable — loader reads entryOffset pointing here */
     .plugin_vtable : {
-        KEEP(*(.plugin_vtable))
         _plugin_vtable_start = .;
+        KEEP(*(.plugin_vtable))
     }
 
-    /* Data sections */
+    /* Initialized data */
     .data : {
         *(.data .data.*)
     }
 
+    /* BSS (zero-initialized) */
     .bss : {
         _bss_start = .;
         *(.bss .bss.*)
@@ -32,10 +41,12 @@ SECTIONS
         _bss_end = .;
     }
 
-    /* Discard unwanted sections */
     /DISCARD/ : {
         *(.comment)
         *(.note*)
         *(.eh_frame*)
+        *(.xt.lit)
+        *(.xt.prop)
+        *(.gnu.*)
     }
 }

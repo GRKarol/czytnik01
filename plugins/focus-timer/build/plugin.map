@@ -1,0 +1,291 @@
+
+Discarded input sections
+
+ .comment       0x0000000000000000       0x87 build\merged.o
+ .xt.lit        0x0000000000000000       0x80 build\merged.o
+ .xt.prop       0x0000000000000000      0xc0c build\merged.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+
+.plugin_header  0x0000000000000000       0x20
+ *(.plugin_header)
+ .plugin_header
+                0x0000000000000000       0x20 build\merged.o
+
+.literal        0x0000000000000020       0x78
+ *(.literal .literal.*)
+ .literal._ZN14FocusTimerCoreC2EP16PluginImuServiceP18PluginAudioServiceP20PluginDisplayServiceP24PluginOrientationService
+                0x0000000000000020        0x8 build\merged.o
+ .literal._ZN14FocusTimerCore11handleTouchEPK16PluginTouchEvent
+                0x0000000000000028        0x4 build\merged.o
+ .literal._ZN14FocusTimerCore4drawEv
+                0x000000000000002c       0x34 build\merged.o
+                                         0x40 (size before relaxing)
+ .literal._ZN14FocusTimerCore10genreLabelENS_5GenreE
+                0x0000000000000060        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal._ZNK14FocusTimerCore8classifyEfff
+                0x0000000000000060       0x18 build\merged.o
+ .literal._ZN14FocusTimerCore17updateOrientationEj
+                0x0000000000000078        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal._ZN14FocusTimerCore5beginEv
+                0x0000000000000078        0x0 build\merged.o
+                                          0x4 (size before relaxing)
+ .literal._ZN14FocusTimerCore12handleButtonEPK17PluginButtonEvent
+                0x0000000000000078        0x0 build\merged.o
+                                          0x4 (size before relaxing)
+ .literal._ZN14FocusTimerCore6updateEj
+                0x0000000000000078       0x10 build\merged.o
+                                         0x2c (size before relaxing)
+ .literal.plugin_destroy
+                0x0000000000000088        0x4 build\merged.o
+ .literal.plugin_get_info
+                0x000000000000008c        0x8 build\merged.o
+ .literal.plugin_init
+                0x0000000000000094        0x4 build\merged.o
+                                         0x10 (size before relaxing)
+ .literal.plugin_update
+                0x0000000000000098        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal.plugin_handle_button
+                0x0000000000000098        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal.plugin_handle_touch
+                0x0000000000000098        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+ .literal.plugin_draw
+                0x0000000000000098        0x0 build\merged.o
+                                          0x8 (size before relaxing)
+
+.text           0x0000000000000098      0x916
+ *(.text .text.*)
+ .text._ZN14FocusTimerCoreC2EP16PluginImuServiceP18PluginAudioServiceP20PluginDisplayServiceP24PluginOrientationService
+                0x0000000000000098       0x32 build\merged.o
+                0x0000000000000098                FocusTimerCore::FocusTimerCore(PluginImuService*, PluginAudioService*, PluginDisplayService*, PluginOrientationService*)
+                0x0000000000000098                FocusTimerCore::FocusTimerCore(PluginImuService*, PluginAudioService*, PluginDisplayService*, PluginOrientationService*)
+ *fill*         0x00000000000000ca        0x2 
+ .text._ZN14FocusTimerCore11handleTouchEPK16PluginTouchEvent
+                0x00000000000000cc       0x58 build\merged.o
+                0x00000000000000cc                FocusTimerCore::handleTouch(PluginTouchEvent const*)
+ .text._ZN14FocusTimerCore4drawEv
+                0x0000000000000124      0x18a build\merged.o
+                                        0x196 (size before relaxing)
+                0x0000000000000124                FocusTimerCore::draw()
+ *fill*         0x00000000000002ae        0x2 
+ .text._ZN14FocusTimerCore10genreLabelENS_5GenreE
+                0x00000000000002b0       0x18 build\merged.o
+                0x00000000000002b0                FocusTimerCore::genreLabel(FocusTimerCore::Genre)
+ .text._ZNK14FocusTimerCore8classifyEfff
+                0x00000000000002c8       0xca build\merged.o
+                0x00000000000002c8                FocusTimerCore::classify(float, float, float) const
+ *fill*         0x0000000000000392        0x2 
+ .text._ZN14FocusTimerCore17updateOrientationEj
+                0x0000000000000394       0x5a build\merged.o
+                0x0000000000000394                FocusTimerCore::updateOrientation(unsigned int)
+ *fill*         0x00000000000003ee        0x2 
+ .text._ZN14FocusTimerCore5beginEv
+                0x00000000000003f0       0x3b build\merged.o
+                0x00000000000003f0                FocusTimerCore::begin()
+ *fill*         0x000000000000042b        0x1 
+ .text._ZN14FocusTimerCore12handleButtonEPK17PluginButtonEvent
+                0x000000000000042c       0x36 build\merged.o
+                0x000000000000042c                FocusTimerCore::handleButton(PluginButtonEvent const*)
+ *fill*         0x0000000000000462        0x2 
+ .text._ZN14FocusTimerCore6updateEj
+                0x0000000000000464      0x1b7 build\merged.o
+                                        0x1ce (size before relaxing)
+                0x0000000000000464                FocusTimerCore::update(unsigned int)
+ *fill*         0x000000000000061b        0x1 
+ .text.plugin_destroy
+                0x000000000000061c       0x10 build\merged.o
+                0x000000000000061c                plugin_destroy
+ .text.plugin_get_info
+                0x000000000000062c        0xf build\merged.o
+                0x000000000000062c                plugin_get_info
+ *fill*         0x000000000000063b        0x1 
+ .text.plugin_init
+                0x000000000000063c       0x2a build\merged.o
+                                         0x32 (size before relaxing)
+                0x000000000000063c                plugin_init
+ *fill*         0x0000000000000666        0x2 
+ .text.plugin_update
+                0x0000000000000668       0x14 build\merged.o
+                0x0000000000000668                plugin_update
+ .text.plugin_handle_button
+                0x000000000000067c       0x14 build\merged.o
+                0x000000000000067c                plugin_handle_button
+ .text.plugin_handle_touch
+                0x0000000000000690       0x14 build\merged.o
+                0x0000000000000690                plugin_handle_touch
+ .text.plugin_draw
+                0x00000000000006a4        0xf build\merged.o
+                                         0x12 (size before relaxing)
+                0x00000000000006a4                plugin_draw
+ .text          0x00000000000006b3        0x0 build\merged.o
+ *fill*         0x00000000000006b3        0x1 
+ .text._ZNK14FocusTimerCore5stateEv
+                0x00000000000006b4        0x8 build\merged.o
+                0x00000000000006b4                FocusTimerCore::state() const
+ .text._ZNK14FocusTimerCore5genreEv
+                0x00000000000006bc        0x8 build\merged.o
+                0x00000000000006bc                FocusTimerCore::genre() const
+ .text._ZNK14FocusTimerCore20isActiveTimerRunningEv
+                0x00000000000006c4        0x8 build\merged.o
+                0x00000000000006c4                FocusTimerCore::isActiveTimerRunning() const
+ .text._ZNK14FocusTimerCore11remainingMsEj
+                0x00000000000006cc       0x1e build\merged.o
+                0x00000000000006cc                FocusTimerCore::remainingMs(unsigned int) const
+ *fill*         0x00000000000006ea        0x2 
+ .text._ZNK14FocusTimerCore15progressPercentEj
+                0x00000000000006ec       0x30 build\merged.o
+                0x00000000000006ec                FocusTimerCore::progressPercent(unsigned int) const
+ *fill*         0x000000000000071c        0x0 
+ .text._ZNK14FocusTimerCore20completedTouchBlocksEv
+                0x000000000000071c        0x8 build\merged.o
+                0x000000000000071c                FocusTimerCore::completedTouchBlocks() const
+ .text._ZNK14FocusTimerCore19completedWorkBlocksEv
+                0x0000000000000724        0x8 build\merged.o
+                0x0000000000000724                FocusTimerCore::completedWorkBlocks() const
+ .text._ZNK14FocusTimerCore20completedBreakBlocksEv
+                0x000000000000072c        0x8 build\merged.o
+                0x000000000000072c                FocusTimerCore::completedBreakBlocks() const
+ .text._ZN14FocusTimerCore20consumeCompletionCueEv
+                0x0000000000000734        0xf build\merged.o
+                0x0000000000000734                FocusTimerCore::consumeCompletionCue()
+ *fill*         0x0000000000000743        0x1 
+ .text._ZN14FocusTimerCore25resetOrientationStabilityEv
+                0x0000000000000744       0x14 build\merged.o
+                0x0000000000000744                FocusTimerCore::resetOrientationStability()
+ *fill*         0x0000000000000758        0x0 
+ *fill*         0x0000000000000758        0x0 
+ .text._ZNK14FocusTimerCore21orientationInputArmedEj
+                0x0000000000000758       0x48 build\merged.o
+                0x0000000000000758                FocusTimerCore::orientationInputArmed(unsigned int) const
+ .text._ZN14FocusTimerCore12transitionToENS_5StateEj
+                0x00000000000007a0        0xa build\merged.o
+                0x00000000000007a0                FocusTimerCore::transitionTo(FocusTimerCore::State, unsigned int)
+ *fill*         0x00000000000007aa        0x2 
+ .text._ZN14FocusTimerCore12clearSessionEv
+                0x00000000000007ac       0x22 build\merged.o
+                0x00000000000007ac                FocusTimerCore::clearSession()
+ *fill*         0x00000000000007ce        0x0 
+ *fill*         0x00000000000007ce        0x2 
+ .text._ZN14FocusTimerCore9startModeENS_9TimerModeEjjNS_16OrientationStateE
+                0x00000000000007d0       0x1e build\merged.o
+                0x00000000000007d0                FocusTimerCore::startMode(FocusTimerCore::TimerMode, unsigned int, unsigned int, FocusTimerCore::OrientationState)
+ *fill*         0x00000000000007ee        0x2 
+ .text._ZN14FocusTimerCore15stopActiveTimerEv
+                0x00000000000007f0       0x1b build\merged.o
+                0x00000000000007f0                FocusTimerCore::stopActiveTimer()
+ *fill*         0x000000000000080b        0x0 
+ *fill*         0x000000000000080b        0x1 
+ .text._ZN14FocusTimerCore19completeActiveTimerEv
+                0x000000000000080c       0x48 build\merged.o
+                0x000000000000080c                FocusTimerCore::completeActiveTimer()
+ .text._ZNK14FocusTimerCore12timerExpiredEj
+                0x0000000000000854       0x20 build\merged.o
+                0x0000000000000854                FocusTimerCore::timerExpired(unsigned int) const
+ .text._ZN14FocusTimerCore11isShortSideENS_16OrientationStateE
+                0x0000000000000874       0x12 build\merged.o
+                0x0000000000000874                FocusTimerCore::isShortSide(FocusTimerCore::OrientationState)
+ *fill*         0x0000000000000886        0x2 
+ .text._ZN14FocusTimerCore17oppositeShortSideENS_16OrientationStateE
+                0x0000000000000888       0x16 build\merged.o
+                0x0000000000000888                FocusTimerCore::oppositeShortSide(FocusTimerCore::OrientationState)
+ *fill*         0x000000000000089e        0x2 
+ .text._ZNK14FocusTimerCore31portraitOrientationForShortSideENS_16OrientationStateE
+                0x00000000000008a0       0x11 build\merged.o
+                0x00000000000008a0                FocusTimerCore::portraitOrientationForShortSide(FocusTimerCore::OrientationState) const
+ *fill*         0x00000000000008b1        0x3 
+ .text._ZN14FocusTimerCore19updateUiOrientationEv
+                0x00000000000008b4       0x42 build\merged.o
+                0x00000000000008b4                FocusTimerCore::updateUiOrientation()
+ *fill*         0x00000000000008f6        0x0 
+ *fill*         0x00000000000008f6        0x0 
+ *fill*         0x00000000000008f6        0x0 
+ *fill*         0x00000000000008f6        0x0 
+ *fill*         0x00000000000008f6        0x2 
+ .text.memset   0x00000000000008f8       0x14 build\merged.o
+                0x00000000000008f8                memset
+ .text.memcpy   0x000000000000090c       0x19 build\merged.o
+                0x000000000000090c                memcpy
+ *fill*         0x0000000000000925        0x3 
+ .text.memmove  0x0000000000000928       0x3d build\merged.o
+                0x0000000000000928                memmove
+ *fill*         0x0000000000000965        0x3 
+ .text.memcmp   0x0000000000000968       0x26 build\merged.o
+                0x0000000000000968                memcmp
+ *fill*         0x000000000000098e        0x2 
+ .text.strlen   0x0000000000000990       0x15 build\merged.o
+                0x0000000000000990                strlen
+ *fill*         0x00000000000009a5        0x3 
+ .text.__cxa_pure_virtual
+                0x00000000000009a8        0x6 build\merged.o
+                0x00000000000009a8                __cxa_pure_virtual
+
+.rodata         0x00000000000009b0       0xfe
+ *(.rodata .rodata.*)
+ .rodata._ZN14FocusTimerCore4drawEv.str1.1
+                0x00000000000009b0       0x1a build\merged.o
+                                         0x1b (size before relaxing)
+ *fill*         0x00000000000009ca        0x2 
+ .rodata._ZN14FocusTimerCore6updateEj
+                0x00000000000009cc       0x24 build\merged.o
+ .rodata.str1.1
+                0x00000000000009f0       0x6d build\merged.o
+ *fill*         0x0000000000000a5d        0x3 
+ .rodata.CSWTCH$41
+                0x0000000000000a60       0x24 build\merged.o
+ .rodata.CSWTCH$40
+                0x0000000000000a84        0x3 build\merged.o
+ *fill*         0x0000000000000a87        0x1 
+ .rodata.CSWTCH$39
+                0x0000000000000a88        0xc build\merged.o
+ .rodata.CSWTCH$38
+                0x0000000000000a94       0x14 build\merged.o
+ .rodata.plugin_get_info.str1.1
+                0x0000000000000aa8        0x6 build\merged.o
+                                         0x10 (size before relaxing)
+
+.plugin_vtable  0x0000000000000ab0       0x1c
+                0x0000000000000ab0                _plugin_vtable_start = .
+ *(.plugin_vtable)
+ .plugin_vtable
+                0x0000000000000ab0       0x1c build\merged.o
+
+.data           0x0000000000000acc       0x14
+ *(.data .data.*)
+ .data          0x0000000000000acc        0x0 build\merged.o
+ .data._ZZN14FocusTimerCore4drawEvE10genreItems
+                0x0000000000000acc       0x14 build\merged.o
+
+.bss            0x0000000000000ae0       0x44
+                0x0000000000000ae0                _bss_start = .
+ *(.bss .bss.*)
+ .bss           0x0000000000000ae0        0x0 build\merged.o
+ .bss._ZL5timer
+                0x0000000000000ae0        0x4 build\merged.o
+ .bss._ZL12timerStorage
+                0x0000000000000ae4       0x40 build\merged.o
+ *(COMMON)
+                0x0000000000000b24                _bss_end = .
+
+/DISCARD/
+ *(.comment)
+ *(.note*)
+ *(.eh_frame*)
+ *(.xt.lit)
+ *(.xt.prop)
+ *(.gnu.*)
+LOAD build\merged.o
+OUTPUT(build\plugin.elf elf32-xtensa-le)
+
+.xtensa.info    0x0000000000000000       0x38
+ .xtensa.info   0x0000000000000000       0x38 build\merged.o

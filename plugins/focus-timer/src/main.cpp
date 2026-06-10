@@ -2,9 +2,13 @@
 // FocusTimer (Klepsydra) plugin entry point
 #include "PluginSdk.h"
 #include "FocusTimerCore.h"
+#include "plugin_new.h"
 
-static FocusTimerCore* timer = nullptr;
 static PluginContext* ctx = nullptr;
+
+// Static storage for the core instance (no heap allocation needed)
+static unsigned char timerStorage[sizeof(FocusTimerCore)] __attribute__((aligned(4)));
+static FocusTimerCore* timer = nullptr;
 
 extern "C" {
 
@@ -18,7 +22,7 @@ void plugin_draw(void);
 PluginInfo plugin_get_info(void);
 
 // Place header in .plugin_header section — binarySize and entryOffset filled by post-build script
-__attribute__((section(".plugin_header")))
+__attribute__((used, section(".plugin_header")))
 const PluginBinaryHeader pluginHeader = {
     .magic = PLUGIN_HEADER_MAGIC,
     .sdkVersion = PLUGIN_SDK_VERSION,
@@ -28,7 +32,7 @@ const PluginBinaryHeader pluginHeader = {
 };
 
 // Place vtable in .plugin_vtable section — resolved by loader at entryOffset
-__attribute__((section(".plugin_vtable")))
+__attribute__((used, section(".plugin_vtable")))
 const PluginVTable pluginVTable = {
     .init = plugin_init,
     .destroy = plugin_destroy,
@@ -41,10 +45,10 @@ const PluginVTable pluginVTable = {
 
 PluginResult plugin_init(PluginContext* context) {
     ctx = context;
-    timer = new FocusTimerCore(ctx->imu, ctx->audio, ctx->display, ctx->orientation);
-    if (!timer) return PLUGIN_ERROR_MEMORY;
+    // Placement new into static buffer — no heap allocation
+    timer = new (timerStorage) FocusTimerCore(ctx->imu, ctx->audio, ctx->display, ctx->orientation);
     if (!timer->begin()) {
-        delete timer;
+        timer->~FocusTimerCore();
         timer = nullptr;
         return PLUGIN_ERROR_INIT;
     }
@@ -52,8 +56,10 @@ PluginResult plugin_init(PluginContext* context) {
 }
 
 void plugin_destroy(void) {
-    delete timer;
-    timer = nullptr;
+    if (timer) {
+        timer->~FocusTimerCore();
+        timer = nullptr;
+    }
     ctx = nullptr;
 }
 
