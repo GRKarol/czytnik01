@@ -1,0 +1,9 @@
+{
+  "id": "rss",
+  "name": "RSS Feeds",
+  "version": "1.0.0",
+  "author": "GRKarol",
+  "sdk_version": 1,
+  "description": "Download and read articles from RSS/Atom feeds",
+  "permissions": ["display", "storage", "wifi"]
+}

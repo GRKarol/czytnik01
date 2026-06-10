@@ -15,14 +15,13 @@
 #include "display/DisplayManager.h"
 #include "input/ButtonHandler.h"
 #include "input/TouchHandler.h"
-#include "plugins/PluginManager.h"
+#include "plugins/PluginLibrary.h"
+#include "plugins/PluginLoader.h"
 #include "reader/ReadingLoop.h"
-#include "rss/RssFeedManager.h"
 #include "storage/PresetManager.h"
 #include "storage/StorageManager.h"
 #include "ble/BleApi.h"
 #include "sync/CompanionSyncManager.h"
-#include "timer/FocusTimer.h"
 #include "update/OtaUpdater.h"
 #include "usb/UsbMassStorageManager.h"
 
@@ -107,11 +106,10 @@ class App {
     SavePointsList,
     SavePointNameEntry,
     PluginsList,
+    PluginLibraryScreen,
     RestartConfirm,
     SdCardRepairConfirm,
     UpdateConfirm,
-    FocusTimerGenres,
-    FocusTimerSession,
     WelcomeLanguage,
     WelcomeTheme,
     WelcomeHighlightColor,
@@ -267,14 +265,8 @@ class App {
   void applyBrowseHoldScroll(uint16_t y, uint32_t elapsedMs, uint32_t nowMs);
   void renderContextBrowsePreview(size_t currentIndex, uint16_t scrollProgressPermille);
   void applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs);
-  void applyFocusTimerTouch(const TouchEvent &event, uint32_t nowMs);
   void moveMenuSelection(int direction);
   void selectMenuItem(uint32_t nowMs);
-  void openFocusTimer();
-  void updateFocusTimer(uint32_t nowMs);
-  void resetFocusTimer();
-  void rebuildFocusTimerGenreMenuItems();
-  void selectFocusTimerGenre(uint32_t nowMs);
   void openSettings();
   void selectSettingsItem(uint32_t nowMs);
   void openWifiSettings();
@@ -400,8 +392,10 @@ class App {
   void persistSavePoints();
   void openPluginsList();
   void selectPluginsItem(uint32_t nowMs);
-  void runPluginInstall(PluginManager::PluginId id, uint32_t nowMs);
-  void runPluginRemove(PluginManager::PluginId id, uint32_t nowMs);
+
+  void openPluginLibraryScreen(uint32_t nowMs);
+  void selectPluginLibraryItem(uint32_t nowMs);
+  void renderPluginLibraryScreen();
   void openPresets();
   void selectPresetsItem(uint32_t nowMs);
   void confirmDeletePreset(size_t index, uint32_t nowMs);
@@ -479,8 +473,6 @@ class App {
   void renderRestartConfirm();
   void renderSdCardRepairConfirm();
   void renderUpdateConfirm();
-  void renderFocusTimerGenres();
-  void renderFocusTimerSession();
   void renderActiveReader(uint32_t nowMs);
   bool updateChapterTransition(uint32_t nowMs);
   bool maybeStartChapterTransition(size_t previousWordIndex, size_t currentWordIndex,
@@ -532,7 +524,6 @@ class App {
                                   const char *line2, int progressPercent);
   const char *stateName(AppState state) const;
   const char *touchPhaseName(TouchPhase phase) const;
-  bool isFocusTimerMenuScreen(MenuScreen screen) const;
   bool scrollModeEnabled() const;
   void applyUiOrientation(BoardConfig::UiOrientation orientation);
   void applyReaderUiOrientation();
@@ -542,15 +533,11 @@ class App {
   uint8_t effectiveAnchorPercent() const;
   DisplayManager::TypographyConfig effectiveTypographyConfig() const;
   uint32_t currentReaderContentToken() const;
-  String formatFocusTimerRemaining(uint32_t nowMs) const;
-  String focusTimerCountsLabel() const;
-  void playFocusTimerCompletionCue();
 
   AppState state_ = AppState::Booting;
   AppState standbyReturnState_ = AppState::Paused;
   DisplayManager display_;
   AudioManager audio_;
-  FocusTimer focusTimer_;
   ReadingLoop reader_;
   ButtonHandler button_;
   ButtonHandler powerButton_;
@@ -558,11 +545,11 @@ class App {
   StorageManager storage_;
   IndexedBookStore activeBookStore_;
   OtaUpdater otaUpdater_;
-  RssFeedManager rssFeedManager_;
   CompanionSyncManager companionSync_;
   BleApi ble_;
   UsbMassStorageManager usbTransfer_;
-  PluginManager pluginManager_;
+  PluginLibrary pluginLibrary_;
+  PluginLoader pluginLoader_;
   PresetManager presetManager_;
   Preferences preferences_;
   PausedTouchSession pausedTouch_;
@@ -607,7 +594,6 @@ class App {
   size_t restartConfirmSelectedIndex_ = 0;
   size_t sdCardRepairConfirmSelectedIndex_ = 0;
   size_t updateConfirmSelectedIndex_ = 0;
-  size_t focusTimerGenreSelectedIndex_ = 0;
   uint8_t brightnessLevelIndex_ = 4;
   uint8_t readerFontSizeIndex_ = 0;
   uint8_t scrollFontSize_ = 4;
@@ -622,7 +608,6 @@ class App {
   MenuScreen restartConfirmReturnScreen_ = MenuScreen::Main;
   QueueHandle_t otaCheckQueue_ = nullptr;
   std::vector<String> settingsMenuItems_;
-  std::vector<String> focusTimerGenreMenuItems_;
   std::vector<DisplayManager::LibraryItem> wifiNetworkMenuItems_;
   std::vector<DisplayManager::LibraryItem> bookMenuItems_;
   std::vector<size_t> bookPickerBookIndices_;
@@ -640,6 +625,8 @@ class App {
   size_t bookDetailsBookIndex_ = 0;
   std::vector<String> pluginsMenuItems_;
   size_t pluginsSelectedIndex_ = 0;
+  std::vector<String> pluginLibraryMenuItems_;
+  size_t pluginLibrarySelectedIndex_ = 0;
   std::vector<uint32_t> wordBonusBlockPrefixSumMs_;
   String timeEstimateBuildBookPath_;
   size_t timeEstimateBuildWordCount_ = 0;
@@ -700,7 +687,6 @@ class App {
   bool standbyScreenOffActive_ = false;
   bool chapterTransitionVisible_ = false;
   bool batteryWarningOverlayVisible_ = false;
-  bool focusTimerCancelHoldTriggered_ = false;
   bool otaCheckInProgress_ = false;
   bool otaUpdatePromptPending_ = false;
   uint8_t pwrTapCount_ = 0;

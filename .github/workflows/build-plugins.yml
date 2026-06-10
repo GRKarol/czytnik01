@@ -1,0 +1,92 @@
+name: Build plugins
+
+# Buduje wszystkie pluginy z katalogu plugins/*/ i dodaje je do GitHub Release.
+#
+# Triggerowany AUTOMATYCZNIE przez release.yml (workflow_call) po zbudowaniu
+# bazowego firmware. Można też uruchomić ręcznie podając tag.
+#
+# Artefakty uploadowane do Release:
+#   *-plugin.bin          (binaria pluginów)
+#   *-manifest.json       (manifesty pluginów)
+#   plugins-registry.json (rejestr pluginów dla urządzenia)
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.0"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-plugins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-plugins-${{ runner.os }}-${{ hashFiles('plugins/*/platformio.ini') }}
+          restore-keys: |
+            pio-plugins-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build all plugins
+        run: |
+          mkdir -p dist
+          for dir in plugins/*/; do
+            plugin_id=$(basename "$dir")
+            cd "$dir"
+            pio run
+            cd ../..
+            cp "plugins/$plugin_id/.pio/build/*/firmware.bin" "dist/${plugin_id}-plugin.bin"
+            cp "plugins/$plugin_id/manifest.json" "dist/${plugin_id}-manifest.json"
+          done
+
+      - name: Generate plugins registry
+        run: python tools/generate_registry.py --tag "${{ inputs.tag }}" --output dist/plugins-registry.json
+
+      - name: Verify artifacts
+        run: |
+          echo "=== Plugin binaries ==="
+          ls -lh dist/*-plugin.bin
+          echo ""
+          echo "=== Plugin manifests ==="
+          ls -lh dist/*-manifest.json
+          echo ""
+          echo "=== Registry ==="
+          cat dist/plugins-registry.json
+
+      - name: Upload plugins to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: |
+            dist/*-plugin.bin
+            dist/*-manifest.json
+            dist/plugins-registry.json

@@ -1986,6 +1986,8 @@ bool StorageManager::begin() {
     if (mounted_) {
       const uint64_t sizeMb = SD_MMC.cardSize() / (1024ULL * 1024ULL);
       Serial.printf("[storage] SD initialized (%llu MB) at %d kHz\n", sizeMb, frequencyKhz);
+      // Ensure /plugins/ directory exists for the plugin system
+      ensureDirectory("/plugins");
       notifyStatus("SD", "Scanning books", "EPUB converts on open", 10);
       refreshBookPaths(false);
       return true;
@@ -2809,14 +2811,16 @@ StorageManager::DiagnosticResult StorageManager::diagnoseSdCard() {
   result.bookFilesDirectory = directoryExists(kBookFilesPath);
   result.articleFilesDirectory = directoryExists(kArticleFilesPath);
   result.configDirectory = directoryExists("/config");
+  result.pluginsDirectory = directoryExists("/plugins");
   if (!result.booksDirectory || !result.bookFilesDirectory || !result.articleFilesDirectory ||
-      !result.configDirectory) {
+      !result.configDirectory || !result.pluginsDirectory) {
     result.summary = "Folders missing";
     result.detail = "Can create layout";
     Serial.printf("[sd-check] v0.0.4 folders missing /books=%u /books/books=%u "
-                  "/books/articles=%u /config=%u\n",
+                  "/books/articles=%u /config=%u /plugins=%u\n",
                   result.booksDirectory ? 1 : 0, result.bookFilesDirectory ? 1 : 0,
-                  result.articleFilesDirectory ? 1 : 0, result.configDirectory ? 1 : 0);
+                  result.articleFilesDirectory ? 1 : 0, result.configDirectory ? 1 : 0,
+                  result.pluginsDirectory ? 1 : 0);
     notifyStatus("SD check", "Folders missing", "Confirm repair", 38);
     return result;
   }
@@ -2881,14 +2885,15 @@ bool StorageManager::repairSdCardFolders() {
   const bool bookFilesOk = booksOk && ensureDirectory(kBookFilesPath);
   const bool articleFilesOk = booksOk && ensureDirectory(kArticleFilesPath);
   const bool configOk = ensureDirectory("/config");
-  const bool ok = rootWritable && booksOk && bookFilesOk && articleFilesOk && configOk;
+  const bool pluginsOk = ensureDirectory("/plugins");
+  const bool ok = rootWritable && booksOk && bookFilesOk && articleFilesOk && configOk && pluginsOk;
   if (ok) {
     Serial.println("[sd-check] repaired v0.0.4 folder layout");
   } else {
     Serial.printf("[sd-check] folder repair failed rootWritable=%u /books=%u /books/books=%u "
-                  "/books/articles=%u /config=%u\n",
+                  "/books/articles=%u /config=%u /plugins=%u\n",
                   rootWritable ? 1 : 0, booksOk ? 1 : 0, bookFilesOk ? 1 : 0,
-                  articleFilesOk ? 1 : 0, configOk ? 1 : 0);
+                  articleFilesOk ? 1 : 0, configOk ? 1 : 0, pluginsOk ? 1 : 0);
   }
   return ok;
 }

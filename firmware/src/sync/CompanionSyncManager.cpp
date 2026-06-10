@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <vector>
 
-#include "plugins/PluginManager.h"
 #include "sync/WifiQrCode.h"
 
 #ifndef RSVP_FIRMWARE_VERSION
@@ -1291,13 +1290,10 @@ void CompanionSyncManager::handleCapabilities() {
   body += "false";
 #endif
   body += ",\"rss\":";
-#if PLUGIN_RSS_ENABLED
+  // RSS is now a dynamic plugin — always report as available capability
   body += "true";
-#else
-  body += "false";
-#endif
   body += ",\"focusTimer\":";
-  // Timer is always built-in (see PluginManager)
+  // Timer is now a dynamic plugin — always report as available capability
   body += "true";
   body += ",\"wifiTimeout\":true";
   body += "}}";
@@ -1312,19 +1308,15 @@ void CompanionSyncManager::handlePlugins() {
   body.reserve(512);
   body += "{\"ok\":true,\"plugins\":[";
 
-  // Timer plugin — always available (built-in)
+  // Timer plugin — now a dynamic SD-card plugin
   body += "{\"id\":\"focus-timer\",\"name\":\"Focus Timer\"";
-  body += ",\"installed\":true,\"builtin\":true";
+  body += ",\"installed\":true,\"builtin\":false";
   body += ",\"active\":true}";
 
-  // RSS plugin
+  // RSS plugin — now a dynamic SD-card plugin
   body += ",{\"id\":\"rss\",\"name\":\"RSS Feeds\"";
-  body += ",\"installed\":";
-  body += PluginManager::isActive(PluginManager::PluginId::Rss) ? "true" : "false";
-  body += ",\"builtin\":true";
-  body += ",\"active\":";
-  body += PluginManager::isActive(PluginManager::PluginId::Rss) ? "true" : "false";
-  body += "}";
+  body += ",\"installed\":true,\"builtin\":false";
+  body += ",\"active\":true}";
 
   body += "]}";
   server_.send(200, "application/json", body);

@@ -6,11 +6,10 @@ name: Release firmware
 #
 # Release zawiera:
 #   - czytnik01.bin                 (scalony obraz dla web flashera)
-#   - flower-firmware.bin           (bazowa aplikacja OTA, bez pluginów)
-#   - flower-firmware-timer.bin     (wariant z Focus Timer)
-#   - flower-firmware-rss.bin       (wariant z RSS)
-#   - flower-firmware-timer-rss.bin (wariant z oboma pluginami)
-#   - plugins.json                  (manifest pluginów dla urządzenia)
+#   - flower-firmware.bin           (bazowa aplikacja OTA)
+#   - *-plugin.bin                  (binaria pluginów)
+#   - *-manifest.json               (manifesty pluginów)
+#   - plugins-registry.json         (rejestr pluginów dla urządzenia)
 
 on:
   push:
@@ -84,9 +83,9 @@ jobs:
             public/firmware/czytnik01.bin
             public/firmware/flower-firmware.bin
 
-  build-plugin-variants:
+  build-plugins:
     needs: build-and-release
-    uses: ./.github/workflows/build-variants.yml
+    uses: ./.github/workflows/build-plugins.yml
     with:
       tag: ${{ needs.build-and-release.outputs.tag }}
     permissions:

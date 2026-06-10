@@ -1,11 +1,16 @@
+// plugins/focus-timer/src/FocusTimerCore.h
 #pragma once
 
-#include <Arduino.h>
 #include <stdint.h>
+#include <stdbool.h>
 
-#include "board/BoardConfig.h"
+#include "PluginSdk.h"
+#include "PluginImuService.h"
+#include "PluginAudioService.h"
+#include "PluginDisplayService.h"
+#include "PluginOrientationService.h"
 
-class FocusTimer {
+class FocusTimerCore {
  public:
   enum class Genre : uint8_t {
     Chores = 0,
@@ -30,18 +35,19 @@ class FocusTimer {
     Complete,
   };
 
-  bool begin();
-  void open();
-  void update(uint32_t nowMs);
-  void chooseGenre(Genre genre, uint32_t nowMs);
-  void cancelActiveTimer(uint32_t nowMs);
-  void abandon();
+  FocusTimerCore(PluginImuService* imu, PluginAudioService* audio,
+                 PluginDisplayService* display, PluginOrientationService* orientation);
 
-  bool available() const;
-  bool isActiveTimerRunning() const;
+  bool begin();
+  void update(uint32_t nowMs);
+  void handleButton(const PluginButtonEvent* event);
+  void handleTouch(const PluginTouchEvent* event);
+  void draw();
+
+  // Accessors
   State state() const;
   Genre genre() const;
-  BoardConfig::UiOrientation uiOrientation() const;
+  bool isActiveTimerRunning() const;
   uint32_t remainingMs(uint32_t nowMs) const;
   uint8_t progressPercent(uint32_t nowMs) const;
   uint8_t completedTouchBlocks() const;
@@ -49,7 +55,7 @@ class FocusTimer {
   uint8_t completedBreakBlocks() const;
   bool consumeCompletionCue();
 
-  static const char *genreLabel(Genre genre);
+  static const char* genreLabel(Genre genre);
 
  private:
   enum class TimerMode : uint8_t {
@@ -67,16 +73,13 @@ class FocusTimer {
     Unknown,
   };
 
-  bool initImu();
-  bool readRegister(uint8_t reg, uint8_t &value);
-  bool writeRegister(uint8_t reg, uint8_t value);
-  bool readRegisters(uint8_t startReg, uint8_t *buffer, size_t len);
-  bool updateRegister(uint8_t reg, uint8_t mask, uint8_t value);
-  bool readAccelerometer(float &x, float &y, float &z);
+  // Orientation detection
   void updateOrientation(uint32_t nowMs);
   void resetOrientationStability();
   OrientationState classify(float x, float y, float z) const;
   bool orientationInputArmed(uint32_t nowMs) const;
+
+  // State machine
   void transitionTo(State nextState, uint32_t nowMs);
   void clearSession();
   void startMode(TimerMode mode, uint32_t nowMs, uint32_t durationMs,
@@ -84,23 +87,32 @@ class FocusTimer {
   void stopActiveTimer();
   void completeActiveTimer();
   bool timerExpired(uint32_t nowMs) const;
+
+  // Helpers
   static bool isShortSide(OrientationState orientation);
   static OrientationState oppositeShortSide(OrientationState orientation);
-  static BoardConfig::UiOrientation portraitOrientationForShortSide(
-      OrientationState orientation);
+  PluginOrientation portraitOrientationForShortSide(OrientationState orientation) const;
+  void updateUiOrientation();
 
+  // Device services (not owned)
+  PluginImuService* imu_;
+  PluginAudioService* audio_;
+  PluginDisplayService* display_;
+  PluginOrientationService* orientation_;
+
+  // IMU state
   bool imuAvailable_ = false;
-  float accelScale_ = 4.0f / 32768.0f;
   OrientationState rawOrientation_ = OrientationState::Unknown;
   OrientationState stableOrientation_ = OrientationState::Unknown;
   OrientationState candidateOrientation_ = OrientationState::Unknown;
-  OrientationState activeStartOrientation_ = OrientationState::Unknown;
-  OrientationState lastShortSide_ = OrientationState::Unknown;
   uint32_t candidateSinceMs_ = 0;
 
+  // Timer state machine
   State state_ = State::Unavailable;
   Genre genre_ = Genre::None;
   TimerMode activeMode_ = TimerMode::None;
+  OrientationState activeStartOrientation_ = OrientationState::Unknown;
+  OrientationState lastShortSide_ = OrientationState::Unknown;
   uint32_t stateStartedMs_ = 0;
   uint32_t feedbackStartedMs_ = 0;
   uint32_t timerStartedMs_ = 0;
@@ -110,4 +122,10 @@ class FocusTimer {
   uint8_t completedTouchBlocks_ = 0;
   uint8_t completedWorkBlocks_ = 0;
   uint8_t completedBreakBlocks_ = 0;
+
+  // Last update timestamp for draw
+  uint32_t lastUpdateMs_ = 0;
+
+  // Genre selection index (for menu navigation)
+  uint8_t genreSelectIndex_ = 0;
 };

@@ -18,6 +18,7 @@ class StorageManager {
     bool bookFilesDirectory = false;
     bool articleFilesDirectory = false;
     bool configDirectory = false;
+    bool pluginsDirectory = false;
     bool writable = false;
     bool booksWritable = false;
     bool articlesWritable = false;

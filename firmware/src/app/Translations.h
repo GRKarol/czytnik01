@@ -788,6 +788,10 @@ enum class TrKey2 : uint8_t {
   PluginFetchFailed,
   PluginInstallFailed,
   PluginRemoveFailed,
+  PluginLaunch,
+  PluginDownloading,
+  PluginFetchingRegistry,
+  PluginUpdate,
 };
 
 namespace Translations2 {
@@ -1207,6 +1211,42 @@ inline const char *tr2(UiLanguage lang, TrKey2 key) {
         case UiLanguage::German: return "Entfernen fehlgeschlagen";
         case UiLanguage::Romanian: return "Eliminare esuata";
         default: return "Remove failed";
+      }
+    case TrKey2::PluginLaunch:
+      switch (lang) {
+        case UiLanguage::Polish: return "Uruchom";
+        case UiLanguage::Spanish: return "Ejecutar";
+        case UiLanguage::French: return "Lancer";
+        case UiLanguage::German: return "Starten";
+        case UiLanguage::Romanian: return "Lanseaza";
+        default: return "Launch";
+      }
+    case TrKey2::PluginDownloading:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pobieranie...";
+        case UiLanguage::Spanish: return "Descargando...";
+        case UiLanguage::French: return "Telechargement...";
+        case UiLanguage::German: return "Herunterladen...";
+        case UiLanguage::Romanian: return "Descarca...";
+        default: return "Downloading...";
+      }
+    case TrKey2::PluginFetchingRegistry:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pobieranie listy...";
+        case UiLanguage::Spanish: return "Obteniendo lista...";
+        case UiLanguage::French: return "Chargement liste...";
+        case UiLanguage::German: return "Liste laden...";
+        case UiLanguage::Romanian: return "Incarcare lista...";
+        default: return "Fetching list...";
+      }
+    case TrKey2::PluginUpdate:
+      switch (lang) {
+        case UiLanguage::Polish: return "[aktualizacja]";
+        case UiLanguage::Spanish: return "[actualizar]";
+        case UiLanguage::French: return "[mise a jour]";
+        case UiLanguage::German: return "[aktualisieren]";
+        case UiLanguage::Romanian: return "[actualizare]";
+        default: return "[update]";
       }
   }
   return "";

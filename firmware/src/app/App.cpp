@@ -45,11 +45,9 @@ constexpr uint16_t kBatteryBadgeTapWidthPx = 160;
 constexpr uint16_t kBatteryBadgeTapHeightPx = 40;
 constexpr uint16_t kScrubStepPx = 22;
 constexpr uint16_t kBrowseNeutralZonePx = 14;
-constexpr uint16_t kFocusTimerCancelHoldMaxDriftPx = 20;
 constexpr int kMaxScrubStepsPerGesture = 96;
 constexpr uint32_t kBrowseMinWordsPerSecondPermille = 4000;
 constexpr uint32_t kBrowseMaxWordsPerSecondPermille = 72000;
-constexpr uint32_t kFocusTimerCancelHoldMs = 850;
 constexpr uint32_t kHelpLongPressMs = 600;
 constexpr uint16_t kHelpLongPressMaxDriftPx = 20;
 constexpr size_t kContextPreviewWindowWords = 288;
@@ -245,8 +243,6 @@ constexpr size_t kChapterPickerBackIndex = 0;
 constexpr size_t kChapterPickerFallbackIndex = 1;
 constexpr size_t kWifiNetworksBackIndex = 0;
 constexpr size_t kWifiNetworksFirstItemIndex = 1;
-constexpr size_t kFocusTimerGenreBackIndex = 0;
-constexpr size_t kFocusTimerGenreFirstIndex = 1;
 constexpr const char *kPrefsNamespace = "rsvp";
 constexpr const char *kPrefBookPath = "book";
 constexpr const char *kPrefLegacyWordIndex = "word";
@@ -577,7 +573,8 @@ void copyOtaLabel(char *destination, size_t destinationSize, const String &sourc
 bool sdCardFolderRepairNeeded(const StorageManager::DiagnosticResult &result) {
   return result.mounted &&
          (!result.booksDirectory || !result.bookFilesDirectory ||
-          !result.articleFilesDirectory || !result.configDirectory);
+          !result.articleFilesDirectory || !result.configDirectory ||
+          !result.pluginsDirectory);
 }
 
 DisplayManager::ReaderTypeface readerTypefaceFromSetting(uint8_t value) {
@@ -685,7 +682,10 @@ void App::begin() {
   powerButtonLongPressHandled_ = false;
   storage_.setStatusCallback(&App::handleStorageStatus, this);
   preferences_.begin(kPrefsNamespace, false);
-  pluginManager_.begin(preferences_);
+  pluginLibrary_.begin();
+  pluginLibrary_.scanInstalled();
+  pluginLoader_.begin();
+  pluginLoader_.setManagers(&display_, &audio_);
   brightnessLevelIndex_ = preferences_.getUChar(kPrefBrightness, brightnessLevelIndex_);
   if (brightnessLevelIndex_ >= kBrightnessLevelCount) {
     brightnessLevelIndex_ = kBrightnessLevelCount - 1;
@@ -842,7 +842,6 @@ void App::begin() {
   updateBatteryStatus(bootStartedMs_, true);
   touchInitialized_ = touch_.begin();
   audio_.begin();
-  focusTimer_.begin();
 
 #if RSVP_USB_TRANSFER_ENABLED && RSVP_USB_TRANSFER_AUTO_START
   state_ = AppState::Booting;
@@ -910,6 +909,48 @@ void App::begin() {
 void App::update(uint32_t nowMs) {
   button_.update(nowMs);
   powerButton_.update(nowMs);
+
+  // ── Plugin running: plugin owns the screen, App just monitors ──────────
+  if (pluginLoader_.isRunning()) {
+    pluginLoader_.watchdogCheck(nowMs);
+
+    // Plugin crashed or watchdog timed out → show error, return to plugins menu
+    if (pluginLoader_.state() == PluginLoader::State::Error) {
+      const char* errMsg = pluginLoader_.lastErrorMessage();
+      Serial.printf("[plugin] error detected: %s\n", errMsg ? errMsg : "unknown");
+      display_.renderStatus("Plugin", errMsg ? errMsg : "Plugin error", "");
+      delay(2000);
+      pluginLoader_.unload();
+      openPluginsList();
+      return;
+    }
+
+    // Long-press power button → power off (same as normal behavior)
+    if (powerButton_.isHeld() && nowMs - powerButton_.lastEdgeMs() >= kPowerOffHoldMs) {
+      pluginLoader_.unload();
+      powerButtonLongPressHandled_ = true;
+      enterPowerOff(nowMs);
+      return;
+    }
+
+    // Short-press power button → exit plugin, return to plugins menu
+    if (powerButton_.wasReleasedEvent()) {
+      Serial.println("[plugin] power button pressed — unloading plugin");
+      pluginLoader_.unload();
+      openPluginsList();
+      return;
+    }
+
+    // Battery monitoring continues while plugin is running
+    updateBatteryStatus(nowMs);
+    if (powerOffStarted_) {
+      pluginLoader_.unload();
+      return;
+    }
+    return;
+  }
+  // ── End plugin running block ───────────────────────────────────────────
+
   const bool standbyComboConsumed = handleStandbyCombo(nowMs);
   if (!standbyComboConsumed) {
     handleBootButton(nowMs);
@@ -953,7 +994,6 @@ void App::update(uint32_t nowMs) {
   updateState(nowMs);
   loadPendingBootBook(nowMs);
   maybeOpenUpdateConfirm(nowMs);
-  updateFocusTimer(nowMs);
   updateReader(nowMs);
   handleTouch(nowMs);
 
@@ -1406,15 +1446,6 @@ void App::handlePowerButton(uint32_t nowMs) {
     lastActivityMs_ = nowMs;
   }
 
-  if (state_ == AppState::Menu && isFocusTimerMenuScreen(menuScreen_) &&
-      powerButton_.isHeld() && nowMs - powerButton_.lastEdgeMs() >= kUsbTransferExitHoldMs) {
-    powerButtonLongPressHandled_ = true;
-    resetFocusTimer();
-    menuScreen_ = MenuScreen::Main;
-    renderMainMenu();
-    return;
-  }
-
   if (powerButton_.isHeld() && nowMs - powerButton_.lastEdgeMs() >= kPowerOffHoldMs) {
     powerButtonLongPressHandled_ = true;
     enterPowerOff(nowMs);
@@ -1479,9 +1510,6 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
           menuScreen_ == MenuScreen::TutorialStep5) {
         finishTutorial(nowMs);
         return;
-      }
-      if (isFocusTimerMenuScreen(menuScreen_)) {
-        resetFocusTimer();
       }
       menuScreen_ = MenuScreen::Main;
       renderMainMenu();
@@ -2259,11 +2287,7 @@ void App::handleTouch(uint32_t nowMs) {
                 touchPhaseName(ev.phase), ev.touched ? 1 : 0, ev.x, ev.y, ev.gesture,
                 stateName(state_));
   if (state_ == AppState::Menu) {
-    if (menuScreen_ == MenuScreen::FocusTimerSession) {
-      applyFocusTimerTouch(ev, nowMs);
-    } else {
-      applyMenuTouchGesture(ev, nowMs);
-    }
+    applyMenuTouchGesture(ev, nowMs);
   } else {
     applyPausedTouchGesture(ev, nowMs);
   }
@@ -2690,9 +2714,9 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       } else if (menuScreen_ == MenuScreen::PluginsList) {
         selectedIndex = &pluginsSelectedIndex_;
         itemCount = pluginsMenuItems_.size();
-      } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
-        selectedIndex = &focusTimerGenreSelectedIndex_;
-        itemCount = focusTimerGenreMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
+        selectedIndex = &pluginLibrarySelectedIndex_;
+        itemCount = pluginLibraryMenuItems_.size();
       }
 
       if (itemCount > 0) {
@@ -2743,7 +2767,8 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       if (isSettingsListScreen() || menuScreen_ == MenuScreen::BookPicker ||
           menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::ChapterPicker ||
           menuScreen_ == MenuScreen::SavePointsList || menuScreen_ == MenuScreen::PluginsList ||
-          menuScreen_ == MenuScreen::FocusTimerGenres || menuScreen_ == MenuScreen::TypographyTuning) {
+          menuScreen_ == MenuScreen::PluginLibraryScreen ||
+          menuScreen_ == MenuScreen::TypographyTuning) {
         // Set selection to Back and select it
         if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
           presetsSelectedIndex_ = 0;
@@ -2759,8 +2784,8 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           savePointSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::PluginsList) {
           pluginsSelectedIndex_ = 0;
-        } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
-          focusTimerGenreSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
+          pluginLibrarySelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::TypographyTuning) {
           typographyTuningSelectedIndex_ = TypographyTuningBack;
         }
@@ -2774,165 +2799,6 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     }
     selectMenuItem(nowMs);
   }
-}
-
-void App::applyFocusTimerTouch(const TouchEvent &event, uint32_t nowMs) {
-  if (event.phase == TouchPhase::Start) {
-    pausedTouch_.active = true;
-    pausedTouch_.startX = event.x;
-    pausedTouch_.startY = event.y;
-    pausedTouch_.lastX = event.x;
-    pausedTouch_.lastY = event.y;
-    pausedTouch_.startMs = nowMs;
-    pausedTouch_.lastMs = nowMs;
-    focusTimerCancelHoldTriggered_ = false;
-    return;
-  }
-
-  if (!pausedTouch_.active) {
-    return;
-  }
-
-  pausedTouch_.lastX = event.x;
-  pausedTouch_.lastY = event.y;
-  pausedTouch_.lastMs = nowMs;
-
-  const int deltaX = static_cast<int>(pausedTouch_.lastX) - static_cast<int>(pausedTouch_.startX);
-  const int deltaY = static_cast<int>(pausedTouch_.lastY) - static_cast<int>(pausedTouch_.startY);
-  const int absDeltaX = abs(deltaX);
-  const int absDeltaY = abs(deltaY);
-  const bool tapLike = absDeltaX <= static_cast<int>(kTapSlopPx) &&
-                       absDeltaY <= static_cast<int>(kTapSlopPx);
-
-  if (focusTimer_.isActiveTimerRunning() && !focusTimerCancelHoldTriggered_ &&
-      event.phase != TouchPhase::End &&
-      absDeltaX <= static_cast<int>(kFocusTimerCancelHoldMaxDriftPx) &&
-      absDeltaY <= static_cast<int>(kFocusTimerCancelHoldMaxDriftPx) &&
-      nowMs - pausedTouch_.startMs >= kFocusTimerCancelHoldMs) {
-    focusTimer_.cancelActiveTimer(nowMs);
-    pausedTouch_.active = false;
-    focusTimerCancelHoldTriggered_ = true;
-    renderFocusTimerSession();
-    return;
-  }
-
-  if (event.phase != TouchPhase::End) {
-    return;
-  }
-
-  pausedTouch_.active = false;
-
-  if (focusTimerCancelHoldTriggered_) {
-    focusTimerCancelHoldTriggered_ = false;
-    return;
-  }
-
-  // Top-left tap = back/exit from timer
-  if (tapLike && event.x < 80 && event.y < 35) {
-    resetFocusTimer();
-    menuScreen_ = MenuScreen::PluginsList;
-    openPluginsList();
-    return;
-  }
-
-  (void)tapLike;
-}
-
-void App::openFocusTimer() {
-  focusTimer_.open();
-  rebuildFocusTimerGenreMenuItems();
-  focusTimerGenreSelectedIndex_ =
-      focusTimerGenreMenuItems_.size() > 1 ? kFocusTimerGenreFirstIndex : kFocusTimerGenreBackIndex;
-  focusTimerCancelHoldTriggered_ = false;
-  menuScreen_ = (focusTimer_.state() == FocusTimer::State::GenreSelect)
-                    ? MenuScreen::FocusTimerGenres
-                    : MenuScreen::FocusTimerSession;
-  renderMenu();
-}
-
-void App::updateFocusTimer(uint32_t nowMs) {
-  if (state_ != AppState::Menu || menuScreen_ != MenuScreen::FocusTimerSession) {
-    return;
-  }
-
-  focusTimer_.update(nowMs);
-  if (focusTimer_.consumeCompletionCue()) {
-    playFocusTimerCompletionCue();
-  }
-  if (focusTimer_.state() == FocusTimer::State::GenreSelect) {
-    menuScreen_ = MenuScreen::FocusTimerGenres;
-    rebuildFocusTimerGenreMenuItems();
-    renderFocusTimerGenres();
-    return;
-  }
-
-  renderFocusTimerSession();
-}
-
-void App::resetFocusTimer() {
-  focusTimer_.abandon();
-  focusTimerCancelHoldTriggered_ = false;
-  pausedTouch_.active = false;
-  focusTimerGenreSelectedIndex_ = kFocusTimerGenreBackIndex;
-}
-
-void App::rebuildFocusTimerGenreMenuItems() {
-  focusTimerGenreMenuItems_.clear();
-  focusTimerGenreMenuItems_.push_back(uiText(UiText::Back));
-  focusTimerGenreMenuItems_.push_back("Chores - 15 min");
-  focusTimerGenreMenuItems_.push_back("Work - 25 min");
-  focusTimerGenreMenuItems_.push_back("Fitness - 30 min");
-  focusTimerGenreMenuItems_.push_back("Self Care - 20 min");
-  focusTimerGenreMenuItems_.push_back("Other - 10 min");
-
-  if (focusTimerGenreSelectedIndex_ >= focusTimerGenreMenuItems_.size()) {
-    focusTimerGenreSelectedIndex_ =
-        focusTimerGenreMenuItems_.size() > 1 ? kFocusTimerGenreFirstIndex : kFocusTimerGenreBackIndex;
-  }
-}
-
-void App::selectFocusTimerGenre(uint32_t nowMs) {
-  if (focusTimerGenreMenuItems_.empty()) {
-    rebuildFocusTimerGenreMenuItems();
-  }
-
-  if (focusTimerGenreSelectedIndex_ == kFocusTimerGenreBackIndex) {
-    resetFocusTimer();
-    menuScreen_ = MenuScreen::Main;
-    menuSelectedIndex_ = MenuPlugins;
-    renderMainMenu();
-    return;
-  }
-
-  FocusTimer::Genre genre = FocusTimer::Genre::None;
-  switch (focusTimerGenreSelectedIndex_) {
-    case 1:
-      genre = FocusTimer::Genre::Chores;
-      break;
-    case 2:
-      genre = FocusTimer::Genre::RsvpNano;
-      break;
-    case 3:
-      genre = FocusTimer::Genre::StrengthLabs;
-      break;
-    case 4:
-      genre = FocusTimer::Genre::SelfCare;
-      break;
-    case 5:
-      genre = FocusTimer::Genre::Other;
-      break;
-    default:
-      break;
-  }
-
-  if (genre == FocusTimer::Genre::None) {
-    return;
-  }
-
-  focusTimer_.chooseGenre(genre, nowMs);
-  focusTimerCancelHoldTriggered_ = false;
-  menuScreen_ = MenuScreen::FocusTimerSession;
-  renderFocusTimerSession();
 }
 
 void App::moveMenuSelection(int direction) {
@@ -2973,6 +2839,9 @@ void App::moveMenuSelection(int direction) {
   } else if (menuScreen_ == MenuScreen::PluginsList) {
     selectedIndex = &pluginsSelectedIndex_;
     itemCount = pluginsMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
+    selectedIndex = &pluginLibrarySelectedIndex_;
+    itemCount = pluginLibraryMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     selectedIndex = &restartConfirmSelectedIndex_;
     itemCount = RestartConfirmItemCount;
@@ -2982,9 +2851,6 @@ void App::moveMenuSelection(int direction) {
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
     selectedIndex = &updateConfirmSelectedIndex_;
     itemCount = UpdateConfirmItemCount;
-  } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
-    selectedIndex = &focusTimerGenreSelectedIndex_;
-    itemCount = focusTimerGenreMenuItems_.size();
   }
 
   if (itemCount == 0) {
@@ -3040,9 +2906,6 @@ void App::moveMenuSelection(int direction) {
     const String selectedLabel =
         updateConfirmSelectedIndex_ == UpdateConfirmUpdate ? "Update" : "Skip for now";
     Serial.printf("[ota] selected=%s\n", selectedLabel.c_str());
-  } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
-    Serial.printf("[timer] selected genre=%s\n",
-                  focusTimerGenreMenuItems_[focusTimerGenreSelectedIndex_].c_str());
   } else {
     String selectedLabel = uiText(UiText::Read);
     switch (menuSelectedIndex_) {
@@ -3112,6 +2975,10 @@ void App::selectMenuItem(uint32_t nowMs) {
     selectPluginsItem(nowMs);
     return;
   }
+  if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
+    selectPluginLibraryItem(nowMs);
+    return;
+  }
   if (menuScreen_ == MenuScreen::RestartConfirm) {
     selectRestartConfirmItem(nowMs);
     return;
@@ -3122,13 +2989,6 @@ void App::selectMenuItem(uint32_t nowMs) {
   }
   if (menuScreen_ == MenuScreen::UpdateConfirm) {
     selectUpdateConfirmItem(nowMs);
-    return;
-  }
-  if (menuScreen_ == MenuScreen::FocusTimerGenres) {
-    selectFocusTimerGenre(nowMs);
-    return;
-  }
-  if (menuScreen_ == MenuScreen::FocusTimerSession) {
     return;
   }
 
@@ -4893,26 +4753,9 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
 
 void App::runRssFeedCheck(uint32_t nowMs) {
   (void)nowMs;
-  if (blockNetworkActionForOtaCheck("RSS", nowMs)) {
-    return;
-  }
-
-  saveReadingPosition(true);
-
-  display_.renderStatus("RSS", tr2(TrKey2::CheckingFeeds), tr(TrKey::PleaseWait));
-  const RssFeedManager::Result result =
-      rssFeedManager_.checkFeeds(preferredOtaConfig(), preferences_, &App::handleStorageStatus, this);
-
-  Serial.printf("[rss] feeds=%u saved=%u skipped=%u summary=%s detail=%s\n",
-                static_cast<unsigned int>(result.feedsChecked),
-                static_cast<unsigned int>(result.articlesSaved),
-                static_cast<unsigned int>(result.articlesSkipped), result.summary.c_str(),
-                result.detail.c_str());
-
-  storage_.refreshBooks(false);
-  display_.renderStatus("RSS", result.summary, result.detail);
-  delay(1800);
-  renderMainMenu();
+  // RSS functionality is now provided by the RSS plugin.
+  // Redirect to the plugins list where user can launch it.
+  openPluginsList();
 }
 
 String App::pacingDelayLabel(uint16_t delayMs) const { return String(delayMs) + " ms"; }
@@ -5560,108 +5403,94 @@ void App::renderSavePointsList() {
 
 // ─── Plugins ─────────────────────────────────────────────────────────────────
 
-// Indeksy w pluginsMenuItems_:
-//   0: Back
-//   1: Focus Timer  (built-in, zawsze zainstalowany)
-//   2: "Zainstaluj RSS" lub "Usun RSS"  (zależnie od stanu)
-//   3: separator "---"
-//   4: Biblioteka funkcji (placeholder)
-
-static constexpr size_t kPluginItemBackIndex      = 0;
-static constexpr size_t kPluginItemTimerIndex     = 1;
-static constexpr size_t kPluginItemRssIndex       = 2;
-static constexpr size_t kPluginItemSeparatorIndex = 3;
-static constexpr size_t kPluginItemLibraryIndex   = 4;
+// New dynamic plugin system — builds menu from PluginLibrary::installed()
+// Menu layout:
+//   [0]: Back
+//   [1..N]: Installed plugins (each with "Launch" / "Remove" sub-actions)
+//   [N+1]: separator "---"
+//   [N+2]: "Biblioteka" (opens PluginLibraryScreen)
 
 void App::openPluginsList() {
   pluginsMenuItems_.clear();
+  pluginLibrary_.scanInstalled();
 
   // [0] Back
   pluginsMenuItems_.push_back(uiText(UiText::Back));
 
-  // [1] Focus Timer — wbudowany, zawsze zainstalowany
-  {
-    const bool installed = pluginManager_.isInstalled(PluginManager::PluginId::Timer);
-    String label = tr2(TrKey2::FocusTimer);
-    if (installed) {
-      label += " " + String(tr2(TrKey2::PluginInstalled));
-    }
+  // Installed plugins — each shows name + "[Launch] [Remove]"
+  const auto& installed = pluginLibrary_.installed();
+  for (const auto& plugin : installed) {
+    String label = plugin.name + " v" + plugin.version;
     pluginsMenuItems_.push_back(label);
   }
 
-  // [2] RSS Feeds — zainstaluj lub usuń
-  {
-    const bool installed = pluginManager_.isInstalled(PluginManager::PluginId::Rss);
-    String label;
-    if (installed) {
-      label = String(tr2(TrKey2::PluginRemove)) + tr2(TrKey2::RssFeeds);
-    } else {
-      label = String(tr2(TrKey2::PluginInstall)) + tr2(TrKey2::RssFeeds);
-    }
-    pluginsMenuItems_.push_back(label);
-  }
-
-  // [3] Separator
+  // Separator
   pluginsMenuItems_.push_back("---");
 
-  // [4] Biblioteka funkcji
+  // Biblioteka (Library) item — opens online store
   pluginsMenuItems_.push_back(tr2(TrKey2::PluginLibrary));
 
-  pluginsSelectedIndex_ = kPluginItemTimerIndex;
+  pluginsSelectedIndex_ = installed.empty() ? (pluginsMenuItems_.size() - 1) : 1;
   menuScreen_ = MenuScreen::PluginsList;
   renderPluginsList();
 }
 
 void App::selectPluginsItem(uint32_t nowMs) {
-  if (pluginsSelectedIndex_ == kPluginItemBackIndex) {
+  // Back
+  if (pluginsSelectedIndex_ == 0) {
     menuScreen_ = MenuScreen::Main;
     menuSelectedIndex_ = MenuPlugins;
     renderMainMenu();
     return;
   }
 
-  if (pluginsSelectedIndex_ == kPluginItemTimerIndex) {
-    // Focus Timer jest wbudowany — otwieramy sesję timera
-    if (pluginManager_.isInstalled(PluginManager::PluginId::Timer)) {
-      openFocusTimer();
-    } else {
-      display_.renderStatus(uiText(UiText::Plugins),
-                            tr2(TrKey2::PluginBuiltIn),
-                            tr2(TrKey2::PluginCannotRemove));
-      delay(1400);
-      renderPluginsList();
-    }
+  const auto& installed = pluginLibrary_.installed();
+  const size_t installedCount = installed.size();
+  const size_t separatorIndex = 1 + installedCount;
+  const size_t libraryIndex = separatorIndex + 1;
+
+  // Separator — ignore tap
+  if (pluginsSelectedIndex_ == separatorIndex) {
     return;
   }
 
-  if (pluginsSelectedIndex_ == kPluginItemRssIndex) {
-    const bool installed = pluginManager_.isInstalled(PluginManager::PluginId::Rss);
-    if (installed) {
-      runPluginRemove(PluginManager::PluginId::Rss, nowMs);
-    } else {
-      runPluginInstall(PluginManager::PluginId::Rss, nowMs);
-    }
+  // Biblioteka — open the online store screen
+  if (pluginsSelectedIndex_ == libraryIndex) {
+    openPluginLibraryScreen(nowMs);
     return;
   }
 
-  if (pluginsSelectedIndex_ == kPluginItemSeparatorIndex) {
-    // Separator — ignoruj
-    return;
-  }
+  // Installed plugin item — launch the plugin
+  if (pluginsSelectedIndex_ >= 1 && pluginsSelectedIndex_ <= installedCount) {
+    const size_t pluginIdx = pluginsSelectedIndex_ - 1;
+    const auto& plugin = installed[pluginIdx];
+    const char* pluginId = plugin.id.c_str();
 
-  if (pluginsSelectedIndex_ == kPluginItemLibraryIndex) {
+    // Try to load and launch the plugin
     display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginLibrary),
-                          configuredWifiSsid().isEmpty()
-                              ? tr2(TrKey2::PluginNoWifi)
-                              : tr(TrKey::NotSet));
-    delay(1400);
+                          tr2(TrKey2::PluginLaunch),
+                          plugin.name.c_str());
+
+    PluginLoader::LoadResult result = pluginLoader_.load(pluginId);
+    if (result.success) {
+      Serial.printf("[plugin] launched plugin: %s\n", pluginId);
+      // Plugin is now running in its own FreeRTOS task.
+      // The update loop (task 6.2) will handle forwarding events.
+      return;
+    }
+
+    // Load failed — show error
+    Serial.printf("[plugin] load failed: %s — %s\n", pluginId, result.message);
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginInstallFailed),
+                          result.message ? result.message : "");
+    delay(2000);
     renderPluginsList();
     return;
   }
 }
 
-void App::runPluginInstall(PluginManager::PluginId id, uint32_t nowMs) {
+void App::openPluginLibraryScreen(uint32_t nowMs) {
   (void)nowMs;
 
   if (configuredWifiSsid().isEmpty()) {
@@ -5673,130 +5502,104 @@ void App::runPluginInstall(PluginManager::PluginId id, uint32_t nowMs) {
     return;
   }
 
-  const uint32_t targetMask = pluginManager_.maskAfterInstall(id);
-  const String assetName = PluginManager::variantFilename(targetMask);
-  const bool isPolish = (uiLanguage_ == UiLanguage::Polish);
+  // Set WiFi credentials and fetch registry
+  const String ssid = preferences_.getString(kPrefWifiSsid, "");
+  const String pass = preferences_.getString(kPrefWifiPass, "");
+  pluginLibrary_.setWifiCredentials(ssid, pass);
 
   display_.renderStatus(uiText(UiText::Plugins),
-                        tr2(TrKey2::PluginInstalling),
-                        PluginManager::pluginName(id, isPolish));
+                        tr2(TrKey2::PluginFetchingRegistry), "");
 
-  saveReadingPosition(true);
-
-  OtaUpdater::Config config = preferredOtaConfig();
-  const OtaUpdater::Result result =
-      otaUpdater_.installAsset(config, assetName, "", &App::handleStorageStatus, this);
-
-  Serial.printf("[plugin] install id=%u asset=%s code=%u summary=%s detail=%s\n",
-                static_cast<unsigned int>(id), assetName.c_str(),
-                static_cast<unsigned int>(result.code),
-                result.summary.c_str(), result.detail.c_str());
-
-  if (result.code == OtaUpdater::ResultCode::Success && result.rebootRequired) {
-    pluginManager_.setMask(targetMask);
+  PluginLibrary::FetchResult fetchResult = pluginLibrary_.fetchRegistry();
+  if (fetchResult != PluginLibrary::FetchResult::Success) {
+    const char* errorMsg = "";
+    switch (fetchResult) {
+      case PluginLibrary::FetchResult::WifiError:
+        errorMsg = tr2(TrKey2::PluginNoWifi);
+        break;
+      case PluginLibrary::FetchResult::HttpError:
+        errorMsg = tr2(TrKey2::PluginFetchFailed);
+        break;
+      case PluginLibrary::FetchResult::ParseError:
+        errorMsg = tr2(TrKey2::PluginInstallFailed);
+        break;
+      default:
+        break;
+    }
     display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginRestartRequired),
-                          PluginManager::pluginName(id, isPolish));
-    delay(800);
-    ESP.restart();
+                          tr2(TrKey2::PluginFetchFailed), errorMsg);
+    delay(2000);
+    renderPluginsList();
     return;
   }
 
-  if (result.code == OtaUpdater::ResultCode::AssetMissing) {
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginFetchFailed),
-                          assetName);
-    delay(2000);
+  // Build library menu from registry
+  pluginLibraryMenuItems_.clear();
+  pluginLibraryMenuItems_.push_back(uiText(UiText::Back));
+
+  const auto& registry = pluginLibrary_.registry();
+  for (const auto& entry : registry) {
+    String label = entry.name;
+    if (pluginLibrary_.isInstalled(entry.id.c_str())) {
+      if (pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
+        label += " " + String(tr2(TrKey2::PluginUpdate));
+      } else {
+        label += " " + String(tr2(TrKey2::PluginInstalled));
+      }
+    } else {
+      label += " - " + String(tr2(TrKey2::PluginInstall));
+    }
+    pluginLibraryMenuItems_.push_back(label);
+  }
+
+  pluginLibrarySelectedIndex_ = registry.empty() ? 0 : 1;
+  menuScreen_ = MenuScreen::PluginLibraryScreen;
+  renderPluginLibraryScreen();
+}
+
+void App::selectPluginLibraryItem(uint32_t nowMs) {
+  (void)nowMs;
+
+  // Back
+  if (pluginLibrarySelectedIndex_ == 0) {
     openPluginsList();
     return;
   }
 
-  if (result.code == OtaUpdater::ResultCode::NoUpdate) {
-    // Ten wariant jest już wgrany — wystarczy zaktualizować maskę
-    pluginManager_.setMask(targetMask);
+  const auto& registry = pluginLibrary_.registry();
+  const size_t registryIdx = pluginLibrarySelectedIndex_ - 1;
+  if (registryIdx >= registry.size()) {
+    return;
+  }
+
+  const auto& entry = registry[registryIdx];
+  const char* pluginId = entry.id.c_str();
+
+  // Download the plugin
+  display_.renderStatus(uiText(UiText::Plugins),
+                        tr2(TrKey2::PluginDownloading),
+                        entry.name.c_str());
+
+  bool downloadOk = pluginLibrary_.downloadPlugin(pluginId);
+  if (downloadOk) {
+    pluginLibrary_.scanInstalled();
     display_.renderStatus(uiText(UiText::Plugins),
-                          PluginManager::pluginName(id, isPolish),
+                          entry.name.c_str(),
                           tr2(TrKey2::PluginInstalled));
-    delay(1400);
-    openPluginsList();
-    return;
+    delay(1200);
+  } else {
+    display_.renderStatus(uiText(UiText::Plugins),
+                          tr2(TrKey2::PluginInstallFailed),
+                          entry.name.c_str());
+    delay(2000);
   }
 
-  // Inny błąd
-  const String detail = result.detail.isEmpty() ? result.summary : result.detail;
-  display_.renderStatus(uiText(UiText::Plugins),
-                        tr2(TrKey2::PluginInstallFailed),
-                        detail);
-  delay(2000);
-  openPluginsList();
+  // Rebuild library menu and re-render
+  openPluginLibraryScreen(nowMs);
 }
 
-void App::runPluginRemove(PluginManager::PluginId id, uint32_t nowMs) {
-  (void)nowMs;
-
-  if (configuredWifiSsid().isEmpty()) {
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginNoWifi),
-                          tr(TrKey::SettingsWifi));
-    delay(1800);
-    renderPluginsList();
-    return;
-  }
-
-  const uint32_t targetMask = pluginManager_.maskAfterRemove(id);
-  const String assetName = PluginManager::variantFilename(targetMask);
-  const bool isPolish = (uiLanguage_ == UiLanguage::Polish);
-
-  display_.renderStatus(uiText(UiText::Plugins),
-                        tr2(TrKey2::PluginRemoving),
-                        PluginManager::pluginName(id, isPolish));
-
-  saveReadingPosition(true);
-
-  OtaUpdater::Config config = preferredOtaConfig();
-  const OtaUpdater::Result result =
-      otaUpdater_.installAsset(config, assetName, "", &App::handleStorageStatus, this);
-
-  Serial.printf("[plugin] remove id=%u asset=%s code=%u summary=%s detail=%s\n",
-                static_cast<unsigned int>(id), assetName.c_str(),
-                static_cast<unsigned int>(result.code),
-                result.summary.c_str(), result.detail.c_str());
-
-  if (result.code == OtaUpdater::ResultCode::Success && result.rebootRequired) {
-    pluginManager_.setMask(targetMask);
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginRestartRequired),
-                          PluginManager::pluginName(id, isPolish));
-    delay(800);
-    ESP.restart();
-    return;
-  }
-
-  if (result.code == OtaUpdater::ResultCode::AssetMissing) {
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginFetchFailed),
-                          assetName);
-    delay(2000);
-    openPluginsList();
-    return;
-  }
-
-  if (result.code == OtaUpdater::ResultCode::NoUpdate) {
-    pluginManager_.setMask(targetMask);
-    display_.renderStatus(uiText(UiText::Plugins),
-                          PluginManager::pluginName(id, isPolish),
-                          tr(TrKey::NotSet));
-    delay(1400);
-    openPluginsList();
-    return;
-  }
-
-  const String detail = result.detail.isEmpty() ? result.summary : result.detail;
-  display_.renderStatus(uiText(UiText::Plugins),
-                        tr2(TrKey2::PluginRemoveFailed),
-                        detail);
-  delay(2000);
-  openPluginsList();
+void App::renderPluginLibraryScreen() {
+  display_.renderMenu(pluginLibraryMenuItems_, pluginLibrarySelectedIndex_);
 }
 
 void App::renderPluginsList() {
@@ -6089,7 +5892,6 @@ void App::exitCompanionSync(uint32_t nowMs) {
   companionSync_.end();
   preferences_.end();
   preferences_.begin(kPrefsNamespace, false);
-  pluginManager_.begin(preferences_);
   reloadRuntimePreferences(nowMs, false);
   storage_.refreshBooks();
   menuScreen_ = MenuScreen::Main;
@@ -7432,9 +7234,7 @@ int App::findBookIndexByPath(const String &path) const {
 }
 
 void App::renderMenu() {
-  if (!isFocusTimerMenuScreen(menuScreen_)) {
-    applyReaderUiOrientation();
-  }
+  applyReaderUiOrientation();
 
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
@@ -7468,16 +7268,14 @@ void App::renderMenu() {
     renderSavePointsList();
   } else if (menuScreen_ == MenuScreen::PluginsList) {
     renderPluginsList();
+  } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
+    renderPluginLibraryScreen();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     renderRestartConfirm();
   } else if (menuScreen_ == MenuScreen::SdCardRepairConfirm) {
     renderSdCardRepairConfirm();
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
     renderUpdateConfirm();
-  } else if (menuScreen_ == MenuScreen::FocusTimerGenres) {
-    renderFocusTimerGenres();
-  } else if (menuScreen_ == MenuScreen::FocusTimerSession) {
-    renderFocusTimerSession();
   } else if (menuScreen_ == MenuScreen::TutorialStep1 ||
              menuScreen_ == MenuScreen::TutorialStep2 ||
              menuScreen_ == MenuScreen::TutorialStep3 ||
@@ -7613,59 +7411,6 @@ void App::renderUpdateConfirm() {
   items.push_back(tr2(TrKey2::Update));
 
   display_.renderMenu(items, updateConfirmSelectedIndex_ + kUpdateConfirmHeaderRows);
-}
-
-void App::renderFocusTimerGenres() {
-  applyReaderUiOrientation();
-  if (focusTimerGenreMenuItems_.empty()) {
-    rebuildFocusTimerGenreMenuItems();
-  }
-  display_.renderMenu(focusTimerGenreMenuItems_, focusTimerGenreSelectedIndex_);
-}
-
-void App::renderFocusTimerSession() {
-  applyUiOrientation(focusTimer_.uiOrientation());
-  const String remainingLabel = formatFocusTimerRemaining(millis());
-
-  switch (focusTimer_.state()) {
-    case FocusTimer::State::Unavailable:
-      display_.renderFocusTimerScreen("TIMER", "", "", "IMU unavailable");
-      return;
-    case FocusTimer::State::GenreSelect:
-      renderFocusTimerGenres();
-      return;
-    case FocusTimer::State::WaitForTouchStart:
-      display_.renderFocusTimerScreen("BEGIN", "", "", "Place on short side");
-      return;
-    case FocusTimer::State::TouchRunning:
-      display_.renderFocusTimerScreen("BEGIN", "", remainingLabel, "",
-                                      "", focusTimer_.progressPercent(millis()));
-      return;
-    case FocusTimer::State::WaitAfterTouch:
-      display_.renderFocusTimerScreen("WORK", "", "", "Flip to continue");
-      return;
-    case FocusTimer::State::WorkRunning:
-      display_.renderFocusTimerScreen("WORK", "", remainingLabel, "",
-                                      "", focusTimer_.progressPercent(millis()));
-      return;
-    case FocusTimer::State::BreakRunning:
-      display_.renderFocusTimerScreen("BREAK", "", remainingLabel, "",
-                                      "", focusTimer_.progressPercent(millis()), true);
-      return;
-    case FocusTimer::State::WaitAfterWork:
-      display_.renderFocusTimerScreen("BREAK", "", "", "Turn for break", "",
-                                      -1, true);
-      return;
-    case FocusTimer::State::WaitAfterBreak:
-      display_.renderFocusTimerScreen("WORK", "", "", "Flip to begin");
-      return;
-    case FocusTimer::State::Cancelled:
-      display_.renderFocusTimerScreen("BEGIN", "", "", "Place to begin again");
-      return;
-    case FocusTimer::State::Complete:
-      display_.renderFocusTimerScreen("DONE", "", "", "Session complete");
-      return;
-  }
 }
 
 bool App::updateChapterTransition(uint32_t nowMs) {
@@ -8158,10 +7903,6 @@ uint8_t App::readingProgressPercent() const {
   return static_cast<uint8_t>(std::min(static_cast<size_t>(100), percent));
 }
 
-bool App::isFocusTimerMenuScreen(MenuScreen screen) const {
-  return screen == MenuScreen::FocusTimerGenres || screen == MenuScreen::FocusTimerSession;
-}
-
 void App::applyUiOrientation(BoardConfig::UiOrientation orientation) {
   touch_.setUiOrientation(orientation);
   display_.setUiOrientation(orientation);
@@ -8174,37 +7915,6 @@ void App::applyReaderUiOrientation() {
 BoardConfig::UiOrientation App::readerUiOrientation() const {
   return uiRotated180() ? BoardConfig::UiOrientation::LandscapeFlipped
                         : BoardConfig::UiOrientation::Landscape;
-}
-
-String App::formatFocusTimerRemaining(uint32_t nowMs) const {
-  const uint32_t remainingMs = focusTimer_.remainingMs(nowMs);
-  const uint32_t totalSeconds = remainingMs / 1000UL;
-  const uint32_t minutes = totalSeconds / 60UL;
-  const uint32_t seconds = totalSeconds % 60UL;
-  char buffer[8];
-  std::snprintf(buffer, sizeof(buffer), "%02lu:%02lu",
-                static_cast<unsigned long>(minutes),
-                static_cast<unsigned long>(seconds));
-  return String(buffer);
-}
-
-String App::focusTimerCountsLabel() const {
-  return "T" + String(focusTimer_.completedTouchBlocks()) + " W" +
-         String(focusTimer_.completedWorkBlocks()) + " B" +
-         String(focusTimer_.completedBreakBlocks());
-}
-
-void App::playFocusTimerCompletionCue() {
-  if (audio_.beep()) {
-    return;
-  }
-
-  for (int i = 0; i < 3; ++i) {
-    digitalWrite(BoardConfig::PIN_LCD_BACKLIGHT, HIGH);
-    delay(55);
-    digitalWrite(BoardConfig::PIN_LCD_BACKLIGHT, LOW);
-    delay(45);
-  }
 }
 
 bool App::scrollModeEnabled() const { return readerMode_ == ReaderMode::Scroll; }
