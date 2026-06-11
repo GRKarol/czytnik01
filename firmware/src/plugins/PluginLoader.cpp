@@ -95,9 +95,8 @@ PluginLoader::LoadResult PluginLoader::load(const char* pluginId) {
         return {false, lastError_, lastErrorMessage_};
     }
 
-    // 5. Allocate PSRAM buffer (executable)
-    binaryBuffer_ = (uint8_t*)heap_caps_malloc(fileSize,
-                                                MALLOC_CAP_SPIRAM | MALLOC_CAP_EXEC);
+    // 5. Allocate PSRAM buffer
+    binaryBuffer_ = (uint8_t*)heap_caps_malloc(fileSize, MALLOC_CAP_SPIRAM);
     if (!binaryBuffer_) {
         file.close();
         state_ = State::Error;
