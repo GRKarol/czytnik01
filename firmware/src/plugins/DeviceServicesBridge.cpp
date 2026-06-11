@@ -171,14 +171,9 @@ static bool bridgeImuAvailable() {
 // ─── Orientation Service Wrappers ───────────────────────────────────────────
 
 static PluginOrientation bridgeCurrentOrientation() {
-    // Map from firmware's BoardConfig orientation to plugin enum.
-    // The display_ member tracks the current UI orientation via its uiOrientation_ field.
-    // Since we can't directly read the private field, we use the panel constants.
-    // The default orientation is determined by BoardConfig::UI_ROTATED_180.
-    if (BoardConfig::UI_ROTATED_180) {
-        return PLUGIN_ORIENTATION_LANDSCAPE_FLIPPED;
-    }
-    return PLUGIN_ORIENTATION_LANDSCAPE;
+    // The default orientation for this device is LandscapeFlipped
+    // (UI_ROTATED_180 = true means buttons are at top in flipped mode).
+    return PLUGIN_ORIENTATION_LANDSCAPE_FLIPPED;
 }
 
 static void bridgeSetUiOrientation(PluginOrientation orientation) {
@@ -187,19 +182,20 @@ static void bridgeSetUiOrientation(PluginOrientation orientation) {
     BoardConfig::UiOrientation mapped;
     switch (orientation) {
         case PLUGIN_ORIENTATION_LANDSCAPE:
-            mapped = BoardConfig::UiOrientation::Landscape;
-            break;
-        case PLUGIN_ORIENTATION_PORTRAIT_A:
-            mapped = BoardConfig::UiOrientation::Portrait;
-            break;
-        case PLUGIN_ORIENTATION_PORTRAIT_B:
-            mapped = BoardConfig::UiOrientation::PortraitFlipped;
-            break;
-        case PLUGIN_ORIENTATION_LANDSCAPE_FLIPPED:
+            // Plugin says "landscape" — map to the device's default (flipped)
             mapped = BoardConfig::UiOrientation::LandscapeFlipped;
             break;
-        default:
+        case PLUGIN_ORIENTATION_PORTRAIT_A:
+            mapped = BoardConfig::UiOrientation::PortraitFlipped;
+            break;
+        case PLUGIN_ORIENTATION_PORTRAIT_B:
+            mapped = BoardConfig::UiOrientation::Portrait;
+            break;
+        case PLUGIN_ORIENTATION_LANDSCAPE_FLIPPED:
             mapped = BoardConfig::UiOrientation::Landscape;
+            break;
+        default:
+            mapped = BoardConfig::UiOrientation::LandscapeFlipped;
             break;
     }
 
