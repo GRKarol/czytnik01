@@ -177,6 +177,18 @@ void PluginLoader::markCrashed() {
     }
 }
 
+void PluginLoader::forwardButton(const PluginButtonEvent& event) {
+    if (state_ == State::Running && vtable_.handleButton) {
+        vtable_.handleButton(&event);
+    }
+}
+
+void PluginLoader::forwardTouch(const PluginTouchEvent& event) {
+    if (state_ == State::Running && vtable_.handleTouch) {
+        vtable_.handleTouch(&event);
+    }
+}
+
 // ─── Private ────────────────────────────────────────────────────────────────
 
 void PluginLoader::pluginTaskEntry(void* param) {

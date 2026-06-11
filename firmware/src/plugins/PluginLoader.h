@@ -78,6 +78,12 @@ class PluginLoader {
     /// Check watchdog — call from main loop periodically
     void watchdogCheck(uint32_t nowMs);
 
+    /// Forward button event to running plugin
+    void forwardButton(const PluginButtonEvent& event);
+
+    /// Forward touch event to running plugin
+    void forwardTouch(const PluginTouchEvent& event);
+
     // Accessors
     State state() const { return state_; }
     ErrorCode lastError() const { return lastError_; }

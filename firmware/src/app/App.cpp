@@ -941,6 +941,26 @@ void App::update(uint32_t nowMs) {
       return;
     }
 
+    // Forward boot button events to the plugin
+    if (button_.wasReleasedEvent()) {
+      PluginButtonEvent btnEvent = {};
+      btnEvent.buttonId = 0;  // boot button
+      btnEvent.pressed = true;
+      btnEvent.timestampMs = nowMs;
+      pluginLoader_.forwardButton(btnEvent);
+    }
+
+    // Forward touch events to the plugin
+    TouchEvent touchEv;
+    if (touch_.poll(touchEv)) {
+      PluginTouchEvent pluginTouch = {};
+      pluginTouch.x = touchEv.x;
+      pluginTouch.y = touchEv.y;
+      pluginTouch.phase = static_cast<uint8_t>(touchEv.phase);
+      pluginTouch.timestampMs = nowMs;
+      pluginLoader_.forwardTouch(pluginTouch);
+    }
+
     // Battery monitoring continues while plugin is running
     updateBatteryStatus(nowMs);
     if (powerOffStarted_) {
