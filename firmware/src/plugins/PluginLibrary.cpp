@@ -19,12 +19,6 @@ constexpr size_t kDownloadBufferSize = 1024;
 constexpr const char* kRegistryUrl =
     "https://github.com/GRKarol/czytnik01/releases/latest/download/plugins-registry.json";
 
-/// Build the download URL for a plugin binary from the latest release.
-String pluginBinaryUrl(const char* pluginId) {
-    return String("https://github.com/GRKarol/czytnik01/releases/latest/download/") +
-           pluginId + "-plugin.bin";
-}
-
 /// Build the download URL for a plugin manifest from the latest release.
 String pluginManifestUrl(const char* pluginId) {
     return String("https://github.com/GRKarol/czytnik01/releases/latest/download/") +
@@ -134,17 +128,11 @@ bool PluginLibrary::downloadPlugin(const char* pluginId, ProgressCallback cb,
                                    void* context) {
     if (!pluginId || strlen(pluginId) == 0) return false;
 
-    // Find registry entry for size info
-    size_t expectedBinarySize = 0;
-    String binaryUrl;
+    // Find manifest URL from registry (or use default)
     String manifestUrl;
 
     for (const auto& entry : registry_) {
         if (entry.id == pluginId) {
-            expectedBinarySize = entry.sizeBytes;
-            binaryUrl = entry.binaryUrl.isEmpty()
-                ? pluginBinaryUrl(pluginId)
-                : entry.binaryUrl;
             manifestUrl = entry.manifestUrl.isEmpty()
                 ? pluginManifestUrl(pluginId)
                 : entry.manifestUrl;
@@ -152,10 +140,6 @@ bool PluginLibrary::downloadPlugin(const char* pluginId, ProgressCallback cb,
         }
     }
 
-    // Fallback URLs if plugin not in registry (manual install)
-    if (binaryUrl.isEmpty()) {
-        binaryUrl = pluginBinaryUrl(pluginId);
-    }
     if (manifestUrl.isEmpty()) {
         manifestUrl = pluginManifestUrl(pluginId);
     }
@@ -170,26 +154,16 @@ bool PluginLibrary::downloadPlugin(const char* pluginId, ProgressCallback cb,
         return false;
     }
 
-    // Download binary to temp file, then rename on success
-    String binPath = pluginBinaryPath(pluginId);
-    String binTmpPath = binPath + ".tmp";
-
     if (cb) cb(context, 0);
 
-    if (!downloadFile(binaryUrl, binTmpPath, expectedBinarySize, cb, context)) {
-        ESP_LOGE(TAG, "Binary download failed for '%s'", pluginId);
-        cleanupPartialDownload(pluginId);
-        disconnectWifi();
-        return false;
-    }
-
-    if (cb) cb(context, 85);
-
-    // Download manifest
+    // Download manifest only — plugin code is built into firmware.
+    // Manifest presence on SD = plugin is "installed" (activated).
     String manifestPath = pluginManifestPath(pluginId);
     String manifestTmpPath = manifestPath + ".tmp";
 
-    if (!downloadFile(manifestUrl, manifestTmpPath, 0, nullptr, nullptr)) {
+    if (cb) cb(context, 20);
+
+    if (!downloadFile(manifestUrl, manifestTmpPath, 0, cb, context)) {
         ESP_LOGE(TAG, "Manifest download failed for '%s'", pluginId);
         cleanupPartialDownload(pluginId);
         disconnectWifi();
@@ -198,19 +172,10 @@ bool PluginLibrary::downloadPlugin(const char* pluginId, ProgressCallback cb,
 
     disconnectWifi();
 
-    // Atomic rename: remove old files first, then rename temps
-    SD_MMC.remove(binPath);
-    if (!SD_MMC.rename(binTmpPath, binPath)) {
-        ESP_LOGE(TAG, "Failed to rename binary tmp to final");
-        cleanupPartialDownload(pluginId);
-        return false;
-    }
-
+    // Atomic rename
     SD_MMC.remove(manifestPath);
     if (!SD_MMC.rename(manifestTmpPath, manifestPath)) {
         ESP_LOGE(TAG, "Failed to rename manifest tmp to final");
-        // Binary is already in place, but manifest rename failed — cleanup
-        SD_MMC.remove(binPath);
         SD_MMC.remove(manifestTmpPath);
         return false;
     }
@@ -220,7 +185,7 @@ bool PluginLibrary::downloadPlugin(const char* pluginId, ProgressCallback cb,
     // Refresh installed list
     scanInstalled();
 
-    ESP_LOGI(TAG, "Plugin '%s' installed successfully", pluginId);
+    ESP_LOGI(TAG, "Plugin '%s' activated (manifest installed)", pluginId);
     return true;
 }
 
@@ -486,20 +451,15 @@ bool PluginLibrary::downloadFile(const String& url, const String& destPath,
 }
 
 void PluginLibrary::cleanupPartialDownload(const char* pluginId) {
-    String binTmp = pluginBinaryPath(pluginId) + ".tmp";
     String manTmp = pluginManifestPath(pluginId) + ".tmp";
-
-    SD_MMC.remove(binTmp);
     SD_MMC.remove(manTmp);
 
-    // If the directory is now empty (no plugin.bin, no manifest.json),
-    // remove it too
+    // If the directory is now empty, remove it too
     String dirPath = pluginDirPath(pluginId);
     File dir = SD_MMC.open(dirPath);
     if (dir && dir.isDirectory()) {
         File entry = dir.openNextFile();
         if (!entry) {
-            // Empty directory — remove it
             dir.close();
             SD_MMC.rmdir(dirPath);
             return;
@@ -546,10 +506,6 @@ void PluginLibrary::disconnectWifi() {
         WiFi.mode(WIFI_OFF);
         wifiConnected_ = false;
     }
-}
-
-String PluginLibrary::pluginBinaryPath(const char* pluginId) const {
-    return String("/plugins/") + pluginId + "/plugin.bin";
 }
 
 String PluginLibrary::pluginManifestPath(const char* pluginId) const {

@@ -17,12 +17,15 @@ class DisplayManager;
 class AudioManager;
 
 /**
- * PluginLoader — loads position-independent plugin binaries from SD card
- * into PSRAM and executes them in an isolated FreeRTOS task.
+ * PluginLoader — manages lifecycle of built-in plugins.
+ *
+ * Plugin code is compiled into the firmware binary. The loader looks up
+ * the plugin by ID in the BuiltinPlugins registry and calls the built-in
+ * code directly — no PSRAM binary loading.
  *
  * State machine:
  *   Idle → Loading → Running → Idle (normal)
- *   Idle → Loading → Error (validation/init failure)
+ *   Idle → Loading → Error (plugin not found / init failure)
  *   Running → Error (watchdog/crash)
  *   Error → Idle (after unload)
  */
@@ -63,7 +66,7 @@ class PluginLoader {
     /// Set references to firmware managers (must be called before load)
     void setManagers(DisplayManager* display, AudioManager* audio);
 
-    /// Load and start a plugin from SD card
+    /// Load and start a built-in plugin by its ID
     LoadResult load(const char* pluginId);
 
     /// Unload the currently running plugin (graceful shutdown)
@@ -79,8 +82,6 @@ class PluginLoader {
     State state() const { return state_; }
     ErrorCode lastError() const { return lastError_; }
     const char* lastErrorMessage() const { return lastErrorMessage_; }
-    size_t psramUsed() const { return psramUsed_; }
-    size_t psramAvailable() const;
     bool isRunning() const { return state_ == State::Running; }
 
     /// Get the plugin task handle (used by panic handler for crash detection)
@@ -92,25 +93,17 @@ class PluginLoader {
  private:
     static void pluginTaskEntry(void* param);
     void pluginTaskLoop();
-    bool validateHeader(const PluginBinaryHeader* header, size_t fileSize);
-    bool resolveVTable(uint8_t* base, uint32_t entryOffset);
     void setupDeviceServices(const char* pluginId);
     void teardownDeviceServices();
     void terminatePluginTask();
-    void freePluginMemory();
 
     // State
     State state_ = State::Idle;
     ErrorCode lastError_ = ErrorCode::None;
     const char* lastErrorMessage_ = "";
 
-    // Plugin memory
-    uint8_t* binaryBuffer_ = nullptr;
-    size_t binarySize_ = 0;
-    size_t psramUsed_ = 0;
-
-    // Plugin interface
-    PluginVTable* vtable_ = nullptr;
+    // Plugin interface (points into the built-in registry — not owned)
+    PluginVTable vtable_ = {};
     PluginContext context_ = {};
 
     // Device service implementations (bridge to firmware managers)

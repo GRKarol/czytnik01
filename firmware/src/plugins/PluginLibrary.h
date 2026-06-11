@@ -73,7 +73,6 @@ class PluginLibrary {
     void cleanupPartialDownload(const char* pluginId);
     bool connectWifi();
     void disconnectWifi();
-    String pluginBinaryPath(const char* pluginId) const;
     String pluginManifestPath(const char* pluginId) const;
     String pluginDirPath(const char* pluginId) const;
     bool parseManifest(const String& path, InstalledPlugin& info);
