@@ -1,7 +1,7 @@
 // firmware/src/plugins/PluginLoader.cpp
 #include "plugins/PluginLoader.h"
 
-#include <SD.h>
+#include <SD_MMC.h>
 #include <esp_heap_caps.h>
 
 #include "plugins/DeviceServicesBridge.h"
@@ -66,7 +66,7 @@ PluginLoader::LoadResult PluginLoader::load(const char* pluginId) {
     String path = String("/plugins/") + pluginId + "/plugin.bin";
 
     // 2. Open file and check existence
-    File file = SD.open(path, FILE_READ);
+    File file = SD_MMC.open(path, FILE_READ);
     if (!file) {
         state_ = State::Error;
         lastError_ = ErrorCode::FileNotFound;

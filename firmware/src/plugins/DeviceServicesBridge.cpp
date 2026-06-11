@@ -2,7 +2,7 @@
 #include "plugins/DeviceServicesBridge.h"
 
 #include <Arduino.h>
-#include <SD.h>
+#include <SD_MMC.h>
 #include <Wire.h>
 #include <string.h>
 
@@ -211,7 +211,7 @@ static void bridgeSetUiOrientation(PluginOrientation orientation) {
 static bool bridgeStorageFileExists(const char* relativePath) {
     String fullPath = resolveSandboxedPath(relativePath);
     if (fullPath.isEmpty()) return false;
-    return SD.exists(fullPath);
+    return SD_MMC.exists(fullPath);
 }
 
 static int bridgeStorageReadFile(const char* relativePath, uint8_t* buffer, uint32_t maxLen) {
@@ -220,7 +220,7 @@ static int bridgeStorageReadFile(const char* relativePath, uint8_t* buffer, uint
     String fullPath = resolveSandboxedPath(relativePath);
     if (fullPath.isEmpty()) return -1;
 
-    File file = SD.open(fullPath, FILE_READ);
+    File file = SD_MMC.open(fullPath, FILE_READ);
     if (!file) return -1;
 
     int bytesRead = file.read(buffer, maxLen);
@@ -234,7 +234,7 @@ static bool bridgeStorageWriteFile(const char* relativePath, const uint8_t* data
     String fullPath = resolveSandboxedPath(relativePath);
     if (fullPath.isEmpty()) return false;
 
-    File file = SD.open(fullPath, FILE_WRITE);
+    File file = SD_MMC.open(fullPath, FILE_WRITE);
     if (!file) return false;
 
     size_t written = file.write(data, len);
@@ -246,14 +246,14 @@ static bool bridgeStorageDeleteFile(const char* relativePath) {
     String fullPath = resolveSandboxedPath(relativePath);
     if (fullPath.isEmpty()) return false;
 
-    return SD.remove(fullPath);
+    return SD_MMC.remove(fullPath);
 }
 
 static bool bridgeStorageMkdir(const char* relativePath) {
     String fullPath = resolveSandboxedPath(relativePath);
     if (fullPath.isEmpty()) return false;
 
-    return SD.mkdir(fullPath);
+    return SD_MMC.mkdir(fullPath);
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
