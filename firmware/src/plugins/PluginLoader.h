@@ -15,6 +15,7 @@
 
 class DisplayManager;
 class AudioManager;
+class AudioRecorder;
 
 /**
  * PluginLoader — manages lifecycle of built-in plugins.
@@ -64,7 +65,7 @@ class PluginLoader {
     bool begin();
 
     /// Set references to firmware managers (must be called before load)
-    void setManagers(DisplayManager* display, AudioManager* audio);
+    void setManagers(DisplayManager* display, AudioManager* audio, AudioRecorder* recorder);
 
     /// Load and start a built-in plugin by its ID
     LoadResult load(const char* pluginId);
@@ -133,4 +134,5 @@ class PluginLoader {
     // Firmware manager pointers (set via setManagers)
     DisplayManager* display_ = nullptr;
     AudioManager* audio_ = nullptr;
+    AudioRecorder* recorder_ = nullptr;
 };

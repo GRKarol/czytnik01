@@ -1,0 +1,9 @@
+{
+  "id": "dictaphone",
+  "name": "Dyktafon",
+  "version": "1.0.0",
+  "author": "GRKarol",
+  "sdk_version": 1,
+  "description": "Record voice memos, play them back, and manage your recordings",
+  "permissions": ["audio", "display", "storage"]
+}

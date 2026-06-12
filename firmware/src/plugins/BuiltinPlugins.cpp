@@ -2,12 +2,14 @@
 #include "plugins/BuiltinPlugins.h"
 #include "plugins/builtin/FocusTimerPlugin.h"
 #include "plugins/builtin/RssPlugin.h"
+#include "plugins/builtin/DictaphonePlugin.h"
 
 #include <string.h>
 
 static const BuiltinPlugin kBuiltinPlugins[] = {
-    {"focus-timer", "Focus Timer", FocusTimerPlugin::vtable()},
-    {"rss",         "RSS Reader",  RssPlugin::vtable()},
+    {"focus-timer",  "Focus Timer",  FocusTimerPlugin::vtable()},
+    {"rss",          "RSS Reader",   RssPlugin::vtable()},
+    {"dictaphone",   "Dictaphone",   DictaphonePlugin::vtable()},
 };
 
 static constexpr size_t kBuiltinPluginCount =

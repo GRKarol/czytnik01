@@ -15,8 +15,29 @@ constexpr float kSideAxisThreshold = 0.78f;
 constexpr float kCrossAxisLimit = 0.42f;
 constexpr float kFlatAxisThreshold = 0.84f;
 
-// Genre count for menu navigation
-constexpr uint8_t kGenreCount = 5;
+// Genre menu items (index 0 = Back, 1..5 = genres)
+constexpr uint8_t kGenreMenuItemCount = 6;
+constexpr uint8_t kGenreBackIndex = 0;
+constexpr uint8_t kGenreFirstIndex = 1;
+
+// Touch cancel hold thresholds
+constexpr uint16_t kCancelHoldMaxDriftPx = 20;
+constexpr uint32_t kCancelHoldMs = 850;
+
+// Tap detection
+constexpr uint16_t kTapSlopPx = 20;
+constexpr uint16_t kBackTapWidth = 80;
+constexpr uint16_t kBackTapHeight = 35;
+
+// Static genre menu labels
+static const char* kGenreMenuLabels[kGenreMenuItemCount] = {
+    "< Back",
+    "Chores - 15 min",
+    "Work - 25 min",
+    "Fitness - 30 min",
+    "Self Care - 20 min",
+    "Other - 10 min",
+};
 
 // Singleton instance — created on init, destroyed on destroy
 FocusTimerCore* s_instance = nullptr;
@@ -32,13 +53,22 @@ FocusTimerCore::FocusTimerCore(PluginImuService* imu, PluginAudioService* audio,
 
 bool FocusTimerCore::begin() {
   imuAvailable_ = imu_ && imu_->available && imu_->available();
+  return true;
+}
+
+void FocusTimerCore::open() {
+  // Re-probe IMU in case it wasn't ready at boot
+  if (!imuAvailable_ && imu_ && imu_->available) {
+    imuAvailable_ = imu_->available();
+  }
 
   clearSession();
   resetOrientationStability();
   state_ = imuAvailable_ ? State::GenreSelect : State::Unavailable;
-  stateStartedMs_ = 0;
-
-  return true;
+  stateStartedMs_ = lastUpdateMs_;
+  genreSelectedIndex_ = kGenreFirstIndex;
+  cancelHoldTriggered_ = false;
+  touchActive_ = false;
 }
 
 void FocusTimerCore::update(uint32_t nowMs) {
@@ -76,8 +106,7 @@ void FocusTimerCore::update(uint32_t nowMs) {
         startMode(TimerMode::Work, nowMs, kWorkDurationMs, stableOrientation_);
         transitionTo(State::WorkRunning, nowMs);
       } else if (stableOrientation_ == OrientationState::LongSide) {
-        startMode(TimerMode::Break, nowMs, kBreakDurationMs,
-                  OrientationState::LongSide);
+        startMode(TimerMode::Break, nowMs, kBreakDurationMs, OrientationState::LongSide);
         transitionTo(State::BreakRunning, nowMs);
       }
       break;
@@ -98,8 +127,7 @@ void FocusTimerCore::update(uint32_t nowMs) {
         startMode(TimerMode::Work, nowMs, kWorkDurationMs, stableOrientation_);
         transitionTo(State::WorkRunning, nowMs);
       } else if (stableOrientation_ == OrientationState::LongSide) {
-        startMode(TimerMode::Break, nowMs, kBreakDurationMs,
-                  OrientationState::LongSide);
+        startMode(TimerMode::Break, nowMs, kBreakDurationMs, OrientationState::LongSide);
         transitionTo(State::BreakRunning, nowMs);
       }
       break;
@@ -146,15 +174,43 @@ void FocusTimerCore::update(uint32_t nowMs) {
 }
 
 void FocusTimerCore::handleButton(const PluginButtonEvent* event) {
-  if (!event || !event->pressed) {
+  if (!event) {
     return;
   }
 
-  if (event->buttonId == 0 && timerRunning_) {
-    stopActiveTimer();
-    resetOrientationStability();
-    feedbackStartedMs_ = event->timestampMs;
-    transitionTo(State::Cancelled, event->timestampMs);
+  const uint32_t nowMs = event->timestampMs;
+
+  // Button 0 (boot button) — used for menu navigation and cancel
+  if (event->buttonId == 0) {
+    if (!event->pressed) {
+      return;
+    }
+
+    if (state_ == State::GenreSelect) {
+      // In genre select: button 0 = move selection down
+      moveGenreSelection(1);
+      return;
+    }
+
+    // During timer running: cancel via button press
+    if (timerRunning_) {
+      cancelActiveTimer(nowMs);
+      return;
+    }
+    return;
+  }
+
+  // Button 1 (power button) — select/confirm
+  if (event->buttonId == 1) {
+    if (!event->pressed) {
+      return;
+    }
+
+    if (state_ == State::GenreSelect) {
+      selectGenreMenuItem(nowMs);
+      return;
+    }
+    return;
   }
 }
 
@@ -163,91 +219,153 @@ void FocusTimerCore::handleTouch(const PluginTouchEvent* event) {
     return;
   }
 
-  if (state_ != State::GenreSelect || event->phase != 2) {
+  const uint32_t nowMs = event->timestampMs;
+
+  // ─── Genre Select: handle touch as tap on menu rows ───
+  if (state_ == State::GenreSelect) {
+    if (event->phase == 2) {  // Touch end
+      // Calculate which row was tapped
+      int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
+      int rowHeight = height / static_cast<int>(kGenreMenuItemCount);
+      if (rowHeight < 1) rowHeight = 1;
+      uint8_t tappedIndex = static_cast<uint8_t>(event->y / rowHeight);
+      if (tappedIndex >= kGenreMenuItemCount) {
+        tappedIndex = kGenreMenuItemCount - 1;
+      }
+      genreSelectedIndex_ = tappedIndex;
+      selectGenreMenuItem(nowMs);
+    }
     return;
   }
 
-  int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 300;
-  int slotHeight = height / kGenreCount;
-  uint8_t selectedSlot = static_cast<uint8_t>(event->y / slotHeight);
-  if (selectedSlot >= kGenreCount) {
-    selectedSlot = kGenreCount - 1;
+  // ─── Timer Session: touch-hold to cancel, tap top-left to exit ───
+  if (event->phase == 0) {  // Touch begin
+    touchActive_ = true;
+    touchStartX_ = event->x;
+    touchStartY_ = event->y;
+    touchStartMs_ = nowMs;
+    cancelHoldTriggered_ = false;
+    return;
   }
 
-  Genre selectedGenre = static_cast<Genre>(selectedSlot);
-  genre_ = selectedGenre;
-  resetOrientationStability();
-  transitionTo(State::WaitForTouchStart, event->timestampMs);
+  if (!touchActive_) {
+    return;
+  }
+
+  const int deltaX = static_cast<int>(event->x) - static_cast<int>(touchStartX_);
+  const int deltaY = static_cast<int>(event->y) - static_cast<int>(touchStartY_);
+  const int absDeltaX = deltaX < 0 ? -deltaX : deltaX;
+  const int absDeltaY = deltaY < 0 ? -deltaY : deltaY;
+
+  // Long-press cancel detection during timer running
+  if (timerRunning_ && !cancelHoldTriggered_ && event->phase != 2 &&
+      absDeltaX <= static_cast<int>(kCancelHoldMaxDriftPx) &&
+      absDeltaY <= static_cast<int>(kCancelHoldMaxDriftPx) &&
+      nowMs - touchStartMs_ >= kCancelHoldMs) {
+    cancelActiveTimer(nowMs);
+    touchActive_ = false;
+    cancelHoldTriggered_ = true;
+    return;
+  }
+
+  if (event->phase != 2) {  // Not end
+    return;
+  }
+
+  // Touch ended
+  touchActive_ = false;
+
+  if (cancelHoldTriggered_) {
+    cancelHoldTriggered_ = false;
+    return;
+  }
+
+  const bool tapLike = absDeltaX <= static_cast<int>(kTapSlopPx) &&
+                       absDeltaY <= static_cast<int>(kTapSlopPx);
+
+  // Top-left tap = exit timer back to caller (abandon)
+  if (tapLike && event->x < kBackTapWidth && event->y < kBackTapHeight) {
+    abandon();
+    return;
+  }
 }
 
 void FocusTimerCore::draw() {
-  if (!display_ || !display_->renderFocusTimerScreen) {
+  if (!display_) {
     return;
   }
 
+  // ─── Genre select: render menu ───
   if (state_ == State::GenreSelect) {
-    static const char* genreItems[] = {"Chores", "Work", "Fitness", "Self Care",
-                                       "Other"};
     if (display_->renderMenu) {
-      display_->renderMenu(genreItems, kGenreCount, genreSelectIndex_);
+      display_->renderMenu(kGenreMenuLabels, kGenreMenuItemCount, genreSelectedIndex_);
     }
     return;
   }
 
+  // ─── Unavailable state ───
   if (state_ == State::Unavailable) {
-    if (display_->renderStatus) {
-      display_->renderStatus("Klepsydra", "IMU unavailable", "");
+    if (display_->renderFocusTimerScreen) {
+      display_->renderFocusTimerScreen("TIMER", "", "", "IMU unavailable", "", -1, false);
     }
+    return;
+  }
+
+  // ─── Timer session rendering ───
+  if (!display_->renderFocusTimerScreen) {
     return;
   }
 
   const char* modeStr = "";
   const char* instruction = "";
-  const char* footer = "";
+  int progress = -1;
   bool breakAccent = false;
-  int progress = 0;
-
-  switch (activeMode_) {
-    case TimerMode::Touch:
-      modeStr = "Touch";
-      break;
-    case TimerMode::Work:
-      modeStr = "Work";
-      break;
-    case TimerMode::Break:
-      modeStr = "Break";
-      breakAccent = true;
-      break;
-    case TimerMode::None:
-    default:
-      modeStr = "";
-      break;
-  }
 
   switch (state_) {
     case State::WaitForTouchStart:
-      instruction = "Flip to short side";
+      modeStr = "BEGIN";
+      instruction = "Place on short side";
+      break;
+    case State::TouchRunning:
+      modeStr = "BEGIN";
+      progress = progressPercent(lastUpdateMs_);
       break;
     case State::WaitAfterTouch:
-      instruction = "Flip to work or break";
+      modeStr = "WORK";
+      instruction = "Flip to continue";
+      break;
+    case State::WorkRunning:
+      modeStr = "WORK";
+      progress = progressPercent(lastUpdateMs_);
+      break;
+    case State::BreakRunning:
+      modeStr = "BREAK";
+      progress = progressPercent(lastUpdateMs_);
+      breakAccent = true;
       break;
     case State::WaitAfterWork:
-      instruction = "Flip to work or break";
+      modeStr = "BREAK";
+      instruction = "Turn for break";
+      breakAccent = true;
       break;
     case State::WaitAfterBreak:
-      instruction = "Flip to short side";
+      modeStr = "WORK";
+      instruction = "Flip to begin";
       break;
     case State::Cancelled:
-      instruction = "Cancelled";
+      modeStr = "BEGIN";
+      instruction = "Place to begin again";
       break;
     case State::Complete:
-      instruction = "Complete!";
+      modeStr = "DONE";
+      instruction = "Session complete";
       break;
     default:
       break;
   }
 
-  char timerBuf[16] = "";
+  // Format remaining time if timer is running
+  char timerBuf[8] = "";
   if (timerRunning_) {
     uint32_t remaining = remainingMs(lastUpdateMs_);
     uint32_t totalSec = remaining / 1000;
@@ -259,35 +377,49 @@ void FocusTimerCore::draw() {
     timerBuf[3] = '0' + static_cast<char>(seconds / 10);
     timerBuf[4] = '0' + static_cast<char>(seconds % 10);
     timerBuf[5] = '\0';
-    progress = progressPercent(lastUpdateMs_);
-  }
-
-  char footerBuf[32] = "";
-  {
-    int pos = 0;
-    footerBuf[pos++] = 'T';
-    footerBuf[pos++] = ':';
-    footerBuf[pos++] = '0' + completedTouchBlocks_;
-    footerBuf[pos++] = ' ';
-    footerBuf[pos++] = 'W';
-    footerBuf[pos++] = ':';
-    footerBuf[pos++] = '0' + completedWorkBlocks_;
-    footerBuf[pos++] = ' ';
-    footerBuf[pos++] = 'B';
-    footerBuf[pos++] = ':';
-    footerBuf[pos++] = '0' + completedBreakBlocks_;
-    footerBuf[pos] = '\0';
-    footer = footerBuf;
   }
 
   display_->renderFocusTimerScreen(modeStr, genreLabel(genre_), timerBuf,
-                                   instruction, footer, progress, breakAccent);
+                                   instruction, "", progress, breakAccent);
+}
+
+// ─── Public Methods ─────────────────────────────────────────────────────────
+
+void FocusTimerCore::chooseGenre(Genre genre, uint32_t nowMs) {
+  if (genre == Genre::None) {
+    return;
+  }
+
+  clearSession();
+  genre_ = genre;
+  resetOrientationStability();
+  transitionTo(State::WaitForTouchStart, nowMs);
+}
+
+void FocusTimerCore::cancelActiveTimer(uint32_t nowMs) {
+  if (!timerRunning_) {
+    return;
+  }
+
+  stopActiveTimer();
+  resetOrientationStability();
+  feedbackStartedMs_ = nowMs;
+  transitionTo(State::Cancelled, nowMs);
+}
+
+void FocusTimerCore::abandon() {
+  clearSession();
+  resetOrientationStability();
+  state_ = imuAvailable_ ? State::GenreSelect : State::Unavailable;
+  stateStartedMs_ = lastUpdateMs_;
+  genreSelectedIndex_ = kGenreFirstIndex;
 }
 
 // ─── Accessors ──────────────────────────────────────────────────────────────
 
 FocusTimerCore::State FocusTimerCore::state() const { return state_; }
 FocusTimerCore::Genre FocusTimerCore::genre() const { return genre_; }
+bool FocusTimerCore::available() const { return imuAvailable_; }
 bool FocusTimerCore::isActiveTimerRunning() const { return timerRunning_; }
 
 uint32_t FocusTimerCore::remainingMs(uint32_t nowMs) const {
@@ -324,6 +456,42 @@ const char* FocusTimerCore::genreLabel(Genre genre) {
     case Genre::None:
     default: return "";
   }
+}
+
+// ─── Genre Menu ─────────────────────────────────────────────────────────────
+
+void FocusTimerCore::moveGenreSelection(int direction) {
+  int newIndex = static_cast<int>(genreSelectedIndex_) + direction;
+  if (newIndex < 0) {
+    newIndex = kGenreMenuItemCount - 1;
+  } else if (newIndex >= static_cast<int>(kGenreMenuItemCount)) {
+    newIndex = 0;
+  }
+  genreSelectedIndex_ = static_cast<uint8_t>(newIndex);
+}
+
+void FocusTimerCore::selectGenreMenuItem(uint32_t nowMs) {
+  if (genreSelectedIndex_ == kGenreBackIndex) {
+    // "Back" selected — abandon and return to landscape
+    abandon();
+    return;
+  }
+
+  Genre genre = Genre::None;
+  switch (genreSelectedIndex_) {
+    case 1: genre = Genre::Chores; break;
+    case 2: genre = Genre::RsvpNano; break;
+    case 3: genre = Genre::StrengthLabs; break;
+    case 4: genre = Genre::SelfCare; break;
+    case 5: genre = Genre::Other; break;
+    default: break;
+  }
+
+  if (genre == Genre::None) {
+    return;
+  }
+
+  chooseGenre(genre, nowMs);
 }
 
 // ─── Orientation Detection ──────────────────────────────────────────────────
@@ -467,9 +635,15 @@ FocusTimerCore::OrientationState FocusTimerCore::oppositeShortSide(
 
 PluginOrientation FocusTimerCore::portraitOrientationForShortSide(
     OrientationState orientation) const {
+  // ShortSideB maps to PortraitFlipped in original code (which used
+  // BoardConfig::UiOrientation::PortraitFlipped). The bridge remaps
+  // PLUGIN_ORIENTATION_PORTRAIT_A → PortraitFlipped and
+  // PLUGIN_ORIENTATION_PORTRAIT_B → Portrait.
+  // Original: ShortSideB → PortraitFlipped → bridge expects PORTRAIT_A
+  //           ShortSideA → Portrait        → bridge expects PORTRAIT_B
   return orientation == OrientationState::ShortSideB
-             ? PLUGIN_ORIENTATION_PORTRAIT_B
-             : PLUGIN_ORIENTATION_PORTRAIT_A;
+             ? PLUGIN_ORIENTATION_PORTRAIT_A
+             : PLUGIN_ORIENTATION_PORTRAIT_B;
 }
 
 void FocusTimerCore::updateUiOrientation() {
@@ -513,6 +687,7 @@ static PluginResult focusTimerInit(PluginContext* ctx) {
         s_instance = nullptr;
         return PLUGIN_ERROR_INIT;
     }
+    s_instance->open();
     return PLUGIN_OK;
 }
 

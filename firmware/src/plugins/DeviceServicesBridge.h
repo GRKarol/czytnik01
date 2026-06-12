@@ -9,6 +9,7 @@
 
 class DisplayManager;
 class AudioManager;
+class AudioRecorder;
 
 /**
  * DeviceServicesBridge — static bridge between C function-pointer-based
@@ -29,6 +30,7 @@ namespace DeviceServicesBridge {
 /// @param storageRoot     Absolute SD path prefix, e.g. "/plugins/focus-timer/"
 /// @param display         Pointer to the firmware's DisplayManager instance
 /// @param audio           Pointer to the firmware's AudioManager instance
+/// @param recorder        Pointer to the firmware's AudioRecorder instance
 /// @param displayService  Struct to populate with display function pointers
 /// @param audioService    Struct to populate with audio function pointers
 /// @param imuService      Struct to populate with IMU function pointers
@@ -38,6 +40,7 @@ void setup(const char* pluginId,
            const char* storageRoot,
            DisplayManager* display,
            AudioManager* audio,
+           AudioRecorder* recorder,
            PluginDisplayService* displayService,
            PluginAudioService* audioService,
            PluginImuService* imuService,

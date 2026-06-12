@@ -2,6 +2,7 @@
 #include "plugins/PluginLoader.h"
 #include "plugins/BuiltinPlugins.h"
 #include "plugins/DeviceServicesBridge.h"
+#include "audio/AudioRecorder.h"
 
 #include <esp_system.h>
 
@@ -40,9 +41,10 @@ bool PluginLoader::begin() {
     return true;
 }
 
-void PluginLoader::setManagers(DisplayManager* display, AudioManager* audio) {
+void PluginLoader::setManagers(DisplayManager* display, AudioManager* audio, AudioRecorder* recorder) {
     display_ = display;
     audio_ = audio;
+    recorder_ = recorder;
 }
 
 PluginLoader::LoadResult PluginLoader::load(const char* pluginId) {
@@ -233,6 +235,7 @@ void PluginLoader::setupDeviceServices(const char* pluginId) {
         pluginStorageRoot_.c_str(),
         display_,
         audio_,
+        recorder_,
         &displayService_,
         &audioService_,
         &imuService_,

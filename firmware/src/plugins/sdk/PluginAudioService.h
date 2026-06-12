@@ -11,6 +11,37 @@ extern "C" {
 typedef struct PluginAudioService {
     bool (*beep)(void);
     bool (*available)(void);
+
+    // ─── Recording (microphone → SD card as WAV) ────────────────────────
+    /// Start recording audio to a file (path relative to plugin sandbox).
+    /// Returns true if recording started successfully.
+    bool (*startRecording)(const char* relativePath);
+
+    /// Stop the current recording and finalize the WAV file.
+    /// Returns true if recording was stopped and file saved correctly.
+    bool (*stopRecording)(void);
+
+    /// Returns true if currently recording.
+    bool (*isRecording)(void);
+
+    /// Get elapsed recording time in milliseconds.
+    uint32_t (*recordingElapsedMs)(void);
+
+    // ─── Playback (WAV file → speaker) ──────────────────────────────────
+    /// Start playing a WAV file (path relative to plugin sandbox).
+    bool (*startPlayback)(const char* relativePath);
+
+    /// Stop current playback.
+    bool (*stopPlayback)(void);
+
+    /// Returns true if currently playing audio.
+    bool (*isPlaying)(void);
+
+    /// Get elapsed playback time in milliseconds.
+    uint32_t (*playbackElapsedMs)(void);
+
+    /// Get total duration of currently playing file in milliseconds.
+    uint32_t (*playbackTotalMs)(void);
 } PluginAudioService;
 
 #ifdef __cplusplus

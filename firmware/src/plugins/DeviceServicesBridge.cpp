@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "audio/AudioManager.h"
+#include "audio/AudioRecorder.h"
 #include "board/BoardConfig.h"
 #include "display/DisplayManager.h"
 
@@ -16,6 +17,7 @@ static const char* TAG = "DeviceServicesBridge";
 
 static DisplayManager* sDisplay = nullptr;
 static AudioManager* sAudio = nullptr;
+static AudioRecorder* sRecorder = nullptr;
 static String sStorageRoot;  // e.g. "/plugins/focus-timer/"
 
 // IMU register constants (QMI8658 on Wire1)
@@ -129,6 +131,57 @@ static bool bridgeAudioBeep() {
 static bool bridgeAudioAvailable() {
     if (!sAudio) return false;
     return sAudio->available();
+}
+
+// ─── Audio Recording/Playback Wrappers ──────────────────────────────────────
+
+static bool bridgeAudioStartRecording(const char* relativePath) {
+    if (!sRecorder) return false;
+    String fullPath = resolveSandboxedPath(relativePath);
+    if (fullPath.isEmpty()) return false;
+    return sRecorder->startRecording(fullPath.c_str());
+}
+
+static bool bridgeAudioStopRecording() {
+    if (!sRecorder) return false;
+    return sRecorder->stopRecording();
+}
+
+static bool bridgeAudioIsRecording() {
+    if (!sRecorder) return false;
+    return sRecorder->isRecording();
+}
+
+static uint32_t bridgeAudioRecordingElapsedMs() {
+    if (!sRecorder) return 0;
+    return sRecorder->recordingElapsedMs();
+}
+
+static bool bridgeAudioStartPlayback(const char* relativePath) {
+    if (!sRecorder) return false;
+    String fullPath = resolveSandboxedPath(relativePath);
+    if (fullPath.isEmpty()) return false;
+    return sRecorder->startPlayback(fullPath.c_str());
+}
+
+static bool bridgeAudioStopPlayback() {
+    if (!sRecorder) return false;
+    return sRecorder->stopPlayback();
+}
+
+static bool bridgeAudioIsPlaying() {
+    if (!sRecorder) return false;
+    return sRecorder->isPlaying();
+}
+
+static uint32_t bridgeAudioPlaybackElapsedMs() {
+    if (!sRecorder) return 0;
+    return sRecorder->playbackElapsedMs();
+}
+
+static uint32_t bridgeAudioPlaybackTotalMs() {
+    if (!sRecorder) return 0;
+    return sRecorder->playbackTotalMs();
 }
 
 // ─── IMU Service Wrappers ───────────────────────────────────────────────────
@@ -258,6 +311,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
                                   const char* storageRoot,
                                   DisplayManager* display,
                                   AudioManager* audio,
+                                  AudioRecorder* recorder,
                                   PluginDisplayService* displayService,
                                   PluginAudioService* audioService,
                                   PluginImuService* imuService,
@@ -266,6 +320,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
     // Store manager pointers for static wrappers
     sDisplay = display;
     sAudio = audio;
+    sRecorder = recorder;
     sStorageRoot = storageRoot ? storageRoot : "";
 
     // Populate display service function pointers
@@ -284,6 +339,15 @@ void DeviceServicesBridge::setup(const char* pluginId,
     if (audioService) {
         audioService->beep = bridgeAudioBeep;
         audioService->available = bridgeAudioAvailable;
+        audioService->startRecording = bridgeAudioStartRecording;
+        audioService->stopRecording = bridgeAudioStopRecording;
+        audioService->isRecording = bridgeAudioIsRecording;
+        audioService->recordingElapsedMs = bridgeAudioRecordingElapsedMs;
+        audioService->startPlayback = bridgeAudioStartPlayback;
+        audioService->stopPlayback = bridgeAudioStopPlayback;
+        audioService->isPlaying = bridgeAudioIsPlaying;
+        audioService->playbackElapsedMs = bridgeAudioPlaybackElapsedMs;
+        audioService->playbackTotalMs = bridgeAudioPlaybackTotalMs;
     }
 
     // Populate IMU service function pointers
@@ -313,6 +377,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
 void DeviceServicesBridge::teardown() {
     sDisplay = nullptr;
     sAudio = nullptr;
+    sRecorder = nullptr;
     sStorageRoot = "";
 
     ESP_LOGI(TAG, "Device services bridge torn down");

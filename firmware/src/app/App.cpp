@@ -685,7 +685,8 @@ void App::begin() {
   pluginLibrary_.begin();
   pluginLibrary_.scanInstalled();
   pluginLoader_.begin();
-  pluginLoader_.setManagers(&display_, &audio_);
+  recorder_.begin();
+  pluginLoader_.setManagers(&display_, &audio_, &recorder_);
   brightnessLevelIndex_ = preferences_.getUChar(kPrefBrightness, brightnessLevelIndex_);
   if (brightnessLevelIndex_ >= kBrightnessLevelCount) {
     brightnessLevelIndex_ = kBrightnessLevelCount - 1;
@@ -873,6 +874,7 @@ void App::begin() {
   }
 
   maybeAutoCheckForUpdates(bootStartedMs_);
+  autoSyncPlugins();
 
   // Auto-start BLE peripheral jeśli klient włączył go wcześniej.
   // Stan jest persistowany, więc telefon „znajduje" Flowera od razu po
@@ -4574,6 +4576,9 @@ OtaUpdater::Config App::preferredOtaConfig() {
   OtaUpdater::Config otaConfig;
   otaUpdater_.loadConfig(otaConfig);
 
+  // Default to auto-check enabled
+  otaConfig.autoCheck = true;
+
   if (preferences_.isKey(kPrefWifiSsid)) {
     otaConfig.wifiSsid = preferences_.getString(kPrefWifiSsid, "");
   }
@@ -4581,7 +4586,7 @@ OtaUpdater::Config App::preferredOtaConfig() {
     otaConfig.wifiPassword = preferences_.getString(kPrefWifiPass, "");
   }
   if (preferences_.isKey(kPrefOtaAuto)) {
-    otaConfig.autoCheck = preferences_.getBool(kPrefOtaAuto, otaConfig.autoCheck);
+    otaConfig.autoCheck = preferences_.getBool(kPrefOtaAuto, true);
   }
   if (preferences_.isKey(kPrefOtaOwner)) {
     otaConfig.githubOwner = preferences_.getString(kPrefOtaOwner, "");
@@ -4603,12 +4608,11 @@ String App::configuredWifiSsid() {
 
 bool App::otaAutoCheckEnabled() {
   if (preferences_.isKey(kPrefOtaAuto)) {
-    return preferences_.getBool(kPrefOtaAuto, false);
+    return preferences_.getBool(kPrefOtaAuto, true);
   }
 
-  OtaUpdater::Config otaConfig;
-  otaUpdater_.loadConfig(otaConfig);
-  return otaConfig.autoCheck;
+  // Default to true — silent auto-update is always on unless explicitly disabled
+  return true;
 }
 
 void App::maybeAutoCheckForUpdates(uint32_t nowMs) {
@@ -4620,6 +4624,54 @@ void App::maybeAutoCheckForUpdates(uint32_t nowMs) {
 
   Serial.println("[ota] auto-check enabled");
   startBackgroundOtaCheck(otaConfig);
+}
+
+void App::autoSyncPlugins() {
+  const String ssid = preferences_.getString(kPrefWifiSsid, "");
+  const String pass = preferences_.getString(kPrefWifiPass, "");
+
+  if (ssid.isEmpty()) {
+    Serial.println("[plugin-sync] no WiFi configured, skipping auto-sync");
+    return;
+  }
+
+  pluginLibrary_.setWifiCredentials(ssid, pass);
+
+  Serial.println("[plugin-sync] fetching registry...");
+  PluginLibrary::FetchResult fetchResult = pluginLibrary_.fetchRegistry();
+  if (fetchResult != PluginLibrary::FetchResult::Success) {
+    Serial.printf("[plugin-sync] registry fetch failed: %u\n", static_cast<unsigned>(fetchResult));
+    return;
+  }
+
+  Serial.printf("[plugin-sync] registry has %u plugins\n",
+                static_cast<unsigned>(pluginLibrary_.registry().size()));
+
+  // Auto-install any plugin from registry that isn't installed yet
+  bool anyInstalled = false;
+  for (const auto& entry : pluginLibrary_.registry()) {
+    if (!pluginLibrary_.isInstalled(entry.id.c_str())) {
+      Serial.printf("[plugin-sync] installing new plugin: %s\n", entry.id.c_str());
+      if (pluginLibrary_.downloadPlugin(entry.id.c_str())) {
+        anyInstalled = true;
+        Serial.printf("[plugin-sync] installed: %s\n", entry.id.c_str());
+      } else {
+        Serial.printf("[plugin-sync] failed to install: %s\n", entry.id.c_str());
+      }
+    } else if (pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
+      // Update existing plugins to latest version
+      Serial.printf("[plugin-sync] updating plugin: %s\n", entry.id.c_str());
+      pluginLibrary_.downloadPlugin(entry.id.c_str());
+    }
+  }
+
+  if (anyInstalled) {
+    pluginLibrary_.scanInstalled();
+    Serial.printf("[plugin-sync] sync complete, %u plugins installed\n",
+                  static_cast<unsigned>(pluginLibrary_.installed().size()));
+  } else {
+    Serial.println("[plugin-sync] all plugins up to date");
+  }
 }
 
 bool App::startBackgroundOtaCheck(const OtaUpdater::Config &config) {
@@ -4700,9 +4752,10 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
                   result.latestVersion, result.summary, result.detail);
 
     if (result.code == OtaUpdater::ResultCode::UpdateAvailable) {
-      pendingUpdateCurrentVersion_ = String(result.currentVersion);
-      pendingUpdateNewVersion_ = String(result.latestVersion);
-      otaUpdatePromptPending_ = true;
+      // Silent auto-update: install immediately without user confirmation
+      Serial.println("[ota] update available — installing silently");
+      OtaUpdater::Config config = preferredOtaConfig();
+      runFirmwareUpdate(config, true, nowMs);
     }
   }
 }
@@ -4712,13 +4765,9 @@ bool App::updateConfirmCanOpen() const {
 }
 
 void App::maybeOpenUpdateConfirm(uint32_t nowMs) {
-  if (!updateConfirmCanOpen()) {
-    return;
-  }
-
-  otaUpdatePromptPending_ = false;
-  setState(AppState::Menu, nowMs);
-  openUpdateConfirm();
+  // Silent auto-update is handled in pollOtaCheckResult.
+  // No user prompt needed.
+  (void)nowMs;
 }
 
 bool App::blockNetworkActionForOtaCheck(const String &title, uint32_t nowMs) {

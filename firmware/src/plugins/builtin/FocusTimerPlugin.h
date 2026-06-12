@@ -39,6 +39,7 @@ class FocusTimerCore {
                  PluginDisplayService* display, PluginOrientationService* orientation);
 
   bool begin();
+  void open();
   void update(uint32_t nowMs);
   void handleButton(const PluginButtonEvent* event);
   void handleTouch(const PluginTouchEvent* event);
@@ -47,6 +48,7 @@ class FocusTimerCore {
   // Accessors
   State state() const;
   Genre genre() const;
+  bool available() const;
   bool isActiveTimerRunning() const;
   uint32_t remainingMs(uint32_t nowMs) const;
   uint8_t progressPercent(uint32_t nowMs) const;
@@ -54,6 +56,9 @@ class FocusTimerCore {
   uint8_t completedWorkBlocks() const;
   uint8_t completedBreakBlocks() const;
   bool consumeCompletionCue();
+  void chooseGenre(Genre genre, uint32_t nowMs);
+  void cancelActiveTimer(uint32_t nowMs);
+  void abandon();
 
   static const char* genreLabel(Genre genre);
 
@@ -94,6 +99,10 @@ class FocusTimerCore {
   PluginOrientation portraitOrientationForShortSide(OrientationState orientation) const;
   void updateUiOrientation();
 
+  // Genre menu
+  void moveGenreSelection(int direction);
+  void selectGenreMenuItem(uint32_t nowMs);
+
   // Device services (not owned)
   PluginImuService* imu_;
   PluginAudioService* audio_;
@@ -126,8 +135,15 @@ class FocusTimerCore {
   // Last update timestamp for draw
   uint32_t lastUpdateMs_ = 0;
 
-  // Genre selection index (for menu navigation)
-  uint8_t genreSelectIndex_ = 0;
+  // Genre selection menu
+  uint8_t genreSelectedIndex_ = 1;  // 0=Back, 1..5=genres
+
+  // Touch hold for cancel
+  bool touchActive_ = false;
+  uint16_t touchStartX_ = 0;
+  uint16_t touchStartY_ = 0;
+  uint32_t touchStartMs_ = 0;
+  bool cancelHoldTriggered_ = false;
 };
 
 /// Plugin SDK vtable entry points for the FocusTimer built-in plugin.

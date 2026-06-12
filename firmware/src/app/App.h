@@ -12,6 +12,7 @@
 #include "app/Localization.h"
 #include "app/Translations.h"
 #include "audio/AudioManager.h"
+#include "audio/AudioRecorder.h"
 #include "display/DisplayManager.h"
 #include "input/ButtonHandler.h"
 #include "input/TouchHandler.h"
@@ -393,6 +394,7 @@ class App {
   void persistSavePoints();
   void openPluginsList();
   void selectPluginsItem(uint32_t nowMs);
+  void autoSyncPlugins();
 
   void openPluginLibraryScreen(uint32_t nowMs);
   void selectPluginLibraryItem(uint32_t nowMs);
@@ -542,6 +544,7 @@ class App {
   AppState standbyReturnState_ = AppState::Paused;
   DisplayManager display_;
   AudioManager audio_;
+  AudioRecorder recorder_;
   ReadingLoop reader_;
   ButtonHandler button_;
   ButtonHandler powerButton_;
