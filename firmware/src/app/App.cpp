@@ -3035,7 +3035,20 @@ void App::selectMenuItem(uint32_t nowMs) {
     return;
   }
 
-  switch (menuSelectedIndex_) {
+  // When update button is shown, all menu indices shift by 1
+  size_t effectiveIndex = menuSelectedIndex_;
+  if (otaUpdatePromptPending_) {
+    if (menuSelectedIndex_ == 0) {
+      // User tapped "Update" button — run firmware update
+      otaUpdatePromptPending_ = false;
+      OtaUpdater::Config config = preferredOtaConfig();
+      runFirmwareUpdate(config, false, nowMs);
+      return;
+    }
+    effectiveIndex = menuSelectedIndex_ - 1;
+  }
+
+  switch (effectiveIndex) {
     case MenuRead:
       setState(AppState::Paused, nowMs);
       return;
@@ -4755,22 +4768,23 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
   OtaCheckResult result;
   while (xQueueReceive(otaCheckQueue_, &result, 0) == pdTRUE) {
     otaCheckInProgress_ = false;
-    Serial.printf("[ota] background result code=%u current=%s latest=%s summary=%s detail=%s\n",
+    Serial.printf("[ota] background result code=%u current=%s latest=%s\n",
                   static_cast<unsigned int>(result.code), result.currentVersion,
-                  result.latestVersion, result.summary, result.detail);
+                  result.latestVersion);
 
     if (result.code == OtaUpdater::ResultCode::UpdateAvailable) {
-      // Only install if the versions are actually different
       String current = otaUpdater_.currentVersion();
       String latest = String(result.latestVersion);
       if (current == latest || latest.isEmpty()) {
-        Serial.println("[ota] versions match or latest is empty — skipping");
+        Serial.println("[ota] versions match — no update needed");
         return;
       }
-      Serial.printf("[ota] update available: %s -> %s — installing silently\n",
+      // Just flag it — user will see "Update" button in menu
+      pendingUpdateCurrentVersion_ = current;
+      pendingUpdateNewVersion_ = latest;
+      otaUpdatePromptPending_ = true;
+      Serial.printf("[ota] update available: %s -> %s (user will be notified)\n",
                     current.c_str(), latest.c_str());
-      OtaUpdater::Config config = preferredOtaConfig();
-      runFirmwareUpdate(config, true, nowMs);
     }
   }
 }
@@ -4780,8 +4794,9 @@ bool App::updateConfirmCanOpen() const {
 }
 
 void App::maybeOpenUpdateConfirm(uint32_t nowMs) {
-  // Silent auto-update is handled in pollOtaCheckResult.
-  // No user prompt needed.
+  // Don't auto-open a confirm dialog — the update button appears in main menu.
+  // This is intentionally a no-op now. The menu renders the "Update" item
+  // when otaUpdatePromptPending_ is true.
   (void)nowMs;
 }
 
@@ -7474,7 +7489,15 @@ void App::renderMenu() {
 
 void App::renderMainMenu() {
   std::vector<String> items;
-  items.reserve(MenuItemCount);
+  items.reserve(MenuItemCount + 1);
+
+  // Show update button at top when available (and versions differ)
+  if (otaUpdatePromptPending_ && pendingUpdateNewVersion_ != otaUpdater_.currentVersion()) {
+    items.push_back(String(">> Update ") + pendingUpdateNewVersion_);
+  } else {
+    otaUpdatePromptPending_ = false;  // clear stale flag
+  }
+
   items.push_back(uiText(UiText::Read));
   items.push_back(uiText(UiText::Library));
   items.push_back(uiText(UiText::SavePoints));
