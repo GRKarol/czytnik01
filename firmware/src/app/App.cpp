@@ -874,7 +874,8 @@ void App::begin() {
   }
 
   maybeAutoCheckForUpdates(bootStartedMs_);
-  autoSyncPlugins();
+  // Plugin sync runs in background after first update loop iteration
+  // (moved out of boot path to prevent blocking)
 
   // Auto-start BLE peripheral jeśli klient włączył go wcześniej.
   // Stan jest persistowany, więc telefon „znajduje" Flowera od razu po
@@ -1016,6 +1017,13 @@ void App::update(uint32_t nowMs) {
   updateState(nowMs);
   loadPendingBootBook(nowMs);
   maybeOpenUpdateConfirm(nowMs);
+
+  // Lazy plugin sync — run once after boot settles (5s delay to avoid blocking startup)
+  if (!pluginSyncDone_ && (nowMs - bootStartedMs_) > 5000 && !otaCheckInProgress_) {
+    pluginSyncDone_ = true;
+    autoSyncPlugins();
+  }
+
   updateReader(nowMs);
   handleTouch(nowMs);
 
@@ -4752,8 +4760,15 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
                   result.latestVersion, result.summary, result.detail);
 
     if (result.code == OtaUpdater::ResultCode::UpdateAvailable) {
-      // Silent auto-update: install immediately without user confirmation
-      Serial.println("[ota] update available — installing silently");
+      // Only install if the versions are actually different
+      String current = otaUpdater_.currentVersion();
+      String latest = String(result.latestVersion);
+      if (current == latest || latest.isEmpty()) {
+        Serial.println("[ota] versions match or latest is empty — skipping");
+        return;
+      }
+      Serial.printf("[ota] update available: %s -> %s — installing silently\n",
+                    current.c_str(), latest.c_str());
       OtaUpdater::Config config = preferredOtaConfig();
       runFirmwareUpdate(config, true, nowMs);
     }

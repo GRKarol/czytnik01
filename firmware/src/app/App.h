@@ -573,6 +573,7 @@ class App {
   uint32_t autoSyncStartedMs_ = 0;
   bool autoSyncActive_ = false;
   bool autoSyncClientConnected_ = false;
+  bool pluginSyncDone_ = false;
   uint32_t lastReaderTapMs_ = 0;
   uint32_t standbyComboStartedMs_ = 0;
   uint32_t standbyEnteredMs_ = 0;
