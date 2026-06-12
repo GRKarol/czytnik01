@@ -1018,12 +1018,6 @@ void App::update(uint32_t nowMs) {
   loadPendingBootBook(nowMs);
   maybeOpenUpdateConfirm(nowMs);
 
-  // Lazy plugin sync — run once after boot settles (5s delay to avoid blocking startup)
-  if (!pluginSyncDone_ && (nowMs - bootStartedMs_) > 5000 && !otaCheckInProgress_) {
-    pluginSyncDone_ = true;
-    autoSyncPlugins();
-  }
-
   updateReader(nowMs);
   handleTouch(nowMs);
 
@@ -4775,16 +4769,24 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
     if (result.code == OtaUpdater::ResultCode::UpdateAvailable) {
       String current = otaUpdater_.currentVersion();
       String latest = String(result.latestVersion);
-      if (current == latest || latest.isEmpty()) {
-        Serial.println("[ota] versions match — no update needed");
+      if (latest.isEmpty()) {
+        Serial.println("[ota] latest version empty — skipping");
+        return;
+      }
+      // Strip git describe suffix (e.g. "v0.3.1-2-gabcdef" → "v0.3.1")
+      int dashPos = current.indexOf('-');
+      String currentBase = (dashPos > 0) ? current.substring(0, dashPos) : current;
+      if (currentBase == latest) {
+        Serial.printf("[ota] versions match (%s == %s) — no update needed\n",
+                      currentBase.c_str(), latest.c_str());
         return;
       }
       // Just flag it — user will see "Update" button in menu
-      pendingUpdateCurrentVersion_ = current;
+      pendingUpdateCurrentVersion_ = currentBase;
       pendingUpdateNewVersion_ = latest;
       otaUpdatePromptPending_ = true;
       Serial.printf("[ota] update available: %s -> %s (user will be notified)\n",
-                    current.c_str(), latest.c_str());
+                    currentBase.c_str(), latest.c_str());
     }
   }
 }
@@ -7492,10 +7494,15 @@ void App::renderMainMenu() {
   items.reserve(MenuItemCount + 1);
 
   // Show update button at top when available (and versions differ)
-  if (otaUpdatePromptPending_ && pendingUpdateNewVersion_ != otaUpdater_.currentVersion()) {
-    items.push_back(String(">> Update ") + pendingUpdateNewVersion_);
-  } else {
-    otaUpdatePromptPending_ = false;  // clear stale flag
+  if (otaUpdatePromptPending_) {
+    String current = otaUpdater_.currentVersion();
+    int dashPos = current.indexOf('-');
+    String currentBase = (dashPos > 0) ? current.substring(0, dashPos) : current;
+    if (pendingUpdateNewVersion_ != currentBase) {
+      items.push_back(String(">> Update ") + pendingUpdateNewVersion_);
+    } else {
+      otaUpdatePromptPending_ = false;
+    }
   }
 
   items.push_back(uiText(UiText::Read));

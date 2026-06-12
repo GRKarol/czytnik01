@@ -420,31 +420,8 @@ bool DictaphoneCore::scanRecordings() {
         return true;
     }
 
-    // No index file — scan for files (fallback)
-    for (uint16_t i = 1; i <= 9999 && recordingCount_ < kDictMaxRecordings; i++) {
-        char name[kDictMaxFilenameLen];
-        snprintf(name, sizeof(name), "REC_%04u.wav", i);
-
-        char path[kDictMaxFilenameLen + 16];
-        snprintf(path, sizeof(path), "recordings/%s", name);
-
-        if (storage_->fileExists && storage_->fileExists(path)) {
-            strncpy(recordingNames_[recordingCount_], name, kDictMaxFilenameLen - 1);
-            recordingNames_[recordingCount_][kDictMaxFilenameLen - 1] = '\0';
-            recordingCount_++;
-
-            // Update counter for next recording
-            if (i >= recordingCounter_) {
-                recordingCounter_ = i;
-            }
-        }
-    }
-
-    // Save index for future fast scanning
-    if (recordingCount_ > 0) {
-        saveIndex();
-    }
-
+    // No index file — no recordings yet (first run)
+    // Don't scan 9999 files — just start with empty list
     return true;
 }
 
