@@ -61,6 +61,11 @@ jobs:
           mkdir -p dist
           for dir in plugins/*/; do
             plugin_id=$(basename "$dir")
+            if [ ! -f "$dir/platformio.ini" ]; then
+              echo "Skipping $plugin_id (no platformio.ini — builtin plugin)"
+              cp "plugins/$plugin_id/manifest.json" "dist/${plugin_id}-manifest.json"
+              continue
+            fi
             cd "$dir"
             pio run
             cd ../..
