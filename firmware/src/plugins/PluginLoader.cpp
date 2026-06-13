@@ -30,6 +30,12 @@ bool PluginLoader::begin() {
         return false;
     }
 
+    eventQueue_ = xQueueCreate(kEventQueueSize, sizeof(PluginEvent));
+    if (!eventQueue_) {
+        ESP_LOGE(TAG, "Failed to create plugin event queue");
+        return false;
+    }
+
     s_pluginLoaderInstance = this;
 
     esp_err_t err = esp_register_shutdown_handler(pluginPanicHandler);
@@ -142,6 +148,11 @@ void PluginLoader::unload() {
         }
     }
 
+    // Flush any remaining events in the queue
+    if (eventQueue_) {
+        xQueueReset(eventQueue_);
+    }
+
     teardownDeviceServices();
 
     state_ = State::Idle;
@@ -180,15 +191,21 @@ void PluginLoader::markCrashed() {
 }
 
 void PluginLoader::forwardButton(const PluginButtonEvent& event) {
-    if (state_ == State::Running && vtable_.handleButton) {
-        vtable_.handleButton(&event);
-    }
+    if (state_ != State::Running || !eventQueue_) return;
+
+    PluginEvent ev = {};
+    ev.type = EventType::Button;
+    ev.button = event;
+    xQueueSend(eventQueue_, &ev, 0);  // non-blocking
 }
 
 void PluginLoader::forwardTouch(const PluginTouchEvent& event) {
-    if (state_ == State::Running && vtable_.handleTouch) {
-        vtable_.handleTouch(&event);
-    }
+    if (state_ != State::Running || !eventQueue_) return;
+
+    PluginEvent ev = {};
+    ev.type = EventType::Touch;
+    ev.touch = event;
+    xQueueSend(eventQueue_, &ev, 0);  // non-blocking
 }
 
 // ─── Private ────────────────────────────────────────────────────────────────
@@ -207,10 +224,16 @@ void PluginLoader::pluginTaskLoop() {
         // Feed watchdog
         watchdogLastFeedMs_ = now;
 
+        // Process queued input events (button/touch)
+        processEventQueue();
+
         // Call plugin update
         if (vtable_.update) {
             vtable_.update(now);
         }
+
+        // Feed watchdog again after update (in case update took a while)
+        watchdogLastFeedMs_ = millis();
 
         // Call plugin draw
         if (vtable_.draw) {
@@ -224,6 +247,31 @@ void PluginLoader::pluginTaskLoop() {
     // Clean exit: call plugin_destroy
     if (vtable_.destroy) {
         vtable_.destroy();
+    }
+}
+
+void PluginLoader::processEventQueue() {
+    if (!eventQueue_) return;
+
+    PluginEvent ev;
+    // Drain all pending events (max kEventQueueSize to avoid infinite loop)
+    uint8_t processed = 0;
+    while (processed < kEventQueueSize && xQueueReceive(eventQueue_, &ev, 0) == pdTRUE) {
+        switch (ev.type) {
+            case EventType::Button:
+                if (vtable_.handleButton) {
+                    vtable_.handleButton(&ev.button);
+                }
+                break;
+            case EventType::Touch:
+                if (vtable_.handleTouch) {
+                    vtable_.handleTouch(&ev.touch);
+                }
+                break;
+        }
+        // Feed watchdog between events in case handler takes time
+        watchdogLastFeedMs_ = millis();
+        processed++;
     }
 }
 

@@ -89,6 +89,9 @@ class DictaphoneCore {
 
     // Recording counter for auto-naming
     uint16_t recordingCounter_ = 0;
+
+    // Currently recording filename (for adding to index after stop)
+    char currentRecordingName_[kDictMaxFilenameLen] = {};
 };
 
 /// Plugin SDK vtable entry points for the Dictaphone built-in plugin.

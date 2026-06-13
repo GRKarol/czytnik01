@@ -12,6 +12,9 @@ export type Language = "pl" | "en" | "de" | "es" | "fr" | "it";
 export type ReaderHand = "right" | "left";
 export type ReaderMode = "rsvp" | "scroll";
 export type PauseBehaviour = "tap" | "long-press" | "auto";
+export type Typeface = "standard" | "open_dyslexic" | "atkinson";
+export type FooterMetric = "percentage" | "chapter_time" | "book_time";
+export type BatteryLabel = "percent" | "time_remaining" | "voltage";
 
 export interface DeviceSettings {
   theme: Theme;
@@ -31,6 +34,18 @@ export interface DeviceSettings {
   scrollFontSize: number; // 0–8 (numeric scale, 0=tiny, 8=maximum)
   scrollLineSpacing: number; // 0–2 (Compact → Relaxed)
   scrollMargin: number; // 0–2 (Narrow → Wide)
+  // Typography (RSVP)
+  fontSizeIndex: number; // 0–2 (small/medium/large)
+  typeface: Typeface;
+  phantomWords: boolean;
+  focusHighlight: boolean;
+  tracking: number; // -2 to +3
+  anchorPercent: number; // 30–40
+  guideWidth: number; // 12–30
+  guideGap: number; // 2–8
+  // HUD metrics
+  footerMetric: FooterMetric;
+  batteryLabel: BatteryLabel;
 }
 
 export interface Book {
@@ -61,6 +76,18 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   scrollFontSize: 4, // Medium (level 4 of 0-8)
   scrollLineSpacing: 1, // Normal
   scrollMargin: 1, // Normal
+  // Typography (RSVP)
+  fontSizeIndex: 0,
+  typeface: "standard",
+  phantomWords: true,
+  focusHighlight: true,
+  tracking: 0,
+  anchorPercent: 30,
+  guideWidth: 30,
+  guideGap: 5,
+  // HUD metrics
+  footerMetric: "percentage",
+  batteryLabel: "percent",
 };
 
 export interface DeviceApi {

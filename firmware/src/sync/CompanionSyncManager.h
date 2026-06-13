@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <DNSServer.h>
 #include <FS.h>
 #include <Preferences.h>
 #include <WebServer.h>
@@ -100,6 +101,7 @@ class CompanionSyncManager {
 
   static CompanionSyncManager *instance_;
 
+  DNSServer dnsServer_;
   WebServer server_{80};
   File uploadFile_;
   String uploadFinalPath_;

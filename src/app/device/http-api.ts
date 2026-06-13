@@ -21,6 +21,9 @@ import {
   type ReaderHand,
   type ReaderMode,
   type Theme,
+  type Typeface,
+  type FooterMetric,
+  type BatteryLabel,
 } from "./api";
 
 const LANG_INDEX: Language[] = ["pl", "en", "de", "es", "fr", "it"];
@@ -41,6 +44,23 @@ interface FirmwareSettings {
     readingChapter?: boolean;
     readingProgress?: boolean;
     language?: number;
+    phantomWords?: boolean;
+    fontSizeIndex?: number;
+    footerMetric?: FooterMetric;
+    batteryLabel?: BatteryLabel;
+  };
+  typography?: {
+    typeface?: Typeface;
+    focusHighlight?: boolean;
+    tracking?: number;
+    anchorPercent?: number;
+    guideWidth?: number;
+    guideGap?: number;
+  };
+  scroll?: {
+    scrollFontSize?: number;
+    scrollLineSpacing?: number;
+    scrollMargin?: number;
   };
   developer?: { devMode?: boolean };
 }
@@ -49,6 +69,8 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
   const d = fw.display ?? {};
   const r = fw.reading ?? {};
   const p = r.pacing ?? {};
+  const t = fw.typography ?? {};
+  const sc = fw.scroll ?? {};
   const theme: Theme = d.nightMode ? "night" : d.darkMode ? "dark" : "light";
   const pause: PauseBehaviour = r.pauseMode === "instant" ? "auto" : "tap";
   const lang: Language = LANG_INDEX[d.language ?? 0] ?? "pl";
@@ -74,6 +96,22 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
     showChapterWhileReading: d.readingChapter ?? DEFAULT_SETTINGS.showChapterWhileReading,
     showPercentWhileReading: d.readingProgress ?? DEFAULT_SETTINGS.showPercentWhileReading,
     devMode: fw.developer?.devMode ?? false,
+    // Scroll settings
+    scrollFontSize: sc.scrollFontSize ?? DEFAULT_SETTINGS.scrollFontSize,
+    scrollLineSpacing: sc.scrollLineSpacing ?? DEFAULT_SETTINGS.scrollLineSpacing,
+    scrollMargin: sc.scrollMargin ?? DEFAULT_SETTINGS.scrollMargin,
+    // Typography (RSVP)
+    fontSizeIndex: d.fontSizeIndex ?? DEFAULT_SETTINGS.fontSizeIndex,
+    typeface: t.typeface ?? DEFAULT_SETTINGS.typeface,
+    phantomWords: d.phantomWords ?? DEFAULT_SETTINGS.phantomWords,
+    focusHighlight: t.focusHighlight ?? DEFAULT_SETTINGS.focusHighlight,
+    tracking: t.tracking ?? DEFAULT_SETTINGS.tracking,
+    anchorPercent: t.anchorPercent ?? DEFAULT_SETTINGS.anchorPercent,
+    guideWidth: t.guideWidth ?? DEFAULT_SETTINGS.guideWidth,
+    guideGap: t.guideGap ?? DEFAULT_SETTINGS.guideGap,
+    // HUD metrics
+    footerMetric: d.footerMetric ?? DEFAULT_SETTINGS.footerMetric,
+    batteryLabel: d.batteryLabel ?? DEFAULT_SETTINGS.batteryLabel,
   };
 }
 
@@ -106,6 +144,22 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
   if (p.showChapterWhileReading != null) out.readingChapter = p.showChapterWhileReading;
   if (p.showPercentWhileReading != null) out.readingProgress = p.showPercentWhileReading;
   if (p.devMode != null) out.devMode = p.devMode;
+  // Scroll settings
+  if (p.scrollFontSize != null) out.scrollFontSize = p.scrollFontSize;
+  if (p.scrollLineSpacing != null) out.scrollLineSpacing = p.scrollLineSpacing;
+  if (p.scrollMargin != null) out.scrollMargin = p.scrollMargin;
+  // Typography (RSVP)
+  if (p.fontSizeIndex != null) out.fontSizeIndex = p.fontSizeIndex;
+  if (p.typeface != null) out.typeface = p.typeface;
+  if (p.phantomWords != null) out.phantomWords = p.phantomWords;
+  if (p.focusHighlight != null) out.focusHighlight = p.focusHighlight;
+  if (p.tracking != null) out.tracking = p.tracking;
+  if (p.anchorPercent != null) out.anchorPercent = p.anchorPercent;
+  if (p.guideWidth != null) out.guideWidth = p.guideWidth;
+  if (p.guideGap != null) out.guideGap = p.guideGap;
+  // HUD metrics
+  if (p.footerMetric != null) out.footerMetric = p.footerMetric;
+  if (p.batteryLabel != null) out.batteryLabel = p.batteryLabel;
   return out;
 }
 
@@ -170,7 +224,10 @@ export class HttpDeviceApi implements DeviceApi {
    * `ESP.restart()` — następne komendy do `192.168.4.1` będą padać aż
    * wstanie z powrotem (~5–10 s) i klient ponownie podłączy się do AP.
    */
-  async installOta(blob: Blob, onProgress?: (loaded: number, total: number) => void): Promise<void> {
+  async installOta(
+    blob: Blob,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void> {
     const fd = new FormData();
     fd.append("firmware", blob, "flower-firmware.bin");
     await new Promise<void>((resolve, reject) => {

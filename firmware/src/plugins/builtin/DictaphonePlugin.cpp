@@ -9,27 +9,6 @@ namespace {
 // Menu items for library context menu (shown via touch actions)
 static constexpr uint8_t kLibraryVisibleRows = 5;
 
-// Touch zones for main screen (landscape 640x172)
-static constexpr uint16_t kRecordBtnX = 270;
-static constexpr uint16_t kRecordBtnY = 40;
-static constexpr uint16_t kRecordBtnW = 100;
-static constexpr uint16_t kRecordBtnH = 80;
-
-static constexpr uint16_t kLibraryBtnX = 520;
-static constexpr uint16_t kLibraryBtnY = 130;
-static constexpr uint16_t kLibraryBtnW = 110;
-static constexpr uint16_t kLibraryBtnH = 35;
-
-// Touch zones for library screen
-static constexpr uint16_t kBackBtnX = 0;
-static constexpr uint16_t kBackBtnY = 0;
-static constexpr uint16_t kBackBtnW = 80;
-static constexpr uint16_t kBackBtnH = 30;
-
-static constexpr uint16_t kDeleteBtnX = 540;
-static constexpr uint16_t kDeleteBtnW = 100;
-static constexpr uint16_t kDeleteBtnH = 30;
-
 // Singleton instance
 DictaphoneCore* s_instance = nullptr;
 
@@ -58,8 +37,15 @@ void DictaphoneCore::update(uint32_t nowMs) {
     // Auto-stop recording at max duration (handled by AudioRecorder but also check here)
     if (screen_ == Screen::Recording && audio_ && audio_->isRecording) {
         if (!audio_->isRecording()) {
-            // Recording stopped externally (max duration reached)
-            scanRecordings();
+            // Recording stopped externally (max duration reached or error)
+            // Add the file to our recordings list
+            if (currentRecordingName_[0] != '\0' && recordingCount_ < kDictMaxRecordings) {
+                strncpy(recordingNames_[recordingCount_], currentRecordingName_, kDictMaxFilenameLen - 1);
+                recordingNames_[recordingCount_][kDictMaxFilenameLen - 1] = '\0';
+                recordingCount_++;
+                saveIndex();
+            }
+            currentRecordingName_[0] = '\0';
             goToScreen(Screen::Library);
         }
     }
@@ -149,17 +135,12 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
 
     switch (screen_) {
         case Screen::Main: {
-            // Tap on record button area
-            if (x >= kRecordBtnX && x < kRecordBtnX + kRecordBtnW &&
-                y >= kRecordBtnY && y < kRecordBtnY + kRecordBtnH) {
+            // Top half = record, bottom half = library
+            int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
+            if (y < static_cast<uint16_t>(height / 2)) {
                 startRecording();
-                return;
-            }
-            // Tap on library button
-            if (x >= kLibraryBtnX && x < kLibraryBtnX + kLibraryBtnW &&
-                y >= kLibraryBtnY && y < kLibraryBtnY + kLibraryBtnH) {
+            } else {
                 goToScreen(Screen::Library);
-                return;
             }
             break;
         }
@@ -171,34 +152,29 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
         }
 
         case Screen::Library: {
-            // Back button
-            if (x < kBackBtnW && y < kBackBtnH) {
+            if (recordingCount_ == 0) {
+                // No recordings — tap anywhere to go back
                 goToScreen(Screen::Main);
                 return;
             }
 
-            // Delete button (right side of selected row)
-            if (x >= kDeleteBtnX && recordingCount_ > 0) {
-                // Check which row was tapped
-                uint16_t rowHeight = 172 / kLibraryVisibleRows;
-                uint8_t tappedRow = static_cast<uint8_t>(y / rowHeight);
-                uint8_t tappedIndex = libraryScrollTop_ + tappedRow;
-                if (tappedIndex < recordingCount_) {
-                    deleteIndex_ = tappedIndex;
-                    goToScreen(Screen::ConfirmDelete);
-                }
+            int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
+            int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
+            uint16_t rowHeight = static_cast<uint16_t>(height / kLibraryVisibleRows);
+            uint8_t tappedRow = static_cast<uint8_t>(y / rowHeight);
+            uint8_t tappedIndex = libraryScrollTop_ + tappedRow;
+
+            // Right edge = delete
+            if (x > static_cast<uint16_t>(width - 120) && tappedIndex < recordingCount_) {
+                deleteIndex_ = tappedIndex;
+                goToScreen(Screen::ConfirmDelete);
                 return;
             }
 
-            // Tap on a row — select and play
-            if (recordingCount_ > 0) {
-                uint16_t rowHeight = 172 / kLibraryVisibleRows;
-                uint8_t tappedRow = static_cast<uint8_t>(y / rowHeight);
-                uint8_t tappedIndex = libraryScrollTop_ + tappedRow;
-                if (tappedIndex < recordingCount_) {
-                    librarySelected_ = tappedIndex;
-                    startPlayback(tappedIndex);
-                }
+            // Tap on row = play
+            if (tappedIndex < recordingCount_) {
+                librarySelected_ = tappedIndex;
+                startPlayback(tappedIndex);
             }
             break;
         }
@@ -210,8 +186,9 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
         }
 
         case Screen::ConfirmDelete: {
+            int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
             // Left half = cancel, right half = confirm
-            if (x < 320) {
+            if (x < static_cast<uint16_t>(width / 2)) {
                 goToScreen(Screen::Library);
             } else {
                 deleteRecording(deleteIndex_);
@@ -247,7 +224,11 @@ void DictaphoneCore::draw() {
 void DictaphoneCore::drawMain() {
     if (display_->renderStatus) {
         char countBuf[32];
-        snprintf(countBuf, sizeof(countBuf), "%d recordings", recordingCount_);
+        if (recordingCount_ > 0) {
+            snprintf(countBuf, sizeof(countBuf), "%d recordings | Tap bottom: Library", recordingCount_);
+        } else {
+            snprintf(countBuf, sizeof(countBuf), "Tap top: Record | Tap bottom: Library");
+        }
         display_->renderStatus("DICTAPHONE", "Tap to record", countBuf);
     }
 }
@@ -338,7 +319,13 @@ void DictaphoneCore::drawConfirmDelete() {
 // ─── Recording Actions ──────────────────────────────────────────────────────
 
 void DictaphoneCore::startRecording() {
-    if (!audio_ || !audio_->startRecording) return;
+    if (!audio_ || !audio_->startRecording) {
+        // Show error if audio service not available
+        if (display_ && display_->renderStatus) {
+            display_->renderStatus("ERROR", "Mic not available", "");
+        }
+        return;
+    }
 
     char filename[kDictMaxFilenameLen];
     if (!generateFilename(filename, sizeof(filename))) return;
@@ -347,7 +334,15 @@ void DictaphoneCore::startRecording() {
     snprintf(path, sizeof(path), "recordings/%s", filename);
 
     if (audio_->startRecording(path)) {
+        // Remember filename for index update after stop
+        strncpy(currentRecordingName_, filename, kDictMaxFilenameLen - 1);
+        currentRecordingName_[kDictMaxFilenameLen - 1] = '\0';
         goToScreen(Screen::Recording);
+    } else {
+        // Recording failed to start — show feedback
+        if (display_ && display_->renderStatus) {
+            display_->renderStatus("ERROR", "Recording failed", "Try again");
+        }
     }
 }
 
@@ -355,7 +350,16 @@ void DictaphoneCore::stopRecording() {
     if (!audio_ || !audio_->stopRecording) return;
 
     audio_->stopRecording();
-    scanRecordings();
+
+    // Add the newly recorded file to our recordings list and index
+    if (currentRecordingName_[0] != '\0' && recordingCount_ < kDictMaxRecordings) {
+        strncpy(recordingNames_[recordingCount_], currentRecordingName_, kDictMaxFilenameLen - 1);
+        recordingNames_[recordingCount_][kDictMaxFilenameLen - 1] = '\0';
+        recordingCount_++;
+        saveIndex();
+    }
+    currentRecordingName_[0] = '\0';
+
     goToScreen(Screen::Library);
 }
 

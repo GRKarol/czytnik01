@@ -5,6 +5,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <freertos/queue.h>
 
 #include "plugins/sdk/PluginSdk.h"
 #include "plugins/sdk/PluginDisplayService.h"
@@ -57,9 +58,10 @@ class PluginLoader {
     };
 
     static constexpr uint32_t kDefaultStackSize = 8192;
-    static constexpr uint32_t kDefaultWatchdogTimeoutMs = 5000;
+    static constexpr uint32_t kDefaultWatchdogTimeoutMs = 8000;
     static constexpr uint32_t kPluginTaskPriority = 2;
     static constexpr uint32_t kTaskLoopDelayMs = 33;  // ~30fps for e-ink
+    static constexpr uint8_t kEventQueueSize = 8;
 
     /// Initialize the loader (create mutex, etc.)
     bool begin();
@@ -100,9 +102,20 @@ class PluginLoader {
  private:
     static void pluginTaskEntry(void* param);
     void pluginTaskLoop();
+    void processEventQueue();
     void setupDeviceServices(const char* pluginId);
     void teardownDeviceServices();
     void terminatePluginTask();
+
+    // Event queue for thread-safe input forwarding
+    enum class EventType : uint8_t { Button, Touch };
+    struct PluginEvent {
+        EventType type;
+        union {
+            PluginButtonEvent button;
+            PluginTouchEvent touch;
+        };
+    };
 
     // State
     State state_ = State::Idle;
@@ -127,6 +140,7 @@ class PluginLoader {
     uint32_t stackSize_ = kDefaultStackSize;
     volatile bool exitRequested_ = false;
     SemaphoreHandle_t pluginMutex_ = nullptr;
+    QueueHandle_t eventQueue_ = nullptr;
 
     // Sandboxed storage root path for current plugin
     String pluginStorageRoot_;

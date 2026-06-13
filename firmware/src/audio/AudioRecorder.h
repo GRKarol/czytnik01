@@ -59,8 +59,8 @@ class AudioRecorder {
     static constexpr uint32_t kMaxRecordingMs = 30UL * 60UL * 1000UL;  // 30 min
     static constexpr size_t kRecordBufferSize = 1024;  // bytes per DMA read
     static constexpr size_t kPlaybackBufferSize = 1024;
-    static constexpr uint32_t kRecordTaskStackSize = 4096;
-    static constexpr uint32_t kPlaybackTaskStackSize = 4096;
+    static constexpr uint32_t kRecordTaskStackSize = 8192;
+    static constexpr uint32_t kPlaybackTaskStackSize = 8192;
 
     bool configureCodecForRecording();
     bool configureCodecForPlayback();

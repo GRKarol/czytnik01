@@ -66,34 +66,15 @@ bool AudioRecorder::startRecording(const char* absolutePath) {
 
     currentFilePath_ = absolutePath;
     stopRequested_ = false;
-
-    if (!enableAudioRail()) {
-        ESP_LOGE(TAG, "Failed to enable audio rail");
-        return false;
-    }
-
-    delay(15);
-
-    if (!configureCodecForRecording()) {
-        ESP_LOGE(TAG, "Failed to configure codec for recording");
-        return false;
-    }
-
-    if (!configureI2sForRecording()) {
-        ESP_LOGE(TAG, "Failed to configure I2S for recording");
-        return false;
-    }
-
     recording_ = true;
     recordStartMs_ = millis();
 
     BaseType_t result = xTaskCreatePinnedToCore(
-        recordTaskEntry, "rec", kRecordTaskStackSize, this, 3, &recordTask_, 1);
+        recordTaskEntry, "rec", kRecordTaskStackSize, this, 1, &recordTask_, 0);
 
     if (result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create record task");
         recording_ = false;
-        deinitI2s();
         return false;
     }
 
@@ -118,10 +99,10 @@ bool AudioRecorder::stopRecording() {
             vTaskDelete(recordTask_);
             recordTask_ = nullptr;
         }
+        deinitI2s();
         recording_ = false;
     }
 
-    deinitI2s();
     ESP_LOGI(TAG, "Recording stopped");
     return true;
 }
@@ -143,23 +124,23 @@ bool AudioRecorder::startPlayback(const char* absolutePath) {
         return false;
     }
 
-    // Verify file exists and read WAV header
-    File file = SD_MMC.open(absolutePath, FILE_READ);
-    if (!file) {
+    // Quick check: verify file exists before starting task
+    File checkFile = SD_MMC.open(absolutePath, FILE_READ);
+    if (!checkFile) {
         ESP_LOGE(TAG, "Playback file not found: %s", absolutePath);
         return false;
     }
 
     WavHeader hdr;
-    if (file.read(reinterpret_cast<uint8_t*>(&hdr), sizeof(hdr)) != sizeof(hdr)) {
-        file.close();
+    if (checkFile.read(reinterpret_cast<uint8_t*>(&hdr), sizeof(hdr)) != sizeof(hdr)) {
+        checkFile.close();
         ESP_LOGE(TAG, "Failed to read WAV header");
         return false;
     }
 
     // Validate WAV
     if (memcmp(hdr.riff, "RIFF", 4) != 0 || memcmp(hdr.wave, "WAVE", 4) != 0) {
-        file.close();
+        checkFile.close();
         ESP_LOGE(TAG, "Invalid WAV file");
         return false;
     }
@@ -167,38 +148,19 @@ bool AudioRecorder::startPlayback(const char* absolutePath) {
     uint32_t totalSamples = hdr.dataSize / (hdr.bitsPerSample / 8) / hdr.numChannels;
     playbackTotalMs_ = (totalSamples * 1000UL) / hdr.sampleRate;
 
-    file.close();
+    checkFile.close();
 
     currentFilePath_ = absolutePath;
     stopRequested_ = false;
-
-    if (!enableAudioRail()) {
-        ESP_LOGE(TAG, "Failed to enable audio rail for playback");
-        return false;
-    }
-
-    delay(15);
-
-    if (!configureCodecForPlayback()) {
-        ESP_LOGE(TAG, "Failed to configure codec for playback");
-        return false;
-    }
-
-    if (!configureI2sForPlayback()) {
-        ESP_LOGE(TAG, "Failed to configure I2S for playback");
-        return false;
-    }
-
     playing_ = true;
     playbackStartMs_ = millis();
 
     BaseType_t result = xTaskCreatePinnedToCore(
-        playbackTaskEntry, "play", kPlaybackTaskStackSize, this, 3, &playbackTask_, 1);
+        playbackTaskEntry, "play", kPlaybackTaskStackSize, this, 1, &playbackTask_, 0);
 
     if (result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create playback task");
         playing_ = false;
-        deinitI2s();
         return false;
     }
 
@@ -221,10 +183,10 @@ bool AudioRecorder::stopPlayback() {
             vTaskDelete(playbackTask_);
             playbackTask_ = nullptr;
         }
+        deinitI2s();
         playing_ = false;
     }
 
-    deinitI2s();
     ESP_LOGI(TAG, "Playback stopped");
     return true;
 }
@@ -519,9 +481,40 @@ void AudioRecorder::recordTaskEntry(void* param) {
 }
 
 void AudioRecorder::recordTaskLoop() {
+    // Hardware setup (runs on recording task's core, non-blocking for plugin task)
+    if (!enableAudioRail()) {
+        ESP_LOGE(TAG, "Cannot enable audio rail");
+        recording_ = false;
+        recordTask_ = nullptr;
+        return;
+    }
+
+    delay(15);
+
+    // Uninstall existing I2S driver (AudioManager may have it in TX mode)
+    i2s_driver_uninstall(kI2sPort);
+
+    if (!configureCodecForRecording()) {
+        ESP_LOGE(TAG, "Failed to configure codec for recording");
+        recording_ = false;
+        recordTask_ = nullptr;
+        return;
+    }
+
+    if (!configureI2sForRecording()) {
+        ESP_LOGE(TAG, "Failed to configure I2S for recording");
+        recording_ = false;
+        recordTask_ = nullptr;
+        return;
+    }
+
+    // Reset start time to exclude hardware setup duration
+    recordStartMs_ = millis();
+
     File file = SD_MMC.open(currentFilePath_, FILE_WRITE);
     if (!file) {
         ESP_LOGE(TAG, "Cannot create recording file: %s", currentFilePath_.c_str());
+        deinitI2s();
         recording_ = false;
         recordTask_ = nullptr;
         return;
@@ -544,6 +537,7 @@ void AudioRecorder::recordTaskLoop() {
         esp_err_t err = i2s_read(kI2sPort, buffer, kRecordBufferSize, &bytesRead, pdMS_TO_TICKS(100));
 
         if (err != ESP_OK || bytesRead == 0) {
+            taskYIELD();
             continue;
         }
 
@@ -562,12 +556,16 @@ void AudioRecorder::recordTaskLoop() {
         }
 
         totalDataBytes += written;
+
+        // Yield to allow other tasks on same core to run
+        vTaskDelay(1);
     }
 
     // Finalize WAV header
     finalizeWavHeader(file, totalDataBytes, kSampleRate, kBitsPerSample, kChannels);
     file.close();
 
+    deinitI2s();
     recording_ = false;
     recordTask_ = nullptr;
     ESP_LOGI(TAG, "Recording complete: %u bytes", totalDataBytes);
@@ -581,9 +579,40 @@ void AudioRecorder::playbackTaskEntry(void* param) {
 }
 
 void AudioRecorder::playbackTaskLoop() {
+    // Hardware setup (runs on playback task's core, non-blocking for plugin task)
+    if (!enableAudioRail()) {
+        ESP_LOGE(TAG, "Cannot enable audio rail for playback");
+        playing_ = false;
+        playbackTask_ = nullptr;
+        return;
+    }
+
+    delay(15);
+
+    // Uninstall existing I2S driver (AudioManager may have it in TX mode)
+    i2s_driver_uninstall(kI2sPort);
+
+    if (!configureCodecForPlayback()) {
+        ESP_LOGE(TAG, "Failed to configure codec for playback");
+        playing_ = false;
+        playbackTask_ = nullptr;
+        return;
+    }
+
+    if (!configureI2sForPlayback()) {
+        ESP_LOGE(TAG, "Failed to configure I2S for playback");
+        playing_ = false;
+        playbackTask_ = nullptr;
+        return;
+    }
+
+    // Reset start time to exclude hardware setup duration
+    playbackStartMs_ = millis();
+
     File file = SD_MMC.open(currentFilePath_, FILE_READ);
     if (!file) {
         ESP_LOGE(TAG, "Cannot open playback file: %s", currentFilePath_.c_str());
+        deinitI2s();
         playing_ = false;
         playbackTask_ = nullptr;
         return;
@@ -613,6 +642,7 @@ void AudioRecorder::playbackTaskLoop() {
     }
 
     file.close();
+    deinitI2s();
     playing_ = false;
     playbackTask_ = nullptr;
     ESP_LOGI(TAG, "Playback complete");

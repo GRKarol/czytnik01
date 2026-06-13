@@ -1,5 +1,6 @@
 #include "sync/CompanionSyncManager.h"
 
+#include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <SD_MMC.h>
 #include <Update.h>
@@ -95,178 +96,159 @@ constexpr uint8_t kMaxScrollMargin = 2;
 constexpr uint8_t kDefaultScrollMargin = 1;
 
 const char kWebCompanionHtml[] PROGMEM = R"HTML(<!doctype html>
-<html lang="en">
+<html lang="pl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Flower Companion</title>
 <style>
-:root{color-scheme:dark;--bg:#0c1110;--fg:#f5f1e8;--muted:#a7aaa0;--line:#2d3430;--card:#151b18;--accent:#78d5b1;--accentInk:#07110e;--accent2:#ff9b73;--soft:#1d2924}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#18241f 0,#0c1110 38%);color:var(--fg);font:15px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-header{position:sticky;top:0;z-index:2;background:rgba(12,17,16,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:14px 16px 10px}
-h1{font-size:1.15rem;margin:0 0 10px}.tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-button,.button{border:1px solid var(--line);border-radius:8px;background:#111714;color:var(--fg);padding:9px 11px;font:inherit}
-button.primary,.button.primary{background:var(--accent);border-color:var(--accent);color:var(--accentInk);font-weight:700}button.danger{color:var(--accent2)}
-.tabs button{white-space:nowrap;padding:8px 6px}.tabs button.active{background:var(--fg);color:var(--bg)}
-main{max-width:980px;margin:0 auto;padding:16px}.page{display:none}.page.active{display:block}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px}
-h2{font-size:1.05rem;margin:0 0 10px}h3{font-size:.95rem;margin:0 0 8px}.muted{color:var(--muted)}.status{padding:10px 12px;border-radius:8px;background:var(--soft);margin-bottom:12px}
-label{display:block;font-weight:650;margin:10px 0 5px}input,textarea,select{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;padding:9px}
-textarea{min-height:180px;resize:vertical}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.row button{flex:0 0 auto}
-.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border-top:0}.item-title{font-weight:700}.item-meta{color:var(--muted);font-size:.9rem}
-ul{padding-left:20px}code{background:var(--soft);border-radius:4px;padding:1px 4px}
+:root{color-scheme:dark;--bg:#0f0f12;--fg:#f0ede6;--muted:#9a9d96;--line:#2a2d30;--card:#1a1b1f;--accent:#6ec9a8;--accentInk:#070f0c;--accent2:#ff9b73;--soft:#1c1e22;--radius:14px;--shadow:0 4px 24px rgba(0,0,0,.4)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;min-height:100vh;min-height:100dvh}
+header{position:sticky;top:0;z-index:10;background:rgba(15,15,18,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--line);padding:16px 16px 12px;padding-top:calc(16px + env(safe-area-inset-top))}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:12px}.brand svg{color:var(--accent)}.brand h1{font-size:1.2rem;margin:0;letter-spacing:-.02em}.brand small{color:var(--muted);font-size:.75rem;font-weight:400}
+.tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}.tabs::-webkit-scrollbar{display:none}
+button,.button{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--fg);padding:10px 14px;font:inherit;cursor:pointer;transition:all .15s}
+button:active{transform:scale(.97)}button.primary,.button.primary{background:var(--accent);border-color:var(--accent);color:var(--accentInk);font-weight:700;box-shadow:0 4px 14px rgba(110,201,168,.25)}button.danger{color:var(--accent2);border-color:var(--accent2)}
+.tabs button{white-space:nowrap;padding:9px 14px;font-size:.88rem;font-weight:600;border-radius:999px}.tabs button.active{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+main{max-width:640px;margin:0 auto;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.page{display:none}.page.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+h2{font-size:1.05rem;margin:0 0 12px;display:flex;align-items:center;gap:8px}h3{font-size:.95rem;margin:0 0 8px}.muted{color:var(--muted)}
+.status{padding:12px 14px;border-radius:var(--radius);background:var(--soft);margin-bottom:14px;font-size:.9rem;border:1px solid var(--line)}
+label{display:block;font-weight:600;margin:12px 0 6px;font-size:.9rem}input,textarea,select{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);font:inherit;padding:10px 12px}
+input[type=range]{padding:0;background:transparent;accent-color:var(--accent)}input[type=checkbox]{width:auto;margin-right:8px}
+textarea{min-height:140px;resize:vertical}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.row button{flex:0 0 auto}
+.item{border-top:1px solid var(--line);padding:12px 0;display:flex;align-items:center;gap:10px}.item:first-child{border-top:0}.item-info{flex:1;min-width:0}.item-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item-meta{color:var(--muted);font-size:.82rem}
+.link-banner{display:block;padding:14px 16px;border-radius:var(--radius);background:linear-gradient(135deg,#1a3a2f,#1a2a38);border:1px solid var(--accent);color:var(--fg);text-decoration:none;text-align:center;font-weight:700;margin-bottom:14px;transition:opacity .15s}.link-banner:active{opacity:.8}
+.link-banner span{display:block;font-weight:400;font-size:.85rem;color:var(--muted);margin-top:4px}
+code{background:var(--soft);border-radius:6px;padding:2px 6px;font-size:.88em}
+.group{margin-bottom:14px;padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--soft)}.group-title{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px}
 </style>
 </head>
 <body>
 <header>
-<h1>Flower Companion</h1>
+<div class="brand">
+<svg width="28" height="28" viewBox="0 0 100 100"><g transform="translate(50 50)"><ellipse cx="0" cy="-18" rx="11" ry="18" fill="currentColor" opacity=".85"/><ellipse cx="0" cy="-18" rx="11" ry="18" fill="currentColor" opacity=".85" transform="rotate(60)"/><ellipse cx="0" cy="-18" rx="11" ry="18" fill="currentColor" opacity=".85" transform="rotate(120)"/><ellipse cx="0" cy="-18" rx="11" ry="18" fill="currentColor" opacity=".85" transform="rotate(180)"/><ellipse cx="0" cy="-18" rx="11" ry="18" fill="currentColor" opacity=".85" transform="rotate(240)"/><ellipse cx="0" cy="-18" rx="11" ry="18" fill="currentColor" opacity=".85" transform="rotate(300)"/><circle r="8" fill="#ffd66e"/></g></svg>
+<h1>Flower <small>Companion</small></h1>
+</div>
 <nav class="tabs">
-<button data-tab="books" class="active">Books</button>
-<button data-tab="articles">Articles</button>
-<button data-tab="settings">Settings</button>
-<button data-tab="rss">RSS</button>
-<button data-tab="firmware">Update</button>
-<button data-tab="help">Help</button>
+<button data-tab="books" class="active">Biblioteka</button>
+<button data-tab="settings">Ustawienia</button>
+<button data-tab="firmware">Aktualizacja</button>
+<button data-tab="help">Pomoc</button>
 </nav>
 </header>
 <main>
-<div id="status" class="status">Connecting to reader...</div>
+<div id="status" class="status">Łączenie z czytnikiem...</div>
 
 <section id="books" class="page active">
-<div class="grid">
-<div class="card"><h2>Upload Book</h2>
-<p class="muted">For best EPUB/HTML/Markdown conversion, use the hosted web converter first, then upload the finished <code>.rsvp</code> file here wirelessly.</p>
-<label>Book file</label><input id="bookFileInput" type="file" accept=".rsvp,.txt,.epub">
-<p><button class="primary" id="uploadBookButton">Upload book</button></p>
+<a class="link-banner" href="https://grkarol.github.io/czytnik01/app/" target="_blank" rel="noopener">
+Konwerter EPUB / PDF / MOBI → .rsvp
+<span>Otwórz w nowej karcie, przekonwertuj książkę, a potem wróć tu i wgraj plik.</span>
+</a>
+<div class="card"><h2>Wgraj książkę</h2>
+<p class="muted">Wybierz plik <code>.rsvp</code>, <code>.txt</code> lub <code>.epub</code> — trafi prosto na czytnik.</p>
+<label>Plik książki</label><input id="bookFileInput" type="file" accept=".rsvp,.txt,.epub">
+<p><button class="primary" id="uploadBookButton">Wyślij na czytnik</button></p>
 </div>
-<div class="card"><h2>Reader</h2><div id="infoBox" class="muted">No reader info yet.</div><p><button id="refreshBooksButton">Refresh books</button></p></div>
-</div>
-<div class="card"><h2>Books</h2><div id="booksList" class="muted">Loading...</div></div>
-</section>
-
-<section id="articles" class="page">
-<div class="grid">
-<div class="card"><h2>New Article</h2>
-<label>Title</label><input id="articleTitle" placeholder="Article title">
-<label>Author or source</label><input id="articleAuthor" placeholder="Website or author">
-<label>Body</label><textarea id="articleBody" placeholder="Paste article text here"></textarea>
-<div class="row"><button id="saveDraftButton">Save draft</button><button class="primary" id="syncArticleButton">Sync article</button></div>
-</div>
-<div class="card"><h2>Upload Article File</h2>
-<p class="muted">Use this for prepared article <code>.rsvp</code> files or short text files.</p>
-<label>Article file</label><input id="articleFileInput" type="file" accept=".rsvp,.txt,.epub">
-<p><button class="primary" id="uploadArticleButton">Upload article</button></p>
-</div>
-</div>
-<div class="card"><h2>Articles</h2><div id="articlesList" class="muted">Loading...</div><p><button id="refreshArticlesButton">Refresh articles</button></p></div>
+<div class="card"><h2>Na czytniku</h2><div id="infoBox" class="muted">Ładowanie...</div><p><button id="refreshBooksButton">Odśwież</button></p></div>
+<div class="card"><h2>Twoje książki</h2><div id="booksList" class="muted">Ładowanie...</div></div>
 </section>
 
 <section id="settings" class="page">
-<div class="grid">
-<div class="card"><h2>Word Pacing</h2>
-<label>Reading mode</label><select id="readerMode"><option value="rsvp">RSVP</option><option value="scroll">Scroll</option></select>
-<label>Pause behaviour</label><select id="pauseMode"><option value="sentence_end">End of sentence</option><option value="instant">Instant</option></select>
-<label>Base speed <span id="wpmValue"></span></label><input id="wpm" type="range" min="10" max="1000" step="5">
-<label>Long words <span id="longWordMsValue"></span></label><input id="longWordMs" type="range" min="0" max="600" step="50">
-<label>Complexity <span id="complexWordMsValue"></span></label><input id="complexWordMs" type="range" min="0" max="600" step="50">
-<label>Punctuation <span id="punctuationMsValue"></span></label><input id="punctuationMs" type="range" min="0" max="600" step="50">
+<div class="group"><p class="group-title">Czytanie</p>
+<label>Tryb czytnika</label><select id="readerMode"><option value="rsvp">RSVP</option><option value="scroll">Przewijanie</option></select>
+<label>Pauza</label><select id="pauseMode"><option value="sentence_end">Koniec zdania</option><option value="instant">Natychmiastowa</option></select>
+<label>Tempo <span id="wpmValue"></span></label><input id="wpm" type="range" min="10" max="1000" step="5">
+<label>Długie słowa <span id="longWordMsValue"></span></label><input id="longWordMs" type="range" min="0" max="600" step="50">
+<label>Złożone słowa <span id="complexWordMsValue"></span></label><input id="complexWordMs" type="range" min="0" max="600" step="50">
+<label>Interpunkcja <span id="punctuationMsValue"></span></label><input id="punctuationMs" type="range" min="0" max="600" step="50">
 </div>
-<div class="card"><h2>Display</h2>
-<label>Display mode</label><select id="displayMode"><option value="dark">Dark</option><option value="light">Light</option><option value="night">Night</option></select>
-<label>Brightness <span id="brightnessValue"></span></label><input id="brightnessIndex" type="range" min="0" max="4">
-<label>Reader hand</label><select id="handedness"><option value="right">Right</option><option value="left">Left</option></select>
-<label>Footer label</label><select id="footerMetric"><option value="percentage">Percentage</option><option value="chapter_time">Chapter time</option><option value="book_time">Book time</option></select>
-<label>Battery label</label><select id="batteryLabel"><option value="percent">Percentage</option><option value="time_remaining">Time remaining</option><option value="voltage">Voltage</option></select>
-<label><input id="readingBattery" type="checkbox" style="width:auto"> Show battery while reading</label>
-<label><input id="readingChapter" type="checkbox" style="width:auto"> Show chapter while reading</label>
-<label><input id="readingProgress" type="checkbox" style="width:auto"> Show book percent while reading</label>
+<div class="group"><p class="group-title">Wyświetlanie</p>
+<label>Motyw</label><select id="displayMode"><option value="dark">Ciemny</option><option value="light">Jasny</option><option value="night">Nocny</option></select>
+<label>Jasność <span id="brightnessValue"></span></label><input id="brightnessIndex" type="range" min="0" max="4">
+<label>Dłoń</label><select id="handedness"><option value="right">Prawa</option><option value="left">Lewa</option></select>
+<label>Metryka stopki</label><select id="footerMetric"><option value="percentage">Procent</option><option value="chapter_time">Czas rozdziału</option><option value="book_time">Czas książki</option></select>
+<label>Etykieta baterii</label><select id="batteryLabel"><option value="percent">Procent</option><option value="time_remaining">Czas</option><option value="voltage">Napięcie</option></select>
+<label><input id="readingBattery" type="checkbox"> Bateria podczas czytania</label>
+<label><input id="readingChapter" type="checkbox"> Rozdział podczas czytania</label>
+<label><input id="readingProgress" type="checkbox"> Postęp podczas czytania</label>
 </div>
-<div class="card"><h2>Typography</h2>
-<label>Typeface</label><select id="typeface"><option value="standard">Standard</option><option value="open_dyslexic">OpenDyslexic</option><option value="atkinson">Atkinson</option></select>
-<label>Font size <span id="fontSizeValue"></span></label><input id="fontSizeIndex" type="range" min="0" max="2">
+<div class="group"><p class="group-title">Typografia</p>
+<label>Krój czcionki</label><select id="typeface"><option value="standard">Standard</option><option value="open_dyslexic">OpenDyslexic</option><option value="atkinson">Atkinson</option></select>
+<label>Rozmiar <span id="fontSizeValue"></span></label><input id="fontSizeIndex" type="range" min="0" max="2">
 <label>Tracking <span id="trackingValue"></span></label><input id="tracking" type="range" min="-2" max="3">
-<label>Anchor <span id="anchorValue"></span></label><input id="anchorPercent" type="range" min="30" max="40">
-<label>Guide width <span id="guideWidthValue"></span></label><input id="guideWidth" type="range" min="12" max="30" step="2">
-<label>Guide gap <span id="guideGapValue"></span></label><input id="guideGap" type="range" min="2" max="8">
-<label><input id="focusHighlight" type="checkbox" style="width:auto"> Focus highlight</label>
-<label><input id="phantomWords" type="checkbox" style="width:auto"> Phantom words</label>
+<label>Kotwica <span id="anchorValue"></span></label><input id="anchorPercent" type="range" min="30" max="40">
+<label>Prowadnica szer. <span id="guideWidthValue"></span></label><input id="guideWidth" type="range" min="12" max="30" step="2">
+<label>Prowadnica przerwa <span id="guideGapValue"></span></label><input id="guideGap" type="range" min="2" max="8">
+<label><input id="focusHighlight" type="checkbox"> Podświetlenie fokusowe</label>
+<label><input id="phantomWords" type="checkbox"> Słowa widma</label>
 </div>
-<div class="card"><h2>Home Wi-Fi</h2>
-<p class="muted">Save Wi-Fi here for RSS and OTA. The reader does not send the saved password back to this page.</p>
-<label>SSID</label><input id="wifiSsid" autocomplete="off" placeholder="Network name">
-<label>Password</label><input id="wifiPassword" type="password" autocomplete="new-password" placeholder="Leave blank for open networks">
-<div class="row"><button class="primary" id="saveWifiButton">Save Wi-Fi</button><button class="danger" id="forgetWifiButton">Forget</button></div>
-<p id="wifiCurrent" class="muted">No saved Wi-Fi loaded yet.</p>
+<div class="group"><p class="group-title">Scroll</p>
+<label>Rozmiar czcionki <span id="scrollFontSizeValue"></span></label><input id="scrollFontSize" type="range" min="0" max="8">
+<label>Interlinia <span id="scrollLineSpacingValue"></span></label><input id="scrollLineSpacing" type="range" min="0" max="2">
+<label>Marginesy <span id="scrollMarginValue"></span></label><input id="scrollMargin" type="range" min="0" max="2">
 </div>
+<div class="group"><p class="group-title">Wi-Fi domowe</p>
+<p class="muted">Zapisz sieć domową dla OTA i RSS. Czytnik nie odsyła zapisanego hasła.</p>
+<label>SSID</label><input id="wifiSsid" autocomplete="off" placeholder="Nazwa sieci">
+<label>Hasło</label><input id="wifiPassword" type="password" autocomplete="new-password" placeholder="Puste = sieć otwarta">
+<div class="row"><button class="primary" id="saveWifiButton">Zapisz WiFi</button><button class="danger" id="forgetWifiButton">Zapomnij</button></div>
+<p id="wifiCurrent" class="muted"></p>
 </div>
-<p><button class="primary" id="saveSettingsButton">Save settings</button></p>
-</section>
-
-<section id="rss" class="page">
-<div class="card"><h2>RSS Feeds</h2><p class="muted">Add one feed URL per line. Feeds are saved to <code>/config/rss.conf</code>; run RSS feeds from the reader menu to download articles.</p>
-<textarea id="rssFeeds" placeholder="https://example.com/feed/"></textarea>
-<p><button class="primary" id="saveRssButton">Save feeds</button> <button id="reloadRssButton">Reload</button></p>
-</div>
+<p><button class="primary" id="saveSettingsButton">Zapisz ustawienia</button></p>
 </section>
 
 <section id="firmware" class="page">
 <div class="card">
-<h2>Update firmware</h2>
-<p>Pick a <code>.bin</code> downloaded from the Flower app or GitHub releases (use <strong>flower-firmware.bin</strong>, not the merged <code>czytnik01.bin</code>).</p>
+<h2>Aktualizacja firmware</h2>
+<p class="muted">Pobierz najnowszy <code>.bin</code> z GitHub Releases, a potem wgraj go tutaj. Czytnik zrestartuje się po udanej aktualizacji.</p>
+<a class="link-banner" href="https://github.com/GRKarol/czytnik01/releases/latest" target="_blank" rel="noopener">
+Pobierz najnowszy firmware z GitHub
+<span>Szukaj pliku flower-firmware.bin</span>
+</a>
+<label>Plik firmware (.bin)</label>
 <input type="file" id="firmwareFile" accept=".bin">
-<p><button class="primary" id="uploadFirmwareButton">Send and install</button></p>
-<div id="firmwareProgress" class="muted">Idle.</div>
-<p class="muted">After a successful upload the reader reboots automatically into the new firmware.</p>
+<p><button class="primary" id="uploadFirmwareButton">Zainstaluj</button></p>
+<div id="firmwareProgress" class="muted">Gotowy.</div>
 </div>
 </section>
 
 <section id="help" class="page">
-<div class="card"><h2>How to use this web companion</h2>
-<ul>
-<li>Open Companion sync on the reader, join the <code>Flower</code> Wi-Fi network, then open this page.</li>
-<li>Use Books for prepared book files and Articles for article drafts, article uploads, and synced articles.</li>
-<li>For best book conversion, use the hosted web converter/flasher first. This page is the wireless upload and settings companion, not the full conversion engine.</li>
-<li><code>.txt</code> and <code>.epub</code> uploads are accepted, but EPUB conversion is handled on the device when opened.</li>
-<li>Use Wi-Fi to save your home network for RSS and OTA. You can still use the on-device Wi-Fi keyboard if you prefer the standalone path.</li>
-<li>Use <code>/books/books</code> for books and <code>/books/articles</code> for articles. Legacy files in <code>/books</code> still show up.</li>
-</ul>
+<div class="card"><h2>Jak korzystać</h2>
+<p>1. Na czytniku włącz <strong>Sync z telefonem</strong>.</p>
+<p>2. Połącz telefon z siecią WiFi <code>Flower-...</code>.</p>
+<p>3. Otwórz w przeglądarce adres IP pokazany na ekranie czytnika.</p>
+<p>4. Zarządzaj książkami i ustawieniami — zmiany synchronizują się natychmiast.</p>
+<h3>Konwersja książek</h3>
+<p>Kliknij link <em>Konwerter</em> u góry zakładki Biblioteka. Przekonwertuj EPUB/PDF/MOBI/TXT na format <code>.rsvp</code>, pobierz plik, wróć tu i wgraj go na czytnik.</p>
+<h3>Artykuły</h3>
+<p>Artykuły to krótkie teksty (newslettery, blogi) pobierane z RSS lub wklejane ręcznie. Pojawiają się w osobnym folderze na czytniku.</p>
 </div>
 </section>
 </main>
 <script>
 const $=id=>document.getElementById(id);let settings=null;
 function status(msg){$('status').textContent=msg}
-async function api(path,opts){const r=await fetch(path,opts);const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch(e){throw new Error(t||'Bad response')}if(!r.ok||j.ok===false)throw new Error(j.error||r.statusText);return j}
+async function api(path,opts){const r=await fetch(path,opts);const t=await r.text();let j={};try{j=t?JSON.parse(t):{}}catch(e){throw new Error(t||'Nieprawidłowa odpowiedź')}if(!r.ok||j.ok===false)throw new Error(j.error||r.statusText);return j}
 function bytes(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'}
-function safeName(s){return (s||'article').replace(/[^a-z0-9._ -]+/gi,'-').replace(/\s+/g,' ').trim().slice(0,72)||'article'}
-function escRsvp(s){return (s||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n').trim()}
-function articleFile(){const title=$('articleTitle').value.trim()||'Untitled Article';const author=$('articleAuthor').value.trim();const body=escRsvp($('articleBody').value);let out='@rsvp 1\n@title '+title+'\n';if(author)out+='@author '+author+'\n';out+='@para\n'+body+'\n';return {name:safeName(title)+'.rsvp',blob:new Blob([out],{type:'text/plain'})}}
 function html(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function renderList(id,items){$(id).innerHTML=items.length?items.map(b=>`<div class="item"><div class="item-title">${html(b.title||b.name)}</div><div class="item-meta">${html([b.author,b.name,bytes(b.bytes),b.progressPercent!=null?b.progressPercent+'% read':null].filter(Boolean).join(' - '))}</div><p><button class="danger" data-delete="${html(encodeURIComponent(b.name))}">Delete</button></p></div>`).join(''):'<span class="muted">Nothing here yet.</span>';document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>delBook(decodeURIComponent(b.dataset.delete)))}
-async function refresh(){try{const info=await api('/api/info');$('infoBox').innerHTML=`${info.name}<br><span class="muted">${info.mode} - ${info.networkSsid||''}</span><br>Pairing code: <strong>${info.pairingCode}</strong>`;const data=await api('/api/books');renderList('booksList',data.books.filter(b=>b.category!=='article'&&!String(b.name).startsWith('articles/')));renderList('articlesList',data.books.filter(b=>b.category==='article'||String(b.name).startsWith('articles/')));status('Connected to Flower.')}catch(e){status('Connection problem: '+e.message)}}
-async function delBook(name){if(!confirm('Delete '+name+'?'))return;try{await api('/api/books?name='+encodeURIComponent(name),{method:'DELETE'});await refresh();status('Deleted '+name)}catch(e){status('Delete failed: '+e.message)}}
-async function uploadBlob(blob,name,category){const fd=new FormData();fd.append('file',blob,name);await api('/api/books?name='+encodeURIComponent(name)+'&category='+encodeURIComponent(category),{method:'POST',body:fd})}
-async function uploadPicked(inputId,category){const f=$(inputId).files[0];if(!f){status('Choose a file first.');return}try{await uploadBlob(f,f.name,category);$(inputId).value='';await refresh();status('Uploaded '+f.name)}catch(e){status('Upload failed: '+e.message)}}
-async function syncArticle(){const f=articleFile();if(!$('articleBody').value.trim()){status('Paste article text first.');return}try{await uploadBlob(f.blob,f.name,'article');localStorage.removeItem('rsvpArticleDraft');await refresh();status('Synced '+f.name)}catch(e){status('Article sync failed: '+e.message)}}
-function saveDraft(){localStorage.setItem('rsvpArticleDraft',JSON.stringify({title:$('articleTitle').value,author:$('articleAuthor').value,body:$('articleBody').value}));status('Draft saved in this browser.')}
-function loadDraft(){try{const d=JSON.parse(localStorage.getItem('rsvpArticleDraft')||'{}');$('articleTitle').value=d.title||'';$('articleAuthor').value=d.author||'';$('articleBody').value=d.body||''}catch(e){}}
+function renderList(id,items){$(id).innerHTML=items.length?items.map(b=>'<div class="item"><div class="item-info"><div class="item-title">'+html(b.title||b.name)+'</div><div class="item-meta">'+html([b.author,bytes(b.bytes),b.progressPercent!=null?b.progressPercent+'%':''].filter(Boolean).join(' · '))+'</div></div><button class="danger" data-delete="'+html(encodeURIComponent(b.name))+'">Usuń</button></div>').join(''):'<span class="muted">Pusto — wgraj pierwszą książkę.</span>';document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>delBook(decodeURIComponent(b.dataset.delete)))}
+async function refresh(){try{const info=await api('/api/info');$('infoBox').innerHTML='<strong>'+html(info.name)+'</strong><br><span class="muted">'+html(info.mode)+' · '+html(info.networkSsid||'')+'</span>';const data=await api('/api/books');renderList('booksList',data.books);status('Połączono z czytnikiem.')}catch(e){status('Problem z połączeniem: '+e.message)}}
+async function delBook(name){if(!confirm('Usunąć „'+decodeURIComponent(name)+'"?'))return;try{await api('/api/books?name='+encodeURIComponent(name),{method:'DELETE'});await refresh();status('Usunięto.')}catch(e){status('Błąd usuwania: '+e.message)}}
+async function uploadPicked(inputId,category){const f=$(inputId).files[0];if(!f){status('Najpierw wybierz plik.');return}try{const fd=new FormData();fd.append('file',f,f.name);await api('/api/books?name='+encodeURIComponent(f.name)+'&category='+encodeURIComponent(category),{method:'POST',body:fd});$(inputId).value='';await refresh();status('Wgrano: '+f.name)}catch(e){status('Błąd uploadu: '+e.message)}}
 function val(id){const e=$(id);return e.type==='checkbox'?e.checked:e.value}
-function setVal(id,v){const e=$(id);if(e.type==='checkbox')e.checked=!!v;else e.value=v}
-function snapWpm(v){v=Math.max(10,Math.min(1000,Math.round(+v||300)));return v<=100?Math.max(10,Math.min(100,Math.round(v/10)*10)):Math.min(1000,100+Math.round((v-100)/25)*25)}
-function updateLabels(){['wpm','longWordMs','complexWordMs','punctuationMs','brightnessIndex','fontSizeIndex','tracking','anchorPercent','guideWidth','guideGap'].forEach(id=>{const l=$(id+'Value')||$(id.replace('Index','')+'Value');if(l)l.textContent=$(id).value+(id==='wpm'?' WPM':id.includes('Ms')?' ms':'')})}
-async function loadSettings(){try{settings=await api('/api/settings');setVal('readerMode',settings.reading.readerMode);setVal('pauseMode',settings.reading.pauseMode);setVal('wpm',snapWpm(settings.reading.wpm));setVal('longWordMs',settings.reading.pacing.longWordMs);setVal('complexWordMs',settings.reading.pacing.complexWordMs);setVal('punctuationMs',settings.reading.pacing.punctuationMs);setVal('displayMode',settings.display.nightMode?'night':settings.display.darkMode?'dark':'light');setVal('brightnessIndex',settings.display.brightnessIndex);setVal('handedness',settings.display.handedness);setVal('footerMetric',settings.display.footerMetric);setVal('batteryLabel',settings.display.batteryLabel);setVal('readingBattery',settings.display.readingBattery);setVal('readingChapter',settings.display.readingChapter);setVal('readingProgress',settings.display.readingProgress);setVal('typeface',settings.typography.typeface);setVal('fontSizeIndex',settings.display.fontSizeIndex);setVal('tracking',settings.typography.tracking);setVal('anchorPercent',settings.typography.anchorPercent);setVal('guideWidth',settings.typography.guideWidth);setVal('guideGap',settings.typography.guideGap);setVal('focusHighlight',settings.typography.focusHighlight);setVal('phantomWords',settings.display.phantomWords);updateLabels()}catch(e){status('Settings load failed: '+e.message)}}
-async function saveSettings(){setVal('wpm',snapWpm(val('wpm')));const mode=val('displayMode');const payload={reading:{wpm:+val('wpm'),readerMode:val('readerMode'),pauseMode:val('pauseMode'),pacing:{longWordMs:+val('longWordMs'),complexWordMs:+val('complexWordMs'),punctuationMs:+val('punctuationMs')}},display:{darkMode:mode==='dark',nightMode:mode==='night',brightnessIndex:+val('brightnessIndex'),handedness:val('handedness'),footerMetric:val('footerMetric'),batteryLabel:val('batteryLabel'),readingBattery:val('readingBattery'),readingChapter:val('readingChapter'),readingProgress:val('readingProgress'),phantomWords:val('phantomWords'),fontSizeIndex:+val('fontSizeIndex')},typography:{typeface:val('typeface'),focusHighlight:val('focusHighlight'),tracking:+val('tracking'),anchorPercent:+val('anchorPercent'),guideWidth:+val('guideWidth'),guideGap:+val('guideGap')}};try{settings=await api('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});status('Settings saved. Exit sync mode to apply all reader changes.')}catch(e){status('Settings save failed: '+e.message)}}
-async function loadWifi(){try{const w=await api('/api/wifi');$('wifiSsid').value=w.ssid||'';$('wifiPassword').value='';$('wifiCurrent').textContent=w.configured?'Saved network: '+w.ssid:'No home Wi-Fi saved.'}catch(e){status('Wi-Fi load failed: '+e.message)}}
-async function saveWifi(){const ssid=$('wifiSsid').value.trim();if(!ssid){status('Enter a Wi-Fi SSID first.');return}try{const w=await api('/api/wifi',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid,password:$('wifiPassword').value})});$('wifiPassword').value='';$('wifiCurrent').textContent='Saved network: '+w.ssid;status('Wi-Fi saved for RSS and OTA.')}catch(e){status('Wi-Fi save failed: '+e.message)}}
-async function forgetWifi(){if(!confirm('Forget saved Wi-Fi?'))return;try{await api('/api/wifi',{method:'DELETE'});$('wifiSsid').value='';$('wifiPassword').value='';$('wifiCurrent').textContent='No home Wi-Fi saved.';status('Wi-Fi credentials cleared.')}catch(e){status('Forget Wi-Fi failed: '+e.message)}}
-async function loadRss(){try{const r=await api('/api/rss-feeds');$('rssFeeds').value=(r.feeds||[]).join('\n');status('RSS feeds loaded.')}catch(e){status('RSS load failed: '+e.message)}}
-async function saveRss(){const feeds=$('rssFeeds').value.split(/\n+/).map(s=>s.trim()).filter(Boolean);try{await api('/api/rss-feeds',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds})});status('RSS feeds saved.')}catch(e){status('RSS save failed: '+e.message)}}
-function uploadFirmware(){const f=$('firmwareFile').files[0];if(!f){status('Pick a .bin first.');return}const fd=new FormData();fd.append('firmware',f,f.name);const xhr=new XMLHttpRequest();xhr.open('POST','/api/ota');xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.round(e.loaded*100/e.total);$('firmwareProgress').textContent='Sending '+pct+'% ('+Math.round(e.loaded/1024)+' / '+Math.round(e.total/1024)+' kB)';status('Firmware upload '+pct+'%')}};xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){$('firmwareProgress').textContent='Installed. Reader is rebooting.';status('Firmware installed. Reader rebooting...')}else{$('firmwareProgress').textContent='Failed: '+xhr.responseText;status('OTA failed ('+xhr.status+'): '+xhr.responseText)}};xhr.onerror=()=>{$('firmwareProgress').textContent='Connection dropped during upload.';status('OTA connection dropped.')};status('Uploading firmware...');xhr.send(fd)}
-document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active');if(b.dataset.tab==='settings'){loadSettings();loadWifi()}if(b.dataset.tab==='rss')loadRss()});
-$('wpm').oninput=()=>{setVal('wpm',snapWpm(val('wpm')));updateLabels()};
-['longWordMs','complexWordMs','punctuationMs','brightnessIndex','fontSizeIndex','tracking','anchorPercent','guideWidth','guideGap'].forEach(id=>$(id).oninput=updateLabels);
-$('refreshBooksButton').onclick=refresh;$('refreshArticlesButton').onclick=refresh;$('uploadBookButton').onclick=()=>uploadPicked('bookFileInput','book');$('uploadArticleButton').onclick=()=>uploadPicked('articleFileInput','article');$('syncArticleButton').onclick=syncArticle;$('saveDraftButton').onclick=saveDraft;$('saveSettingsButton').onclick=saveSettings;$('saveWifiButton').onclick=saveWifi;$('forgetWifiButton').onclick=forgetWifi;$('saveRssButton').onclick=saveRss;$('reloadRssButton').onclick=loadRss;$('uploadFirmwareButton').onclick=uploadFirmware;
-loadDraft();refresh();
+function setVal(id,v){const e=$(id);if(!e)return;if(e.type==='checkbox')e.checked=!!v;else e.value=v}
+function updateLabels(){['wpm','longWordMs','complexWordMs','punctuationMs','brightnessIndex','fontSizeIndex','tracking','anchorPercent','guideWidth','guideGap','scrollFontSize','scrollLineSpacing','scrollMargin'].forEach(id=>{const l=$(id+'Value');if(l)l.textContent=$(id).value+(id==='wpm'?' WPM':id.includes('Ms')?' ms':'')})}
+async function loadSettings(){try{settings=await api('/api/settings');const r=settings.reading||{},d=settings.display||{},t=settings.typography||{},sc=settings.scroll||{};setVal('readerMode',r.readerMode);setVal('pauseMode',r.pauseMode);setVal('wpm',r.wpm);setVal('longWordMs',(r.pacing||{}).longWordMs);setVal('complexWordMs',(r.pacing||{}).complexWordMs);setVal('punctuationMs',(r.pacing||{}).punctuationMs);setVal('displayMode',d.nightMode?'night':d.darkMode?'dark':'light');setVal('brightnessIndex',d.brightnessIndex);setVal('handedness',d.handedness);setVal('footerMetric',d.footerMetric);setVal('batteryLabel',d.batteryLabel);setVal('readingBattery',d.readingBattery);setVal('readingChapter',d.readingChapter);setVal('readingProgress',d.readingProgress);setVal('typeface',t.typeface);setVal('fontSizeIndex',d.fontSizeIndex);setVal('tracking',t.tracking);setVal('anchorPercent',t.anchorPercent);setVal('guideWidth',t.guideWidth);setVal('guideGap',t.guideGap);setVal('focusHighlight',t.focusHighlight);setVal('phantomWords',d.phantomWords);setVal('scrollFontSize',sc.scrollFontSize);setVal('scrollLineSpacing',sc.scrollLineSpacing);setVal('scrollMargin',sc.scrollMargin);updateLabels();status('Ustawienia wczytane.')}catch(e){status('Błąd wczytywania ustawień: '+e.message)}}
+async function saveSettings(){const mode=val('displayMode');const payload={wpm:+val('wpm'),readerMode:val('readerMode'),pauseMode:val('pauseMode'),longWordMs:+val('longWordMs'),complexWordMs:+val('complexWordMs'),punctuationMs:+val('punctuationMs'),darkMode:mode==='dark'||mode==='night',nightMode:mode==='night',brightnessIndex:+val('brightnessIndex'),handedness:val('handedness'),footerMetric:val('footerMetric'),batteryLabel:val('batteryLabel'),readingBattery:val('readingBattery'),readingChapter:val('readingChapter'),readingProgress:val('readingProgress'),phantomWords:val('phantomWords'),fontSizeIndex:+val('fontSizeIndex'),typeface:val('typeface'),focusHighlight:val('focusHighlight'),tracking:+val('tracking'),anchorPercent:+val('anchorPercent'),guideWidth:+val('guideWidth'),guideGap:+val('guideGap'),scrollFontSize:+val('scrollFontSize'),scrollLineSpacing:+val('scrollLineSpacing'),scrollMargin:+val('scrollMargin')};try{await api('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});status('Ustawienia zapisane! Wyłącz i włącz sync żeby zastosować.')}catch(e){status('Błąd zapisu: '+e.message)}}
+async function loadWifi(){try{const w=await api('/api/wifi');$('wifiSsid').value=w.ssid||'';$('wifiPassword').value='';$('wifiCurrent').textContent=w.configured?'Zapisana sieć: '+w.ssid:'Brak zapisanej sieci.'}catch(e){}}
+async function saveWifi(){const ssid=$('wifiSsid').value.trim();if(!ssid){status('Wpisz nazwę sieci.');return}try{await api('/api/wifi',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid,password:$('wifiPassword').value})});$('wifiPassword').value='';$('wifiCurrent').textContent='Zapisana sieć: '+ssid;status('WiFi zapisane.')}catch(e){status('Błąd zapisu WiFi: '+e.message)}}
+async function forgetWifi(){if(!confirm('Zapomnieć zapisane WiFi?'))return;try{await api('/api/wifi',{method:'DELETE'});$('wifiSsid').value='';$('wifiPassword').value='';$('wifiCurrent').textContent='Brak zapisanej sieci.';status('WiFi usunięte.')}catch(e){status('Błąd: '+e.message)}}
+function uploadFirmware(){const f=$('firmwareFile').files[0];if(!f){status('Wybierz plik .bin.');return}const fd=new FormData();fd.append('firmware',f,f.name);const xhr=new XMLHttpRequest();xhr.open('POST','/api/ota');xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.round(e.loaded*100/e.total);$('firmwareProgress').textContent='Wysyłanie '+pct+'% ('+Math.round(e.loaded/1024)+' / '+Math.round(e.total/1024)+' kB)';status('Upload firmware '+pct+'%')}};xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){$('firmwareProgress').textContent='Zainstalowano. Czytnik się restartuje.';status('Firmware zainstalowany!')}else{$('firmwareProgress').textContent='Błąd: '+xhr.responseText;status('OTA nie powiodło się.')}};xhr.onerror=()=>{$('firmwareProgress').textContent='Połączenie zerwane.';status('Połączenie zerwane podczas OTA.')};status('Wysyłanie firmware...');xhr.send(fd)}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button,.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active');if(b.dataset.tab==='settings'){loadSettings();loadWifi()}});
+['wpm','longWordMs','complexWordMs','punctuationMs','brightnessIndex','fontSizeIndex','tracking','anchorPercent','guideWidth','guideGap','scrollFontSize','scrollLineSpacing','scrollMargin'].forEach(id=>{const e=$(id);if(e)e.oninput=updateLabels});
+$('refreshBooksButton').onclick=refresh;$('uploadBookButton').onclick=()=>uploadPicked('bookFileInput','book');$('saveSettingsButton').onclick=saveSettings;$('saveWifiButton').onclick=saveWifi;$('forgetWifiButton').onclick=forgetWifi;$('uploadFirmwareButton').onclick=uploadFirmware;
+refresh();
 </script>
 </body>
 </html>)HTML";
@@ -593,6 +575,9 @@ void CompanionSyncManager::update() {
   if (!active_ || !serverStarted_) {
     return;
   }
+  if (networkMode_ == NetworkMode::AccessPoint) {
+    dnsServer_.processNextRequest();
+  }
   server_.handleClient();
 }
 
@@ -789,6 +774,20 @@ bool CompanionSyncManager::startAccessPoint() {
 
 bool CompanionSyncManager::startServer() {
   server_.on("/", HTTP_GET, handleRootStatic);
+  // Captive portal detection endpoints — odpowiadamy 204 żeby Android/iOS
+  // nie wyświetlał "sieć bez internetu" i nie rozłączał WiFi.
+  server_.on("/generate_204", HTTP_GET, []() {
+    instance_->server_.send(204, "text/plain", "");
+  });
+  server_.on("/gen_204", HTTP_GET, []() {
+    instance_->server_.send(204, "text/plain", "");
+  });
+  server_.on("/hotspot-detect.html", HTTP_GET, []() {
+    instance_->server_.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+  });
+  server_.on("/connecttest.txt", HTTP_GET, []() {
+    instance_->server_.send(200, "text/plain", "Microsoft Connect Test");
+  });
   // Mini-handshake dla aplikacji-towarzysza (Flower PWA). Wskazuje
   // jednoznacznie że to nasze urządzenie (a nie czyjeś AP o podobnej nazwie).
   server_.on("/api/hello", HTTP_GET, handleHelloStatic);
@@ -827,6 +826,13 @@ bool CompanionSyncManager::startServer() {
   server_.begin();
   serverStarted_ = true;
 
+  // W trybie AP startujemy DNS server który odpowiada na KAŻDE zapytanie
+  // adresem 192.168.4.1 — to zapobiega captive portal detection na Androidzie
+  // (telefon nie wyświetla "ta sieć nie ma internetu").
+  if (networkMode_ == NetworkMode::AccessPoint) {
+    dnsServer_.start(53, "*", WiFi.softAPIP());
+  }
+
   if (networkMode_ == NetworkMode::Station && MDNS.begin(kMdnsName)) {
     MDNS.addService("http", "tcp", 80);
   }
@@ -836,6 +842,7 @@ bool CompanionSyncManager::startServer() {
 void CompanionSyncManager::stopServer() {
   if (serverStarted_) {
     server_.stop();
+    dnsServer_.stop();
     MDNS.end();
   }
   finishUpload(false);
@@ -1598,7 +1605,7 @@ String CompanionSyncManager::settingsJson() {
           ",\"max\":" + String(kMaxTypographyGuideWidth) + "}";
   body += ",\"guideGap\":{\"min\":" + String(kMinTypographyGuideGap) +
           ",\"max\":" + String(kMaxTypographyGuideGap) + "}";
-  body += "}}";
+  body += "}";
   body += ",\"scroll\":{";
   body += "\"scrollFontSize\":" + String(scrollFontSize);
   body += ",\"scrollLineSpacing\":" + String(scrollLineSpacing);
@@ -1609,7 +1616,7 @@ String CompanionSyncManager::settingsJson() {
   // końcu żeby nie ruszać istniejących sekcji.
   body += ",\"developer\":{\"devMode\":";
   body += preferences_.getBool("dev_mode", false) ? "true" : "false";
-  body += "}";
+  body += "}}";
   return body;
 }
 

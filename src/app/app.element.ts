@@ -399,7 +399,7 @@ export class CzytnikApp extends LitElement {
           muzyki, itd. Nowe pluginy pojawiają się tu sukcesywnie.
         </p>
         <div class="plugin-list">
-          ${this.pluginCard("Klepsydra", "Sesja czytania z timerem 25/5.", "Gotowy")}
+          ${this.pluginCard("Klepsydra", "Sesja czytania z timerem 25/5.", "Wkrótce")}
           ${this.pluginCard("Dyktafon", "Notatki głosowe podczas czytania.", "Wkrótce")}
           ${this.pluginCard("Odtwarzacz muzyki", "Cicha muzyka tła z SD.", "Wkrótce")}
         </div>

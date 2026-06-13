@@ -9,6 +9,9 @@ import {
   type ReaderHand,
   type ReaderMode,
   type PauseBehaviour,
+  type Typeface,
+  type FooterMetric,
+  type BatteryLabel,
 } from "../device/api";
 import { setLang } from "../i18n/index";
 import { deviceLangToSupported } from "../i18n/lang-map";
@@ -58,6 +61,30 @@ const MARGIN_LABEL: Record<number, string> = {
   0: "Narrow",
   1: "Normal",
   2: "Wide",
+};
+
+const TYPEFACE_LABEL: Record<Typeface, string> = {
+  standard: "Standard",
+  open_dyslexic: "OpenDyslexic",
+  atkinson: "Atkinson",
+};
+
+const RSVP_FONT_SIZE_LABEL: Record<number, string> = {
+  0: "S",
+  1: "M",
+  2: "L",
+};
+
+const FOOTER_METRIC_LABEL: Record<FooterMetric, string> = {
+  percentage: "Procent",
+  chapter_time: "Czas rozdziału",
+  book_time: "Czas książki",
+};
+
+const BATTERY_LABEL_LABEL: Record<BatteryLabel, string> = {
+  percent: "Procent",
+  time_remaining: "Czas",
+  voltage: "Napięcie",
 };
 
 type SettingsSubView = "settings" | "help";
@@ -173,6 +200,30 @@ export class SettingsPanel extends LitElement {
                 "ms",
                 "punctuationDelay",
               )}
+              ${this.toggle("phantomWords", "Słowa widma", s.phantomWords)}
+            </fieldset>
+
+            <fieldset class="group">
+              <legend>Typografia RSVP</legend>
+              ${this.segmented(
+                "fontSizeIndex",
+                s.fontSizeIndex,
+                [0, 1, 2],
+                RSVP_FONT_SIZE_LABEL,
+                "Rozmiar czcionki",
+              )}
+              ${this.segmented(
+                "typeface",
+                s.typeface,
+                ["standard", "open_dyslexic", "atkinson"],
+                TYPEFACE_LABEL,
+                "Krój czcionki",
+              )}
+              ${this.toggle("focusHighlight", "Podświetlenie fokusowe", s.focusHighlight)}
+              ${this.slider("tracking", "Tracking (odstępy)", s.tracking, -2, 3, 1, "")}
+              ${this.slider("anchorPercent", "Pozycja kotwicy", s.anchorPercent, 30, 40, 1, "%")}
+              ${this.slider("guideWidth", "Szerokość prowadnicy", s.guideWidth, 12, 30, 1, "px")}
+              ${this.slider("guideGap", "Przerwa prowadnicy", s.guideGap, 2, 8, 1, "px")}
             </fieldset>
           `
         : html`
@@ -242,6 +293,20 @@ export class SettingsPanel extends LitElement {
           "Procent",
           s.showPercentWhileReading,
           "readingPercent",
+        )}
+        ${this.segmented(
+          "footerMetric",
+          s.footerMetric,
+          ["percentage", "chapter_time", "book_time"],
+          FOOTER_METRIC_LABEL,
+          "Metryka stopki",
+        )}
+        ${this.segmented(
+          "batteryLabel",
+          s.batteryLabel,
+          ["percent", "time_remaining", "voltage"],
+          BATTERY_LABEL_LABEL,
+          "Etykieta baterii",
         )}
       </fieldset>
 
