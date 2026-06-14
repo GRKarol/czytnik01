@@ -59,6 +59,9 @@ class CompanionSyncManager {
   static void handlePowerWifiTimeoutStatic();
   static void handleOptionsStatic();
   static void handleNotFoundStatic();
+  static void handleStateStatic();
+  static void handleLogTailStatic();
+  static void handleLangCodesStatic();
 
   bool startAccessPoint();
   bool startServer();
@@ -81,6 +84,9 @@ class CompanionSyncManager {
   void handlePowerWifiTimeout();
   void handleOptions();
   void handleNotFound();
+  void handleState();
+  void handleLogTail();
+  void handleLangCodes();
   String settingsJson();
   bool applySettingsJson(const String &body, String &error);
   String wifiJson();
@@ -119,4 +125,14 @@ class CompanionSyncManager {
   bool qrData_[64 * 64] = {};  // Bufor dla QR kodu (max 64x64 moduły)
   uint8_t qrSize_ = 0;
   uint32_t wifiTimeoutMs_ = 0;  // 0 = brak timeoutu
+
+  // Ring buffer for firmware log tail
+  static constexpr size_t kLogRingSize = 100;
+  String logRing_[kLogRingSize];
+  size_t logRingHead_ = 0;
+  size_t logRingCount_ = 0;
+
+ public:
+  /** Append a line to the internal log ring buffer (call from anywhere). */
+  void logLine(const String &line);
 };

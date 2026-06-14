@@ -747,6 +747,24 @@ void CompanionSyncManager::handleOptionsStatic() {
   }
 }
 
+void CompanionSyncManager::handleStateStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleState();
+  }
+}
+
+void CompanionSyncManager::handleLogTailStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleLogTail();
+  }
+}
+
+void CompanionSyncManager::handleLangCodesStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleLangCodes();
+  }
+}
+
 bool CompanionSyncManager::startAccessPoint() {
   const String ssid = "Flower-" + deviceSuffix();
   statusLine1_ = "Sync Wi-Fi";
@@ -788,6 +806,17 @@ bool CompanionSyncManager::startServer() {
   server_.on("/connecttest.txt", HTTP_GET, []() {
     instance_->server_.send(200, "text/plain", "Microsoft Connect Test");
   });
+  // HyperOS / MIUI connectivity check
+  server_.on("/ncsi.txt", HTTP_GET, []() {
+    instance_->server_.send(200, "text/plain", "Microsoft NCSI");
+  });
+  // Xiaomi/HyperOS specific check
+  server_.on("/redirect", HTTP_GET, []() {
+    instance_->server_.send(204, "text/plain", "");
+  });
+  server_.on("/check_network", HTTP_GET, []() {
+    instance_->server_.send(204, "text/plain", "");
+  });
   // Mini-handshake dla aplikacji-towarzysza (Flower PWA). Wskazuje
   // jednoznacznie że to nasze urządzenie (a nie czyjeś AP o podobnej nazwie).
   server_.on("/api/hello", HTTP_GET, handleHelloStatic);
@@ -811,6 +840,9 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/plugins", HTTP_GET, handlePluginsStatic);
   server_.on("/api/plugins", HTTP_DELETE, handlePluginsDeleteStatic);
   server_.on("/api/power/wifi-timeout", HTTP_POST, handlePowerWifiTimeoutStatic);
+  server_.on("/api/state", HTTP_GET, handleStateStatic);
+  server_.on("/api/log/tail", HTTP_GET, handleLogTailStatic);
+  server_.on("/api/lang/codes", HTTP_GET, handleLangCodesStatic);
   // CORS preflight dla wszystkich endpointów
   server_.on("/api/hello", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/info", HTTP_OPTIONS, handleOptionsStatic);
@@ -822,6 +854,9 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/rss-feeds", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/plugins", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/power/wifi-timeout", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/state", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/log/tail", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/lang/codes", HTTP_OPTIONS, handleOptionsStatic);
   server_.onNotFound(handleNotFoundStatic);
   server_.begin();
   serverStarted_ = true;
@@ -1377,6 +1412,186 @@ void CompanionSyncManager::handlePowerWifiTimeout() {
   server_.send(200, "application/json",
                String("{\"ok\":true,\"timeoutSeconds\":") +
                String(wifiTimeoutMs_ / 1000UL) + "}");
+}
+
+// ─── GET /api/state — zbiorczy endpoint (1 request zamiast 6) ────────────────
+
+void CompanionSyncManager::handleState() {
+  sendCorsHeaders();
+  const String mode = networkMode_ == NetworkMode::Station ? "station" : "access_point";
+
+  String body;
+  body.reserve(4096);
+  body += "{\"ok\":true";
+
+  // info
+  body += ",\"info\":{";
+  body += "\"name\":\"Flower\"";
+  body += ",\"mode\":\"" + mode + "\"";
+  body += ",\"baseUrl\":\"" + jsonEscape(baseUrl()) + "\"";
+  body += ",\"networkSsid\":\"" + jsonEscape(networkSsid_) + "\"";
+  body += ",\"pairingCode\":\"" + pairingCode_ + "\"";
+  body += ",\"firmwareVersion\":\"" + jsonEscape(RSVP_FIRMWARE_VERSION) + "\"";
+  body += ",\"api\":1}";
+
+  // capabilities
+  body += ",\"capabilities\":{";
+  body += "\"settings\":true,\"books\":true,\"ota\":true";
+  body += ",\"pluginsList\":true,\"pluginsRemove\":true";
+  body += ",\"pluginsInstallPackage\":false";
+#if FLOWER_BLE_ENABLED
+  body += ",\"bluetoothTransfer\":true";
+#else
+  body += ",\"bluetoothTransfer\":false";
+#endif
+  body += ",\"rss\":true,\"focusTimer\":true,\"wifiTimeout\":true}";
+
+  // settings (reuse existing builder, strip outer {})
+  String settingsBody = settingsJson();
+  body += ",\"settings\":" + settingsBody;
+
+  // books — inline the books list
+  body += ",\"books\":[";
+  {
+    bool first = true;
+    const auto appendDir = [&](const char *directoryPath) {
+      File dir = SD_MMC.open(directoryPath);
+      if (!dir || !dir.isDirectory()) { if (dir) dir.close(); return; }
+      File entry = dir.openNextFile();
+      while (entry) {
+        if (!entry.isDirectory()) {
+          const String name = displayNameForPath(String(entry.name()));
+          const String path = String(directoryPath) + "/" + name;
+          String lowered = name; lowered.toLowerCase();
+          if (isSupportedBookName(lowered)) {
+            const RsvpMetadata metadata = readRsvpMetadata(path);
+            uint8_t progressPercent = 0;
+            const bool hasProgress = progressPercentForPath(path, progressPercent);
+            if (!first) body += ",";
+            first = false;
+            body += "{\"name\":\"" + jsonEscape(relativeLibraryName(path)) +
+                    "\",\"category\":\"" + libraryCategoryForPath(path) +
+                    "\",\"title\":\"" + jsonEscape(metadata.title) +
+                    "\",\"author\":\"" + jsonEscape(metadata.author) +
+                    "\",\"bytes\":" + String(static_cast<uint32_t>(entry.size()));
+            if (hasProgress) body += ",\"progressPercent\":" + String(progressPercent);
+            if (lowered.endsWith(".rsvp")) {
+              const std::vector<RsvpChapter> chapters = readRsvpChapters(path);
+              if (!chapters.empty()) {
+                body += ",\"chapters\":[";
+                for (size_t i = 0; i < chapters.size(); ++i) {
+                  if (i > 0) body += ",";
+                  body += "{\"title\":\"" + jsonEscape(chapters[i].title) +
+                          "\",\"startWord\":" + String(static_cast<uint32_t>(chapters[i].startWord)) + "}";
+                }
+                body += "]";
+              }
+            }
+            body += "}";
+          }
+        }
+        entry.close();
+        entry = dir.openNextFile();
+      }
+      dir.close();
+    };
+    appendDir(kBooksPath);
+    appendDir(kBookFilesPath);
+    appendDir(kArticleFilesPath);
+  }
+  body += "]";
+
+  // plugins
+  body += ",\"plugins\":[";
+  body += "{\"id\":\"focus-timer\",\"name\":\"Focus Timer\",\"installed\":true,\"active\":true}";
+  body += ",{\"id\":\"rss\",\"name\":\"RSS Feeds\",\"installed\":true,\"active\":true}";
+  body += "]";
+
+  // rss feeds
+  body += ",\"rss\":{\"feeds\":[";
+  {
+    File rssFile = SD_MMC.open(kRssConfigPath);
+    bool first = true;
+    if (rssFile && !rssFile.isDirectory()) {
+      String line;
+      while (rssFile.available()) {
+        const char c = static_cast<char>(rssFile.read());
+        if (c == '\n' || c == '\r') {
+          line.trim();
+          if (!line.isEmpty()) {
+            if (!first) body += ",";
+            first = false;
+            body += "\"" + jsonEscape(line) + "\"";
+          }
+          line = "";
+        } else {
+          line += c;
+        }
+      }
+      line.trim();
+      if (!line.isEmpty()) {
+        if (!first) body += ",";
+        body += "\"" + jsonEscape(line) + "\"";
+      }
+      rssFile.close();
+    }
+  }
+  body += "]}";
+
+  // wifi
+  body += ",\"wifi\":{";
+  const String ssid = preferences_.getString(kPrefWifiSsid, "");
+  body += "\"configured\":" + String(ssid.isEmpty() ? "false" : "true");
+  body += ",\"ssid\":\"" + jsonEscape(ssid) + "\"}";
+
+  body += "}";
+  server_.send(200, "application/json", body);
+}
+
+// ─── GET /api/log/tail — ring buffer firmware logów ──────────────────────────
+
+void CompanionSyncManager::logLine(const String &line) {
+  logRing_[logRingHead_] = line;
+  logRingHead_ = (logRingHead_ + 1) % kLogRingSize;
+  if (logRingCount_ < kLogRingSize) ++logRingCount_;
+}
+
+void CompanionSyncManager::handleLogTail() {
+  sendCorsHeaders();
+  int n = 50;
+  if (server_.hasArg("n")) {
+    n = server_.arg("n").toInt();
+    if (n < 1) n = 1;
+    if (n > static_cast<int>(kLogRingSize)) n = static_cast<int>(kLogRingSize);
+  }
+  const size_t count = std::min(static_cast<size_t>(n), logRingCount_);
+  const size_t start = (logRingHead_ + kLogRingSize - count) % kLogRingSize;
+
+  String body;
+  body.reserve(count * 80 + 64);
+  body += "{\"ok\":true,\"total\":" + String(static_cast<uint32_t>(logRingCount_));
+  body += ",\"lines\":[";
+  for (size_t i = 0; i < count; ++i) {
+    if (i > 0) body += ",";
+    body += "\"" + jsonEscape(logRing_[(start + i) % kLogRingSize]) + "\"";
+  }
+  body += "]}";
+  server_.send(200, "application/json", body);
+}
+
+// ─── GET /api/lang/codes — mapowanie języków ────────────────────────────────
+
+void CompanionSyncManager::handleLangCodes() {
+  sendCorsHeaders();
+  server_.send(200, "application/json",
+    "{\"ok\":true,\"languages\":["
+    "{\"code\":\"pl\",\"id\":0,\"name\":\"Polski\"},"
+    "{\"code\":\"en\",\"id\":1,\"name\":\"English\"},"
+    "{\"code\":\"de\",\"id\":2,\"name\":\"Deutsch\"},"
+    "{\"code\":\"es\",\"id\":3,\"name\":\"Español\"},"
+    "{\"code\":\"fr\",\"id\":4,\"name\":\"Français\"},"
+    "{\"code\":\"it\",\"id\":5,\"name\":\"Italiano\"}"
+    "]}");
 }
 
 // ─── Chapter reading for /api/books ──────────────────────────────────────────
