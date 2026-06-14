@@ -67,7 +67,7 @@ constexpr uint16_t kMinWpm = 10;
 constexpr uint16_t kMaxWpm = 1000;
 constexpr uint8_t kDefaultBrightness = 3;
 constexpr uint8_t kMaxBrightness = 4;
-constexpr uint8_t kMaxUiLanguage = 1;
+constexpr uint8_t kMaxUiLanguage = 5;
 constexpr uint8_t kMaxReaderMode = 1;
 constexpr uint8_t kMaxHandedness = 1;
 constexpr uint8_t kMaxFooterMetric = 2;
@@ -765,6 +765,18 @@ void CompanionSyncManager::handleLangCodesStatic() {
   }
 }
 
+void CompanionSyncManager::handleBookPositionStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleBookPosition();
+  }
+}
+
+void CompanionSyncManager::setDeviceStatus(uint8_t batteryPercent, uint32_t sdFreeKb, uint32_t sdTotalKb) {
+  deviceBatteryPercent_ = batteryPercent;
+  deviceSdFreeKb_ = sdFreeKb;
+  deviceSdTotalKb_ = sdTotalKb;
+}
+
 bool CompanionSyncManager::startAccessPoint() {
   const String ssid = "Flower-" + deviceSuffix();
   statusLine1_ = "Sync Wi-Fi";
@@ -843,6 +855,8 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/state", HTTP_GET, handleStateStatic);
   server_.on("/api/log/tail", HTTP_GET, handleLogTailStatic);
   server_.on("/api/lang/codes", HTTP_GET, handleLangCodesStatic);
+  server_.on("/api/books/position", HTTP_GET, handleBookPositionStatic);
+  server_.on("/api/books/position", HTTP_PUT, handleBookPositionStatic);
   // CORS preflight dla wszystkich endpointów
   server_.on("/api/hello", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/info", HTTP_OPTIONS, handleOptionsStatic);
@@ -857,6 +871,7 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/state", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/log/tail", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/lang/codes", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/books/position", HTTP_OPTIONS, handleOptionsStatic);
   server_.onNotFound(handleNotFoundStatic);
   server_.begin();
   serverStarted_ = true;
@@ -895,7 +910,10 @@ void CompanionSyncManager::handleInfo() {
                       "\"pairingCode\":\"" + pairingCode_ + "\"," +
                       "\"uploadPath\":\"/api/books\"," +
                       "\"api\":1," +
-                      "\"firmwareVersion\":\"" + jsonEscape(RSVP_FIRMWARE_VERSION) + "\"" +
+                      "\"firmwareVersion\":\"" + jsonEscape(RSVP_FIRMWARE_VERSION) + "\"," +
+                      "\"batteryPercent\":" + String(deviceBatteryPercent_) + "," +
+                      "\"sdFreeKb\":" + String(deviceSdFreeKb_) + "," +
+                      "\"sdTotalKb\":" + String(deviceSdTotalKb_) +
                       "}";
   server_.send(200, "application/json", body);
 }
@@ -1432,7 +1450,11 @@ void CompanionSyncManager::handleState() {
   body += ",\"networkSsid\":\"" + jsonEscape(networkSsid_) + "\"";
   body += ",\"pairingCode\":\"" + pairingCode_ + "\"";
   body += ",\"firmwareVersion\":\"" + jsonEscape(RSVP_FIRMWARE_VERSION) + "\"";
-  body += ",\"api\":1}";
+  body += ",\"api\":1";
+  body += ",\"batteryPercent\":" + String(deviceBatteryPercent_);
+  body += ",\"sdFreeKb\":" + String(deviceSdFreeKb_);
+  body += ",\"sdTotalKb\":" + String(deviceSdTotalKb_);
+  body += "}";
 
   // capabilities
   body += ",\"capabilities\":{";
@@ -1592,6 +1614,65 @@ void CompanionSyncManager::handleLangCodes() {
     "{\"code\":\"fr\",\"id\":4,\"name\":\"Français\"},"
     "{\"code\":\"it\",\"id\":5,\"name\":\"Italiano\"}"
     "]}");
+}
+
+// ─── GET/PUT /api/books/position — pozycja czytania ──────────────────────────
+
+void CompanionSyncManager::handleBookPosition() {
+  sendCorsHeaders();
+  String bookName = server_.arg("name");
+  bookName.trim();
+  if (bookName.isEmpty()) {
+    server_.send(400, "application/json", "{\"ok\":false,\"error\":\"Missing name parameter\"}");
+    return;
+  }
+
+  const String posKey = bookPositionKey(bookName);
+  const String wcKey = bookWordCountKey(bookName);
+
+  if (server_.method() == HTTP_GET) {
+    const uint32_t wordIndex = preferences_.getULong(posKey.c_str(), 0);
+    const uint32_t wordCount = preferences_.getULong(wcKey.c_str(), 0);
+    String body = "{\"ok\":true,\"name\":\"" + jsonEscape(bookName) + "\"";
+    body += ",\"wordIndex\":" + String(wordIndex);
+    body += ",\"wordCount\":" + String(wordCount);
+    if (wordCount > 0) {
+      body += ",\"percent\":" + String(static_cast<uint8_t>(
+        std::min(100UL, (static_cast<unsigned long>(wordIndex) * 100UL) / wordCount)));
+    } else {
+      body += ",\"percent\":0";
+    }
+    body += "}";
+    server_.send(200, "application/json", body);
+    return;
+  }
+
+  // PUT — update position
+  const String reqBody = server_.arg("plain");
+  int wordIndex = 0;
+  int wordCount = 0;
+  if (readJsonInt(reqBody, "wordIndex", wordIndex)) {
+    if (wordIndex < 0) wordIndex = 0;
+    preferences_.putULong(posKey.c_str(), static_cast<uint32_t>(wordIndex));
+  }
+  if (readJsonInt(reqBody, "wordCount", wordCount)) {
+    if (wordCount < 0) wordCount = 0;
+    preferences_.putULong(wcKey.c_str(), static_cast<uint32_t>(wordCount));
+  }
+
+  const uint32_t storedIndex = preferences_.getULong(posKey.c_str(), 0);
+  const uint32_t storedCount = preferences_.getULong(wcKey.c_str(), 0);
+  String body = "{\"ok\":true,\"name\":\"" + jsonEscape(bookName) + "\"";
+  body += ",\"wordIndex\":" + String(storedIndex);
+  body += ",\"wordCount\":" + String(storedCount);
+  if (storedCount > 0) {
+    body += ",\"percent\":" + String(static_cast<uint8_t>(
+      std::min(100UL, (static_cast<unsigned long>(storedIndex) * 100UL) / storedCount)));
+  } else {
+    body += ",\"percent\":0";
+  }
+  body += "}";
+  server_.send(200, "application/json", body);
 }
 
 // ─── Chapter reading for /api/books ──────────────────────────────────────────

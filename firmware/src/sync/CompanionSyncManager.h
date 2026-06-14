@@ -24,6 +24,9 @@ class CompanionSyncManager {
   const bool *qrCodeData() const;
   uint8_t qrCodeSize() const;
 
+  /** Set device status values (called from App on each update cycle). */
+  void setDeviceStatus(uint8_t batteryPercent, uint32_t sdFreeKb, uint32_t sdTotalKb);
+
  private:
   enum class NetworkMode : uint8_t {
     None,
@@ -62,6 +65,7 @@ class CompanionSyncManager {
   static void handleStateStatic();
   static void handleLogTailStatic();
   static void handleLangCodesStatic();
+  static void handleBookPositionStatic();
 
   bool startAccessPoint();
   bool startServer();
@@ -87,6 +91,7 @@ class CompanionSyncManager {
   void handleState();
   void handleLogTail();
   void handleLangCodes();
+  void handleBookPosition();
   String settingsJson();
   bool applySettingsJson(const String &body, String &error);
   String wifiJson();
@@ -125,6 +130,11 @@ class CompanionSyncManager {
   bool qrData_[64 * 64] = {};  // Bufor dla QR kodu (max 64x64 moduły)
   uint8_t qrSize_ = 0;
   uint32_t wifiTimeoutMs_ = 0;  // 0 = brak timeoutu
+
+  // Device status (updated from App)
+  uint8_t deviceBatteryPercent_ = 0;
+  uint32_t deviceSdFreeKb_ = 0;
+  uint32_t deviceSdTotalKb_ = 0;
 
   // Ring buffer for firmware log tail
   static constexpr size_t kLogRingSize = 100;

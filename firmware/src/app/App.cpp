@@ -1,5 +1,6 @@
 #include "app/App.h"
 
+#include <SD_MMC.h>
 #include <esp_sleep.h>
 #include <esp_log.h>
 #include <WiFi.h>
@@ -6058,6 +6059,15 @@ void App::enterCompanionSync(uint32_t nowMs) {
 }
 
 void App::updateCompanionSync(uint32_t nowMs) {
+  // Push device status to companion API (battery, SD card)
+  uint32_t sdFreeKb = 0, sdTotalKb = 0;
+  {
+    const uint64_t totalBytes = SD_MMC.totalBytes();
+    const uint64_t usedBytes = SD_MMC.usedBytes();
+    sdTotalKb = static_cast<uint32_t>(totalBytes / 1024ULL);
+    sdFreeKb = static_cast<uint32_t>((totalBytes - usedBytes) / 1024ULL);
+  }
+  companionSync_.setDeviceStatus(batteryDisplayedPercent_, sdFreeKb, sdTotalKb);
   companionSync_.update();
 
   if (powerButton_.isHeld() && nowMs - powerButton_.lastEdgeMs() >= kUsbTransferExitHoldMs) {

@@ -576,3 +576,145 @@ Kolejny rozdział zaczyna się dyrektywą @chapter.
 - **Timeout WiFi** — opcjonalnie wyłącza WiFi po X sekundach bezczynności
 - **Restart po OTA** — po udanym OTA urządzenie robi `ESP.restart()` po 500ms delay
 - **Chapters** — czytane bezpośrednio z pliku .rsvp (nie trzeba osobnego indeksu)
+
+---
+
+## Nowe endpointy (v0.3.4)
+
+### GET /api/state
+
+**Cel:** Jeden zbiorczy request zamiast 6 oddzielnych (1 round-trip)  
+**Odpowiedź:** Zawiera WSZYSTKO w jednym JSON:
+
+```json
+{
+  "ok": true,
+  "info": {
+    "name": "Flower",
+    "mode": "access_point",
+    "baseUrl": "http://192.168.4.1",
+    "networkSsid": "Flower-AB12",
+    "pairingCode": "1234",
+    "firmwareVersion": "v0.3.4",
+    "api": 1,
+    "batteryPercent": 78,
+    "sdFreeKb": 14523400,
+    "sdTotalKb": 15523840
+  },
+  "capabilities": {
+    "settings": true,
+    "books": true,
+    "ota": true,
+    "pluginsList": true,
+    "pluginsRemove": true,
+    "pluginsInstallPackage": false,
+    "bluetoothTransfer": false,
+    "rss": true,
+    "focusTimer": true,
+    "wifiTimeout": true
+  },
+  "settings": {
+    /* identyczne z GET /api/settings */
+  },
+  "books": [
+    /* identyczne z GET /api/books .books */
+  ],
+  "plugins": [
+    /* identyczne z GET /api/plugins .plugins */
+  ],
+  "rss": { "feeds": ["https://..."] },
+  "wifi": { "configured": true, "ssid": "MojaSiec" }
+}
+```
+
+---
+
+### GET /api/log/tail?n=50
+
+**Cel:** Ostatnie N linii logów firmware (ring buffer 100 linii)  
+**Parametr:** `n` — ile linii zwrócić (domyślnie 50, max 100)  
+**Odpowiedź:**
+
+```json
+{
+  "ok": true,
+  "total": 87,
+  "lines": [
+    "[sync] upload start books/moja-ksiazka.rsvp",
+    "[sync] upload end bytes=124800 error=",
+    "[app] settings saved: wpm=350"
+  ]
+}
+```
+
+---
+
+### GET /api/lang/codes
+
+**Cel:** Mapowanie kodów językowych — app nie zgaduje, czyta z urządzenia  
+**Odpowiedź:**
+
+```json
+{
+  "ok": true,
+  "languages": [
+    { "code": "pl", "id": 0, "name": "Polski" },
+    { "code": "en", "id": 1, "name": "English" },
+    { "code": "de", "id": 2, "name": "Deutsch" },
+    { "code": "es", "id": 3, "name": "Español" },
+    { "code": "fr", "id": 4, "name": "Français" },
+    { "code": "it", "id": 5, "name": "Italiano" }
+  ]
+}
+```
+
+---
+
+### GET /api/books/position?name=books/moja-ksiazka.rsvp
+
+**Cel:** Pobranie pozycji czytania dla konkretnej książki  
+**Parametr:** `name` — ścieżka książki (ta sama co w books list)  
+**Odpowiedź:**
+
+```json
+{
+  "ok": true,
+  "name": "books/moja-ksiazka.rsvp",
+  "wordIndex": 1523,
+  "wordCount": 45000,
+  "percent": 3
+}
+```
+
+---
+
+### PUT /api/books/position?name=books/moja-ksiazka.rsvp
+
+**Cel:** Ustawienie pozycji czytania (synchronizacja z aplikacją)  
+**Body:**
+
+```json
+{
+  "wordIndex": 2000,
+  "wordCount": 45000
+}
+```
+
+**Odpowiedź:** Jak GET (z zaktualizowanymi wartościami)
+
+---
+
+## Pola dodane do /api/info (v0.3.4)
+
+| Pole             | Typ         | Opis                              |
+| ---------------- | ----------- | --------------------------------- |
+| `batteryPercent` | int (0–100) | Aktualny % baterii                |
+| `sdFreeKb`       | int         | Wolne miejsce na karcie SD [KB]   |
+| `sdTotalKb`      | int         | Całkowita pojemność karty SD [KB] |
+
+---
+
+## Poprawki (v0.3.4)
+
+- `kMaxUiLanguage` zmienione z 1 na 5 — teraz firmware akceptuje wszystkie 6 języków (PL/EN/DE/ES/FR/IT)
+- Dodano endpointy captive portal: `/ncsi.txt`, `/redirect`, `/check_network` (HyperOS/MIUI)
