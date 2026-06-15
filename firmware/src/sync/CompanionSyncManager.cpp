@@ -578,7 +578,15 @@ void CompanionSyncManager::update() {
   if (networkMode_ == NetworkMode::AccessPoint) {
     dnsServer_.processNextRequest();
   }
-  server_.handleClient();
+
+  // Process at most a few HTTP requests per update() call to prevent
+  // display starvation when bombarded with captive portal checks.
+  // WebServer::handleClient() processes one request; calling it a limited
+  // number of times per frame keeps the loop responsive.
+  for (int i = 0; i < 3; ++i) {
+    server_.handleClient();
+    yield();  // Give FreeRTOS idle task + watchdog a chance
+  }
 
   // UDP broadcast co 2s — natywna app może nasłuchiwać zamiast pollingu HTTP.
   // Pakiet: "FLOWER|192.168.4.1|<firmwareVersion>|<pairingCode>"
@@ -826,33 +834,33 @@ bool CompanionSyncManager::startServer() {
   // Captive portal detection endpoints — odpowiadamy 204 żeby Android/iOS
   // nie wyświetlał "sieć bez internetu" i nie rozłączał WiFi.
   server_.on("/generate_204", HTTP_GET, []() {
-    instance_->logLine("[portal] generate_204 from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("generate_204", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   server_.on("/gen_204", HTTP_GET, []() {
-    instance_->logLine("[portal] gen_204 from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("gen_204", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   server_.on("/hotspot-detect.html", HTTP_GET, []() {
-    instance_->logLine("[portal] hotspot-detect from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("hotspot-detect", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
   });
   server_.on("/connecttest.txt", HTTP_GET, []() {
-    instance_->logLine("[portal] connecttest from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("connecttest", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(200, "text/plain", "Microsoft Connect Test");
   });
   // HyperOS / MIUI connectivity check
   server_.on("/ncsi.txt", HTTP_GET, []() {
-    instance_->logLine("[portal] ncsi from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("ncsi", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(200, "text/plain", "Microsoft NCSI");
   });
   // Xiaomi/HyperOS specific check
   server_.on("/redirect", HTTP_GET, []() {
-    instance_->logLine("[portal] redirect from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("redirect", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   server_.on("/check_network", HTTP_GET, []() {
-    instance_->logLine("[portal] check_network from " + instance_->server_.client().remoteIP().toString());
+    instance_->logPortalHit("check_network", instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   // Mini-handshake dla aplikacji-towarzysza (Flower PWA). Wskazuje
@@ -1349,7 +1357,37 @@ void CompanionSyncManager::handleNotFound() {
   // że internet działa i nie wyświetlał wykrzyknika.
   const String uri = server_.uri();
   if (!uri.startsWith("/api/")) {
-    logLine("[portal] catch-all " + uri + " from " + server_.client().remoteIP().toString());
+    logPortalHit("catch-all:" + uri, server_.client().remoteIP().toString());
+
+    // Host-aware captive portal response: Android/HyperOS connectivity check
+    // domains are DNS-redirected to us. We must respond exactly as the real
+    // servers would so the OS marks the network as "connected".
+    const String host = server_.hostHeader();
+
+    // Android standard connectivity checks (HTTP, not HTTPS)
+    if (host == "connectivitycheck.gstatic.com" ||
+        host == "connectivitycheck.android.com" ||
+        host == "clients3.google.com" ||
+        host == "www.google.com") {
+      // Google returns 204 No Content on /generate_204, blank.html, etc.
+      if (uri == "/generate_204" || uri == "/gen_204") {
+        server_.send(204, "text/plain", "");
+      } else {
+        // /blank.html and other paths → 200 with empty body
+        server_.sendHeader("Content-Length", "0");
+        server_.send(200, "text/html", "");
+      }
+      return;
+    }
+
+    // Xiaomi / HyperOS connectivity check
+    if (host == "connect.rom.miui.com" ||
+        host == "api.market.xiaomi.com") {
+      server_.send(204, "text/plain", "");
+      return;
+    }
+
+    // Default: 204 (safe catch-all for any unknown connectivity checks)
     server_.send(204, "text/plain", "");
     return;
   }
@@ -1621,6 +1659,16 @@ void CompanionSyncManager::logLine(const String &line) {
   logRing_[logRingHead_] = line;
   logRingHead_ = (logRingHead_ + 1) % kLogRingSize;
   if (logRingCount_ < kLogRingSize) ++logRingCount_;
+}
+
+void CompanionSyncManager::logPortalHit(const String &endpoint, const String &clientIp) {
+  ++portalHitCount_;
+  const uint32_t now = millis();
+  if (now - portalLastLogMs_ >= kPortalLogIntervalMs) {
+    portalLastLogMs_ = now;
+    logLine("[portal] " + endpoint + " from " + clientIp + " (x" + String(portalHitCount_) + " in 5s)");
+    portalHitCount_ = 0;
+  }
 }
 
 void CompanionSyncManager::handleLogTail() {

@@ -147,7 +147,14 @@ class CompanionSyncManager {
   size_t logRingHead_ = 0;
   size_t logRingCount_ = 0;
 
+  // Captive portal throttling — aggregate instead of per-request logging
+  uint32_t portalHitCount_ = 0;
+  uint32_t portalLastLogMs_ = 0;
+  static constexpr uint32_t kPortalLogIntervalMs = 5000;  // Log summary every 5s max
+
  public:
   /** Append a line to the internal log ring buffer (call from anywhere). */
   void logLine(const String &line);
+  /** Log a captive portal hit with throttling/aggregation. */
+  void logPortalHit(const String &endpoint, const String &clientIp);
 };
