@@ -1309,6 +1309,19 @@ void CompanionSyncManager::handleOtaUpload() {
 
 void CompanionSyncManager::handleNotFound() {
   sendCorsHeaders();
+
+  // Captive portal catch-all: Android/iOS/Windows robi cykliczne sprawdzenie
+  // internetu na losowych URL-ach (connectivitycheck.gstatic.com, itp.).
+  // DNS resolve'uje te domeny na 192.168.4.1 (nasz AP), więc requesty
+  // trafiają tutaj. Jeśli URI NIE zaczyna się od /api/, to najprawdopodobniej
+  // jest to connectivity check — odpowiadamy 204 żeby system myślał
+  // że internet działa i nie wyświetlał wykrzyknika.
+  const String uri = server_.uri();
+  if (!uri.startsWith("/api/")) {
+    server_.send(204, "text/plain", "");
+    return;
+  }
+
   server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Not found\"}");
 }
 
