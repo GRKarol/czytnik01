@@ -826,26 +826,33 @@ bool CompanionSyncManager::startServer() {
   // Captive portal detection endpoints — odpowiadamy 204 żeby Android/iOS
   // nie wyświetlał "sieć bez internetu" i nie rozłączał WiFi.
   server_.on("/generate_204", HTTP_GET, []() {
+    instance_->logLine("[portal] generate_204 from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   server_.on("/gen_204", HTTP_GET, []() {
+    instance_->logLine("[portal] gen_204 from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   server_.on("/hotspot-detect.html", HTTP_GET, []() {
+    instance_->logLine("[portal] hotspot-detect from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
   });
   server_.on("/connecttest.txt", HTTP_GET, []() {
+    instance_->logLine("[portal] connecttest from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(200, "text/plain", "Microsoft Connect Test");
   });
   // HyperOS / MIUI connectivity check
   server_.on("/ncsi.txt", HTTP_GET, []() {
+    instance_->logLine("[portal] ncsi from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(200, "text/plain", "Microsoft NCSI");
   });
   // Xiaomi/HyperOS specific check
   server_.on("/redirect", HTTP_GET, []() {
+    instance_->logLine("[portal] redirect from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   server_.on("/check_network", HTTP_GET, []() {
+    instance_->logLine("[portal] check_network from " + instance_->server_.client().remoteIP().toString());
     instance_->server_.send(204, "text/plain", "");
   });
   // Mini-handshake dla aplikacji-towarzysza (Flower PWA). Wskazuje
@@ -1342,6 +1349,7 @@ void CompanionSyncManager::handleNotFound() {
   // że internet działa i nie wyświetlał wykrzyknika.
   const String uri = server_.uri();
   if (!uri.startsWith("/api/")) {
+    logLine("[portal] catch-all " + uri + " from " + server_.client().remoteIP().toString());
     server_.send(204, "text/plain", "");
     return;
   }
