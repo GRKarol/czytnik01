@@ -579,6 +579,19 @@ void CompanionSyncManager::update() {
     dnsServer_.processNextRequest();
   }
   server_.handleClient();
+
+  // UDP broadcast co 2s — natywna app może nasłuchiwać zamiast pollingu HTTP.
+  // Pakiet: "FLOWER|192.168.4.1|<firmwareVersion>|<pairingCode>"
+  const uint32_t nowMs = millis();
+  if (nowMs - lastBroadcastMs_ >= 2000) {
+    lastBroadcastMs_ = nowMs;
+    const IPAddress broadcastIp(192, 168, 4, 255);
+    String packet = "FLOWER|" + ipToString(WiFi.softAPIP()) + "|" +
+                    String(RSVP_FIRMWARE_VERSION) + "|" + pairingCode_;
+    udpBroadcast_.beginPacket(broadcastIp, 5555);
+    udpBroadcast_.write(reinterpret_cast<const uint8_t *>(packet.c_str()), packet.length());
+    udpBroadcast_.endPacket();
+  }
 }
 
 void CompanionSyncManager::end() {
@@ -771,6 +784,12 @@ void CompanionSyncManager::handleBookPositionStatic() {
   }
 }
 
+void CompanionSyncManager::handleLogClearStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleLogClear();
+  }
+}
+
 void CompanionSyncManager::setDeviceStatus(uint8_t batteryPercent, uint32_t sdFreeKb, uint32_t sdTotalKb) {
   deviceBatteryPercent_ = batteryPercent;
   deviceSdFreeKb_ = sdFreeKb;
@@ -854,6 +873,7 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/power/wifi-timeout", HTTP_POST, handlePowerWifiTimeoutStatic);
   server_.on("/api/state", HTTP_GET, handleStateStatic);
   server_.on("/api/log/tail", HTTP_GET, handleLogTailStatic);
+  server_.on("/api/log", HTTP_DELETE, handleLogClearStatic);
   server_.on("/api/lang/codes", HTTP_GET, handleLangCodesStatic);
   server_.on("/api/books/position", HTTP_GET, handleBookPositionStatic);
   server_.on("/api/books/position", HTTP_PUT, handleBookPositionStatic);
@@ -870,6 +890,7 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/power/wifi-timeout", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/state", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/log/tail", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/log", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/lang/codes", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/books/position", HTTP_OPTIONS, handleOptionsStatic);
   server_.onNotFound(handleNotFoundStatic);
@@ -1035,6 +1056,7 @@ void CompanionSyncManager::handleSettings() {
   }
 
   server_.send(200, "application/json", response);
+  logLine("Settings saved" + (restartRequired ? String(" (restart required)") : String("")));
 }
 
 void CompanionSyncManager::handleWifi() {
@@ -1164,6 +1186,7 @@ void CompanionSyncManager::handleBookDelete() {
   statusLine1_ = "Book deleted";
   statusLine2_ = filename;
   Serial.printf("[sync] deleted %s\n", path.c_str());
+  logLine("Deleted: " + filename);
   server_.send(200, "application/json",
                String("{\"ok\":true,\"path\":\"") + jsonEscape(path) + "\"}");
 }
@@ -1205,6 +1228,7 @@ void CompanionSyncManager::handleBookUpload() {
     statusLine1_ = "Receiving book";
     statusLine2_ = filename;
     Serial.printf("[sync] upload start %s\n", uploadFinalPath_.c_str());
+    logLine("Upload start: " + filename);
     return;
   }
 
@@ -1612,6 +1636,14 @@ void CompanionSyncManager::handleLogTail() {
   }
   body += "]}";
   server_.send(200, "application/json", body);
+}
+
+void CompanionSyncManager::handleLogClear() {
+  sendCorsHeaders();
+  logRingHead_ = 0;
+  logRingCount_ = 0;
+  for (size_t i = 0; i < kLogRingSize; ++i) logRing_[i] = "";
+  server_.send(200, "application/json", "{\"ok\":true,\"cleared\":true}");
 }
 
 // ─── GET /api/lang/codes — mapowanie języków ────────────────────────────────

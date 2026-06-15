@@ -718,3 +718,231 @@ Kolejny rozdział zaczyna się dyrektywą @chapter.
 
 - `kMaxUiLanguage` zmienione z 1 na 5 — teraz firmware akceptuje wszystkie 6 języków (PL/EN/DE/ES/FR/IT)
 - Dodano endpointy captive portal: `/ncsi.txt`, `/redirect`, `/check_network` (HyperOS/MIUI)
+
+---
+
+## Nowe endpointy (v0.3.6)
+
+### UDP Broadcast Discovery (port 5555)
+
+Czytnik w trybie AP co 2 sekundy wysyła broadcast UDP na `192.168.4.255:5555`:
+
+```
+FLOWER|192.168.4.1|v0.3.6|1234
+```
+
+Format: `FLOWER|<ip>|<firmwareVersion>|<pairingCode>`
+
+**Użycie w natywnej appce:**
+
+```kotlin
+val socket = DatagramSocket(5555)
+socket.broadcast = true
+val buffer = ByteArray(128)
+val packet = DatagramPacket(buffer, buffer.size)
+socket.receive(packet) // blokuje do ~2s max
+val msg = String(packet.data, 0, packet.length)
+// msg = "FLOWER|192.168.4.1|v0.3.6|1234"
+val parts = msg.split("|")
+// parts[0] = "FLOWER" (identyfikator)
+// parts[1] = IP czytnika
+// parts[2] = wersja firmware
+// parts[3] = pairing code
+```
+
+**Zalety vs HTTP polling:**
+
+- Wykrycie w <50ms (vs 3000ms polling)
+- Zero obciążenia HTTP servera
+- Działa nawet zanim Android uzna sieć za "ok"
+
+---
+
+### DELETE /api/log
+
+**Cel:** Czyszczenie ring bufora logów  
+**Odpowiedź:**
+
+```json
+{ "ok": true, "cleared": true }
+```
+
+---
+
+## Pełna specyfikacja sterowania czytnikiem z aplikacji mobilnej
+
+### Architektura komunikacji
+
+```
+┌─────────────────────────────────┐
+│     Aplikacja Android           │
+│  ┌───────────────────────────┐  │
+│  │  UDP Listener (port 5555) │  │  ← wykrywanie czytnika (<50ms)
+│  │  HTTP Client (port 80)    │  │  ← sterowanie (REST API)
+│  └───────────────────────────┘  │
+└───────────────┬─────────────────┘
+                │ WiFi (192.168.4.1)
+┌───────────────┴─────────────────┐
+│     Czytnik ESP32-S3            │
+│  ┌───────────────────────────┐  │
+│  │  UDP Broadcast (co 2s)    │  │
+│  │  HTTP Server (port 80)    │  │
+│  │  DNS Server (port 53)     │  │
+│  └───────────────────────────┘  │
+└─────────────────────────────────┘
+```
+
+---
+
+### 1. Połączenie — krok po kroku
+
+| Krok | App robi                               | Czytnik robi                                 |
+| ---- | -------------------------------------- | -------------------------------------------- |
+| 1    | Nic (czeka)                            | User włącza "Sync z telefonem" → AP startuje |
+| 2    | User skanuje QR lub ręcznie łączy WiFi | Wyświetla QR + IP na ekranie                 |
+| 3    | UDP listener wykrywa broadcast         | Nadaje broadcast co 2s                       |
+| 4    | `GET /api/state` (1 request)           | Zwraca pełny stan                            |
+| 5    | Keep-alive ping co 8s                  | Odpowiada na /api/hello                      |
+
+---
+
+### 2. Biblioteka — zarządzanie książkami
+
+| Akcja            | Endpoint                             | Metoda | Body/Params                     |
+| ---------------- | ------------------------------------ | ------ | ------------------------------- |
+| Lista książek    | `/api/state` → `.books[]`            | GET    | —                               |
+| Upload książki   | `/api/books?name=X&category=book`    | POST   | multipart (pole `file`)         |
+| Upload artykułu  | `/api/books?name=X&category=article` | POST   | multipart (pole `file`)         |
+| Usuń książkę     | `/api/books?name=books/plik.rsvp`    | DELETE | —                               |
+| Pozycja czytania | `/api/books/position?name=X`         | GET    | —                               |
+| Zapisz pozycję   | `/api/books/position?name=X`         | PUT    | `{"wordIndex":N,"wordCount":M}` |
+
+**Chaptery z /api/books:**
+Każda książka .rsvp w liście ma pole `chapters: [{title, startWord}]` — app może wyświetlić spis treści i przeskoczyć do rozdziału (zapisując `wordIndex` = `startWord` danego rozdziału).
+
+---
+
+### 3. Ustawienia — pełna lista
+
+| Akcja            | Endpoint                   | Metoda    |
+| ---------------- | -------------------------- | --------- |
+| Pobierz wszystko | `/api/state` → `.settings` | GET       |
+| Zmień ustawienia | `/api/settings`            | PATCH/PUT |
+
+**Payload do PATCH (tylko zmienione klucze, płaski JSON):**
+
+```json
+{
+  "wpm": 350,
+  "readerMode": "rsvp",
+  "pauseMode": "sentence_end",
+  "longWordMs": 150,
+  "complexWordMs": 100,
+  "punctuationMs": 200,
+  "brightnessIndex": 3,
+  "darkMode": true,
+  "nightMode": false,
+  "handedness": "right",
+  "footerMetric": "percentage",
+  "batteryLabel": "percent",
+  "readingBattery": true,
+  "readingChapter": true,
+  "readingProgress": true,
+  "language": 0,
+  "phantomWords": true,
+  "fontSizeIndex": 1,
+  "typeface": "standard",
+  "focusHighlight": true,
+  "tracking": 0,
+  "anchorPercent": 33,
+  "guideWidth": 24,
+  "guideGap": 5,
+  "scrollFontSize": 4,
+  "scrollLineSpacing": 1,
+  "scrollMargin": 1,
+  "devMode": false
+}
+```
+
+**Graceful fallback:** Jeśli firmware odrzuci pole (np. stary firmware nie zna `scrollFontSize`), retry bez tego pola.
+
+---
+
+### 4. Pluginy
+
+| Akcja                 | Endpoint                      | Metoda |
+| --------------------- | ----------------------------- | ------ |
+| Lista zainstalowanych | `/api/state` → `.plugins[]`   | GET    |
+| Usuń plugin           | `/api/plugins?id=focus-timer` | DELETE |
+
+**Sklep GitHub:** App czyta `https://raw.githubusercontent.com/GRKarol/czytnik01/main/public/plugins/index.json` i filtruje vs zainstalowane.
+
+---
+
+### 5. RSS
+
+| Akcja        | Endpoint                      | Metoda | Body                        |
+| ------------ | ----------------------------- | ------ | --------------------------- |
+| Lista feedów | `/api/state` → `.rss.feeds[]` | GET    | —                           |
+| Zapisz feedy | `/api/rss-feeds`              | PUT    | `{"feeds":["url1","url2"]}` |
+
+---
+
+### 6. OTA (firmware update)
+
+| Krok | App robi                                                             |
+| ---- | -------------------------------------------------------------------- |
+| 1    | `GET https://api.github.com/repos/GRKarol/czytnik01/releases/latest` |
+| 2    | Porównaj `tag_name` vs `firmwareVersion` z `/api/state`              |
+| 3    | Pobierz asset `flower-firmware.bin` do cache                         |
+| 4    | `POST /api/ota` multipart (pole `firmware`)                          |
+| 5    | Czytnik się restartuje po 500ms                                      |
+
+---
+
+### 7. WiFi domowe
+
+| Akcja    | Endpoint               | Metoda | Body                          |
+| -------- | ---------------------- | ------ | ----------------------------- |
+| Sprawdź  | `/api/state` → `.wifi` | GET    | —                             |
+| Zapisz   | `/api/wifi`            | PUT    | `{"ssid":"X","password":"Y"}` |
+| Zapomnij | `/api/wifi`            | DELETE | —                             |
+
+---
+
+### 8. Logi / Debug
+
+| Akcja             | Endpoint             | Metoda |
+| ----------------- | -------------------- | ------ |
+| Ostatnie 50 linii | `/api/log/tail?n=50` | GET    |
+| Wyczyść logi      | `/api/log`           | DELETE |
+
+---
+
+### 9. Języki
+
+| Akcja     | Endpoint          | Metoda |
+| --------- | ----------------- | ------ |
+| Mapowanie | `/api/lang/codes` | GET    |
+
+Odpowiedź: `{languages: [{code:"pl",id:0,name:"Polski"}, ...]}`. App wysyła `language: id` (int) w settings.
+
+---
+
+### 10. Timeout WiFi
+
+| Akcja          | Endpoint                  | Metoda | Body                                  |
+| -------------- | ------------------------- | ------ | ------------------------------------- |
+| Ustaw auto-off | `/api/power/wifi-timeout` | POST   | `{"timeout":300}` (sekundy, 0=wyłącz) |
+
+---
+
+### Zasady niezawodności
+
+1. **Jeden request na start:** `GET /api/state` zwraca WSZYSTKO — nie musisz robić 6 oddzielnych
+2. **Keep-alive:** `GET /api/hello` co 8s — wykrywa disconnect w <16s
+3. **Timeout:** Każdy request z timeout 3s — nie wieszaj UI
+4. **Retry:** Max 2 retry na request, potem pokaż błąd
+5. **Fallback settings:** Jeśli PATCH zwraca 400, wyślij ponownie bez problematycznego klucza
+6. **Kolejka:** Nie wysyłaj 2 PATCH jednocześnie — ESP32 jest single-threaded
+7. **Captive portal:** Firmware odpowiada 204 na WSZYSTKO co nie zaczyna się od /api/ — Android nie pokaże wykrzyknika

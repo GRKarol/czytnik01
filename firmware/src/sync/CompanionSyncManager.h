@@ -5,6 +5,7 @@
 #include <FS.h>
 #include <Preferences.h>
 #include <WebServer.h>
+#include <WiFiUdp.h>
 
 class CompanionSyncManager {
  public:
@@ -66,6 +67,7 @@ class CompanionSyncManager {
   static void handleLogTailStatic();
   static void handleLangCodesStatic();
   static void handleBookPositionStatic();
+  static void handleLogClearStatic();
 
   bool startAccessPoint();
   bool startServer();
@@ -92,6 +94,7 @@ class CompanionSyncManager {
   void handleLogTail();
   void handleLangCodes();
   void handleBookPosition();
+  void handleLogClear();
   String settingsJson();
   bool applySettingsJson(const String &body, String &error);
   String wifiJson();
@@ -113,6 +116,8 @@ class CompanionSyncManager {
   static CompanionSyncManager *instance_;
 
   DNSServer dnsServer_;
+  WiFiUDP udpBroadcast_;
+  uint32_t lastBroadcastMs_ = 0;
   WebServer server_{80};
   File uploadFile_;
   String uploadFinalPath_;
