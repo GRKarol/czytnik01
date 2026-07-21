@@ -1,5 +1,8 @@
 import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { Capacitor } from "@capacitor/core";
+import { Share } from "@capacitor/share";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import {
   detectFormat,
   parseFile,
@@ -21,6 +24,7 @@ export class ConverterPanel extends LitElement {
   @state() private dragOver = false;
   @state() private bookTitle = "";
   @state() private bookAuthor = "";
+  @state() private shareError = "";
 
   render() {
     return html`
@@ -96,11 +100,14 @@ export class ConverterPanel extends LitElement {
           <li><strong>${formatBytes(new Blob([this.rsvp]).size)}</strong>.rsvp</li>
         </ul>
         <div class="row">
-          <button class="cta" @click=${this.download}>Pobierz .rsvp</button>
+          <button class="cta" @click=${this.download}>
+            ${Capacitor.isNativePlatform() ? "Udostępnij .rsvp" : "Pobierz .rsvp"}
+          </button>
           <button class="cta ghost" disabled title="Wymaga połączenia z urządzeniem">
             Wyślij na urządzenie (wkrótce)
           </button>
         </div>
+        ${this.shareError ? html`<p class="error">${this.shareError}</p>` : ""}
         <details class="preview">
           <summary>Podgląd pierwszych linii</summary>
           <pre>${this.rsvp.split("\n").slice(0, 20).join("\n")}</pre>
@@ -164,18 +171,44 @@ export class ConverterPanel extends LitElement {
     }
   }
 
-  private download = () => {
+  private download = async () => {
     if (!this.book) return;
+    this.shareError = "";
     // Re-serialize z aktualnymi metadanymi (mogły być edytowane).
     const updated = writeRsvp({
       ...this.book,
       metadata: { ...this.book.metadata, title: this.bookTitle, author: this.bookAuthor },
     });
+    const filename = `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\w\- ]+/g, "_")}.rsvp`;
+
+    if (Capacitor.isNativePlatform()) {
+      // W appce natywnej nie ma "pobierania" plików do folderu Downloads w
+      // sensie przeglądarkowym — zamiast tego zapisujemy do cache appki i
+      // otwieramy natywny arkusz "Udostępnij", żeby dało się wysłać plik
+      // znajomemu przez inną appkę (funkcja #8 z wymagań).
+      try {
+        const written = await Filesystem.writeFile({
+          path: filename,
+          data: updated,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+        await Share.share({
+          title: filename,
+          url: written.uri,
+          dialogTitle: "Udostępnij książkę",
+        });
+      } catch (err) {
+        this.shareError = err instanceof Error ? err.message : String(err);
+      }
+      return;
+    }
+
     const blob = new Blob([updated], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\w\- ]+/g, "_")}.rsvp`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };

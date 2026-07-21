@@ -12,15 +12,23 @@
     "format": "prettier --write \"src/**/*.{ts,html,css}\" \"*.{html,ts,json,md}\"",
     "firmware:build": "python3 firmware/tools/export_web_firmware.py",
     "firmware:upload": "cd firmware && pio run -t upload",
-    "firmware:monitor": "cd firmware && pio device monitor"
+    "firmware:monitor": "cd firmware && pio device monitor",
+    "build:capacitor": "tsc --noEmit && vite build --config vite.capacitor.config.ts",
+    "cap:sync": "npm run build:capacitor && npx cap sync android",
+    "cap:open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
     "esp-web-tools": "^10.1.0",
     "jszip": "^3.10.1",
     "lit": "^3.2.0",
     "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/cli": "^8.4.2",
     "@types/node": "^22.19.19",
     "@types/w3c-web-serial": "^1.0.7",
     "@types/web-bluetooth": "^0.0.20",
