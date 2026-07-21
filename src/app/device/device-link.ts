@@ -15,6 +15,13 @@ export interface DeviceLink {
   disconnect(): Promise<void>;
   send(cmd: DeviceCommand): Promise<void>;
   onEvent(handler: (ev: DeviceEvent) => void): () => void;
+  /**
+   * Wywoływane, gdy stan połączenia zmieni się SAM (np. WiFi padło albo
+   * auto-reconnect się udał) — nie przy jawnym connect()/disconnect()
+   * wywołanym z UI. Pozwala appce pokazać "rozłączono" zamiast cicho
+   * zawiesić się w stanie "połączono" z martwym linkiem.
+   */
+  onStatusChange(handler: (connected: boolean) => void): () => void;
 }
 
 export type LinkFactory = () => DeviceLink;

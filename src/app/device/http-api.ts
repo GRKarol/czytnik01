@@ -164,6 +164,10 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
 }
 
 export class HttpDeviceApi implements DeviceApi {
+  // ESP32 jest single-threaded — kolejkujemy PUT/PATCH ustawień, żeby nie
+  // wysłać dwóch naraz (zasada niezawodności z docs/flower-companion-api.md).
+  private settingsQueue: Promise<void> = Promise.resolve();
+
   constructor(private baseUrl: string = DEVICE_AP_BASE_URL) {}
 
   private url(path: string): string {
@@ -208,6 +212,18 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async putSettings(patch: Partial<DeviceSettings>): Promise<DeviceSettings> {
+    // Czeka aż poprzednie zapytanie (sukces albo błąd) się skończy, zanim
+    // wyśle kolejne — bez tego dwa szybkie po sobie PATCH-e (np. z suwaka)
+    // mogłyby dojść do ESP32 w złej kolejności albo się pogubić.
+    const task = this.settingsQueue.then(() => this.putSettingsNow(patch));
+    this.settingsQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
+  }
+
+  private async putSettingsNow(patch: Partial<DeviceSettings>): Promise<DeviceSettings> {
     const res = await fetch(this.url("/api/settings"), {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -259,4 +275,24 @@ export async function pingDevice(baseUrl: string = DEVICE_AP_BASE_URL): Promise<
   } catch {
     return false;
   }
+}
+
+/**
+ * To samo co `pingDevice`, ale próbuje kilka razy zanim odda `false`.
+ *
+ * Zaraz po dołączeniu telefonu do AP czytnika pojedynczy `/api/hello`
+ * potrafi zawieść (urządzenie jeszcze się nie ustatkowało w sieci) — bez
+ * retry appka po cichu zostawała na `MockDeviceApi` mimo że pokazywała
+ * "połączono" (patrz docs/roadmap.md, Faza 6).
+ */
+export async function pingDeviceWithRetry(
+  baseUrl: string = DEVICE_AP_BASE_URL,
+  attempts = 3,
+  delayMs = 800,
+): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    if (await pingDevice(baseUrl)) return true;
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return false;
 }

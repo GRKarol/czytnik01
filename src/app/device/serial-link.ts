@@ -67,6 +67,11 @@ export class SerialLink implements DeviceLink {
     return () => this.handlers.delete(handler);
   }
 
+  onStatusChange(_handler: (connected: boolean) => void): () => void {
+    // USB to tryb advanced/serwisowy — brak auto-reconnect, poza scope.
+    return () => {};
+  }
+
   private async readLoop(): Promise<void> {
     const decoder = new TextDecoder();
     while (this.reader) {

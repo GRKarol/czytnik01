@@ -14,7 +14,7 @@ import "./components/onboarding.element";
 import "./components/pwa-install-dialog.element";
 import "./components/tutorial-wizard.element";
 import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from "./device/api";
-import { HttpDeviceApi, pingDevice } from "./device/http-api";
+import { HttpDeviceApi, pingDeviceWithRetry } from "./device/http-api";
 import { getTutorialStatus } from "./onboarding/onboarding-store";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
@@ -115,6 +115,7 @@ export class CzytnikApp extends LitElement {
 
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
+  private unsubLinkStatus: (() => void) | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -128,6 +129,7 @@ export class CzytnikApp extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.unsubApi?.();
+    this.unsubLinkStatus?.();
     this.removeEventListener("tutorial-close", this.handleTutorialClose);
     this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
   }
@@ -176,6 +178,12 @@ export class CzytnikApp extends LitElement {
           </div>
         </div>
       </header>
+
+      ${this.link !== null && !this.connected
+        ? html`<div class="reconnect-banner">
+            Połączenie z ${DEVICE_LABEL.toLowerCase()}em przerwane — próbuję połączyć ponownie…
+          </div>`
+        : ""}
 
       <main>${this.renderView()}</main>
 
@@ -463,36 +471,55 @@ export class CzytnikApp extends LitElement {
     this.error = null;
     this.connecting = true;
     try {
-      this.link =
+      const link =
         this.chosenTransport === "wifi"
           ? new WifiLink()
           : this.chosenTransport === "bluetooth"
             ? new BluetoothLink()
             : new SerialLink();
-      await this.link.connect();
+      await link.connect();
+
+      // WiFi zawsze musi mieć działające HTTP API — bez tego appka
+      // po cichu zostawała na MockDeviceApi mimo że pokazywała "połączono"
+      // (patrz docs/roadmap.md, Faza 6: to był realny, zdiagnozowany bug —
+      // "stare książki, nic się nie zgrywa" z testów). pingDeviceWithRetry
+      // próbuje kilka razy, zanim appka odda się porażce.
+      if (this.chosenTransport === "wifi") {
+        const reachable = await pingDeviceWithRetry();
+        if (!reachable) {
+          await link.disconnect();
+          throw new Error(
+            "Połączono z siecią, ale czytnik nie odpowiada na zapytania. Sprawdź czy tryb Sync jest wciąż włączony i spróbuj ponownie.",
+          );
+        }
+        setDeviceApi(new HttpDeviceApi());
+      }
+
+      this.link = link;
       this.connected = true;
+      this.unsubLinkStatus = link.onStatusChange((isUp) => {
+        this.connected = isUp;
+        this.error = isUp
+          ? null
+          : "Połączenie z czytnikiem zostało przerwane. Próbuję połączyć ponownie…";
+      });
 
       // Show tutorial wizard if not yet seen (after first device connection)
       if (getTutorialStatus() === "not_seen") {
         this.showTutorial = true;
       }
-
-      // Przełącz API komponentów na real HTTP — biblioteka i ustawienia
-      // od teraz gadają z urządzeniem zamiast z mockiem.
-      // (BLE i USB jeszcze nie mają back-end API, więc dopiero WiFi to robi.)
-      if (this.chosenTransport === "wifi") {
-        const reachable = await pingDevice();
-        if (reachable) setDeviceApi(new HttpDeviceApi());
-      }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.link = null;
+      this.connected = false;
     } finally {
       this.connecting = false;
     }
   };
 
   private disconnect = async () => {
+    this.unsubLinkStatus?.();
+    this.unsubLinkStatus = null;
     await this.link?.disconnect();
     this.link = null;
     this.connected = false;
@@ -633,6 +660,16 @@ export class CzytnikApp extends LitElement {
       border-radius: 50%;
       background: currentColor;
       box-shadow: 0 0 6px currentColor;
+    }
+    .reconnect-banner {
+      margin: 0 16px 10px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(255, 176, 32, 0.16);
+      color: #a35c00;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.85rem;
+      text-align: center;
     }
 
     main {

@@ -78,6 +78,13 @@ export class BluetoothLink implements DeviceLink {
     return () => this.handlers.delete(handler);
   }
 
+  onStatusChange(_handler: (connected: boolean) => void): () => void {
+    // Brak aktywnego wykrywania rozłączenia dla BLE (poza scope obecnej
+    // pracy nad niezawodnością, która skupia się na WiFi). No-op zamiast
+    // udawania czegoś, czego appka faktycznie nie robi.
+    return () => {};
+  }
+
   private onNotify = (e: Event) => {
     const ch = e.target as BluetoothRemoteGATTCharacteristic;
     const value = ch.value;

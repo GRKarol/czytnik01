@@ -17,10 +17,23 @@ export interface WifiLinkOptions {
   baseUrl?: string;
 }
 
+// Keep-alive: sprawdzamy /api/hello co tyle ms. Zgodne z regułą
+// niezawodności z docs/flower-companion-api.md ("keep-alive co 8s,
+// wykrycie rozłączenia w <16s").
+const KEEP_ALIVE_INTERVAL_MS = 8000;
+const KEEP_ALIVE_TIMEOUT_MS = 3000;
+// Backoff prób auto-reconnect po zerwaniu połączenia. Po wyczerpaniu
+// appka zostaje w stanie rozłączonym — użytkownik może spróbować ręcznie.
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000];
+
 export class WifiLink implements DeviceLink {
   private socket: WebSocket | null = null;
   private handlers = new Set<(ev: DeviceEvent) => void>();
+  private statusHandlers = new Set<(connected: boolean) => void>();
   private isConnected = false;
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnecting = false;
+  private manuallyDisconnected = false;
   readonly transport: TransportInfo = { kind: "wifi", label: "WiFi" };
 
   constructor(private opts: WifiLinkOptions = {}) {}
@@ -34,8 +47,16 @@ export class WifiLink implements DeviceLink {
   }
 
   async connect(): Promise<void> {
+    this.manuallyDisconnected = false;
+    await this.attemptConnect();
+  }
+
+  private async attemptConnect(): Promise<void> {
     // 1. Sprawdź czy urządzenie odpowiada na /hello.
-    const hello = await fetch(`${this.base}/api/hello`, { method: "GET" }).catch(() => null);
+    const hello = await fetch(`${this.base}/api/hello`, {
+      method: "GET",
+      signal: AbortSignal.timeout(KEEP_ALIVE_TIMEOUT_MS),
+    }).catch(() => null);
     if (!hello || !hello.ok) {
       // Najczęstsza przyczyna gdy aplikacja jest hostowana na HTTPS
       // (grkarol.github.io): mixed content block — przeglądarka odmawia
@@ -51,35 +72,100 @@ export class WifiLink implements DeviceLink {
       );
     }
 
-    // 2. Otwórz WebSocket na eventy.
+    await this.openSocket();
+    this.isConnected = true;
+    this.startKeepAlive();
+  }
+
+  private async openSocket(): Promise<void> {
     const wsUrl = this.base.replace(/^http/, "ws") + "/api/events";
-    this.socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(wsUrl);
+    this.socket = socket;
     await new Promise<void>((resolve, reject) => {
-      const s = this.socket!;
       const onOpen = () => {
-        s.removeEventListener("error", onErr);
+        socket.removeEventListener("error", onErr);
         resolve();
       };
       const onErr = () => {
-        s.removeEventListener("open", onOpen);
+        socket.removeEventListener("open", onOpen);
         reject(new Error("Nie udało się otworzyć kanału eventów (WebSocket)."));
       };
-      s.addEventListener("open", onOpen, { once: true });
-      s.addEventListener("error", onErr, { once: true });
+      socket.addEventListener("open", onOpen, { once: true });
+      socket.addEventListener("error", onErr, { once: true });
     });
 
-    this.socket.addEventListener("message", (e) => {
+    socket.addEventListener("message", (e) => {
       const ev = parseEvent(typeof e.data === "string" ? e.data : "");
       if (ev) for (const h of this.handlers) h(ev);
     });
-    this.socket.addEventListener("close", () => {
-      this.isConnected = false;
+    socket.addEventListener("close", () => {
+      // Ignoruj zamknięcie starego socketu, jeśli w międzyczasie powstał nowy
+      // (np. po udanym reconnect) — to nie jest realny drop.
+      if (this.socket !== socket) return;
+      this.handleDrop();
     });
+  }
 
-    this.isConnected = true;
+  private startKeepAlive(): void {
+    this.stopKeepAlive();
+    this.keepAliveTimer = setInterval(() => {
+      void this.pingOnce();
+    }, KEEP_ALIVE_INTERVAL_MS);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveTimer !== null) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+  }
+
+  private async pingOnce(): Promise<void> {
+    try {
+      const res = await fetch(`${this.base}/api/hello`, {
+        signal: AbortSignal.timeout(KEEP_ALIVE_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error("hello nie ok");
+    } catch {
+      this.handleDrop();
+    }
+  }
+
+  /** Połączenie padło samo (WebSocket się zamknął albo keep-alive nie dostał odpowiedzi). */
+  private handleDrop(): void {
+    if (!this.isConnected || this.manuallyDisconnected) return;
+    this.isConnected = false;
+    this.stopKeepAlive();
+    this.socket = null;
+    for (const h of this.statusHandlers) h(false);
+    void this.scheduleReconnect();
+  }
+
+  private async scheduleReconnect(): Promise<void> {
+    if (this.reconnecting || this.manuallyDisconnected) return;
+    this.reconnecting = true;
+    try {
+      for (const delay of RECONNECT_DELAYS_MS) {
+        if (this.manuallyDisconnected) return;
+        await new Promise((r) => setTimeout(r, delay));
+        if (this.manuallyDisconnected) return;
+        try {
+          await this.attemptConnect();
+          for (const h of this.statusHandlers) h(true);
+          return;
+        } catch {
+          // spróbuj ponownie po kolejnym opóźnieniu
+        }
+      }
+      // Wyczerpano próby — zostajemy rozłączeni, użytkownik może spróbować ręcznie.
+    } finally {
+      this.reconnecting = false;
+    }
   }
 
   async disconnect(): Promise<void> {
+    this.manuallyDisconnected = true;
+    this.stopKeepAlive();
     this.socket?.close();
     this.socket = null;
     this.isConnected = false;
@@ -99,6 +185,11 @@ export class WifiLink implements DeviceLink {
   onEvent(handler: (ev: DeviceEvent) => void): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  onStatusChange(handler: (connected: boolean) => void): () => void {
+    this.statusHandlers.add(handler);
+    return () => this.statusHandlers.delete(handler);
   }
 
   static isSupported(): boolean {
