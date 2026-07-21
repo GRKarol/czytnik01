@@ -6115,15 +6115,20 @@ void App::updateCompanionSync(uint32_t nowMs) {
   if (nowMs - lastCompanionSyncRenderMs_ >= 1000) {
     lastCompanionSyncRenderMs_ = nowMs;
     if (companionSyncShowQr_ && companionSync_.hasQrCode()) {
-      display_.renderStatusWithQr(polish("Tap: tekst | Wi-Fi", "Tap: text | Wi-Fi"),
-                                  companionSync_.statusLine1(),
+      // "title" tutaj rysuje się DUŻĄ czcionką (jak słowo w RSVP) — musi
+      // zostać krótkie, tak jak było przed tą sesją. Poprzednia wersja
+      // ("Tap: tekst | Wi-Fi") wychodziła poza ekran.
+      display_.renderStatusWithQr("Wi-Fi", companionSync_.statusLine1(),
                                   companionSync_.qrCodeData(), companionSync_.qrCodeSize());
     } else {
+      // line2 to mały tekst (jak URL wcześniej) — tu bezpiecznie mieści się
+      // krótki hint. Ten sam bug (długi tekst w "title" o rozmiarze słowa)
+      // psuł to wcześniej, kiedy hint był w title zamiast tutaj.
       const String hint = companionSync_.hasQrCode()
-                               ? polish("Tap = pokaz QR | Przesun = wroc",
-                                       "Tap = show QR | Swipe = back")
-                               : polish("< Wroc | Sync", "< Back | Sync");
-      display_.renderStatus(hint, companionSync_.statusLine1(), companionSync_.statusLine2());
+                               ? polish("Tap: pokaz QR", "Tap: show QR")
+                               : companionSync_.statusLine2();
+      display_.renderStatus(polish("< Wroc | Sync", "< Back | Sync"),
+                            companionSync_.statusLine1(), hint);
     }
   }
 }
