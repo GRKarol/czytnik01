@@ -6109,6 +6109,17 @@ void App::updateCompanionSync(uint32_t nowMs) {
       const int deltaY = static_cast<int>(ev.y) - static_cast<int>(companionSyncTouchStartY_);
       const bool tapLike =
           abs(deltaX) <= static_cast<int>(kTapSlopPx) && abs(deltaY) <= static_cast<int>(kTapSlopPx);
+      // Tap konkretnie w rogu, gdzie rysuje się "<" (patrz renderStatus:
+      // drawTinyTextAt("<", 4, 4, ...)) zawsze wychodzi — to zgadza się z
+      // tym co użytkownik widzi napisane ("< Wroc"). Zgłoszone 2026-07-21:
+      // napis "Wroc" nic nie robił po tapnięciu, bo cały ekran reagował
+      // tylko na swipe. Reszta ekranu nadal: tap = QR/tekst, swipe = wyjście.
+      const bool tappedBackCorner =
+          tapLike && companionSyncTouchStartX_ < 60 && companionSyncTouchStartY_ < 50;
+      if (tappedBackCorner) {
+        exitCompanionSync(nowMs);
+        return;
+      }
       if (tapLike) {
         if (companionSync_.hasQrCode()) {
           companionSyncShowQr_ = !companionSyncShowQr_;
