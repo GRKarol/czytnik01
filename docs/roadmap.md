@@ -227,16 +227,23 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
       nowe pola w tej sesji (niski priorytet, to tylko fallback UI kiedy
       nikt nie ma appki).
 
-## Faza 7 — Onboarding przez QR
+## Faza 7 — Onboarding przez QR (⚠️ plan skorygowany po realnym użyciu)
 
-- [x] Firmware generuje QR (Faza 3) — tylko trzeba to podciągnąć lokalnie.
-- [ ] Onboarding appki: QR jako **główna** prowadzona ścieżka połączenia
-      ("otwórz aparat, zeskanuj kod na czytniku"), ręczne WiFi ustawienia
-      jako opcja zapasowa, nie domyślna.
-- [ ] *(nice-to-have, po Fazie 5)* Android: `WifiNetworkSpecifier` —
-      jednoklikowe dołączenie do sieci bez wychodzenia z appki i bez
-      aparatu. Niemożliwe do zrobienia na iOS (ograniczenie Apple, nie
-      nasze) — QR zostaje jedyną wspólną ścieżką na obie platformy.
+> **Korekta 2026-07-21:** "QR jako główna ścieżka" (plan poniżej z Fazy 3)
+> okazał się błędnym założeniem po realnym teście — QR "nic nie tłumaczy"
+> i nie jest tym czego Karol chce jako domyślne. Zamiast tego: **ekran
+> Sync na czytniku pokazuje domyślnie tekst** (nazwa sieci + adres),
+> **QR jest dostępny jako opcja po tapnięciu ekranu** (przesunięcie w
+> bok nadal wychodzi z trybu Sync, tak jak wszędzie indziej w menu).
+> Zaimplementowane w `App.cpp`/`App.h` (`companionSyncShowQr_` +
+> rozróżnienie tap/swipe), skompilowane, **czeka na flash razem z resztą
+> Fazy 9**.
+
+- [x] Firmware generuje QR (Faza 3).
+- [x] **Skorygowane:** domyślny widok ekranu Sync to tekst (SSID + URL),
+      tap przełącza na QR, swipe wychodzi — zamiast "QR jako główne".
+- [ ] ~~Android: `WifiNetworkSpecifier` jednoklikowe dołączenie~~ — nie
+      priorytet, skoro tekst i tak jest teraz domyślny i czytelny.
 
 ## Faza 8 — iOS (odroczone)
 

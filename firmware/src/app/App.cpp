@@ -1179,7 +1179,7 @@ void App::setState(AppState nextState, uint32_t nowMs) {
       renderMenu();
       break;
     case AppState::CompanionSync:
-      if (companionSync_.hasQrCode()) {
+      if (companionSyncShowQr_ && companionSync_.hasQrCode()) {
         display_.renderStatusWithQr("Wi-Fi", companionSync_.statusLine1(),
                                     companionSync_.qrCodeData(), companionSync_.qrCodeSize());
       } else {
@@ -6034,6 +6034,8 @@ void App::enterCompanionSync(uint32_t nowMs) {
   pausedTouch_.active = false;
   pausedTouchIntent_ = TouchIntent::None;
   wpmFeedbackVisible_ = false;
+  companionSyncShowQr_ = false;
+  companionSyncTouchActive_ = false;
   display_.renderStatus("Sync", tr(TrKey::StartingWifi), "");
 
   // If auto-sync AP is already running, just transition to CompanionSync state.
@@ -6082,22 +6084,46 @@ void App::updateCompanionSync(uint32_t nowMs) {
     return;
   }
 
-  // Touch anywhere = exit sync (back button)
+  // Tap w miejscu = przełącz tekst/QR. Wyraźne przesunięcie w bok = wyjście
+  // (ten sam próg co reszta gestów w appce, kTapSlopPx). Wcześniej KAŻDY
+  // dotyk wychodził z ekranu, więc nie dało się w ogóle przełączyć na QR bez
+  // wypadnięcia z trybu Sync — zgłoszone 2026-07-21.
   TouchEvent ev;
-  if (touch_.poll(ev) && ev.phase == TouchPhase::End) {
-    exitCompanionSync(nowMs);
-    return;
+  if (touch_.poll(ev)) {
+    if (ev.phase == TouchPhase::Start) {
+      companionSyncTouchActive_ = true;
+      companionSyncTouchStartX_ = ev.x;
+      companionSyncTouchStartY_ = ev.y;
+    } else if (ev.phase == TouchPhase::End && companionSyncTouchActive_) {
+      companionSyncTouchActive_ = false;
+      const int deltaX = static_cast<int>(ev.x) - static_cast<int>(companionSyncTouchStartX_);
+      const int deltaY = static_cast<int>(ev.y) - static_cast<int>(companionSyncTouchStartY_);
+      const bool tapLike =
+          abs(deltaX) <= static_cast<int>(kTapSlopPx) && abs(deltaY) <= static_cast<int>(kTapSlopPx);
+      if (tapLike) {
+        if (companionSync_.hasQrCode()) {
+          companionSyncShowQr_ = !companionSyncShowQr_;
+          lastCompanionSyncRenderMs_ = 0;  // wymuś natychmiastowe przerysowanie
+        }
+      } else {
+        exitCompanionSync(nowMs);
+        return;
+      }
+    }
   }
 
   if (nowMs - lastCompanionSyncRenderMs_ >= 1000) {
     lastCompanionSyncRenderMs_ = nowMs;
-    if (companionSync_.hasQrCode()) {
-      display_.renderStatusWithQr(polish("< Wroc | Wi-Fi", "< Back | Wi-Fi"),
+    if (companionSyncShowQr_ && companionSync_.hasQrCode()) {
+      display_.renderStatusWithQr(polish("Tap: tekst | Wi-Fi", "Tap: text | Wi-Fi"),
                                   companionSync_.statusLine1(),
                                   companionSync_.qrCodeData(), companionSync_.qrCodeSize());
     } else {
-      display_.renderStatus(polish("< Wroc | Sync", "< Back | Sync"),
-                            companionSync_.statusLine1(), companionSync_.statusLine2());
+      const String hint = companionSync_.hasQrCode()
+                               ? polish("Tap = pokaz QR | Przesun = wroc",
+                                       "Tap = show QR | Swipe = back")
+                               : polish("< Wroc | Sync", "< Back | Sync");
+      display_.renderStatus(hint, companionSync_.statusLine1(), companionSync_.statusLine2());
     }
   }
 }

@@ -572,6 +572,13 @@ class App {
   uint32_t lastCompanionSyncRenderMs_ = 0;
   uint32_t autoSyncStartedMs_ = 0;
   bool autoSyncActive_ = false;
+  // Ekran Sync: domyślnie tekst (SSID + adres), QR na żądanie po tapnięciu —
+  // zgłoszone 2026-07-21, że sam QR "nic nie tłumaczy". Tap = przełącz widok,
+  // wyraźne przesunięcie w bok = wyjście (jak wszędzie indziej w menu).
+  bool companionSyncShowQr_ = false;
+  bool companionSyncTouchActive_ = false;
+  uint16_t companionSyncTouchStartX_ = 0;
+  uint16_t companionSyncTouchStartY_ = 0;
   bool autoSyncClientConnected_ = false;
   bool pluginSyncDone_ = false;
   uint32_t lastReaderTapMs_ = 0;
