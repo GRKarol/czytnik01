@@ -80,6 +80,9 @@ class CompanionSyncManager {
   void handleWifi();
   void handleRssFeeds();
   void handleBookDelete();
+  // Usuwa save pointy powiązane z tą ścieżką książki po jej skasowaniu —
+  // wcześniej zostawały osierocone w NVS (zgłoszone jako bug 2026-07-21).
+  void removeSavePointsForBook(const String &bookPath);
   void handleBooks();
   void handleBookUpload();
   void handleOta();

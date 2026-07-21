@@ -721,6 +721,11 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 10px;
+      /* Fieldsety mają domyślnie min-width: min-content w przeglądarkach —
+         bez tego rząd segmentów z długimi etykietami (np. nazwy kolorów)
+         rozpycha całą sekcję szerzej niż ekran zamiast się zawinąć. To był
+         powód "Typografia RSVP zbyt szeroka, dziwnie się przesuwa". */
+      min-width: 0;
     }
     fieldset.group.dev {
       border-color: var(--accent);
@@ -808,15 +813,16 @@ export class SettingsPanel extends LitElement {
         sans-serif;
     }
     .seg-buttons {
-      display: grid;
-      grid-auto-flow: column;
-      grid-auto-columns: 1fr;
+      display: flex;
+      flex-wrap: wrap;
       gap: 4px;
       padding: 3px;
-      border-radius: 999px;
+      border-radius: 14px;
       background: var(--line);
     }
     .seg-buttons button {
+      flex: 1 1 auto;
+      min-width: max-content;
       padding: 8px 10px;
       border: 0;
       border-radius: 999px;

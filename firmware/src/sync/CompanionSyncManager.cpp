@@ -1147,6 +1147,65 @@ void CompanionSyncManager::handleBooks() {
   uploadFinalPath_ = "";
 }
 
+// Save pointy są w NVS pod sp_count/sp_N_name/sp_N_book/sp_N_titl/sp_N_word/
+// sp_N_pct (ten sam schemat co App::persistSavePoints() w App.cpp — ta klasa
+// nie ma dostępu do App::savePoints_ w pamięci, więc operujemy bezpośrednio
+// na Preferences; App i tak przeładowuje listę z NVS przy każdym otwarciu
+// ekranu Save Points, więc nie ma ryzyka nadpisania starą kopią z pamięci).
+void CompanionSyncManager::removeSavePointsForBook(const String &bookPath) {
+  const uint8_t count = preferences_.getUChar("sp_count", 0);
+  if (count == 0) {
+    return;
+  }
+
+  struct SavePointEntry {
+    String name;
+    String book;
+    String title;
+    uint32_t word;
+    uint8_t pct;
+  };
+  std::vector<SavePointEntry> kept;
+  kept.reserve(count);
+  for (uint8_t i = 0; i < count; ++i) {
+    const String prefix = "sp_" + String(static_cast<unsigned int>(i)) + "_";
+    const String book = preferences_.getString((prefix + "book").c_str(), "");
+    if (book == bookPath) {
+      continue;  // usunięta książka — porzucamy powiązany save point
+    }
+    SavePointEntry entry;
+    entry.name = preferences_.getString((prefix + "name").c_str(), "");
+    entry.book = book;
+    entry.title = preferences_.getString((prefix + "titl").c_str(), "");
+    entry.word = preferences_.getUInt((prefix + "word").c_str(), 0);
+    entry.pct = preferences_.getUChar((prefix + "pct").c_str(), 0);
+    kept.push_back(entry);
+  }
+
+  if (kept.size() == count) {
+    return;  // nic nie pasowało, nie ma czego czyścić
+  }
+
+  preferences_.putUChar("sp_count", static_cast<uint8_t>(kept.size()));
+  for (size_t i = 0; i < kept.size(); ++i) {
+    const String prefix = "sp_" + String(static_cast<unsigned int>(i)) + "_";
+    preferences_.putString((prefix + "name").c_str(), kept[i].name);
+    preferences_.putString((prefix + "book").c_str(), kept[i].book);
+    preferences_.putString((prefix + "titl").c_str(), kept[i].title);
+    preferences_.putUInt((prefix + "word").c_str(), kept[i].word);
+    preferences_.putUChar((prefix + "pct").c_str(), kept[i].pct);
+  }
+  for (uint8_t i = static_cast<uint8_t>(kept.size()); i < count; ++i) {
+    const String prefix = "sp_" + String(static_cast<unsigned int>(i)) + "_";
+    preferences_.remove((prefix + "name").c_str());
+    preferences_.remove((prefix + "book").c_str());
+    preferences_.remove((prefix + "titl").c_str());
+    preferences_.remove((prefix + "word").c_str());
+    preferences_.remove((prefix + "pct").c_str());
+  }
+  logLine("Usunieto " + String(count - kept.size()) + " save point(y) dla: " + bookPath);
+}
+
 void CompanionSyncManager::handleBookDelete() {
   sendCorsHeaders();
   String requested = server_.arg("name");
@@ -1208,6 +1267,8 @@ void CompanionSyncManager::handleBookDelete() {
     server_.send(500, "application/json", "{\"ok\":false,\"error\":\"Delete failed\"}");
     return;
   }
+
+  removeSavePointsForBook(path);
 
   statusLine1_ = "Book deleted";
   statusLine2_ = filename;

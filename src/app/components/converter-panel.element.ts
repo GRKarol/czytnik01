@@ -25,6 +25,8 @@ export class ConverterPanel extends LitElement {
   @state() private bookTitle = "";
   @state() private bookAuthor = "";
   @state() private shareError = "";
+  @state() private showPaste = false;
+  @state() private pastedText = "";
 
   render() {
     return html`
@@ -50,6 +52,31 @@ export class ConverterPanel extends LitElement {
           >
         </label>
       </div>
+
+      <button class="paste-toggle" @click=${() => (this.showPaste = !this.showPaste)}>
+        ${this.showPaste ? "Schowaj" : "Wklej tekst zamiast pliku"}
+      </button>
+
+      ${this.showPaste
+        ? html`
+            <section class="paste-box">
+              <textarea
+                placeholder="Wklej tutaj tekst artykułu, strony, notatki — cokolwiek chcesz przeczytać na czytniku."
+                .value=${this.pastedText}
+                @input=${(e: InputEvent) => {
+                  this.pastedText = (e.target as HTMLTextAreaElement).value;
+                }}
+              ></textarea>
+              <button
+                class="cta"
+                ?disabled=${!this.pastedText.trim()}
+                @click=${this.handlePasteSubmit}
+              >
+                Zamień na książkę
+              </button>
+            </section>
+          `
+        : ""}
 
       ${this.stage === "parsing"
         ? html`<p class="status">Parsuję <strong>${this.fileName}</strong>…</p>`
@@ -139,6 +166,20 @@ export class ConverterPanel extends LitElement {
     this.dragOver = false;
     const file = e.dataTransfer?.files?.[0];
     if (file) void this.handleFile(file);
+  };
+
+  private handlePasteSubmit = () => {
+    const text = this.pastedText.trim();
+    if (!text) return;
+    // Wklejony tekst traktujemy jak zwykły .txt — reszta pipeline'u
+    // (parseTxt, edycja metadanych, pobieranie/udostępnianie) jest
+    // identyczna jak dla wgranego pliku.
+    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
+    const guessedName = (firstLine.slice(0, 40) || "wklejony-tekst").replace(/[^\w\- ]+/g, "_");
+    const file = new File([text], `${guessedName}.txt`, { type: "text/plain" });
+    this.showPaste = false;
+    this.pastedText = "";
+    void this.handleFile(file);
   };
 
   private async handleFile(file: File) {
@@ -252,6 +293,37 @@ export class ConverterPanel extends LitElement {
     .formats {
       margin-top: 6px;
       font-size: 0.78rem;
+    }
+    .paste-toggle {
+      margin-top: 10px;
+      background: none;
+      border: none;
+      color: var(--accent);
+      font:
+        600 0.88rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+    .paste-box {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .paste-box textarea {
+      min-height: 160px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper-tint);
+      color: var(--ink);
+      font:
+        0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      resize: vertical;
     }
     .status {
       margin: 0;
