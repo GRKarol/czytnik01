@@ -12,6 +12,8 @@ import {
   type Typeface,
   type FooterMetric,
   type BatteryLabel,
+  type NavMode,
+  type ScreensaverMode,
 } from "../device/api";
 import { setLang } from "../i18n/index";
 import { deviceLangToSupported } from "../i18n/lang-map";
@@ -29,7 +31,7 @@ const LANG_LABEL: Record<Language, string> = {
   de: "Deutsch",
   es: "Español",
   fr: "Français",
-  it: "Italiano",
+  ro: "Română",
 };
 const HAND_LABEL: Record<ReaderHand, string> = { right: "Prawa", left: "Lewa" };
 const MODE_LABEL: Record<ReaderMode, string> = { rsvp: "RSVP", scroll: "Przewijanie" };
@@ -85,6 +87,58 @@ const BATTERY_LABEL_LABEL: Record<BatteryLabel, string> = {
   percent: "Procent",
   time_remaining: "Czas",
   voltage: "Napięcie",
+};
+
+// Dopisane po audycie parytetu firmware<->appka (2026-07-21) —
+// docs/roadmap.md, Faza 6.
+const NAV_MODE_LABEL: Record<NavMode, string> = { swipe: "Gesty", dpad: "D-Pad" };
+const FOCUS_COLOR_LABEL: Record<number, string> = {
+  0: "Czerwony",
+  1: "Niebieski",
+  2: "Zielony",
+  3: "Żółty",
+  4: "Pomarańczowy",
+  5: "Fioletowy",
+};
+const SCREENSAVER_MODE_LABEL: Record<ScreensaverMode, string> = {
+  life: "Life",
+  maze: "Labirynt",
+  voronoi: "Voronoi",
+  stars: "Gwiazdy",
+  matrix: "Matrix",
+  screen_off: "Wyłącz ekran",
+};
+// Wartości minut zgodne z kScreensaverTimeoutMinutes/kScreensaverAutoOffMinutes/
+// kScreensaverSleepGuardMinutes w firmware/src/app/App.cpp.
+const SCREENSAVER_TIMEOUT_LABEL: Record<number, string> = {
+  0: "1 min",
+  1: "2 min",
+  2: "3 min",
+  3: "5 min",
+  4: "10 min",
+  5: "15 min",
+  6: "20 min",
+  7: "30 min",
+};
+const SCREENSAVER_AUTOOFF_LABEL: Record<number, string> = {
+  0: "Nigdy",
+  1: "5 min",
+  2: "10 min",
+  3: "15 min",
+  4: "20 min",
+  5: "30 min",
+  6: "45 min",
+  7: "60 min",
+};
+const SCREENSAVER_SLEEPGUARD_LABEL: Record<number, string> = {
+  0: "Wyłączone",
+  1: "5 min",
+  2: "10 min",
+  3: "15 min",
+  4: "20 min",
+  5: "30 min",
+  6: "45 min",
+  7: "60 min",
 };
 
 type SettingsSubView = "settings" | "help";
@@ -220,6 +274,13 @@ export class SettingsPanel extends LitElement {
                 "Krój czcionki",
               )}
               ${this.toggle("focusHighlight", "Podświetlenie fokusowe", s.focusHighlight)}
+              ${this.segmented(
+                "focusColorIndex",
+                s.focusColorIndex,
+                [0, 1, 2, 3, 4, 5],
+                FOCUS_COLOR_LABEL,
+                "Kolor podświetlenia",
+              )}
               ${this.slider("tracking", "Tracking (odstępy)", s.tracking, -2, 3, 1, "")}
               ${this.slider("anchorPercent", "Pozycja kotwicy", s.anchorPercent, 30, 40, 1, "%")}
               ${this.slider("guideWidth", "Szerokość prowadnicy", s.guideWidth, 12, 30, 1, "px")}
@@ -308,6 +369,56 @@ export class SettingsPanel extends LitElement {
           BATTERY_LABEL_LABEL,
           "Etykieta baterii",
         )}
+        ${this.toggle(
+          "accurateTimeEstimate",
+          "Dokładny szacowany czas",
+          s.accurateTimeEstimate,
+        )}
+        ${this.toggle("savePointButtonVisible", "Przycisk zakładki", s.savePointButtonVisible)}
+        ${this.toggle("showHelpHints", "Podpowiedzi na urządzeniu", s.showHelpHints)}
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Sterowanie</legend>
+        ${this.segmented(
+          "navMode",
+          s.navMode,
+          ["swipe", "dpad"],
+          NAV_MODE_LABEL,
+          "Nawigacja w menu",
+        )}
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Wygaszacz ekranu</legend>
+        ${this.segmented(
+          "screensaverMode",
+          s.screensaverMode,
+          ["life", "maze", "voronoi", "stars", "matrix", "screen_off"],
+          SCREENSAVER_MODE_LABEL,
+          "Animacja",
+        )}
+        ${this.segmented(
+          "screensaverTimeoutIndex",
+          s.screensaverTimeoutIndex,
+          [0, 1, 2, 3, 4, 5, 6, 7],
+          SCREENSAVER_TIMEOUT_LABEL,
+          "Czas do wygaszacza",
+        )}
+        ${this.segmented(
+          "screensaverAutoOffIndex",
+          s.screensaverAutoOffIndex,
+          [0, 1, 2, 3, 4, 5, 6, 7],
+          SCREENSAVER_AUTOOFF_LABEL,
+          "Auto-wyłączenie",
+        )}
+        ${this.segmented(
+          "screensaverSleepGuardIndex",
+          s.screensaverSleepGuardIndex,
+          [0, 1, 2, 3, 4, 5, 6, 7],
+          SCREENSAVER_SLEEPGUARD_LABEL,
+          "Ochrona przed uśpieniem",
+        )}
       </fieldset>
 
       <fieldset class="group">
@@ -335,6 +446,8 @@ export class SettingsPanel extends LitElement {
                 urządzeniu też nic nie widzi, dopóki tu jest „On".
               </p>
               ${this.toggle("devMode", "Tryb developera", s.devMode)}
+              ${this.toggle("otaAutoCheck", "Auto-sprawdzanie aktualizacji", s.otaAutoCheck)}
+              ${this.toggle("bleEnabled", "Bluetooth (peryferium)", s.bleEnabled)}
               <p class="muted small">
                 Po wyłączeniu trybu developera advanced ustawienia (OTA owner, Auto OTA, RSS feed
                 editor, etc.) znikają zarówno z urządzenia jak i z tej aplikacji.

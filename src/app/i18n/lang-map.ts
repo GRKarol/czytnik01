@@ -5,9 +5,10 @@
  * Firmware NVS mapping:
  *   0 = en, 1 = es, 2 = fr, 3 = de, 4 = ro, 5 = pl
  *
- * The device API Language type uses string codes that mostly overlap
- * with SupportedLang, except "it" (Italian) which isn't supported
- * by the i18n module — it falls back to Polish (app default).
+ * This is the single source of truth for that mapping — device/http-api.ts
+ * imports UI_LANG_INDEX_MAP directly instead of keeping its own copy (it
+ * used to have a separate, incorrect hardcoded array that didn't match
+ * this one, which was the cause of wrong language sync with the device).
  */
 
 import type { SupportedLang } from "./index";
@@ -26,8 +27,9 @@ export const UI_LANG_INDEX_MAP: Record<number, SupportedLang> = {
 
 /**
  * Mapping from device API Language string to SupportedLang.
- * Handles both the current app Language type and firmware-reported codes.
- * "it" (Italian) is not supported by the i18n module — defaults to "pl".
+ * The device API Language type is now exactly SupportedLang, so this is
+ * an identity map — kept as a function for callers that only have a
+ * loose string (e.g. from JSON) rather than the typed union.
  */
 const DEVICE_LANG_TO_SUPPORTED: Record<string, SupportedLang> = {
   en: "en",
@@ -36,7 +38,6 @@ const DEVICE_LANG_TO_SUPPORTED: Record<string, SupportedLang> = {
   de: "de",
   pl: "pl",
   ro: "ro",
-  it: "pl", // Italian not supported by i18n → fall back to Polish
 };
 
 /**

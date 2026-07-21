@@ -175,6 +175,57 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       "pill" w headerze zamiast cichego zawieszenia w stanie "połączono".
 - [x] Kolejkowanie `PUT /api/settings` w `http-api.ts` — dwa szybkie po
       sobie zapisy ustawień (np. z suwaka) nie wyścigują się już do ESP32.
+- [x] **Pasek nawigacji zawsze widoczny.** `:host` miał `min-height: 100vh`,
+      co pozwalało całej stronie rosnąć wyżej niż ekran i spychało pasek pod
+      dół — trzeba było przewijać żeby go zobaczyć. Zmienione na sztywne
+      `height: 100vh` + `overflow: hidden`, `main` przewija się wewnętrznie.
+- [x] **Bug z językami — potwierdzony i naprawiony.** Dwie różne mapy tego
+      samego indeksu języka firmware istniały równolegle: poprawna w
+      `src/app/i18n/lang-map.ts` (`0=en,1=es,2=fr,3=de,4=ro,5=pl`) i
+      **błędna** w `src/app/device/http-api.ts`
+      (`["pl","en","de","es","fr","it"]` — z włoskim, którego firmware nie
+      obsługuje). Appka wysyłała/czytała zupełnie inny język niż myślała.
+      Naprawa: `http-api.ts` importuje teraz `UI_LANG_INDEX_MAP` zamiast
+      trzymać własną kopię. Tłumaczenia w samym firmware sprawdzone —
+      kompletne dla wszystkich 6 języków (123 klucze, zero braków).
+
+## Faza 9 — Pełny parytet ustawień firmware ↔ appka
+
+> **Status 2026-07-21:** audyt + implementacja zrobione i **firmware
+> kompiluje się bez błędów** (`pio run -e waveshare_esp32s3`, RAM 23%,
+> Flash 41%). **Nie wgrane jeszcze na fizyczny czytnik** — to osobna,
+> bardziej ryzykowna decyzja (przeflashowanie jedynego dostępnego
+> urządzenia), do wyraźnego potwierdzenia zanim to zrobię.
+
+Audyt: porównałem każdy klucz NVS w `firmware/src/app/App.cpp` (49 kluczy)
+z tym co faktycznie wystawia `/api/settings` w `CompanionSyncManager.cpp`.
+Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
+`settings-panel.element.ts` — wszystko już zaimplementowane):
+
+- [x] `navMode` (Swipe/D-Pad) — to jest dokładnie "rodzaj sterowania",
+      o które prosiłeś. Nowa sekcja `input` w JSON.
+- [x] `focusColorIndex` (kolor podświetlenia ORP, 0-5) — dopisany do sekcji
+      `typography`.
+- [x] `savePointButtonVisible`, `showHelpHints` — dopisane do `display`.
+- [x] Cała nowa sekcja `screensaver`: `mode`, `timeoutIndex`,
+      `autoOffIndex`, `sleepGuardIndex`.
+- [x] Nowa sekcja `connectivity`: `bleEnabled`, `otaAutoCheck` — dodane w
+      appce jako pozycje w sekcji Developer (zgodnie z komentarzem, który
+      już to zapowiadał w kodzie, ale nigdy nie było zaimplementowane).
+- [x] **Naprawiony martwy kod:** `accurateTimeEstimate` było zawsze
+      zwracane jako `true` i zapis zawsze wymuszał `true` niezależnie od
+      tego co appka wysłała — w `App.cpp` `accurateTimeEstimateEnabled_`
+      było zahardkodowane, NVS w ogóle nie było czytane. Naprawione w obu
+      miejscach naraz.
+- [ ] **Nie wgrane na czytnik.** Wymaga: `pio run -e waveshare_esp32s3 -t
+      upload` (kabel USB) albo zbudowanie `.bin` i instalacja przez OTA z
+      poziomu appki. Zanim to zrobię — potwierdź, że mogę przeflashować
+      Twoje jedyne urządzenie testowe.
+- [ ] Wbudowana strona web companion w samym firmware
+      (`kWebCompanionHtml` w `CompanionSyncManager.cpp`) ma **własny**,
+      osobny JS do wczytywania/zapisywania ustawień — nie zaktualizowana o
+      nowe pola w tej sesji (niski priorytet, to tylko fallback UI kiedy
+      nikt nie ma appki).
 
 ## Faza 7 — Onboarding przez QR
 
@@ -217,3 +268,7 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
 - Zmiany testowane lokalnie i na realnym telefonie przed pushem.
 - Push/PR na GitHub tylko po wyraźnym potwierdzeniu — za każdym razem, nie
   jednorazowo.
+- **Appka i firmware rozwijają się razem.** Każdy nowy release firmware
+  (nowe ustawienie, nowa funkcja) powinien pociągać za sobą audyt: czy
+  appka to wystawia? Faza 9 (parytet ustawień) to pierwszy taki przegląd —
+  kolejne powinny się dziać cyklicznie, nie tylko raz.

@@ -62,6 +62,18 @@ constexpr const char *kPrefScrollLineSpacing = "sc_line_sp";
 constexpr const char *kPrefScrollMargin = "sc_margin";
 constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
+// Ustawienia dopisane po audycie parytetu appka<->firmware (2026-07-21) —
+// klucze NVS dzielone z App.cpp, wcześniej w ogóle niewystawione przez API.
+constexpr const char *kPrefNavMode = "nav_mode";
+constexpr const char *kPrefFocusColorIndex = "foc_clr";
+constexpr const char *kPrefSavePointButtonVisible = "sp_btn";
+constexpr const char *kPrefScreensaverMode = "scrn_sv";
+constexpr const char *kPrefScreensaverTimeout = "scrn_tmo";
+constexpr const char *kPrefScreensaverAutoOff = "scrn_aof";
+constexpr const char *kPrefScreensaverSleepGuard = "scrn_slp";
+constexpr const char *kPrefOtaAuto = "ota_auto";
+constexpr const char *kPrefBleEnabled = "ble_on";
+constexpr const char *kPrefShowHelpHints = "help_hints";
 constexpr uint16_t kDefaultWpm = 300;
 constexpr uint16_t kMinWpm = 10;
 constexpr uint16_t kMaxWpm = 1000;
@@ -94,6 +106,20 @@ constexpr uint8_t kMaxScrollLineSpacing = 2;
 constexpr uint8_t kDefaultScrollLineSpacing = 1;
 constexpr uint8_t kMaxScrollMargin = 2;
 constexpr uint8_t kDefaultScrollMargin = 1;
+constexpr uint8_t kMaxFocusColorIndex = 5;
+constexpr uint8_t kMaxNavMode = 1;
+constexpr uint8_t kMaxSavePointButtonVisible = 1;
+// ScreensaverMode w App.h NIE jest ciągły (Life=0, Maze=2..ScreenOff=6, brak 1) —
+// enumLabel()/enumValue() zakładają ciągłość, więc dla tego pola nie da się
+// użyć wspólnego helpera. Indeks 1 nigdy nie jest ustawiany przez firmware,
+// zostaje tu tylko jako placeholder żeby pozycje w tablicy odpowiadały
+// wartościom enuma.
+constexpr const char *const kScreensaverModeLabels[] = {
+    "life", "_unused", "maze", "voronoi", "stars", "matrix", "screen_off"};
+constexpr size_t kScreensaverModeLabelCount = 7;
+constexpr uint8_t kMaxScreensaverTimeoutIndex = 7;   // kScreensaverTimeoutMinutes w App.cpp
+constexpr uint8_t kMaxScreensaverAutoOffIndex = 7;   // kScreensaverAutoOffMinutes w App.cpp
+constexpr uint8_t kMaxScreensaverSleepGuardIndex = 7; // kScreensaverSleepGuardMinutes w App.cpp
 
 const char kWebCompanionHtml[] PROGMEM = R"HTML(<!doctype html>
 <html lang="pl">
@@ -1882,8 +1908,23 @@ String CompanionSyncManager::settingsJson() {
   const uint8_t scrollMargin = static_cast<uint8_t>(
       clampInt(preferences_.getUChar(kPrefScrollMargin, kDefaultScrollMargin), 0, kMaxScrollMargin));
 
+  // Ustawienia dopisane po audycie parytetu (2026-07-21) — zob. komentarz
+  // przy kPrefNavMode wyżej.
+  const uint8_t focusColorIndex = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefFocusColorIndex, 0), 0, kMaxFocusColorIndex));
+  const uint8_t navMode =
+      static_cast<uint8_t>(clampInt(preferences_.getUChar(kPrefNavMode, 0), 0, kMaxNavMode));
+  const uint8_t screensaverMode = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScreensaverMode, 0), 0, kScreensaverModeLabelCount - 1));
+  const uint8_t screensaverTimeoutIdx = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScreensaverTimeout, 2), 0, kMaxScreensaverTimeoutIndex));
+  const uint8_t screensaverAutoOffIdx = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScreensaverAutoOff, 0), 0, kMaxScreensaverAutoOffIndex));
+  const uint8_t screensaverSleepGuardIdx = static_cast<uint8_t>(
+      clampInt(preferences_.getUChar(kPrefScreensaverSleepGuard, 0), 0, kMaxScreensaverSleepGuardIndex));
+
   String body;
-  body.reserve(1250);
+  body.reserve(1700);
   body += "{\"ok\":true,\"version\":1";
   body += ",\"reading\":{";
   body += "\"wpm\":" + String(wpm);
@@ -1893,7 +1934,11 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"pauseMode\":\"";
   body += enumLabel(pauseMode, pauseModeLabels, 2);
   body += "\"";
-  body += ",\"accurateTimeEstimate\":true";
+  // Wcześniej zawsze zwracało "true" i ignorowało zapis (patrz applySettingsJson) —
+  // App.cpp też miało accurateTimeEstimateEnabled_ zahardkodowane na true. Naprawione
+  // razem w tej sesji, żeby to ustawienie faktycznie coś zmieniało.
+  body += ",\"accurateTimeEstimate\":" +
+          String(preferences_.getBool(kPrefAccurateTime, true) ? "true" : "false");
   body += ",\"pacing\":{\"longWordMs\":" + String(longDelay) +
           ",\"complexWordMs\":" + String(complexDelay) +
           ",\"punctuationMs\":" + String(punctuationDelay) + "}";
@@ -1922,6 +1967,10 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"phantomWords\":" +
           String(preferences_.getBool(kPrefPhantomWords, true) ? "true" : "false");
   body += ",\"fontSizeIndex\":" + String(fontSize);
+  body += ",\"savePointButton\":" +
+          String(preferences_.getBool(kPrefSavePointButtonVisible, true) ? "true" : "false");
+  body += ",\"showHelpHints\":" +
+          String(preferences_.getBool(kPrefShowHelpHints, true) ? "true" : "false");
   body += "}";
   body += ",\"typography\":{";
   body += "\"typeface\":\"";
@@ -1933,6 +1982,24 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"anchorPercent\":" + String(anchor);
   body += ",\"guideWidth\":" + String(guideWidth);
   body += ",\"guideGap\":" + String(guideGap);
+  body += ",\"focusColorIndex\":" + String(focusColorIndex);
+  body += "}";
+  body += ",\"input\":{\"navMode\":\"";
+  body += navMode == 1 ? "dpad" : "swipe";
+  body += "\"}";
+  body += ",\"screensaver\":{\"mode\":\"";
+  body += screensaverMode < kScreensaverModeLabelCount ? kScreensaverModeLabels[screensaverMode]
+                                                        : kScreensaverModeLabels[0];
+  body += "\"";
+  body += ",\"timeoutIndex\":" + String(screensaverTimeoutIdx);
+  body += ",\"autoOffIndex\":" + String(screensaverAutoOffIdx);
+  body += ",\"sleepGuardIndex\":" + String(screensaverSleepGuardIdx);
+  body += "}";
+  body += ",\"connectivity\":{";
+  body += "\"bleEnabled\":" +
+          String(preferences_.getBool(kPrefBleEnabled, false) ? "true" : "false");
+  body += ",\"otaAutoCheck\":" +
+          String(preferences_.getBool(kPrefOtaAuto, true) ? "true" : "false");
   body += "}";
   body += ",\"limits\":{";
   body += "\"wpm\":{\"min\":" + String(kMinWpm) + ",\"max\":" + String(kMaxWpm) + "}";
@@ -1946,6 +2013,13 @@ String CompanionSyncManager::settingsJson() {
           ",\"max\":" + String(kMaxTypographyGuideWidth) + "}";
   body += ",\"guideGap\":{\"min\":" + String(kMinTypographyGuideGap) +
           ",\"max\":" + String(kMaxTypographyGuideGap) + "}";
+  body += ",\"focusColorIndex\":{\"min\":0,\"max\":" + String(kMaxFocusColorIndex) + "}";
+  body += ",\"screensaverTimeoutIndex\":{\"min\":0,\"max\":" +
+          String(kMaxScreensaverTimeoutIndex) + "}";
+  body += ",\"screensaverAutoOffIndex\":{\"min\":0,\"max\":" +
+          String(kMaxScreensaverAutoOffIndex) + "}";
+  body += ",\"screensaverSleepGuardIndex\":{\"min\":0,\"max\":" +
+          String(kMaxScreensaverSleepGuardIndex) + "}";
   body += "}";
   body += ",\"scroll\":{";
   body += "\"scrollFontSize\":" + String(scrollFontSize);
@@ -2152,6 +2226,70 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
   // Klucz preferencji jest dzielony z App.cpp (`kPrefDevMode = "dev_mode"`).
   if (readJsonBool(body, "devMode", boolValue)) {
     preferences_.putBool("dev_mode", boolValue);
+  }
+
+  // Pola dopisane po audycie parytetu appka<->firmware (2026-07-21) —
+  // wcześniej w ogóle niedostępne z poziomu /api/settings.
+  if (readJsonBool(body, "accurateTimeEstimate", boolValue)) {
+    preferences_.putBool(kPrefAccurateTime, boolValue);
+  }
+  if (readJsonBool(body, "savePointButton", boolValue)) {
+    preferences_.putBool(kPrefSavePointButtonVisible, boolValue);
+  }
+  if (readJsonBool(body, "showHelpHints", boolValue)) {
+    preferences_.putBool(kPrefShowHelpHints, boolValue);
+  }
+  if (readJsonBool(body, "bleEnabled", boolValue)) {
+    preferences_.putBool(kPrefBleEnabled, boolValue);
+  }
+  if (readJsonBool(body, "otaAutoCheck", boolValue)) {
+    preferences_.putBool(kPrefOtaAuto, boolValue);
+  }
+  if (readJsonInt(body, "focusColorIndex", intValue)) {
+    if (intValue < 0 || intValue > kMaxFocusColorIndex) {
+      error = "focusColorIndex must be between 0 and 5";
+      return false;
+    }
+    preferences_.putUChar(kPrefFocusColorIndex, static_cast<uint8_t>(intValue));
+  }
+  if (readJsonString(body, "navMode", stringValue)) {
+    if (stringValue == "swipe") {
+      preferences_.putUChar(kPrefNavMode, 0);
+    } else if (stringValue == "dpad") {
+      preferences_.putUChar(kPrefNavMode, 1);
+    } else {
+      error = "navMode must be swipe or dpad";
+      return false;
+    }
+  }
+  if (readJsonString(body, "screensaverMode", stringValue)) {
+    const int value = enumValue(stringValue, kScreensaverModeLabels, kScreensaverModeLabelCount);
+    if (value < 0 || value == 1) {
+      error = "screensaverMode must be life, maze, voronoi, stars, matrix, or screen_off";
+      return false;
+    }
+    preferences_.putUChar(kPrefScreensaverMode, static_cast<uint8_t>(value));
+  }
+  if (readJsonInt(body, "screensaverTimeoutIndex", intValue)) {
+    if (intValue < 0 || intValue > kMaxScreensaverTimeoutIndex) {
+      error = "screensaverTimeoutIndex must be between 0 and 7";
+      return false;
+    }
+    preferences_.putUChar(kPrefScreensaverTimeout, static_cast<uint8_t>(intValue));
+  }
+  if (readJsonInt(body, "screensaverAutoOffIndex", intValue)) {
+    if (intValue < 0 || intValue > kMaxScreensaverAutoOffIndex) {
+      error = "screensaverAutoOffIndex must be between 0 and 7";
+      return false;
+    }
+    preferences_.putUChar(kPrefScreensaverAutoOff, static_cast<uint8_t>(intValue));
+  }
+  if (readJsonInt(body, "screensaverSleepGuardIndex", intValue)) {
+    if (intValue < 0 || intValue > kMaxScreensaverSleepGuardIndex) {
+      error = "screensaverSleepGuardIndex must be between 0 and 7";
+      return false;
+    }
+    preferences_.putUChar(kPrefScreensaverSleepGuard, static_cast<uint8_t>(intValue));
   }
 
   return true;

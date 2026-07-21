@@ -8,13 +8,15 @@
  */
 
 export type Theme = "light" | "dark" | "night";
-export type Language = "pl" | "en" | "de" | "es" | "fr" | "it";
+export type Language = "pl" | "en" | "de" | "es" | "fr" | "ro";
 export type ReaderHand = "right" | "left";
 export type ReaderMode = "rsvp" | "scroll";
 export type PauseBehaviour = "tap" | "long-press" | "auto";
 export type Typeface = "standard" | "open_dyslexic" | "atkinson";
 export type FooterMetric = "percentage" | "chapter_time" | "book_time";
 export type BatteryLabel = "percent" | "time_remaining" | "voltage";
+export type NavMode = "swipe" | "dpad";
+export type ScreensaverMode = "life" | "maze" | "voronoi" | "stars" | "matrix" | "screen_off";
 
 export interface DeviceSettings {
   theme: Theme;
@@ -27,9 +29,12 @@ export interface DeviceSettings {
   longWordDelayMs: number;
   complexWordDelayMs: number;
   punctuationDelayMs: number;
+  accurateTimeEstimate: boolean;
   showBatteryWhileReading: boolean;
   showChapterWhileReading: boolean;
   showPercentWhileReading: boolean;
+  savePointButtonVisible: boolean;
+  showHelpHints: boolean;
   devMode: boolean;
   scrollFontSize: number; // 0–8 (numeric scale, 0=tiny, 8=maximum)
   scrollLineSpacing: number; // 0–2 (Compact → Relaxed)
@@ -39,6 +44,7 @@ export interface DeviceSettings {
   typeface: Typeface;
   phantomWords: boolean;
   focusHighlight: boolean;
+  focusColorIndex: number; // 0-5 (red/blue/green/yellow/orange/purple)
   tracking: number; // -2 to +3
   anchorPercent: number; // 30–40
   guideWidth: number; // 12–30
@@ -46,6 +52,16 @@ export interface DeviceSettings {
   // HUD metrics
   footerMetric: FooterMetric;
   batteryLabel: BatteryLabel;
+  // Sterowanie (dopisane po audycie parytetu firmware, patrz docs/roadmap.md)
+  navMode: NavMode;
+  // Wygaszacz ekranu
+  screensaverMode: ScreensaverMode;
+  screensaverTimeoutIndex: number; // 0-7, minuty: 1,2,3,5,10,15,20,30
+  screensaverAutoOffIndex: number; // 0-7, minuty: 0(nigdy),5,10,15,20,30,45,60
+  screensaverSleepGuardIndex: number; // 0-7, minuty: 0(wyłączone),5,10,15,20,30,45,60
+  // Łączność
+  bleEnabled: boolean;
+  otaAutoCheck: boolean;
 }
 
 export interface Book {
@@ -69,9 +85,12 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   longWordDelayMs: 150,
   complexWordDelayMs: 100,
   punctuationDelayMs: 200,
+  accurateTimeEstimate: true,
   showBatteryWhileReading: true,
   showChapterWhileReading: true,
   showPercentWhileReading: true,
+  savePointButtonVisible: true,
+  showHelpHints: true,
   devMode: false,
   scrollFontSize: 4, // Medium (level 4 of 0-8)
   scrollLineSpacing: 1, // Normal
@@ -81,6 +100,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   typeface: "standard",
   phantomWords: true,
   focusHighlight: true,
+  focusColorIndex: 0, // red
   tracking: 0,
   anchorPercent: 30,
   guideWidth: 30,
@@ -88,6 +108,16 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   // HUD metrics
   footerMetric: "percentage",
   batteryLabel: "percent",
+  // Sterowanie
+  navMode: "swipe",
+  // Wygaszacz ekranu
+  screensaverMode: "life",
+  screensaverTimeoutIndex: 2, // 3 min
+  screensaverAutoOffIndex: 0, // nigdy
+  screensaverSleepGuardIndex: 0, // wyłączone
+  // Łączność
+  bleEnabled: false,
+  otaAutoCheck: true,
 };
 
 export interface DeviceApi {

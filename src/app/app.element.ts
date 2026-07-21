@@ -553,8 +553,9 @@ export class CzytnikApp extends LitElement {
       display: flex;
       flex-direction: column;
       position: relative;
-      min-height: 100vh;
-      min-height: 100dvh;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
       color: var(--ink);
       font-family: "Iowan Old Style", "Hoefler Text", "Georgia", "Times New Roman", ui-serif, serif;
       background:

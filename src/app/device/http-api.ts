@@ -24,15 +24,32 @@ import {
   type Typeface,
   type FooterMetric,
   type BatteryLabel,
+  type NavMode,
+  type ScreensaverMode,
 } from "./api";
+import { UI_LANG_INDEX_MAP } from "../i18n/lang-map";
 
-const LANG_INDEX: Language[] = ["pl", "en", "de", "es", "fr", "it"];
+// Jedno źródło prawdy dla mapowania indeksu języka firmware (0-5) —
+// UI_LANG_INDEX_MAP w src/app/i18n/lang-map.ts, zgodne z
+// firmware/src/app/Localization.h (enum UiLanguage). Wcześniej był tu
+// osobny, BŁĘDNY hardkodowany index (["pl","en","de","es","fr","it"]),
+// który nie zgadzał się z prawdziwą kolejnością firmware — stąd appka
+// wysyłała/odczytywała zły język (zgłoszone jako "języki są źle zrobione").
+function langIdToCode(id: number | undefined): Language {
+  return UI_LANG_INDEX_MAP[id ?? 0] ?? "pl";
+}
+
+function langCodeToId(code: Language): number | undefined {
+  const entry = Object.entries(UI_LANG_INDEX_MAP).find(([, v]) => v === code);
+  return entry ? Number(entry[0]) : undefined;
+}
 
 interface FirmwareSettings {
   reading?: {
     wpm?: number;
     readerMode?: ReaderMode;
     pauseMode?: "sentence_end" | "instant";
+    accurateTimeEstimate?: boolean;
     pacing?: { longWordMs?: number; complexWordMs?: number; punctuationMs?: number };
   };
   display?: {
@@ -43,6 +60,8 @@ interface FirmwareSettings {
     readingBattery?: boolean;
     readingChapter?: boolean;
     readingProgress?: boolean;
+    savePointButton?: boolean;
+    showHelpHints?: boolean;
     language?: number;
     phantomWords?: boolean;
     fontSizeIndex?: number;
@@ -56,11 +75,25 @@ interface FirmwareSettings {
     anchorPercent?: number;
     guideWidth?: number;
     guideGap?: number;
+    focusColorIndex?: number;
   };
   scroll?: {
     scrollFontSize?: number;
     scrollLineSpacing?: number;
     scrollMargin?: number;
+  };
+  input?: {
+    navMode?: NavMode;
+  };
+  screensaver?: {
+    mode?: ScreensaverMode;
+    timeoutIndex?: number;
+    autoOffIndex?: number;
+    sleepGuardIndex?: number;
+  };
+  connectivity?: {
+    bleEnabled?: boolean;
+    otaAutoCheck?: boolean;
   };
   developer?: { devMode?: boolean };
 }
@@ -73,7 +106,7 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
   const sc = fw.scroll ?? {};
   const theme: Theme = d.nightMode ? "night" : d.darkMode ? "dark" : "light";
   const pause: PauseBehaviour = r.pauseMode === "instant" ? "auto" : "tap";
-  const lang: Language = LANG_INDEX[d.language ?? 0] ?? "pl";
+  const lang: Language = langIdToCode(d.language);
   // brightnessIndex w firmware to 0..N gdzie N to kMaxBrightness — skalujemy
   // przybliżenie do 0..100 dla UI.
   const brightness =
@@ -109,9 +142,24 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
     anchorPercent: t.anchorPercent ?? DEFAULT_SETTINGS.anchorPercent,
     guideWidth: t.guideWidth ?? DEFAULT_SETTINGS.guideWidth,
     guideGap: t.guideGap ?? DEFAULT_SETTINGS.guideGap,
+    focusColorIndex: t.focusColorIndex ?? DEFAULT_SETTINGS.focusColorIndex,
     // HUD metrics
     footerMetric: d.footerMetric ?? DEFAULT_SETTINGS.footerMetric,
     batteryLabel: d.batteryLabel ?? DEFAULT_SETTINGS.batteryLabel,
+    // Dopisane po audycie parytetu firmware (2026-07-21)
+    accurateTimeEstimate: r.accurateTimeEstimate ?? DEFAULT_SETTINGS.accurateTimeEstimate,
+    savePointButtonVisible: d.savePointButton ?? DEFAULT_SETTINGS.savePointButtonVisible,
+    showHelpHints: d.showHelpHints ?? DEFAULT_SETTINGS.showHelpHints,
+    navMode: fw.input?.navMode ?? DEFAULT_SETTINGS.navMode,
+    screensaverMode: fw.screensaver?.mode ?? DEFAULT_SETTINGS.screensaverMode,
+    screensaverTimeoutIndex:
+      fw.screensaver?.timeoutIndex ?? DEFAULT_SETTINGS.screensaverTimeoutIndex,
+    screensaverAutoOffIndex:
+      fw.screensaver?.autoOffIndex ?? DEFAULT_SETTINGS.screensaverAutoOffIndex,
+    screensaverSleepGuardIndex:
+      fw.screensaver?.sleepGuardIndex ?? DEFAULT_SETTINGS.screensaverSleepGuardIndex,
+    bleEnabled: fw.connectivity?.bleEnabled ?? DEFAULT_SETTINGS.bleEnabled,
+    otaAutoCheck: fw.connectivity?.otaAutoCheck ?? DEFAULT_SETTINGS.otaAutoCheck,
   };
 }
 
@@ -128,8 +176,8 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
     out.brightnessIndex = Math.max(0, Math.min(4, Math.round((p.brightness / 100) * 4)));
   }
   if (p.language != null) {
-    const idx = LANG_INDEX.indexOf(p.language);
-    if (idx >= 0) out.language = idx;
+    const idx = langCodeToId(p.language);
+    if (idx != null) out.language = idx;
   }
   if (p.readerHand != null) out.handedness = p.readerHand;
   if (p.readerMode != null) out.readerMode = p.readerMode;
@@ -160,6 +208,19 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
   // HUD metrics
   if (p.footerMetric != null) out.footerMetric = p.footerMetric;
   if (p.batteryLabel != null) out.batteryLabel = p.batteryLabel;
+  // Dopisane po audycie parytetu firmware (2026-07-21)
+  if (p.accurateTimeEstimate != null) out.accurateTimeEstimate = p.accurateTimeEstimate;
+  if (p.savePointButtonVisible != null) out.savePointButton = p.savePointButtonVisible;
+  if (p.showHelpHints != null) out.showHelpHints = p.showHelpHints;
+  if (p.focusColorIndex != null) out.focusColorIndex = p.focusColorIndex;
+  if (p.navMode != null) out.navMode = p.navMode;
+  if (p.screensaverMode != null) out.screensaverMode = p.screensaverMode;
+  if (p.screensaverTimeoutIndex != null) out.screensaverTimeoutIndex = p.screensaverTimeoutIndex;
+  if (p.screensaverAutoOffIndex != null) out.screensaverAutoOffIndex = p.screensaverAutoOffIndex;
+  if (p.screensaverSleepGuardIndex != null)
+    out.screensaverSleepGuardIndex = p.screensaverSleepGuardIndex;
+  if (p.bleEnabled != null) out.bleEnabled = p.bleEnabled;
+  if (p.otaAutoCheck != null) out.otaAutoCheck = p.otaAutoCheck;
   return out;
 }
 

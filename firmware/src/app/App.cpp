@@ -797,7 +797,10 @@ void App::begin() {
       loadPacingDelayMs(preferences_, kPrefPacingComplexMs, kPrefLegacyPacingComplex);
   pacingPunctuationDelayMs_ =
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
-  accurateTimeEstimateEnabled_ = true;
+  // Wcześniej zahardkodowane na true — ustawienie z /api/settings nigdy nie
+  // było faktycznie stosowane. Naprawione w tej samej sesji co
+  // CompanionSyncManager (audyt parytetu appka<->firmware, 2026-07-21).
+  accurateTimeEstimateEnabled_ = preferences_.getBool(kPrefAccurateTime, true);
   typographyConfig_ = defaultTypographyConfig();
   typographyConfig_.typeface = readerTypefaceFromSetting(
       preferences_.getUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface)));
@@ -1729,7 +1732,10 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       loadPacingDelayMs(preferences_, kPrefPacingComplexMs, kPrefLegacyPacingComplex);
   pacingPunctuationDelayMs_ =
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
-  accurateTimeEstimateEnabled_ = true;
+  // Wcześniej zahardkodowane na true — ustawienie z /api/settings nigdy nie
+  // było faktycznie stosowane. Naprawione w tej samej sesji co
+  // CompanionSyncManager (audyt parytetu appka<->firmware, 2026-07-21).
+  accurateTimeEstimateEnabled_ = preferences_.getBool(kPrefAccurateTime, true);
 
   typographyConfig_ = defaultTypographyConfig();
   typographyConfig_.typeface = readerTypefaceFromSetting(
