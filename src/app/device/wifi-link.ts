@@ -56,7 +56,10 @@ export class WifiLink implements DeviceLink {
     const hello = await fetch(`${this.base}/api/hello`, {
       method: "GET",
       signal: AbortSignal.timeout(KEEP_ALIVE_TIMEOUT_MS),
-    }).catch(() => null);
+    }).catch((err) => {
+      console.error("[wifi-link] /api/hello fetch failed:", err);
+      return null;
+    });
     if (!hello || !hello.ok) {
       // Najczęstsza przyczyna gdy aplikacja jest hostowana na HTTPS
       // (grkarol.github.io): mixed content block — przeglądarka odmawia
@@ -72,7 +75,21 @@ export class WifiLink implements DeviceLink {
       );
     }
 
-    await this.openSocket();
+    // WebSocket na eventy jest bonusem, nie warunkiem połączenia — obecny
+    // firmware (CompanionSyncManager.cpp) w ogóle nie implementuje
+    // /api/events. Kierunek telefon→czytnik (zmiana ustawień) i tak działa
+    // zwykłym HTTP PATCH, więc brak WS nie może blokować całego connect().
+    // Zweryfikowane na fizycznym urządzeniu (patrz docs/roadmap.md, Faza 6).
+    try {
+      await this.openSocket();
+    } catch (err) {
+      console.warn(
+        "[wifi-link] WebSocket eventów niedostępny — appka działa bez zdarzeń na żywo z czytnika:",
+        err,
+      );
+      this.socket = null;
+    }
+
     this.isConnected = true;
     this.startKeepAlive();
   }

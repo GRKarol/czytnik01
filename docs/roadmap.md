@@ -95,10 +95,13 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
 
 ---
 
-## Faza 5 — Natywna appka Android (Capacitor)
+## Faza 5 — Natywna appka Android (Capacitor) ✅ połączenie zweryfikowane na sprzęcie
 
-> **Status 2026-07-21:** appka buduje się i instaluje się jako debug APK.
-> Branch roboczy: `plan/native-app-v2` (jeszcze nie wypchnięty na GitHub).
+> **Status 2026-07-21:** appka zbudowana, zainstalowana na fizycznym
+> telefonie (Samsung SM-G986B) i **realnie połączona z czytnikiem po WiFi**
+> — widać `Połączono · WiFi` w headerze i prawdziwe ustawienia z urządzenia
+> (badge DEV pobrany z firmware). Branch roboczy: `plan/native-app-v2`
+> (jeszcze nie wypchnięty na GitHub).
 
 - [x] Dodać Capacitor do projektu (`@capacitor/core`, `@capacitor/android`,
       `@capacitor/cli`). Osobny build tylko appki klienta:
@@ -106,16 +109,24 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       vite-plugin-pwa — patrz `src/app/pwa-register-noop.ts`).
 - [x] Konfiguracja Androida: `network_security_config.xml` scoped do
       `192.168.4.1` (bezpieczniejsze niż globalne `usesCleartextTraffic`).
+- [x] **`capacitor.config.ts` → `server.androidScheme: "http"`** — znaleziony
+      i naprawiony w tej sesji na żywym telefonie. Capacitor domyślnie
+      serwuje appkę pod wirtualnym `https://localhost`, przez co WebView
+      blokuje fetch do `http://192.168.4.1` jako "Mixed Content" —
+      **dokładnie ten sam problem co w przeglądarce**, tylko wewnątrz
+      natywnej appki. `network_security_config.xml` (cleartext dla
+      Androida) i "Mixed Content" (polityka silnika Chromium) to dwa
+      różne mechanizmy — trzeba naprawić oba. Zmiana schematu na `http`
+      naprawia to w 100%, zweryfikowane logiem z urządzenia.
 - [x] `@capacitor/share` + `@capacitor/filesystem` — przycisk "Pobierz
       .rsvp" w konwerterze na appce natywnej otwiera natywny arkusz
       Udostępnij zamiast linku do pobrania (funkcja #8 z wymagań).
 - [x] Build debug APK (`gradlew assembleDebug`) — **sukces**,
       `android/app/build/outputs/apk/debug/app-debug.apk` (~5,5 MB).
-- [ ] **Test na realnym telefonie** — nie zrobione w tej sesji, bo do tego
-      środowiska nie był podłączony żaden telefon ani emulator. Wymaga:
-      `adb install app-debug.apk` z telefonem podłączonym przez USB
-      (z włączonym debugowaniem USB), albo przegrania APK na telefon i
-      zainstalowania ręcznie.
+- [x] **Test na realnym telefonie — sukces.** Zainstalowane przez
+      `adb install` (USB), appka wykryła i połączyła się z czytnikiem w
+      trybie Sync po WiFi. Pierwsze realne, potwierdzone działające
+      połączenie od początku projektu.
 - [ ] `ConnectivityManager.bindProcessToNetwork` — przypięcie appki na
       sztywno do sieci czytnika, żeby Android nie odcinał jej w tle uznając
       sieć za "bez internetu". Nie zrobione — wymaga małego natywnego
@@ -129,11 +140,15 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       Wymaga wygenerowania keystore i skonfigurowania podpisywania w
       `android/app/build.gradle` (nie zrobione — decyzja o keystore lepiej
       zostawić Karolowi: gdzie i jak bezpiecznie go przechować).
+- [ ] Dłuższy test odporności: świadomie zerwać WiFi w trakcie sesji i
+      sprawdzić czy auto-reconnect z Fazy 6 faktycznie łapie połączenie z
+      powrotem (na razie zweryfikowano tylko sam pierwszy connect, nie
+      zerwanie w trakcie używania).
 
-## Faza 6 — Niezawodność połączenia (P0 — realny, potwierdzony bug) ✅ zaimplementowane
+## Faza 6 — Niezawodność połączenia (P0 — realny, potwierdzony bug) ✅ zweryfikowane na sprzęcie
 
-> **Status 2026-07-21:** zaimplementowane i przechodzi `typecheck`/`build`
-> lokalnie. Nie testowane jeszcze na prawdziwym czytniku (potrzebny sprzęt).
+> **Status 2026-07-21:** zaimplementowane, przechodzi `typecheck`/`build`,
+> i **potwierdzone działające na prawdziwym czytniku** przez appkę Android.
 
 - [x] **BUG naprawiony:** w `src/app/app.element.ts`, metoda `connect()` —
       wcześniej jeśli `pingDevice()` zawiódł choćby raz tuż po połączeniu
@@ -142,6 +157,15 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       zgrywa" z testów. Naprawa: `pingDeviceWithRetry()` (3 próby, 800ms
       odstępu) zanim appka odda błąd; jeśli finalnie się nie uda, appka się
       rozłącza i pokazuje jasny komunikat zamiast ciągnąć dalej na mocku.
+- [x] **Drugi realny bug, znaleziony i naprawiony na sprzęcie:**
+      `wifi-link.ts` wymagał otwartego WebSocketu (`/api/events`) jako
+      warunku udanego połączenia — ale obecny firmware
+      (`CompanionSyncManager.cpp`) **w ogóle nie implementuje WebSocketu**
+      (zweryfikowane grepem, zero wystąpień). To znaczy, że connect()
+      zawodził zawsze, na każdej platformie, niezależnie od Capacitora czy
+      mixed content. Naprawa: WebSocket jest teraz opcjonalnym bonusem
+      (próba + `console.warn` przy porażce), nie wymogiem — kierunek
+      telefon→czytnik (zmiana ustawień) i tak działa zwykłym HTTP PATCH.
 - [x] Keep-alive: `GET /api/hello` co 8s w `wifi-link.ts`, wykrycie
       rozłączenia przez timeout 3s na każdym zapytaniu.
 - [x] Auto-reconnect po zerwaniu WebSocketu/keep-alive — backoff (1s, 2s,
@@ -151,10 +175,6 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       "pill" w headerze zamiast cichego zawieszenia w stanie "połączono".
 - [x] Kolejkowanie `PUT /api/settings` w `http-api.ts` — dwa szybkie po
       sobie zapisy ustawień (np. z suwaka) nie wyścigują się już do ESP32.
-- [ ] UI: wyraźny stan "rozłączono" widoczny dla użytkownika zamiast
-      cichego zawieszenia się w stanie "połączono" z martwym socketem.
-- [ ] Kolejkowanie requestów — nie wysyłać dwóch `PATCH /api/settings`
-      naraz (ESP32 jest single-threaded, może się pogubić).
 
 ## Faza 7 — Onboarding przez QR
 
