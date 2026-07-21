@@ -174,13 +174,15 @@ inline const char *tr(UiLanguage lang, TrKey key) {
         default: return "Wi-Fi (advanced)";
       }
     case TrKey::PhoneSync:
+      // Ujednolicone z TrKey2::CompanionSync (2026-07-21) — ten sam koncept,
+      // ta sama nazwa, niezaleznie gdzie w menu wystepuje.
       switch (lang) {
-        case UiLanguage::Polish: return "Sync z tel.: ";
-        case UiLanguage::Spanish: return "Sync movil: ";
-        case UiLanguage::French: return "Sync tel.: ";
-        case UiLanguage::German: return "Handy-Sync: ";
-        case UiLanguage::Romanian: return "Sync telefon: ";
-        default: return "Phone sync: ";
+        case UiLanguage::Polish: return "Polacz z aplikacja: ";
+        case UiLanguage::Spanish: return "Conectar app: ";
+        case UiLanguage::French: return "Connecter appli: ";
+        case UiLanguage::German: return "App verbinden: ";
+        case UiLanguage::Romanian: return "Conectare aplicatie: ";
+        default: return "Connect app: ";
       }
     case TrKey::TurnOnToSeeWifi:
       switch (lang) {
@@ -845,13 +847,16 @@ inline const char *tr2(UiLanguage lang, TrKey2 key) {
         default: return "RSS feeds";
       }
     case TrKey2::CompanionSync:
+      // Zmienione z "Sync z telefonem" — zgłoszone 2026-07-21 jako mylące
+      // (nie tlumaczylo co to robi). Teraz ten sam napis w Szybkich
+      // Ustawieniach i w Ustawienia -> Polaczenia -> Polacz z aplikacja.
       switch (lang) {
-        case UiLanguage::Polish: return "Sync z telefonem";
-        case UiLanguage::Spanish: return "Sync con movil";
-        case UiLanguage::French: return "Sync telephone";
-        case UiLanguage::German: return "Handy-Sync";
-        case UiLanguage::Romanian: return "Sync telefon";
-        default: return "Companion sync";
+        case UiLanguage::Polish: return "Polacz z aplikacja";
+        case UiLanguage::Spanish: return "Conectar app";
+        case UiLanguage::French: return "Connecter appli";
+        case UiLanguage::German: return "App verbinden";
+        case UiLanguage::Romanian: return "Conectare aplicatie";
+        default: return "Connect app";
       }
     case TrKey2::RepairFolders:
       switch (lang) {

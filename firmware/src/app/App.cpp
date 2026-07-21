@@ -149,15 +149,20 @@ constexpr size_t kSdCardRepairConfirmHeaderRows = 1;
 constexpr size_t kUpdateConfirmHeaderRows = 2;
 constexpr size_t kSettingsBackIndex = 0;
 // SettingsHome — nowy układ, ułożony pod codzienne użycie.
-// Indeksy 1–5 są zawsze widoczne; 6 (About) też; 7–8 tylko gdy `devModeEnabled()`.
+// Indeksy 1–6 są zawsze widoczne; 7 (About) też; 8–9 tylko gdy `devModeEnabled()`.
+// "Połącz z aplikacją" (4) dopisane 2026-07-21 jako płytki skrót do
+// enterCompanionSync() — wcześniej to samo działanie było dostępne tylko
+// zagnieżdżone w Ustawienia -> Połączenia -> Synchronizacja z telefonem,
+// zbyt głęboko jak na coś używanego przy każdym połączeniu z appką.
 constexpr size_t kSettingsHomeReadingIndex = 1;       // = stare Pacing
 constexpr size_t kSettingsHomeDisplayIndex = 2;
 constexpr size_t kSettingsHomeTypographyIndex = 3;    // always visible (moved from dev-only)
-constexpr size_t kSettingsHomeConnectivityIndex = 4;
-constexpr size_t kSettingsHomePresetsIndex = 5;       // Presets
-constexpr size_t kSettingsHomeAboutIndex = 6;
-constexpr size_t kSettingsHomeWifiIndex = 7;          // dev only
-constexpr size_t kSettingsHomeUpdateIndex = 8;        // dev only
+constexpr size_t kSettingsHomeConnectAppIndex = 4;    // "Połącz z aplikacją" — skrót do Sync
+constexpr size_t kSettingsHomeConnectivityIndex = 5;
+constexpr size_t kSettingsHomePresetsIndex = 6;       // Presets
+constexpr size_t kSettingsHomeAboutIndex = 7;
+constexpr size_t kSettingsHomeWifiIndex = 8;          // dev only
+constexpr size_t kSettingsHomeUpdateIndex = 9;        // dev only
 
 // Zachowujemy starą nazwę dla kompatybilności z pozostałymi miejscami,
 // które do niej odwołują się dla cofania z głębszych ekranów.
@@ -3108,6 +3113,9 @@ void App::selectSettingsItem(uint32_t nowMs) {
         rebuildSettingsMenuItems();
         renderSettings();
         return;
+      case kSettingsHomeConnectAppIndex:
+        enterCompanionSync(nowMs);
+        return;
       case kSettingsHomeConnectivityIndex:
         openSettingsConnectivity();
         return;
@@ -3969,12 +3977,13 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(polish("Czytanie", "Reading"));   // 1 = Reading settings
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
     settingsMenuItems_.push_back(uiText(UiText::TypographyTune)); // 3 = Typography (always)
-    settingsMenuItems_.push_back(tr(TrKey::Connectivity));         // 4
-    settingsMenuItems_.push_back(polish("Presety", "Presets"));    // 5 = Presets
-    settingsMenuItems_.push_back(tr(TrKey::AboutHelp));            // 6
+    settingsMenuItems_.push_back(tr2(TrKey2::CompanionSync));      // 4 = Połącz z aplikacją
+    settingsMenuItems_.push_back(tr(TrKey::Connectivity));         // 5
+    settingsMenuItems_.push_back(polish("Presety", "Presets"));    // 6 = Presets
+    settingsMenuItems_.push_back(tr(TrKey::AboutHelp));            // 7
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));       // 7 dev
-      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());     // 8 dev
+      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));       // 8 dev
+      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());     // 9 dev
     }
   } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
