@@ -97,36 +97,60 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
 
 ## Faza 5 — Natywna appka Android (Capacitor)
 
-- [ ] Dodać Capacitor do projektu (`@capacitor/core`, `@capacitor/android`).
-- [ ] Konfiguracja Androida: `usesCleartextTraffic="true"` (albo
-      `networkSecurityConfig` scoped do `192.168.4.1`, bezpieczniej).
+> **Status 2026-07-21:** appka buduje się i instaluje się jako debug APK.
+> Branch roboczy: `plan/native-app-v2` (jeszcze nie wypchnięty na GitHub).
+
+- [x] Dodać Capacitor do projektu (`@capacitor/core`, `@capacitor/android`,
+      `@capacitor/cli`). Osobny build tylko appki klienta:
+      `vite.capacitor.config.ts` → `dist-capacitor/` (bez flashera, bez
+      vite-plugin-pwa — patrz `src/app/pwa-register-noop.ts`).
+- [x] Konfiguracja Androida: `network_security_config.xml` scoped do
+      `192.168.4.1` (bezpieczniejsze niż globalne `usesCleartextTraffic`).
+- [x] `@capacitor/share` + `@capacitor/filesystem` — przycisk "Pobierz
+      .rsvp" w konwerterze na appce natywnej otwiera natywny arkusz
+      Udostępnij zamiast linku do pobrania (funkcja #8 z wymagań).
+- [x] Build debug APK (`gradlew assembleDebug`) — **sukces**,
+      `android/app/build/outputs/apk/debug/app-debug.apk` (~5,5 MB).
+- [ ] **Test na realnym telefonie** — nie zrobione w tej sesji, bo do tego
+      środowiska nie był podłączony żaden telefon ani emulator. Wymaga:
+      `adb install app-debug.apk` z telefonem podłączonym przez USB
+      (z włączonym debugowaniem USB), albo przegrania APK na telefon i
+      zainstalowania ręcznie.
 - [ ] `ConnectivityManager.bindProcessToNetwork` — przypięcie appki na
       sztywno do sieci czytnika, żeby Android nie odcinał jej w tle uznając
-      sieć za "bez internetu".
-- [ ] `@capacitor/share` — eksport pliku `.rsvp` do innych aplikacji
-      (funkcja #8 z wymagań: "udostępnij znajomemu").
+      sieć za "bez internetu". Nie zrobione — wymaga małego natywnego
+      pluginu Capacitora (Kotlin), nie tylko configu.
 - [ ] Natywny share target (odbieranie linków/tekstu z innych aplikacji,
       jak w `rsvpnano`) — opcjonalnie, jeśli czas pozwoli.
 - [ ] Background task (WorkManager) do okresowego sprawdzania GitHub
       Releases, gdy appka nie jest otwarta i telefon ma internet.
-- [ ] Build podpisanego APK, publikacja jako asset w GitHub Releases obok
-      firmware — do pobrania bezpośrednio ze strony.
-- [ ] Test na realnym telefonie (nie tylko emulator).
+- [ ] Build **podpisanego** (release, nie debug) APK, publikacja jako asset
+      w GitHub Releases obok firmware — do pobrania bezpośrednio ze strony.
+      Wymaga wygenerowania keystore i skonfigurowania podpisywania w
+      `android/app/build.gradle` (nie zrobione — decyzja o keystore lepiej
+      zostawić Karolowi: gdzie i jak bezpiecznie go przechować).
 
-## Faza 6 — Niezawodność połączenia (P0 — realny, potwierdzony bug)
+## Faza 6 — Niezawodność połączenia (P0 — realny, potwierdzony bug) ✅ zaimplementowane
 
-- [ ] **BUG:** w `src/app/app.element.ts`, metoda `connect()` — jeśli
-      `pingDevice()` zawiedzie choćby raz tuż po połączeniu WiFi (bardzo
-      częste), appka **po cichu zostaje na `MockDeviceApi`** (fikcyjne dane
-      demo) zamiast pokazać błąd albo spróbować ponownie. To jest
-      zdiagnozowana przyczyna "starych książek, nic się nie zgrywa" z
-      testów. Naprawa: retry z backoffem zamiast jednorazowego sprawdzenia,
-      i jasny komunikat błędu zamiast cichego fallbacku.
-- [ ] Keep-alive: `GET /api/hello` co ~8s, wykrycie rozłączenia w <16s
-      (zasada już opisana w `docs/flower-companion-api.md`, nie
-      zaimplementowana w `wifi-link.ts`).
-- [ ] Auto-reconnect po zerwaniu WebSocketu (obecnie: raz zerwane
-      połączenie nigdy się samo nie odnawia).
+> **Status 2026-07-21:** zaimplementowane i przechodzi `typecheck`/`build`
+> lokalnie. Nie testowane jeszcze na prawdziwym czytniku (potrzebny sprzęt).
+
+- [x] **BUG naprawiony:** w `src/app/app.element.ts`, metoda `connect()` —
+      wcześniej jeśli `pingDevice()` zawiódł choćby raz tuż po połączeniu
+      WiFi, appka po cichu zostawała na `MockDeviceApi` zamiast pokazać
+      błąd. To była zdiagnozowana przyczyna "starych książek, nic się nie
+      zgrywa" z testów. Naprawa: `pingDeviceWithRetry()` (3 próby, 800ms
+      odstępu) zanim appka odda błąd; jeśli finalnie się nie uda, appka się
+      rozłącza i pokazuje jasny komunikat zamiast ciągnąć dalej na mocku.
+- [x] Keep-alive: `GET /api/hello` co 8s w `wifi-link.ts`, wykrycie
+      rozłączenia przez timeout 3s na każdym zapytaniu.
+- [x] Auto-reconnect po zerwaniu WebSocketu/keep-alive — backoff (1s, 2s,
+      4s, 8s, 8s), potem appka zostaje rozłączona i czeka na ręczną próbę.
+- [x] `DeviceLink.onStatusChange()` — appka pokazuje żółty banner
+      "Połączenie przerwane — próbuję połączyć ponownie…" i czerwoną
+      "pill" w headerze zamiast cichego zawieszenia w stanie "połączono".
+- [x] Kolejkowanie `PUT /api/settings` w `http-api.ts` — dwa szybkie po
+      sobie zapisy ustawień (np. z suwaka) nie wyścigują się już do ESP32.
 - [ ] UI: wyraźny stan "rozłączono" widoczny dla użytkownika zamiast
       cichego zawieszenia się w stanie "połączono" z martwym socketem.
 - [ ] Kolejkowanie requestów — nie wysyłać dwóch `PATCH /api/settings`
