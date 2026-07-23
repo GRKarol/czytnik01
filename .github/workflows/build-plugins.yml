@@ -69,7 +69,7 @@ jobs:
             cd "$dir"
             pio run
             cd ../..
-            cp "plugins/$plugin_id/.pio/build/*/firmware.bin" "dist/${plugin_id}-plugin.bin"
+            cp plugins/"$plugin_id"/.pio/build/*/firmware.bin "dist/${plugin_id}-plugin.bin"
             cp "plugins/$plugin_id/manifest.json" "dist/${plugin_id}-manifest.json"
           done
 
