@@ -10,7 +10,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.work.Constraints;
 import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
@@ -72,6 +74,22 @@ public class MainActivity extends BridgeActivity {
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build();
+
+        // PeriodicWorkRequest NIE odpala się od razu po enqueue — pierwsze
+        // uruchomienie przychodzi dopiero po pełnym interwale (do 12h).
+        // Bez osobnego jednorazowego requesta powiadomienie o aktualizacji
+        // mogłoby się nie pojawić przez pół dnia od pierwszego uruchomienia
+        // appki, co wygląda jak "to w ogóle nie działa" — dokładnie to
+        // zgłosił Karol. UNIQUE + KEEP na jednorazowym też zapobiega
+        // wielokrotnemu odpaleniu przy kolejnych onCreate() tej samej sesji.
+        OneTimeWorkRequest immediateCheck =
+                new OneTimeWorkRequest.Builder(UpdateCheckWorker.class)
+                        .setConstraints(constraints)
+                        .build();
+        WorkManager.getInstance(this)
+                .enqueueUniqueWork(
+                        UPDATE_CHECK_WORK_NAME + "_immediate", ExistingWorkPolicy.KEEP, immediateCheck);
+
         PeriodicWorkRequest request =
                 new PeriodicWorkRequest.Builder(UpdateCheckWorker.class, 12, TimeUnit.HOURS)
                         .setConstraints(constraints)
