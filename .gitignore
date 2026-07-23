@@ -25,6 +25,11 @@ firmware/.piolibdeps/
 firmware/.vscode/
 firmware/build/
 
+# Plugin build outputs (PlatformIO) — one stray file
+# (plugins/focus-timer/.pio/build/project.checksum) was accidentally
+# committed before; untracked below, ignored going forward.
+plugins/*/.pio/
+
 # Android release signing — sekrety, nigdy do repo.
 android/keystore.properties
 *.keystore

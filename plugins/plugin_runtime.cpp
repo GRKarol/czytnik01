@@ -34,5 +34,11 @@ extern "C" int __cxa_atexit(void (*)(void*), void*, void*) {
     return 0;
 }
 
-// __dso_handle required by some toolchains
-extern "C" void* __dso_handle = nullptr;
+// framework-arduinoespressif32's own main.cpp (loopTask) always calls
+// setup()/loop() — even though plugin binaries never actually boot through
+// the normal Arduino entry point. Only the .plugin_header/.plugin_vtable
+// sections of this ELF are ever extracted and used (see
+// tools/pio_plugin_build.py); the rest, including this "sketch", is inert.
+// These stubs exist purely to satisfy the linker.
+void setup() {}
+void loop() {}
