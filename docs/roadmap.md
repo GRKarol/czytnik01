@@ -221,11 +221,21 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
       miejscach naraz.
 - [x] Wgrane na czytnik przez auto-OTA po wydaniu v0.3.7, potwierdzone na
       ekranie Informacje.
-- [ ] Wbudowana strona web companion w samym firmware
-      (`kWebCompanionHtml` w `CompanionSyncManager.cpp`) ma **własny**,
-      osobny JS do wczytywania/zapisywania ustawień — nie zaktualizowana o
-      nowe pola w tej sesji (niski priorytet, to tylko fallback UI kiedy
-      nikt nie ma appki).
+- [x] Wbudowana strona web companion (`kWebCompanionHtml` w
+      `CompanionSyncManager.cpp`) doprowadzona do parytetu — dodane
+      `navMode`, `focusColorIndex`, `savePointButton`, `showHelpHints`,
+      `accurateTimeEstimate`, cała sekcja `screensaver` i `connectivity`.
+- [x] **Znaleziony i naprawiony realny, żywy bug przy okazji:**
+      `applySettingsJson()` miał niewarunkowe
+      `preferences_.putBool(kPrefAccurateTime, true)` uruchamiane przy
+      **każdym** PATCH `/api/settings` — nie tylko takim, który dotyczył
+      tego pola. Appka i web companion wysyłają patch pojedynczego pola
+      naraz (jeden suwak/toggle = jeden PATCH), więc każda niezwiązana
+      zmiana ustawień (WPM, jasność, dowolny toggle) cicho resetowała
+      `accurateTimeEstimate` z powrotem na `true`. Prawidłowy, warunkowy
+      zapis już istniał niżej w kodzie — ta linijka była zapomnianą
+      pozostałością z czasu przed jego dodaniem i wygrywała bo działała
+      pierwsza. Dotyczyło to również appki, nie tylko web companion.
 
 ## Faza 7 — Onboarding przez QR (⚠️ plan skorygowany po realnym użyciu)
 
