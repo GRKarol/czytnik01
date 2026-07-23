@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { deviceApi, onDeviceApiChange, type Book } from "../device/api";
+import { deviceApi, onDeviceApiChange, isDeviceConnected, type Book } from "../device/api";
 import "./first-use-hint.element";
 
 @customElement("library-panel")
@@ -9,12 +9,16 @@ export class LibraryPanel extends LitElement {
   @state() private loading = true;
   @state() private error = "";
   @state() private filter: "all" | "book" | "article" = "all";
+  @state() private connected = isDeviceConnected();
   private unsubApi: (() => void) | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
     void this.refresh();
-    this.unsubApi = onDeviceApiChange(() => void this.refresh());
+    this.unsubApi = onDeviceApiChange(() => {
+      this.connected = isDeviceConnected();
+      void this.refresh();
+    });
   }
 
   disconnectedCallback(): void {
@@ -29,9 +33,25 @@ export class LibraryPanel extends LitElement {
     const list = this.filtered();
     return html`
       <first-use-hint screen-key="reading"></first-use-hint>
+
+      ${!this.connected && this.books.length > 0
+        ? html`<p class="stale-banner">
+            Niezsynchronizowane — połącz się z czytnikiem, żeby zarządzać biblioteką.
+          </p>`
+        : ""}
+
       <div class="actions">
-        <input id="upload" type="file" accept=".rsvp,.txt,.epub" hidden @change=${this.onUpload} />
-        <label for="upload" class="btn">Wyślij plik na urządzenie</label>
+        <input
+          id="upload"
+          type="file"
+          accept=".rsvp,.txt,.epub"
+          hidden
+          ?disabled=${!this.connected}
+          @change=${this.onUpload}
+        />
+        <label for="upload" class=${`btn ${!this.connected ? "disabled" : ""}`}
+          >Wyślij plik na urządzenie</label
+        >
         <button class="btn ghost" @click=${this.refresh}>Odśwież</button>
       </div>
 
@@ -51,10 +71,12 @@ export class LibraryPanel extends LitElement {
 
       ${list.length === 0
         ? html`<p class="muted">
-            Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce
-            <strong>Konwerter</strong>.
+            ${this.connected
+              ? html`Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce
+                  <strong>Konwerter</strong>.`
+              : "Połącz się z czytnikiem, żeby zobaczyć swoją bibliotekę."}
           </p>`
-        : html`<ul class="list">
+        : html`<ul class=${`list ${!this.connected ? "stale" : ""}`}>
             ${list.map((b) => this.row(b))}
           </ul>`}
     `;
@@ -82,7 +104,14 @@ export class LibraryPanel extends LitElement {
             ${b.progressPercent != null ? html` · ${b.progressPercent}% przeczytane` : ""}
           </span>
         </div>
-        <button class="del" @click=${() => this.onDelete(b)} aria-label="Usuń">✕</button>
+        <button
+          class="del"
+          ?disabled=${!this.connected}
+          @click=${() => this.onDelete(b)}
+          aria-label="Usuń"
+        >
+          ✕
+        </button>
       </li>
     `;
   }
@@ -152,6 +181,21 @@ export class LibraryPanel extends LitElement {
         sans-serif;
       margin: 0;
     }
+    .stale-banner {
+      margin: 0;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: rgba(154, 148, 138, 0.14);
+      color: var(--ink-soft);
+      font:
+        0.85rem/1.4 ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .list.stale {
+      opacity: 0.55;
+      filter: grayscale(0.6);
+    }
     .actions {
       display: flex;
       gap: 8px;
@@ -176,6 +220,11 @@ export class LibraryPanel extends LitElement {
       background: transparent;
       color: var(--accent);
       border: 1.5px solid var(--accent);
+    }
+    .btn.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+      cursor: not-allowed;
     }
     .tabs {
       display: flex;

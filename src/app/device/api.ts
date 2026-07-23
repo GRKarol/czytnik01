@@ -134,10 +134,19 @@ export interface DeviceApi {
   installOta(blob: Blob, onProgress?: (loaded: number, total: number) => void): Promise<void>;
 }
 
-// ─── Mock implementation ────────────────────────────────────────────────────
+// ─── Offline/cache implementation ───────────────────────────────────────────
+//
+// To NIE jest generator danych demo — to jest "ostatni znany, prawdziwy stan"
+// czytnika, zapamiętany z poprzedniej udanej synchronizacji (HttpDeviceApi
+// dopisuje tu przy każdym udanym fetchu, patrz http-api.ts). Zanim appka
+// choć raz się zsynchronizuje, biblioteka jest pusta — żadnych fałszywych
+// "przykładowych książek". Po synchronizacji, przy rozłączeniu, appka nadal
+// pokazuje tę samą listę (na szaro, w UI), ale każda próba zmiany czegokolwiek
+// (upload, usunięcie, zmiana ustawienia, OTA) rzuca błąd — to wymaga realnego
+// połączenia z czytnikiem.
 
-const STORE_BOOKS = "flower.mock.books";
-const STORE_SETTINGS = "flower.mock.settings";
+const STORE_BOOKS = "flower.cache.books";
+const STORE_SETTINGS = "flower.cache.settings";
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -156,90 +165,47 @@ function write<T>(key: string, value: T): void {
   }
 }
 
-const MOCK_BOOKS_SEED: Book[] = [
-  {
-    name: "books/sample-rozdzialy.rsvp",
-    title: "Mały próbnik",
-    author: "Anonim",
-    bytes: 12480,
-    progressPercent: 42,
-    category: "book",
-    addedAt: "2026-05-22T10:14:00Z",
-  },
-  {
-    name: "books/krotki-tekst.rsvp",
-    title: "Krótki tekst",
-    author: "",
-    bytes: 3120,
-    progressPercent: 100,
-    category: "book",
-    addedAt: "2026-05-18T19:02:00Z",
-  },
-  {
-    name: "articles/poniedzialkowy-newsletter.rsvp",
-    title: "Poniedziałkowy newsletter",
-    author: "Redakcja",
-    bytes: 18420,
-    progressPercent: 0,
-    category: "article",
-    addedAt: "2026-05-24T07:30:00Z",
-  },
-];
+/** Wywoływane przez HttpDeviceApi po każdym udanym fetchu — zapamiętuje "ostatni znany" stan. */
+export function cacheBooks(books: Book[]): void {
+  write(STORE_BOOKS, books);
+}
+
+export function cacheSettings(settings: DeviceSettings): void {
+  write(STORE_SETTINGS, settings);
+}
+
+const NEEDS_CONNECTION_MESSAGE =
+  "Wymaga połączenia z czytnikiem. Najpierw połącz się przez WiFi.";
 
 export class MockDeviceApi implements DeviceApi {
-  private async delay<T>(value: T, ms = 200): Promise<T> {
+  private async delay<T>(value: T, ms = 150): Promise<T> {
     await new Promise((r) => setTimeout(r, ms));
     return value;
   }
 
   async listBooks(): Promise<Book[]> {
-    return this.delay(read<Book[]>(STORE_BOOKS, MOCK_BOOKS_SEED));
+    return this.delay(read<Book[]>(STORE_BOOKS, []));
   }
 
-  async uploadBook(file: Blob, name: string): Promise<void> {
-    const list = read<Book[]>(STORE_BOOKS, MOCK_BOOKS_SEED);
-    list.unshift({
-      name: name.startsWith("books/") ? name : `books/${name}`,
-      title: stripExt(name.replace(/^books\//, "")),
-      author: "",
-      bytes: file.size,
-      progressPercent: 0,
-      category: "book",
-      addedAt: new Date().toISOString(),
-    });
-    write(STORE_BOOKS, list);
-    await this.delay(undefined, 400);
+  async uploadBook(): Promise<void> {
+    throw new Error(NEEDS_CONNECTION_MESSAGE);
   }
 
-  async deleteBook(name: string): Promise<void> {
-    const list = read<Book[]>(STORE_BOOKS, MOCK_BOOKS_SEED);
-    write(
-      STORE_BOOKS,
-      list.filter((b) => b.name !== name),
-    );
-    await this.delay(undefined, 200);
+  async deleteBook(): Promise<void> {
+    throw new Error(NEEDS_CONNECTION_MESSAGE);
   }
 
   async getSettings(): Promise<DeviceSettings> {
     return this.delay(read<DeviceSettings>(STORE_SETTINGS, DEFAULT_SETTINGS));
   }
 
-  async putSettings(patch: Partial<DeviceSettings>): Promise<DeviceSettings> {
-    const current = read<DeviceSettings>(STORE_SETTINGS, DEFAULT_SETTINGS);
-    const next = { ...current, ...patch };
-    write(STORE_SETTINGS, next);
-    return this.delay(next, 150);
+  async putSettings(): Promise<DeviceSettings> {
+    throw new Error(NEEDS_CONNECTION_MESSAGE);
   }
 
   async installOta(): Promise<void> {
-    throw new Error(
-      "Wgranie firmware'u wymaga połączenia z urządzeniem. Najpierw połącz się przez WiFi.",
-    );
+    throw new Error(NEEDS_CONNECTION_MESSAGE);
   }
-}
-
-function stripExt(name: string): string {
-  return name.replace(/\.[^.]+$/, "");
 }
 
 // ─── Reactive API selection ─────────────────────────────────────────────────
@@ -270,6 +236,11 @@ export const deviceApi = {
 export function setDeviceApi(api: DeviceApi): void {
   _api = api;
   for (const l of _apiListeners) l(api);
+}
+
+/** Czy appka gada właśnie z prawdziwym czytnikiem (nie tylko z cache'em). */
+export function isDeviceConnected(): boolean {
+  return !(_api instanceof MockDeviceApi);
 }
 
 export function onDeviceApiChange(handler: (api: DeviceApi) => void): () => void {

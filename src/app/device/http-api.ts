@@ -26,6 +26,8 @@ import {
   type BatteryLabel,
   type NavMode,
   type ScreensaverMode,
+  cacheBooks,
+  cacheSettings,
 } from "./api";
 import { UI_LANG_INDEX_MAP } from "../i18n/lang-map";
 
@@ -245,6 +247,7 @@ export class HttpDeviceApi implements DeviceApi {
 
   async listBooks(): Promise<Book[]> {
     const data = await this.json<{ books: Book[] }>(await fetch(this.url("/api/books")));
+    cacheBooks(data.books);
     return data.books;
   }
 
@@ -275,7 +278,9 @@ export class HttpDeviceApi implements DeviceApi {
 
   async getSettings(): Promise<DeviceSettings> {
     const fw = await this.json<FirmwareSettings>(await fetch(this.url("/api/settings")));
-    return fromFirmware(fw);
+    const settings = fromFirmware(fw);
+    cacheSettings(settings);
+    return settings;
   }
 
   async putSettings(patch: Partial<DeviceSettings>): Promise<DeviceSettings> {
@@ -297,7 +302,9 @@ export class HttpDeviceApi implements DeviceApi {
       body: JSON.stringify(toFirmware(patch)),
     });
     const fw = await this.json<FirmwareSettings>(res);
-    return fromFirmware(fw);
+    const settings = fromFirmware(fw);
+    cacheSettings(settings);
+    return settings;
   }
 
   /**

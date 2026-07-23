@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import {
   deviceApi,
   onDeviceApiChange,
+  isDeviceConnected,
   type DeviceSettings,
   type Theme,
   type Language,
@@ -151,6 +152,7 @@ export class SettingsPanel extends LitElement {
   @state() private tapCount = 0;
   @state() private justUnlocked = false;
   @state() private subView: SettingsSubView = "settings";
+  @state() private connected = isDeviceConnected();
   private tapResetTimer: number | null = null;
   private unsubApi: (() => void) | null = null;
 
@@ -162,7 +164,10 @@ export class SettingsPanel extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     void this.load();
-    this.unsubApi = onDeviceApiChange(() => void this.load());
+    this.unsubApi = onDeviceApiChange(() => {
+      this.connected = isDeviceConnected();
+      void this.load();
+    });
   }
 
   disconnectedCallback(): void {
@@ -198,6 +203,14 @@ export class SettingsPanel extends LitElement {
       </div>
 
       ${this.error ? html`<p class="error">${this.error}</p>` : ""}
+      ${!this.connected
+        ? html`<p class="stale-banner">
+            Niezsynchronizowane — połącz się z czytnikiem, żeby zmieniać ustawienia. Poniżej
+            widzisz ostatnio zapisany stan.
+          </p>`
+        : ""}
+
+      <div class=${`settings-body ${!this.connected ? "stale" : ""}`}>
 
       <fieldset class="group">
         <legend>Tryb czytania</legend>
@@ -455,6 +468,7 @@ export class SettingsPanel extends LitElement {
             </fieldset>
           `
         : ""}
+      </div>
 
       <button class="help-link" @click=${this.openHelp}>
         <svg
@@ -676,6 +690,22 @@ export class SettingsPanel extends LitElement {
         system-ui,
         sans-serif;
       margin: 0;
+    }
+    .stale-banner {
+      margin: 0;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: rgba(154, 148, 138, 0.14);
+      color: var(--ink-soft);
+      font:
+        0.85rem/1.4 ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .settings-body.stale {
+      opacity: 0.55;
+      filter: grayscale(0.6);
+      pointer-events: none;
     }
     .brand {
       display: flex;

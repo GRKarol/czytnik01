@@ -7,7 +7,7 @@ import {
   isNewer,
   type ReleaseInfo,
 } from "../updates/releases";
-import { deviceApi, onDeviceApiChange, MockDeviceApi } from "../device/api";
+import { deviceApi, onDeviceApiChange, isDeviceConnected } from "../device/api";
 import { getFirmwareVersion, onFirmwareVersionChange } from "../device/device-info";
 
 type Stage =
@@ -30,7 +30,7 @@ export class UpdatesPanel extends LitElement {
   /** Aktualna wersja firmware na urządzeniu — z /api/hello (device-info.ts). */
   @state() private currentFw: string | null = getFirmwareVersion();
   /** Czy appka jest właśnie realnie połączona z czytnikiem (nie mock). */
-  @state() private connected = !(deviceApi.current instanceof MockDeviceApi);
+  @state() private connected = isDeviceConnected();
   private downloaded: Blob | null = null;
   private unsubFw: (() => void) | null = null;
   private unsubApi: (() => void) | null = null;
@@ -39,7 +39,7 @@ export class UpdatesPanel extends LitElement {
     super.connectedCallback();
     this.unsubFw = onFirmwareVersionChange((v) => (this.currentFw = v));
     this.unsubApi = onDeviceApiChange(() => {
-      this.connected = !(deviceApi.current instanceof MockDeviceApi);
+      this.connected = isDeviceConnected();
     });
     void this.check();
   }
