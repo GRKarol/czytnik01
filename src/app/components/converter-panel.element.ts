@@ -171,16 +171,27 @@ export class ConverterPanel extends LitElement {
   private handlePasteSubmit = () => {
     const text = this.pastedText.trim();
     if (!text) return;
-    // Wklejony tekst traktujemy jak zwykły .txt — reszta pipeline'u
-    // (parseTxt, edycja metadanych, pobieranie/udostępnianie) jest
-    // identyczna jak dla wgranego pliku.
-    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
-    const guessedName = (firstLine.slice(0, 40) || "wklejony-tekst").replace(/[^\w\- ]+/g, "_");
-    const file = new File([text], `${guessedName}.txt`, { type: "text/plain" });
     this.showPaste = false;
     this.pastedText = "";
-    void this.handleFile(file);
+    this.textToFile(text, "wklejony-tekst");
   };
+
+  /** Wywoływane z zewnątrz (app.element.ts) gdy ktoś udostępni tekst z innej appki. */
+  receiveSharedText(text: string): void {
+    this.textToFile(text, "udostepniony-tekst");
+  }
+
+  // Wklejony/udostępniony tekst traktujemy jak zwykły .txt — reszta pipeline'u
+  // (parseTxt, edycja metadanych, pobieranie/udostępnianie) jest identyczna
+  // jak dla wgranego pliku.
+  private textToFile(text: string, fallbackName: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const firstLine = trimmed.split(/\r?\n/, 1)[0]?.trim() ?? "";
+    const guessedName = (firstLine.slice(0, 40) || fallbackName).replace(/[^\w\- ]+/g, "_");
+    const file = new File([trimmed], `${guessedName}.txt`, { type: "text/plain" });
+    void this.handleFile(file);
+  }
 
   private async handleFile(file: File) {
     this.error = "";

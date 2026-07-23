@@ -1,6 +1,7 @@
 package pl.flower.reader;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,9 +24,37 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(NetworkPinPlugin.class);
+        registerPlugin(ShareTargetPlugin.class);
         super.onCreate(savedInstanceState);
         requestNotificationPermissionIfNeeded();
         scheduleUpdateCheck();
+        handleShareIntent(getIntent(), false);
+    }
+
+    @Override
+    public void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleShareIntent(intent, true);
+    }
+
+    private void handleShareIntent(Intent intent, boolean live) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) {
+            return;
+        }
+        String type = intent.getType();
+        if (type == null || !type.startsWith("text/")) {
+            return;
+        }
+        String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (text == null || text.trim().isEmpty()) {
+            return;
+        }
+        if (live) {
+            ShareTargetPlugin.deliverLive(text);
+        } else {
+            ShareTargetPlugin.stashPending(text);
+        }
     }
 
     private void requestNotificationPermissionIfNeeded() {

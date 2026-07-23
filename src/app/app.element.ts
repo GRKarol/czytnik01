@@ -7,6 +7,7 @@ import { BluetoothLink } from "./device/bluetooth-link";
 import { SerialLink } from "./device/serial-link";
 import "./components/flower-decor.element";
 import "./components/converter-panel.element";
+import type { ConverterPanel } from "./components/converter-panel.element";
 import "./components/updates-panel.element";
 import "./components/library-panel.element";
 import "./components/settings-panel.element";
@@ -16,6 +17,7 @@ import "./components/tutorial-wizard.element";
 import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from "./device/api";
 import { HttpDeviceApi, pingDeviceWithRetry } from "./device/http-api";
 import { getTutorialStatus } from "./onboarding/onboarding-store";
+import { consumePendingSharedText, onSharedTextReceived } from "./device/share-target";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
 type Transport = "wifi" | "bluetooth" | "serial";
@@ -116,6 +118,7 @@ export class CzytnikApp extends LitElement {
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
   private unsubLinkStatus: (() => void) | null = null;
+  private unsubShareTarget: (() => void) | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -124,14 +127,27 @@ export class CzytnikApp extends LitElement {
     this.addEventListener("device-settings-changed", () => this.refreshDevMode());
     this.addEventListener("tutorial-close", this.handleTutorialClose);
     this.addEventListener("restart-tutorial", this.handleRestartTutorial);
+
+    this.unsubShareTarget = onSharedTextReceived((text) => this.openSharedText(text));
+    void consumePendingSharedText().then((text) => {
+      if (text) void this.openSharedText(text);
+    });
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.unsubApi?.();
     this.unsubLinkStatus?.();
+    this.unsubShareTarget?.();
     this.removeEventListener("tutorial-close", this.handleTutorialClose);
     this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
+  }
+
+  private async openSharedText(text: string): Promise<void> {
+    this.view = "converter";
+    await this.updateComplete;
+    const panel = this.renderRoot.querySelector<ConverterPanel>("converter-panel");
+    panel?.receiveSharedText(text);
   }
 
   private handleTutorialClose = () => {
