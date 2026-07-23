@@ -136,8 +136,12 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       pluginu bez błędów na fizycznym telefonie (SM-G986B).
 - [ ] Natywny share target (odbieranie linków/tekstu z innych aplikacji,
       jak w `rsvpnano`) — opcjonalnie, jeśli czas pozwoli.
-- [ ] Background task (WorkManager) do okresowego sprawdzania GitHub
-      Releases, gdy appka nie jest otwarta i telefon ma internet.
+- [x] Background task (WorkManager) do okresowego sprawdzania GitHub
+      Releases co 12h, gdy appka nie jest otwarta i telefon ma internet
+      (`UpdateCheckWorker.java`) — powiadomienie lokalne przy nowym tagu.
+      Drugorzędny mechanizm: czytnik i tak sam się aktualizuje gdy ma
+      zapisane WiFi domowe (`ota_auto` w App.cpp) — to tylko dla
+      przypadku gdy ktoś tego nie skonfigurował.
 - [ ] Build **podpisanego** (release, nie debug) APK, publikacja jako asset
       w GitHub Releases obok firmware — do pobrania bezpośrednio ze strony.
       Wymaga wygenerowania keystore i skonfigurowania podpisywania w
