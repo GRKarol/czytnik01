@@ -1,6 +1,161 @@
 # Roadmap
 
-> **Zaktualizowano 2026-07-21** po przeglądzie całego repo (lokalnego i
+## 🔴 PILNE — bugi znalezione na żywym sprzęcie (2026-07-23), do podjęcia w nowej sesji
+
+> Ta sekcja to samodzielny punkt startowy dla nowej sesji (kontekst
+> poprzedniej się zapełnił). Jeśli czytasz to jako świeża sesja: przeczytaj
+> całą tę sekcję przed zrobieniem czegokolwiek, potem możesz zignorować
+> resztę pliku dopóki nie skończysz z tym co niżej.
+
+### Kontekst projektu i workflow
+
+- Repo: `C:\Users\karol\czytnik01` (na tym komputerze, lokalnie). Branch
+  roboczy: `plan/native-app-v2`, odgałęziony od `origin/main`. Wszystko
+  dotychczasowe jest już **wypchnięte** na ten branch na GitHubie
+  (`git status` czysty w momencie pisania tego).
+- **Zasada nadrzędna: NIGDY nie pushuj na GitHub bez wyraźnego
+  potwierdzenia Karola, za każdym razem, nie jednorazowo.** Firmware i
+  appka rozwijają się razem — jeden branch, oba katalogi (`firmware/`,
+  `src/app/`, `android/`).
+- Firmware: PlatformIO. Build: `pio run -e waveshare_esp32s3` (z katalogu
+  `firmware/`). Flash po USB: `pio run -e waveshare_esp32s3 -t upload
+  --upload-port COMx` — **zawsze pytaj Karola o potwierdzenie przed
+  flashowaniem** fizycznego czytnika (jedyne dostępne urządzenie testowe).
+- Appka: TypeScript/Lit (`src/app/`), Vite. PWA (`npm run build`) i
+  Capacitor/Android (`npm run build:capacitor && npx cap sync android`)
+  to dwa osobne buildy tego samego kodu źródłowego.
+- Android: `cd android && ./gradlew assembleDebug` (test) albo
+  `assembleRelease` (podpisany, wymaga `android/keystore.properties` —
+  lokalny, gitignored plik z hasłem do keystore; **plik keystore sam w
+  sobie leży POZA repo**, Karol wie gdzie — jeśli go nie widzisz, zapytaj
+  go zamiast generować nowy).
+- **Każdy nowy podpisany APK wymaga bumpnięcia `versionCode`/`versionName`
+  w `android/app/build.gradle`** — inaczej sprawdzanie aktualizacji appki
+  (`UpdateCheckWorker`) nie ma z czym porównać. Ostatnia wydana wersja:
+  **1.0.4** (`versionCode 5`). Firmware: **v0.3.8** (ostatni release na
+  GitHubie, w pełni zielone CI — firmware + pluginy).
+- Testowanie: Karol ma fizycznego czytnika (podłączanego USB, COM-port
+  zmienia się między sesjami — sprawdź `Get-CimInstance Win32_PnPEntity`)
+  i telefon z Androidem (Samsung SM-G986B, `adb` po USB). **Testuj na
+  prawdziwym sprzęcie, nie tylko w przeglądarce/mocku** — większość
+  realnych bugów w tym projekcie ujawniła się dopiero na żywo.
+- Release: `git tag vX.Y.Z && git push origin vX.Y.Z` triggeruje
+  `.github/workflows/release.yml` (firmware) — potem osobno
+  `gh release upload vX.Y.Z <apk>` dla podpisanego APK appki (te dwa są
+  na tym samym tagu release'u, ale to dwa różne artefakty, wersjonowane
+  niezależnie: `v0.3.8` firmware vs `1.0.4` appka).
+- Karol **explicit poprosił, żeby NIE pushować** dopóki poniższe nie
+  będzie gotowe i przetestowane — pracuj lokalnie, commituj, ale nie
+  `git push` bez pytania.
+- Po naprawieniu: Karol chce dostać to jako (1) **nowy release firmware
+  (OTA)** — czytnik ma zapisane WiFi domowe więc sam się zaktualizuje —
+  i (2) **nowy podpisany APK appki** wgrany przez `UpdateCheckWorker`
+  jako powiadomienie systemowe (chce zobaczyć czy powiadomienie faktycznie
+  przyjdzie — to pierwszy realny test tej funkcji).
+- Co do Fable: żadne z zadań niżej nie wymaga innego modelu — to
+  standardowe debugowanie (analiza sieci, iteracja na żywym sprzęcie,
+  dopisanie brakującej funkcji). Ograniczeniem jest długość kontekstu
+  sesji, nie brak jakiejś specjalizacji — zwykła nowa sesja (Sonnet)
+  wystarczy.
+
+### Bug 1 — "Failed to fetch" przy sprawdzaniu aktualizacji (PRZYCZYNA ZNALEZIONA)
+
+`android/app/src/main/java/pl/flower/reader/NetworkPinPlugin.java` robi
+`cm.bindProcessToNetwork(active)` po połączeniu z czytnikiem (wołane z
+`src/app/device/wifi-link.ts`, `attemptConnect()` →
+`void pinToDeviceNetwork();`). To wymusza, żeby **CAŁY ruch appki**
+(nie tylko do czytnika) szedł przez sieć czytnika — a ta nie ma
+internetu. Efekt: `updates-panel.element.ts`'s `check()`
+(`fetchLatestRelease()` w `src/app/updates/releases.ts`, GitHub API) i
+pobieranie `.bin`/`.apk` **nie mogą działać, gdy telefon jest połączony
+z czytnikiem** — stąd "Failed to fetch". To samo tłumaczy, dlaczego
+appka "sugeruje aktualizację nie wiedząc jaka wersja jest na czytniku" —
+sprawdzanie działa tylko PRZED połączeniem (kiedy jest normalny
+internet), a `currentFw` (prawdziwa wersja czytnika, z `/api/hello`) jest
+znane tylko PO połączeniu — te dwa stany się nie pokrywają w obecnym
+projekcie.
+
+**Do zrobienia:** `NetworkPinPlugin`/`pinToDeviceNetwork()` musi albo (a)
+przestać pinować cały proces i zamiast tego pinować tylko konkretne
+requesty do czytnika (Android ma `Network.openConnection()`/
+`Network.bindSocket()` do kierowania POJEDYNCZEGO requestu przez daną
+sieć, zamiast całego procesu), albo (b) appka musi jawnie odpinać sieć
+(`unpinFromDeviceNetwork()`) na czas sprawdzania aktualizacji i pinować
+z powrotem po. (a) jest architekturalnie czystsze (nie trzeba pamiętać
+o odpinaniu w każdym miejscu, gdzie appka robi request do internetu), ale
+wymaga przepisania jak `http-api.ts`/`releases.ts` robią fetch (Fetch
+API w WebView nie ma bezpośredniego dostępu do `Network.bindSocket()` —
+trzeba by przez natywny plugin proxy'ować konkretne requesty, albo dać
+appce JS-owy sposób powiedzenia "ten fetch ma iść przez zwykły
+internet, nie przez czytnik"). (b) jest prostsze do zaimplementowania
+szybko: w `updates-panel.element.ts`'s `check()` i `download()` —
+odepnij przed, przypnij z powrotem po (jeśli appka nadal jest
+połączona z czytnikiem).
+
+### Bug 2 — czytnik zawiesza się przy wysyłaniu/odświeżaniu biblioteki (NIE ZDIAGNOZOWANE, wymaga żywego testu)
+
+Karol: po połączeniu z appką, próba wysłania książki lub odświeżenia
+biblioteki **zawiesza ekran czytnika** i appka się rozłącza — czytnik
+budzi się dopiero po kilkunastu tapnięciach w ekran.
+
+Hipoteza (NIEPOTWIERDZONA): dziś dodany background poll `/api/info` co
+60s (`wifi-link.ts`, `startInfoRefresh()`/`refreshInfo()`, dla baterii w
+nagłówku) mógł nigdy nie być testowany RÓWNOCZEŚNIE z uploadem/listą
+książek na prawdziwym sprzęcie — `CompanionSyncManager`
+(`firmware/src/sync/CompanionSyncManager.cpp`) to pojedynczy
+`WebServer` obsługujący jedno żądanie na raz w głównej pętli; jeśli
+upload dużego pliku (zapis na SD, blokujący) nakłada się w czasie z
+tym pollem, może dojść do jakiegoś zakleszczenia/timeoutu który wygląda
+jak zawieszenie.
+
+**Do zrobienia — w tej kolejności:**
+1. Podłącz czytnik po USB, otwórz `pio device monitor` (serial log) ŻEBY
+   ZOBACZYĆ co się faktycznie dzieje w firmware w momencie zawieszenia
+   — to jest absolutnie kluczowe, nie zgaduj bez tego.
+2. Odtwórz bug: połącz appkę, wyślij książkę / kliknij odśwież, patrz na
+   serial log w momencie zawieszenia.
+3. Jeśli hipoteza się potwierdzi (log pokazuje że coś w
+   `handleInfo()`/`/api/info` koliduje z uploadem) — najprostsza łatka:
+   w `wifi-link.ts` **wstrzymaj `stopInfoRefresh()` na czas trwania
+   uploadu/refresha** (appka i tak wie kiedy leci upload —
+   `library-panel.element.ts`'s `onUpload`/`refresh()`), i wznów po.
+4. Jeśli log pokazuje coś innego (np. crash/reboot w
+   `CompanionSyncManager::handleBookUpload`/`handleBooksList` przy
+   większym pliku, brak pamięci, watchdog) — to głębszy, osobny bug w
+   firmware, nie związany z dzisiejszą zmianą — potraktuj jako nowe
+   znalezisko i zbadaj od nowa z tym co pokazuje serial log.
+5. Nie zakładaj naprawy bez potwierdzenia na żywym sprzęcie — to dokładnie
+   ten typ buga, który wygląda inaczej w teorii niż w praktyce (patrz
+   cała historia tego projektu w tym pliku).
+
+### Bug 3 — Konwerter: "Wyślij na urządzenie" nigdy nie było zaimplementowane
+
+`src/app/components/converter-panel.element.ts`, linia ok. 144:
+```html
+<button class="cta ghost" disabled title="Wymaga połączenia z urządzenia">
+  Wyślij na urządzenie (wkrótce)
+</button>
+```
+Zawsze `disabled`, nigdy nie podłączony do żadnej logiki — czysty,
+zapomniany placeholder. Trzeba:
+1. Usunąć `disabled`/"(wkrótce)", podłączyć `@click` do
+   `deviceApi.uploadBook(new Blob([this.rsvp]), <nazwa pliku>)` (ten sam
+   `deviceApi` z `../device/api`, już importowany gdzie indziej w appce —
+   sprawdź `library-panel.element.ts` jak dokładnie się go woła, w tym
+   plik konstruowany z `writeRsvp()`, które konwerter i tak już ma jako
+   `this.rsvp`).
+2. Gated za `isDeviceConnected()` (`../device/api`, już istnieje,
+   używane w `library-panel.element.ts`/`updates-panel.element.ts`) —
+   przycisk aktywny tylko gdy połączony, inaczej podpowiedź "połącz się
+   z czytnikiem" (dokładnie ten sam wzorzec co reszta appki po dzisiejszej
+   zmianie "stop showing fake demo data").
+3. Po sukcesie: pokaż potwierdzenie, rozważ nawigację do zakładki
+   Biblioteka albo prosty toast "Wysłano na czytnik".
+4. Przetestuj na żywym sprzęcie (upload prawdziwego przekonwertowanego
+   pliku, nie tylko w przeglądarce z mockiem).
+
+---
+
 > `main` na GitHubie), repo-inspiracji ([`ionutdecebal/rsvpnano`](https://github.com/ionutdecebal/rsvpnano))
 > i realnych testów połączenia WiFi. Fazy 0-4 poniżej to zapis historyczny —
 > większość była już zrobiona, tylko nikt nie odhaczał checkboxów na bieżąco.
