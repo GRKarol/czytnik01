@@ -42,7 +42,30 @@ export class WifiLink implements DeviceLink {
   private manuallyDisconnected = false;
   readonly transport: TransportInfo = { kind: "wifi", label: "WiFi" };
 
-  constructor(private opts: WifiLinkOptions = {}) {}
+  constructor(private opts: WifiLinkOptions = {}) {
+    _activeInstance = this;
+  }
+
+  /**
+   * Wstrzymuje background poll /api/info (bateria) ORAZ keep-alive
+   * (/api/hello co 8s) na czas trwania uploadu/odświeżania biblioteki.
+   * CompanionSyncManager.cpp obsługuje jedno żądanie na raz w głównej
+   * pętli firmware — zapis dużego pliku na SD blokuje ją na dłużej niż
+   * KEEP_ALIVE_TIMEOUT_MS, więc keep-alive w tym czasie fałszywie
+   * rozpoznawał to jako zerwane połączenie (appka pokazywała "Połączenie
+   * przerwane, próbuję połączyć ponownie" mimo że upload trwał normalnie
+   * i się kończył sukcesem chwilę później). Wznów po resumeInfoRefresh().
+   */
+  pauseInfoRefresh(): void {
+    this.stopInfoRefresh();
+    this.stopKeepAlive();
+  }
+
+  resumeInfoRefresh(): void {
+    if (!this.isConnected) return;
+    this.startInfoRefresh();
+    this.startKeepAlive();
+  }
 
   private get base(): string {
     return this.opts.baseUrl ?? DEVICE_AP_BASE_URL;
@@ -234,6 +257,7 @@ export class WifiLink implements DeviceLink {
     setFirmwareVersion(null);
     setBatteryPercent(null);
     void unpinFromDeviceNetwork();
+    if (_activeInstance === this) _activeInstance = null;
   }
 
   async send(cmd: DeviceCommand): Promise<void> {
@@ -260,4 +284,22 @@ export class WifiLink implements DeviceLink {
   static isSupported(): boolean {
     return typeof fetch === "function" && typeof WebSocket === "function";
   }
+}
+
+// ─── Pauza info-pollu dla operacji na bibliotece ────────────────────────────
+//
+// library-panel.element.ts i converter-panel.element.ts wołają te funkcje
+// wokół uploadu/odświeżania, żeby background poll /api/info (co 60s) nie
+// leciał równolegle z requestem, który zapisuje duży plik na SD karcie
+// czytnika (patrz docs/roadmap.md, Bug 2). Nie wiedzą nic o konkretnej
+// instancji WifiLink — ta śledzi ostatnio utworzoną (jedyna aktywna naraz,
+// zob. app.element.ts's connect()).
+let _activeInstance: WifiLink | null = null;
+
+export function pauseInfoRefresh(): void {
+  _activeInstance?.pauseInfoRefresh();
+}
+
+export function resumeInfoRefresh(): void {
+  _activeInstance?.resumeInfoRefresh();
 }

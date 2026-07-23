@@ -1,4 +1,5 @@
 import { OTA_RELEASES_API } from "../../shared/config";
+import { describeNetworkError } from "../device/network-errors";
 
 export interface ReleaseAsset {
   name: string;
@@ -40,9 +41,14 @@ interface GhRelease {
  * Nie wszystkie repo mają release'y — wtedy 404 i zwracamy `null`.
  */
 export async function fetchLatestRelease(): Promise<ReleaseInfo | null> {
-  const res = await fetch(OTA_RELEASES_API, {
-    headers: { accept: "application/vnd.github+json" },
-  });
+  let res: Response;
+  try {
+    res = await fetch(OTA_RELEASES_API, {
+      headers: { accept: "application/vnd.github+json" },
+    });
+  } catch (err) {
+    throw new Error(describeNetworkError(err, "internet"));
+  }
   if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(`Nie udało się sprawdzić aktualizacji (${res.status}). Sprawdź połączenie z internetem.`);
@@ -90,7 +96,21 @@ export async function downloadAsset(
   asset: ReleaseAsset,
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<Blob> {
-  const res = await fetch(asset.downloadUrl);
+  let res: Response;
+  try {
+    res = await fetch(asset.downloadUrl);
+  } catch (err) {
+    // Zweryfikowane empirycznie (fetch w trybie "no-cors" na ten sam URL
+    // przechodzi, w trybie domyślnym "cors" zawsze pada) — pliki binarne
+    // z GitHub Releases nie mają nagłówka Access-Control-Allow-Origin,
+    // więc przeglądarka blokuje odczyt niezależnie od stanu sieci
+    // telefonu. To nie da się naprawić z poziomu appki — czytnik i tak
+    // potrafi pobrać i zainstalować aktualizację sam (Ustawienia → WiFi
+    // → zapisana sieć domowa), bez pośrednictwa telefonu.
+    throw new Error(
+      `Przeglądarka blokuje pobieranie plików binarnych z GitHub Releases (ograniczenie CORS po stronie GitHuba, nie problem z Twoim WiFi). Czytnik może pobrać i zainstalować tę aktualizację sam — sprawdź czy ma zapisane WiFi domowe w Ustawieniach na czytniku. (${describeNetworkError(err)})`,
+    );
+  }
   if (!res.ok || !res.body) {
     throw new Error(`Nie udało się pobrać ${asset.name}: HTTP ${res.status}.`);
   }

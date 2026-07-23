@@ -9,6 +9,7 @@ import {
 } from "../updates/releases";
 import { deviceApi, onDeviceApiChange, isDeviceConnected } from "../device/api";
 import { getFirmwareVersion, onFirmwareVersionChange } from "../device/device-info";
+import { pinToDeviceNetwork, unpinFromDeviceNetwork } from "../device/network-pin";
 
 type Stage =
   | "idle"
@@ -158,6 +159,11 @@ export class UpdatesPanel extends LitElement {
   private check = async () => {
     this.error = "";
     this.stage = "checking";
+    // Gdy telefon jest połączony z czytnikiem, NetworkPin (Android) kieruje
+    // CAŁY ruch appki przez sieć czytnika — a ta nie ma internetu, więc
+    // GitHub API nigdy by nie odpowiedziało ("Failed to fetch"). Na czas
+    // tego zapytania (i tylko na ten czas) odpinamy się od sieci czytnika.
+    await unpinFromDeviceNetwork();
     try {
       const r = await fetchLatestRelease();
       if (!r) {
@@ -169,6 +175,8 @@ export class UpdatesPanel extends LitElement {
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.stage = "error";
+    } finally {
+      if (this.connected) void pinToDeviceNetwork();
     }
   };
 
@@ -176,6 +184,9 @@ export class UpdatesPanel extends LitElement {
     if (!asset) return;
     this.stage = "downloading";
     this.progress = 0;
+    // Ten sam powód co w check() — pobieranie assetu leci do GitHuba, nie
+    // do czytnika, więc musi iść przez zwykły internet telefonu.
+    await unpinFromDeviceNetwork();
     try {
       this.downloaded = await downloadAsset(asset, (loaded, total) => {
         this.progress = total ? Math.round((loaded / total) * 100) : 0;
@@ -184,6 +195,8 @@ export class UpdatesPanel extends LitElement {
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.stage = "error";
+    } finally {
+      if (this.connected) void pinToDeviceNetwork();
     }
   };
 

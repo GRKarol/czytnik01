@@ -19,9 +19,12 @@ import {
   previewText,
   type ChapterView,
 } from "../converter/chapters";
+import { deviceApi, onDeviceApiChange, isDeviceConnected } from "../device/api";
+import { pauseInfoRefresh, resumeInfoRefresh } from "../device/wifi-link";
 import "./first-use-hint.element";
 
 type Stage = "idle" | "parsing" | "ready" | "error";
+type SendStage = "idle" | "sending" | "sent" | "error";
 
 @customElement("converter-panel")
 export class ConverterPanel extends LitElement {
@@ -38,6 +41,23 @@ export class ConverterPanel extends LitElement {
   @state() private pastedText = "";
   @state() private chaptersOpen = false;
   @state() private expandedChapterEventIndex: number | null = null;
+  @state() private sendStage: SendStage = "idle";
+  @state() private sendError = "";
+  @state() private sendProgress = 0;
+  @state() private connected = isDeviceConnected();
+  private unsubApi: (() => void) | null = null;
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.unsubApi = onDeviceApiChange(() => {
+      this.connected = isDeviceConnected();
+    });
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.unsubApi?.();
+  }
 
   render() {
     return html`
@@ -141,11 +161,26 @@ export class ConverterPanel extends LitElement {
           <button class="cta" @click=${this.download}>
             ${Capacitor.isNativePlatform() ? "Udostępnij .rsvp" : "Pobierz .rsvp"}
           </button>
-          <button class="cta ghost" disabled title="Wymaga połączenia z urządzeniem">
-            Wyślij na urządzenie (wkrótce)
+          <button
+            class="cta ghost"
+            ?disabled=${!this.connected || this.sendStage === "sending"}
+            title=${this.connected ? "" : "Połącz się z czytnikiem, żeby wysłać"}
+            @click=${this.sendToDevice}
+          >
+            ${this.sendStage === "sending"
+              ? "Wysyłam…"
+              : this.sendStage === "sent"
+                ? "Wysłano ✓"
+                : this.connected
+                  ? "Wyślij na urządzenie"
+                  : "Połącz się z czytnikiem, żeby wysłać"}
           </button>
         </div>
         ${this.shareError ? html`<p class="error">${this.shareError}</p>` : ""}
+        ${this.sendStage === "sending"
+          ? html`<progress class="send-progress" max="100" value=${this.sendProgress}></progress>`
+          : ""}
+        ${this.sendError ? html`<p class="error">${this.sendError}</p>` : ""}
         ${this.renderChapterEditor()}
         <details class="preview">
           <summary>Podgląd pierwszych linii</summary>
@@ -361,6 +396,8 @@ export class ConverterPanel extends LitElement {
     }
 
     this.stage = "parsing";
+    this.sendStage = "idle";
+    this.sendError = "";
     try {
       const book = await parseFile(file, detection.format as SupportedFormat);
       this.book = book;
@@ -414,6 +451,36 @@ export class ConverterPanel extends LitElement {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  private sendToDevice = async () => {
+    if (!this.book || !this.connected) return;
+    this.sendStage = "sending";
+    this.sendError = "";
+    const updated = writeRsvp({
+      ...this.book,
+      metadata: { ...this.book.metadata, title: this.bookTitle, author: this.bookAuthor },
+    });
+    const filename = `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\w\- ]+/g, "_")}.rsvp`;
+    // Patrz docs/roadmap.md, Bug 2 — pauzujemy background poll /api/info na
+    // czas uploadu, podejrzewanego o kolizję z zapisem na SD czytnika.
+    pauseInfoRefresh();
+    this.sendProgress = 0;
+    try {
+      await deviceApi.uploadBook(
+        new Blob([updated], { type: "text/plain" }),
+        filename,
+        (loaded, total) => {
+          this.sendProgress = total ? Math.round((loaded / total) * 100) : 0;
+        },
+      );
+      this.sendStage = "sent";
+    } catch (err) {
+      this.sendStage = "error";
+      this.sendError = err instanceof Error ? err.message : String(err);
+    } finally {
+      resumeInfoRefresh();
+    }
   };
 
   static styles = css`
@@ -600,6 +667,10 @@ export class ConverterPanel extends LitElement {
     .cta:disabled {
       opacity: 0.55;
       cursor: not-allowed;
+    }
+    .send-progress {
+      width: 100%;
+      height: 6px;
     }
     .preview {
       border: 1px solid var(--line);

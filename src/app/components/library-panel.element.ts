@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { deviceApi, onDeviceApiChange, isDeviceConnected, type Book } from "../device/api";
+import { pauseInfoRefresh, resumeInfoRefresh } from "../device/wifi-link";
 import "./first-use-hint.element";
 
 @customElement("library-panel")
@@ -10,6 +11,9 @@ export class LibraryPanel extends LitElement {
   @state() private error = "";
   @state() private filter: "all" | "book" | "article" = "all";
   @state() private connected = isDeviceConnected();
+  @state() private uploading = false;
+  @state() private uploadProgress = 0;
+  @state() private uploadingName = "";
   private unsubApi: (() => void) | null = null;
 
   connectedCallback(): void {
@@ -49,11 +53,23 @@ export class LibraryPanel extends LitElement {
           ?disabled=${!this.connected}
           @change=${this.onUpload}
         />
-        <label for="upload" class=${`btn ${!this.connected ? "disabled" : ""}`}
+        <label for="upload" class=${`btn ${!this.connected || this.uploading ? "disabled" : ""}`}
           >Wyślij plik na urządzenie</label
         >
-        <button class="btn ghost" @click=${this.refresh}>Odśwież</button>
+        <button class="btn ghost" ?disabled=${this.uploading} @click=${this.refresh}>
+          Odśwież
+        </button>
       </div>
+
+      ${this.uploading
+        ? html`
+            <div class="upload-progress">
+              <span>Wysyłam <strong>${this.uploadingName}</strong>…</span>
+              <progress max="100" value=${this.uploadProgress}></progress>
+              <span class="upload-percent">${this.uploadProgress}%</span>
+            </div>
+          `
+        : ""}
 
       <div class="tabs">
         ${this.tabButton("all", "Wszystko", this.books.length)}
@@ -126,12 +142,17 @@ export class LibraryPanel extends LitElement {
   private refresh = async () => {
     this.loading = true;
     this.error = "";
+    // Wstrzymaj background poll /api/info na czas requestu — patrz
+    // docs/roadmap.md, Bug 2 (podejrzenie kolizji z zapisem na SD karcie
+    // czytnika powodującej zawieszenie).
+    pauseInfoRefresh();
     try {
       this.books = await deviceApi.listBooks();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.loading = false;
+      resumeInfoRefresh();
     }
   };
 
@@ -140,11 +161,20 @@ export class LibraryPanel extends LitElement {
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
+    pauseInfoRefresh();
+    this.uploading = true;
+    this.uploadProgress = 0;
+    this.uploadingName = file.name;
     try {
-      await deviceApi.uploadBook(file, file.name);
+      await deviceApi.uploadBook(file, file.name, (loaded, total) => {
+        this.uploadProgress = total ? Math.round((loaded / total) * 100) : 0;
+      });
       await this.refresh();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.uploading = false;
+      resumeInfoRefresh();
     }
   };
 
@@ -195,6 +225,26 @@ export class LibraryPanel extends LitElement {
     .list.stale {
       opacity: 0.55;
       filter: grayscale(0.6);
+    }
+    .upload-progress {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: var(--paper-tint);
+      border: 1px solid var(--line);
+      font: 0.85rem ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink-soft);
+    }
+    .upload-progress progress {
+      width: 100%;
+      height: 6px;
+    }
+    .upload-progress .upload-percent {
+      align-self: flex-end;
+      color: var(--muted);
+      font-size: 0.78rem;
     }
     .actions {
       display: flex;

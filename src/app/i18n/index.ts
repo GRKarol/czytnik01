@@ -41,7 +41,7 @@ const locales: Record<SupportedLang, LocaleMap> = {
   pl: plLocale as LocaleMap,
 };
 
-let currentLang: SupportedLang = DEFAULT_LANG;
+const LANG_STORAGE_KEY = "flower.lang";
 
 /**
  * Check whether a given string is a valid SupportedLang.
@@ -49,6 +49,24 @@ let currentLang: SupportedLang = DEFAULT_LANG;
 function isSupportedLang(lang: string): lang is SupportedLang {
   return SUPPORTED_LANGS.has(lang);
 }
+
+/**
+ * Odczytuje język wybrany przy pierwszym uruchomieniu (onboarding-wizard)
+ * albo ostatnio zsynchronizowany z czytnika — dzięki temu appka nie wraca
+ * do polskiego przy każdym odświeżeniu, zanim ktoś połączy się z
+ * urządzeniem.
+ */
+function loadPersistedLang(): SupportedLang {
+  try {
+    const raw = localStorage.getItem(LANG_STORAGE_KEY);
+    if (raw && isSupportedLang(raw)) return raw;
+  } catch {
+    // localStorage niedostępny — zostań przy domyślnym.
+  }
+  return DEFAULT_LANG;
+}
+
+let currentLang: SupportedLang = loadPersistedLang();
 
 /**
  * Translate a key using the current locale.
@@ -80,6 +98,11 @@ export function t(key: string): string {
 export function setLang(lang: SupportedLang | string): void {
   const resolvedLang: SupportedLang = isSupportedLang(lang) ? lang : DEFAULT_LANG;
   currentLang = resolvedLang;
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, resolvedLang);
+  } catch {
+    // localStorage niedostępny — język nie przetrwa odświeżenia, ale appka działa.
+  }
   document.dispatchEvent(new CustomEvent("lang-changed", { detail: { lang: resolvedLang } }));
 }
 

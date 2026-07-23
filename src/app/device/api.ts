@@ -122,7 +122,11 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
 
 export interface DeviceApi {
   listBooks(): Promise<Book[]>;
-  uploadBook(file: Blob, name: string): Promise<void>;
+  uploadBook(
+    file: Blob,
+    name: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void>;
   deleteBook(name: string): Promise<void>;
   getSettings(): Promise<DeviceSettings>;
   putSettings(patch: Partial<DeviceSettings>): Promise<DeviceSettings>;
@@ -225,7 +229,8 @@ export const deviceApi = {
     return _api;
   },
   listBooks: () => _api.listBooks(),
-  uploadBook: (f: Blob, n: string) => _api.uploadBook(f, n),
+  uploadBook: (f: Blob, n: string, onProgress?: (loaded: number, total: number) => void) =>
+    _api.uploadBook(f, n, onProgress),
   deleteBook: (n: string) => _api.deleteBook(n),
   getSettings: () => _api.getSettings(),
   putSettings: (p: Partial<DeviceSettings>) => _api.putSettings(p),

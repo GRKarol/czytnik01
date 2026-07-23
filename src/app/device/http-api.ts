@@ -30,6 +30,7 @@ import {
   cacheSettings,
 } from "./api";
 import { UI_LANG_INDEX_MAP } from "../i18n/lang-map";
+import { describeNetworkError } from "./network-errors";
 
 // Jedno źródło prawdy dla mapowania indeksu języka firmware (0-5) —
 // UI_LANG_INDEX_MAP w src/app/i18n/lang-map.ts, zgodne z
@@ -237,6 +238,15 @@ export class HttpDeviceApi implements DeviceApi {
     return this.baseUrl.replace(/\/+$/, "") + path;
   }
 
+  /** fetch() do czytnika z tłumaczeniem surowego "Failed to fetch" na polski. */
+  private async fetchDevice(path: string, init?: RequestInit): Promise<Response> {
+    try {
+      return await fetch(this.url(path), init);
+    } catch (err) {
+      throw new Error(describeNetworkError(err, "device"));
+    }
+  }
+
   private async json<T>(res: Response): Promise<T> {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -246,19 +256,38 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async listBooks(): Promise<Book[]> {
-    const data = await this.json<{ books: Book[] }>(await fetch(this.url("/api/books")));
+    const data = await this.json<{ books: Book[] }>(await this.fetchDevice("/api/books"));
     cacheBooks(data.books);
     return data.books;
   }
 
-  async uploadBook(file: Blob, name: string): Promise<void> {
+  /**
+   * XMLHttpRequest zamiast fetch — tak samo jak installOta, bo fetch nie
+   * wystawia progress callbacka dla wysyłanych danych.
+   */
+  async uploadBook(
+    file: Blob,
+    name: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void> {
     const fd = new FormData();
     fd.append("file", file, name);
-    const res = await fetch(this.url("/api/books"), { method: "POST", body: fd });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Upload nie powiódł się (${res.status}). ${text}`);
-    }
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", this.url("/api/books"));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload nie powiódł się (${xhr.status}). ${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Połączenie z urządzeniem zerwane podczas uploadu."));
+      xhr.send(fd);
+    });
   }
 
   async deleteBook(name: string): Promise<void> {
@@ -268,7 +297,7 @@ export class HttpDeviceApi implements DeviceApi {
     // Wcześniej ta funkcja wysyłała nazwę jako segment ścieżki
     // (/api/books/<nazwa>), co nigdy nie trafiało w zarejestrowaną trasę —
     // każde usunięcie książki z poziomu appki kończyło się 404.
-    const res = await fetch(this.url(`/api/books?name=${encodeURIComponent(name)}`), {
+    const res = await this.fetchDevice(`/api/books?name=${encodeURIComponent(name)}`, {
       method: "DELETE",
     });
     if (!res.ok && res.status !== 404) {
@@ -277,7 +306,7 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async getSettings(): Promise<DeviceSettings> {
-    const fw = await this.json<FirmwareSettings>(await fetch(this.url("/api/settings")));
+    const fw = await this.json<FirmwareSettings>(await this.fetchDevice("/api/settings"));
     const settings = fromFirmware(fw);
     cacheSettings(settings);
     return settings;
@@ -296,7 +325,7 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   private async putSettingsNow(patch: Partial<DeviceSettings>): Promise<DeviceSettings> {
-    const res = await fetch(this.url("/api/settings"), {
+    const res = await this.fetchDevice("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(toFirmware(patch)),

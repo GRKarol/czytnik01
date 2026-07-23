@@ -1,9 +1,21 @@
 import { LitElement, css, html, svg, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { BRAND_NAME, DEVICE_LABEL } from "../../shared/config";
+import { setLang, getLang, type SupportedLang } from "../i18n/index";
 import type { PwaInstallDialog } from "./pwa-install-dialog.element";
 
 const STORAGE_KEY = "flower.onboarded.v1";
+
+// Te same języki co czytnik (firmware Localization.h / UI_LANG_INDEX_MAP)
+// — appka nie wystawia własnego, szerszego zestawu.
+const LANG_OPTIONS: { code: SupportedLang; label: string }[] = [
+  { code: "pl", label: "Polski" },
+  { code: "en", label: "English" },
+  { code: "de", label: "Deutsch" },
+  { code: "es", label: "Español" },
+  { code: "fr", label: "Français" },
+  { code: "ro", label: "Română" },
+];
 
 /**
  * Pełnoekranowy pierwszorazowy wizard. Pokazuje się raz po otwarciu
@@ -20,6 +32,7 @@ export class OnboardingWizard extends LitElement {
   @state() private dismissed = false;
   @state() private installAvailable = false;
   @state() private isStandalone = false;
+  @state() private selectedLang: SupportedLang = getLang();
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -47,7 +60,7 @@ export class OnboardingWizard extends LitElement {
       <div class="overlay">
         <div class="card">
           <div class="dots">
-            ${[0, 1, 2].map(
+            ${[0, 1, 2, 3].map(
               (i) => html`<span class=${i === this.step ? "dot active" : "dot"}></span>`,
             )}
           </div>
@@ -59,7 +72,7 @@ export class OnboardingWizard extends LitElement {
               ? html`<button class="link" @click=${() => (this.step -= 1)}>Wróć</button>`
               : html`<button class="link" @click=${this.skip}>Pomiń</button>`}
             <button class="cta" @click=${this.next}>
-              ${this.step < 2 ? "Dalej" : "Zaczynamy"}
+              ${this.step < 3 ? "Dalej" : "Zaczynamy"}
             </button>
           </div>
         </div>
@@ -71,6 +84,24 @@ export class OnboardingWizard extends LitElement {
     switch (this.step) {
       case 0:
         return html`
+          <div class="hero soft">${this.iconGlobe()}</div>
+          <h2>Wybierz język</h2>
+          <p>Tyle samo języków co na ${DEVICE_LABEL.toLowerCase()}u.</p>
+          <div class="lang-grid">
+            ${LANG_OPTIONS.map(
+              (opt) => html`
+                <button
+                  class=${opt.code === this.selectedLang ? "lang-btn active" : "lang-btn"}
+                  @click=${() => this.pickLang(opt.code)}
+                >
+                  ${opt.label}
+                </button>
+              `,
+            )}
+          </div>
+        `;
+      case 1:
+        return html`
           <div class="hero">${this.flower(120)}</div>
           <h2>Cześć, tu ${BRAND_NAME}.</h2>
           <p>
@@ -78,10 +109,10 @@ export class OnboardingWizard extends LitElement {
             ustawieniami i pobierasz pluginy. Bezprzewodowo, bez kabli.
           </p>
         `;
-      case 1: {
-        // If standalone → skip install step entirely (proceed to step 2)
+      case 2: {
+        // If standalone → skip install step entirely (proceed to step 3)
         if (this.isStandalone) {
-          this.step = 2;
+          this.step = 3;
           return this.renderStep();
         }
 
@@ -110,10 +141,10 @@ export class OnboardingWizard extends LitElement {
         }
 
         // No prompt available and not iOS → skip install step
-        this.step = 2;
+        this.step = 3;
         return this.renderStep();
       }
-      case 2:
+      case 3:
         return html`
           <div class="hero soft">${this.iconWifi()}</div>
           <h2>Połącz urządzenie</h2>
@@ -133,7 +164,7 @@ export class OnboardingWizard extends LitElement {
   }
 
   private next = () => {
-    if (this.step < 2) {
+    if (this.step < 3) {
       this.step += 1;
       return;
     }
@@ -141,6 +172,12 @@ export class OnboardingWizard extends LitElement {
   };
 
   private skip = () => this.finish();
+
+  private pickLang(lang: SupportedLang) {
+    this.selectedLang = lang;
+    setLang(lang);
+    this.step += 1;
+  }
 
   private finish() {
     localStorage.setItem(STORAGE_KEY, new Date().toISOString());
@@ -171,6 +208,19 @@ export class OnboardingWizard extends LitElement {
           <circle r="10" fill="#fff2bf"/>
           <circle r="6" fill="#ffd66e"/>
         </g>
+      </svg>
+    `;
+  }
+
+  private iconGlobe() {
+    return svg`
+      <svg width="90" height="90" viewBox="0 0 100 100" fill="none"
+           stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="50" cy="50" r="34"/>
+        <ellipse cx="50" cy="50" rx="14" ry="34"/>
+        <line x1="16" y1="50" x2="84" y2="50"/>
+        <path d="M22 32c16 8 40 8 56 0"/>
+        <path d="M22 68c16-8 40-8 56 0"/>
       </svg>
     `;
   }
@@ -302,6 +352,29 @@ export class OnboardingWizard extends LitElement {
         sans-serif;
       cursor: pointer;
       padding: 8px 4px;
+    }
+    .lang-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+    .lang-btn {
+      padding: 12px 10px;
+      border: 1.5px solid #d9e6f6;
+      border-radius: 14px;
+      background: #fff;
+      color: #0c2340;
+      font:
+        600 0.95rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+    }
+    .lang-btn.active {
+      border-color: #2e8eff;
+      background: #e8f4fd;
+      color: #1f6fd4;
     }
     .cta {
       padding: 12px 22px;
