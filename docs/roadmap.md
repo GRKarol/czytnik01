@@ -127,10 +127,13 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       `adb install` (USB), appka wykryła i połączyła się z czytnikiem w
       trybie Sync po WiFi. Pierwsze realne, potwierdzone działające
       połączenie od początku projektu.
-- [ ] `ConnectivityManager.bindProcessToNetwork` — przypięcie appki na
-      sztywno do sieci czytnika, żeby Android nie odcinał jej w tle uznając
-      sieć za "bez internetu". Nie zrobione — wymaga małego natywnego
-      pluginu Capacitora (Kotlin), nie tylko configu.
+- [x] `ConnectivityManager.bindProcessToNetwork` — natywny plugin Capacitora
+      (`NetworkPinPlugin.java`) pina appkę na sztywno do aktywnej sieci
+      WiFi przy udanym połączeniu i odpina przy każdym rozłączeniu/drop —
+      zapobiega cichemu przełączeniu ruchu appki z powrotem na sieć z
+      internetem, mimo że telefon nadal jest fizycznie w AP czytnika.
+      Zweryfikowane: build (tsc/vite/gradle) + instalacja + rejestracja
+      pluginu bez błędów na fizycznym telefonie (SM-G986B).
 - [ ] Natywny share target (odbieranie linków/tekstu z innych aplikacji,
       jak w `rsvpnano`) — opcjonalnie, jeśli czas pozwoli.
 - [ ] Background task (WorkManager) do okresowego sprawdzania GitHub
