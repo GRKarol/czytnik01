@@ -303,15 +303,40 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
       plugins/<nazwa> && pio run`), więc nigdy nie widział tego pliku.
       Naprawa: `boards_dir = ../../firmware/boards` w sekcji `[platformio]`
       obu `plugins/*/platformio.ini`.
-- [ ] **Drugi, głębszy bug w `build-plugins`: `Nothing to build`.** Po
-      naprawieniu `UnknownBoard` build pluginów (`focus-timer`, `rss`)
-      faluje teraz na tym — LDF nie znajduje źródeł mimo że `src/*.cpp`
-      istnieją. Zweryfikowane w historii CI: **ten job nigdy w całej
-      historii projektu się nie udał** (faluje od commitu wprowadzającego
-      system pluginów, 2026-06-10, wcześniej tylko zasłonięte przez
-      UnknownBoard). Nie blokuje głównego firmware — pluginy jako pliki
-      binarne w Release po prostu nie są jeszcze publikowane. Odłożone,
-      zgodnie z wcześniejszą decyzją, że system pluginów to niski
+- [x] **`Nothing to build` naprawione — build pluginów kompiluje się i
+      linkuje po raz pierwszy w całej historii projektu.** Trzy osobne
+      przyczyny, każda zasłaniała kolejną:
+      1. `build_src_filter = +<src/>` szukał folderu `src/src/` (filtr
+         jest już liczony względem `src_dir`, domyślnie `src`) — zmiana
+         na `+<*>`.
+      2. `lib_extra_dirs` wskazywał wprost na `firmware/src/plugins/sdk`,
+         ale ten folder to luźne nagłówki bez `library.json` — PlatformIO
+         rozpoznaje jako biblioteki tylko PODFOLDERY wskazanego katalogu,
+         więc nigdy nie trafił na ścieżkę include. Zastąpione zwykłą flagą
+         `-I` (+ druga flaga `-I..` dla `plugin_new.h`, który leży wprost
+         w `plugins/`).
+      3. `plugin_runtime.cpp` (współdzielone zaślepki linkera dla buildów
+         `-nostdlib`) leży w `plugins/`, poziom wyżej niż `src/` każdego
+         pluginu — filtr nie sięga tam wzorcem `../`. Dodany
+         `tools/pio_plugin_shared_runtime.py` (pre-script, `env.BuildSources()`)
+         żeby dociągnąć ten plik jawnie. Przy okazji: usunięta duplikująca
+         się definicja `__dso_handle` (toolchain i tak ją dostarcza) i
+         dodane puste `setup()`/`loop()` — framework Arduino zawsze ich
+         wymaga przy linkowaniu, mimo że plugin nigdy nie odpala się jako
+         normalny szkic.
+      Zweryfikowane: **`pio run` dla obu pluginów kończy się `SUCCESS`**
+      (wcześniej failowało od 2026-06-10, zawsze — najpierw zasłonięte
+      przez `UnknownBoard`, potem przez to).
+- [ ] **Nowo znaleziony, głębszy problem — binarka pluginu prawdopodobnie
+      nie nadaje się jeszcze do wgrania.** Skrypt patchujący nagłówek
+      (`tools/pio_plugin_build.py`) zgłasza `Invalid magic` — `esptool.py`
+      zawsze doklej swój własny nagłówek obrazu ESP32 (magic `0xE9`) na
+      początku `.bin`, więc własny nagłówek pluginu (`PluginBinaryHeader`,
+      magic `"PLUG"`) nie ląduje już na bajcie 0, tam gdzie loader go
+      oczekuje. To osobny problem od "build failuje" (surowa binarka vs.
+      format obrazu ESP32) — CI będzie już zielone, ale sam plugin może
+      nadal nie działać po wgraniu na czytnik. Nie badane głębiej w tej
+      sesji, zgodnie z wcześniejszą decyzją że system pluginów to niski
       priorytet.
 
 ## Otwarte pytania (nadal aktualne)
