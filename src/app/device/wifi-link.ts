@@ -11,6 +11,7 @@ import { DEVICE_AP_BASE_URL } from "../../shared/config";
 import type { DeviceCommand, DeviceEvent } from "../../shared/device-protocol";
 import { parseEvent } from "../../shared/device-protocol";
 import type { DeviceLink, TransportInfo } from "./device-link";
+import { pinToDeviceNetwork, unpinFromDeviceNetwork } from "./network-pin";
 
 export interface WifiLinkOptions {
   /** Bazowy URL urządzenia. Domyślnie `http://192.168.4.1`. */
@@ -92,6 +93,7 @@ export class WifiLink implements DeviceLink {
 
     this.isConnected = true;
     this.startKeepAlive();
+    void pinToDeviceNetwork();
   }
 
   private async openSocket(): Promise<void> {
@@ -154,6 +156,7 @@ export class WifiLink implements DeviceLink {
     this.isConnected = false;
     this.stopKeepAlive();
     this.socket = null;
+    void unpinFromDeviceNetwork();
     for (const h of this.statusHandlers) h(false);
     void this.scheduleReconnect();
   }
@@ -186,6 +189,7 @@ export class WifiLink implements DeviceLink {
     this.socket?.close();
     this.socket = null;
     this.isConnected = false;
+    void unpinFromDeviceNetwork();
   }
 
   async send(cmd: DeviceCommand): Promise<void> {
