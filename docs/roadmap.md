@@ -155,11 +155,19 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       Drugorzędny mechanizm: czytnik i tak sam się aktualizuje gdy ma
       zapisane WiFi domowe (`ota_auto` w App.cpp) — to tylko dla
       przypadku gdy ktoś tego nie skonfigurował.
-- [ ] Build **podpisanego** (release, nie debug) APK, publikacja jako asset
-      w GitHub Releases obok firmware — do pobrania bezpośrednio ze strony.
-      Wymaga wygenerowania keystore i skonfigurowania podpisywania w
-      `android/app/build.gradle` (nie zrobione — decyzja o keystore lepiej
-      zostawić Karolowi: gdzie i jak bezpiecznie go przechować).
+- [x] **Podpisany (release, nie debug) APK — gotowe.** Keystore
+      wygenerowany (`keytool`, 2048-bit RSA, ważność 10000 dni),
+      `android/keystore.properties` (gitignored) wskazuje na plik +
+      hasła, `build.gradle` odczytuje go i podpisuje `assembleRelease`.
+      Zweryfikowane: `apksigner verify` potwierdza podpis, APK
+      instaluje się i działa na fizycznym telefonie (nadpisał debug
+      build — inny klucz, wymagało odinstalowania starej wersji).
+      **Sam plik keystore leży poza repo (scratchpad sesji) — Karol
+      przenosi go na stałe miejsce (backup!), inaczej zniknie i żadna
+      przyszła aktualizacja nie nadpisze tej instalacji.**
+- [ ] Publikacja podpisanego APK jako asset w GitHub Releases obok
+      firmware, i podpięcie prawdziwego linku pod przycisk "Download"
+      na `flower.theworkpc.com/appdownload`.
 - [ ] Dłuższy test odporności: świadomie zerwać WiFi w trakcie sesji i
       sprawdzić czy auto-reconnect z Fazy 6 faktycznie łapie połączenie z
       powrotem (na razie zweryfikowano tylko sam pierwszy connect, nie
