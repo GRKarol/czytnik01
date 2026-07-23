@@ -207,6 +207,22 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       tło dopasowane do papierowego tonu marki.
 - [x] Usunięty niedziałający kod QR ze strony `/appdownload` (nic nie
       dawał — appka do zeskanowania i tak jest na tym samym telefonie).
+- [x] **Zero fałszywych danych demo — appka pokazuje pusto zamiast
+      "Mały próbnik"/"Krótki tekst" zanim choć raz się zsynchronizuje.**
+      `MockDeviceApi` przestał być generatorem danych testowych —
+      teraz to tylko cache "ostatniego znanego, prawdziwego stanu"
+      (`api.ts`: `cacheBooks()`/`cacheSettings()`, wołane przez
+      `HttpDeviceApi` po każdym udanym fetchu). Biblioteka/ustawienia:
+      przed pierwszą synchronizacją — puste, z komunikatem "połącz się
+      z czytnikiem". Po synchronizacji i rozłączeniu — te same dane
+      zostają widoczne, ale na szaro, z banerem "niezsynchronizowane",
+      a każda akcja zmieniająca coś (upload, usuń, zmiana ustawienia,
+      OTA) rzuca jasny błąd zamiast fałszywie działać na localStorage.
+      Po ponownym połączeniu — dokładnie ten sam, w pełni interaktywny
+      stan co wcześniej. Współdzielony `isDeviceConnected()` (`api.ts`)
+      zastąpił osobne sprawdzenia w każdym panelu. Zweryfikowane
+      na żywo w przeglądarce (pusty stan, i wyszarzony stan z
+      przykładowo wstrzykniętym cache).
 
 ## Faza 6 — Niezawodność połączenia (P0 — realny, potwierdzony bug) ✅ zweryfikowane na sprzęcie
 
