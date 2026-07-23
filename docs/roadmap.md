@@ -141,6 +141,14 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       się na Konwerter i podaje tekst przez ten sam kod co ręczne "wklej
       tekst". Zweryfikowane end-to-end na fizycznym telefonie przez
       symulowany intent ACTION_SEND.
+- [x] **Ręczna edycja rozdziałów w konwerterze** (`src/app/converter/chapters.ts`
+      + `converter-panel.element.ts`) — czytnik pokazuje cokolwiek wylądowało
+      w pliku `.rsvp`, a auto-wykrywanie bywa błędne (zwykły `.txt` — w tym
+      wklejony/udostępniony tekst — w ogóle nie wykrywa rozdziałów). Nowy
+      krok "Edytuj rozdziały" przed pobraniem/wysłaniem: zmiana tytułu,
+      scalenie zbędnego podziału, podział w wybranym miejscu treści.
+      Zweryfikowane end-to-end w przeglądarce (split/rename/merge
+      poprawnie mutują `book.events` i widać to w statystykach/podglądzie).
 - [x] Background task (WorkManager) do okresowego sprawdzania GitHub
       Releases co 12h, gdy appka nie jest otwarta i telefon ma internet
       (`UpdateCheckWorker.java`) — powiadomienie lokalne przy nowym tagu.
