@@ -259,7 +259,13 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async deleteBook(name: string): Promise<void> {
-    const res = await fetch(this.url(`/api/books/${encodeURIComponent(name)}`), {
+    // Firmware rejestruje tylko dokładną ścieżkę "/api/books" (bez segmentu
+    // ścieżki) i czyta nazwę z parametru zapytania — zob.
+    // CompanionSyncManager::handleBookDelete() (server_.arg("name")).
+    // Wcześniej ta funkcja wysyłała nazwę jako segment ścieżki
+    // (/api/books/<nazwa>), co nigdy nie trafiało w zarejestrowaną trasę —
+    // każde usunięcie książki z poziomu appki kończyło się 404.
+    const res = await fetch(this.url(`/api/books?name=${encodeURIComponent(name)}`), {
       method: "DELETE",
     });
     if (!res.ok && res.status !== 404) {
