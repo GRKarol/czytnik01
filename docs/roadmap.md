@@ -284,11 +284,25 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
 - [ ] ~~Android: `WifiNetworkSpecifier` jednoklikowe dołączenie~~ — nie
       priorytet, skoro tekst i tak jest teraz domyślny i czytelny.
 
-## Faza 8 — iOS (odroczone)
+## Faza 8 — iOS (decyzja podjęta 2026-07-23: zostajemy na PWA, na stałe)
 
-- [ ] Decyzja: Apple Developer Program (99$/rok), gdy budżet na to pozwoli.
-- [ ] Do tego czasu: PWA + jasna instrukcja w appce "jeśli się nie łączy,
-      otwórz `http://192.168.4.1` bezpośrednio w Safari".
+> Karol świadomie **nie chce** appki natywnej na iOS, niezależnie od
+> Apple Developer Program — PWA ma zostać jedyną ścieżką. Nie da się
+> tego przetestować lokalnie (brak urządzenia z iOS), więc opieramy się
+> na udokumentowanym, standardowym zachowaniu Safari, nie na realnym
+> teście na telefonie.
+
+- [x] **Sprawdzone: PWA jest już poprawnie skonfigurowana pod iOS, nic
+      więcej nie trzeba dorabiać.** `app/index.html` ma komplet
+      metatagów (`apple-mobile-web-app-capable`, `apple-touch-icon`,
+      `apple-mobile-web-app-status-bar-style`), manifest (`vite.config.ts`
+      → `VitePWA`) ma `display: "standalone"` + ikony 192/512px. "Dodaj
+      do ekranu głównego" w Safari powinno dawać pełnoekranową appkę z
+      własną ikoną, bez paska przeglądarki — to standardowe zachowanie
+      iOS dla poprawnie skonfigurowanej PWA.
+- [x] Instrukcja "jeśli się nie łączy, otwórz `http://192.168.4.1`
+      bezpośrednio w Safari" — już obecna w appce (workaround na mixed
+      content, patrz Faza 6/`wifi-link.ts`).
 
 ## Poza głównym planem — do naprawienia niezależnie
 
