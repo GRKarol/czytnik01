@@ -18,6 +18,7 @@ import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from 
 import { HttpDeviceApi, pingDeviceWithRetry } from "./device/http-api";
 import { getTutorialStatus } from "./onboarding/onboarding-store";
 import { consumePendingSharedText, onSharedTextReceived } from "./device/share-target";
+import { getBatteryPercent, onBatteryPercentChange } from "./device/device-info";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
 type Transport = "wifi" | "bluetooth" | "serial";
@@ -114,11 +115,13 @@ export class CzytnikApp extends LitElement {
   @state() private showAdvanced = false;
   @state() private devMode = false;
   @state() private showTutorial = false;
+  @state() private batteryPercent: number | null = getBatteryPercent();
 
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
   private unsubLinkStatus: (() => void) | null = null;
   private unsubShareTarget: (() => void) | null = null;
+  private unsubBattery: (() => void) | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -132,6 +135,7 @@ export class CzytnikApp extends LitElement {
     void consumePendingSharedText().then((text) => {
       if (text) void this.openSharedText(text);
     });
+    this.unsubBattery = onBatteryPercentChange((p) => (this.batteryPercent = p));
   }
 
   disconnectedCallback(): void {
@@ -139,6 +143,7 @@ export class CzytnikApp extends LitElement {
     this.unsubApi?.();
     this.unsubLinkStatus?.();
     this.unsubShareTarget?.();
+    this.unsubBattery?.();
     this.removeEventListener("tutorial-close", this.handleTutorialClose);
     this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
   }
@@ -190,7 +195,11 @@ export class CzytnikApp extends LitElement {
           ${this.devMode ? html`<span class="badge dev">DEV</span>` : ""}
           <div class=${`pill ${this.connected ? "ok" : ""}`}>
             <span class="dot"></span>
-            ${this.connected ? `Połączono · ${this.link?.transport.label}` : "Brak połączenia"}
+            ${this.connected
+              ? `Połączono · ${this.link?.transport.label}${
+                  this.batteryPercent != null ? ` · ${this.batteryPercent}%` : ""
+                }`
+              : "Brak połączenia"}
           </div>
         </div>
       </header>

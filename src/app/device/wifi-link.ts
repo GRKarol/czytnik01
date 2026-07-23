@@ -12,7 +12,7 @@ import type { DeviceCommand, DeviceEvent } from "../../shared/device-protocol";
 import { parseEvent } from "../../shared/device-protocol";
 import type { DeviceLink, TransportInfo } from "./device-link";
 import { pinToDeviceNetwork, unpinFromDeviceNetwork } from "./network-pin";
-import { setFirmwareVersion } from "./device-info";
+import { setFirmwareVersion, setBatteryPercent } from "./device-info";
 
 export interface WifiLinkOptions {
   /** Bazowy URL urządzenia. Domyślnie `http://192.168.4.1`. */
@@ -24,6 +24,9 @@ export interface WifiLinkOptions {
 // wykrycie rozłączenia w <16s").
 const KEEP_ALIVE_INTERVAL_MS = 8000;
 const KEEP_ALIVE_TIMEOUT_MS = 3000;
+// Bateria/karta SD zmieniają się wolno — osobny, rzadszy interwał niż
+// keep-alive, żeby nie dublować ruchu co 8s.
+const INFO_REFRESH_INTERVAL_MS = 60000;
 // Backoff prób auto-reconnect po zerwaniu połączenia. Po wyczerpaniu
 // appka zostaje w stanie rozłączonym — użytkownik może spróbować ręcznie.
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000];
@@ -34,6 +37,7 @@ export class WifiLink implements DeviceLink {
   private statusHandlers = new Set<(connected: boolean) => void>();
   private isConnected = false;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private infoTimer: ReturnType<typeof setInterval> | null = null;
   private reconnecting = false;
   private manuallyDisconnected = false;
   readonly transport: TransportInfo = { kind: "wifi", label: "WiFi" };
@@ -100,6 +104,7 @@ export class WifiLink implements DeviceLink {
 
     this.isConnected = true;
     this.startKeepAlive();
+    this.startInfoRefresh();
     void pinToDeviceNetwork();
   }
 
@@ -139,6 +144,34 @@ export class WifiLink implements DeviceLink {
     }, KEEP_ALIVE_INTERVAL_MS);
   }
 
+  private startInfoRefresh(): void {
+    this.stopInfoRefresh();
+    void this.refreshInfo();
+    this.infoTimer = setInterval(() => {
+      void this.refreshInfo();
+    }, INFO_REFRESH_INTERVAL_MS);
+  }
+
+  private stopInfoRefresh(): void {
+    if (this.infoTimer !== null) {
+      clearInterval(this.infoTimer);
+      this.infoTimer = null;
+    }
+  }
+
+  private async refreshInfo(): Promise<void> {
+    try {
+      const res = await fetch(`${this.base}/api/info`, {
+        signal: AbortSignal.timeout(KEEP_ALIVE_TIMEOUT_MS),
+      });
+      if (!res.ok) return;
+      const body = await res.json().catch(() => null);
+      if (typeof body?.batteryPercent === "number") setBatteryPercent(body.batteryPercent);
+    } catch {
+      // Cichy błąd — bateria to tylko informacyjny dodatek, nie wpływa na stan połączenia.
+    }
+  }
+
   private stopKeepAlive(): void {
     if (this.keepAliveTimer !== null) {
       clearInterval(this.keepAliveTimer);
@@ -162,6 +195,7 @@ export class WifiLink implements DeviceLink {
     if (!this.isConnected || this.manuallyDisconnected) return;
     this.isConnected = false;
     this.stopKeepAlive();
+    this.stopInfoRefresh();
     this.socket = null;
     void unpinFromDeviceNetwork();
     for (const h of this.statusHandlers) h(false);
@@ -193,10 +227,12 @@ export class WifiLink implements DeviceLink {
   async disconnect(): Promise<void> {
     this.manuallyDisconnected = true;
     this.stopKeepAlive();
+    this.stopInfoRefresh();
     this.socket?.close();
     this.socket = null;
     this.isConnected = false;
     setFirmwareVersion(null);
+    setBatteryPercent(null);
     void unpinFromDeviceNetwork();
   }
 
