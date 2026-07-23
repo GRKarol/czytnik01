@@ -45,7 +45,7 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo | null> {
   });
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new Error(`GitHub API zwrócił ${res.status}. Sprawdź połączenie.`);
+    throw new Error(`Nie udało się sprawdzić aktualizacji (${res.status}). Sprawdź połączenie z internetem.`);
   }
   const data = (await res.json()) as GhRelease;
   return toReleaseInfo(data);

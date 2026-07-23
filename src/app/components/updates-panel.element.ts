@@ -7,7 +7,8 @@ import {
   isNewer,
   type ReleaseInfo,
 } from "../updates/releases";
-import { deviceApi } from "../device/api";
+import { deviceApi, onDeviceApiChange, MockDeviceApi } from "../device/api";
+import { getFirmwareVersion, onFirmwareVersionChange } from "../device/device-info";
 
 type Stage =
   | "idle"
@@ -26,15 +27,33 @@ export class UpdatesPanel extends LitElement {
   @state() private release: ReleaseInfo | null = null;
   @state() private error = "";
   @state() private progress = 0;
-  /** Aktualna wersja firmware na urządzeniu (na razie nieznana). */
-  @state() private currentFw: string | null = null;
+  /** Aktualna wersja firmware na urządzeniu — z /api/hello (device-info.ts). */
+  @state() private currentFw: string | null = getFirmwareVersion();
+  /** Czy appka jest właśnie realnie połączona z czytnikiem (nie mock). */
+  @state() private connected = !(deviceApi.current instanceof MockDeviceApi);
   private downloaded: Blob | null = null;
+  private unsubFw: (() => void) | null = null;
+  private unsubApi: (() => void) | null = null;
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.unsubFw = onFirmwareVersionChange((v) => (this.currentFw = v));
+    this.unsubApi = onDeviceApiChange(() => {
+      this.connected = !(deviceApi.current instanceof MockDeviceApi);
+    });
+    void this.check();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.unsubFw?.();
+    this.unsubApi?.();
+  }
 
   render() {
     return html`
       <div class="head">
         <strong>Aktualizacje firmware</strong>
-        <span class="muted">repo: GRKarol/czytnik01 · ostatni release</span>
       </div>
 
       ${this.renderStage()}
@@ -44,22 +63,11 @@ export class UpdatesPanel extends LitElement {
   private renderStage() {
     switch (this.stage) {
       case "idle":
-        return html`
-          <p class="muted">
-            Sprawdzimy GitHub Releases tego repo i — jeśli będzie nowsza wersja — pobierzemy ją
-            do telefonu. Wysłanie na urządzenie wymaga firmware z endpointem OTA (zrobimy to
-            w fazie 3).
-          </p>
-          <button class="cta" @click=${this.check}>Sprawdź aktualizacje</button>
-        `;
       case "checking":
-        return html`<p class="muted">Łączę z GitHubem…</p>`;
+        return html`<p class="muted">Sprawdzam dostępność aktualizacji…</p>`;
       case "none":
         return html`
-          <p class="muted">
-            Brak opublikowanych releasów. Karol musi najpierw zrobić release na GitHubie
-            (Settings → Releases → Draft a new release) z plikiem .bin.
-          </p>
+          <p class="muted">Brak dostępnych aktualizacji.</p>
           <button class="cta ghost" @click=${this.check}>Sprawdź ponownie</button>
         `;
       case "error":
@@ -82,21 +90,22 @@ export class UpdatesPanel extends LitElement {
     const tag = r.tag.replace(/^v/, "");
     const newer = this.currentFw ? isNewer(tag, this.currentFw) : true;
     const date = new Date(r.publishedAt).toLocaleDateString("pl-PL");
+    const changelog = trimChangelog(r.body);
 
     return html`
       <article class="release">
         <header>
           <div>
             <h4>${r.name}</h4>
-            <small>${tag} · ${date}${r.isPrerelease ? " · pre-release" : ""}</small>
+            <small>${tag} · ${date}</small>
           </div>
           ${newer
             ? html`<span class="badge ok">Dostępna</span>`
             : html`<span class="badge">Aktualna</span>`}
         </header>
 
-        ${r.body
-          ? html`<pre class="changelog">${trimChangelog(r.body)}</pre>`
+        ${changelog
+          ? html`<pre class="changelog">${changelog}</pre>`
           : html`<p class="muted">Brak opisu wersji.</p>`}
 
         ${asset
@@ -120,23 +129,26 @@ export class UpdatesPanel extends LitElement {
                     </button>`
                   : ""}
                 ${this.stage === "downloaded"
-                  ? html`<button class="cta" @click=${this.install}>
-                        Wyślij na urządzenie
-                      </button>
+                  ? html`
+                      ${this.connected
+                        ? html`<button class="cta" @click=${this.install}>
+                            Wgraj na czytnik
+                          </button>`
+                        : html`<p class="hint">
+                            Połącz telefon z czytnikiem (WiFi, tryb Sync), żeby wgrać —
+                            czytnika nie trzeba łączyć z internetem domowym.
+                          </p>`}
                       <button class="cta ghost" @click=${this.savePhone}>
                         Zapisz plik na telefonie
-                      </button>`
+                      </button>
+                    `
                   : ""}
                 ${this.stage === "installing"
                   ? html`<span class="muted">Wysyłam ${this.progress}%…</span>`
                   : ""}
               </div>
             `
-          : html`<p class="muted">Brak pliku .bin w tym release.</p>`}
-
-        <a class="link" href=${r.htmlUrl} target="_blank" rel="noopener noreferrer">
-          Otwórz na GitHubie ↗
-        </a>
+          : html`<p class="muted">Brak pliku do wgrania w tej wersji.</p>`}
       </article>
     `;
   }
@@ -228,6 +240,12 @@ export class UpdatesPanel extends LitElement {
       color: var(--err);
       font: 0.9rem ui-sans-serif, system-ui, sans-serif;
       margin: 0;
+    }
+    .hint {
+      color: var(--muted);
+      font: 0.85rem/1.4 ui-sans-serif, system-ui, sans-serif;
+      margin: 0;
+      flex: 1 1 100%;
     }
     .cta {
       padding: 12px 18px;
@@ -323,15 +341,6 @@ export class UpdatesPanel extends LitElement {
       color: var(--ok);
       font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
     }
-    .link {
-      align-self: flex-start;
-      color: var(--accent);
-      font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
-      text-decoration: none;
-    }
-    .link:hover {
-      text-decoration: underline;
-    }
   `;
 }
 
@@ -348,6 +357,10 @@ function formatBytes(n: number): string {
 }
 
 function trimChangelog(text: string): string {
-  const lines = text.split("\n");
+  // GitHub auto-dopisuje "**Full Changelog**: https://github.com/...compare/..."
+  // na końcu opisu release'a — czysto techniczny link, nie ma po co go
+  // pokazywać użytkownikowi appki (i wprost mówi "github.com").
+  const withoutFullChangelog = text.replace(/\n*\*\*Full Changelog\*\*:.*$/s, "").trim();
+  const lines = withoutFullChangelog.split("\n");
   return lines.slice(0, 12).join("\n") + (lines.length > 12 ? "\n…" : "");
 }

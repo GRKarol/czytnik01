@@ -12,6 +12,7 @@ import type { DeviceCommand, DeviceEvent } from "../../shared/device-protocol";
 import { parseEvent } from "../../shared/device-protocol";
 import type { DeviceLink, TransportInfo } from "./device-link";
 import { pinToDeviceNetwork, unpinFromDeviceNetwork } from "./network-pin";
+import { setFirmwareVersion } from "./device-info";
 
 export interface WifiLinkOptions {
   /** Bazowy URL urządzenia. Domyślnie `http://192.168.4.1`. */
@@ -75,6 +76,12 @@ export class WifiLink implements DeviceLink {
           : `Nie udało się złapać urządzenia pod ${this.base}. Czy telefon jest podłączony do sieci urządzenia (Flower-…)?`,
       );
     }
+
+    const helloBody = await hello
+      .clone()
+      .json()
+      .catch(() => null);
+    setFirmwareVersion(typeof helloBody?.firmwareVersion === "string" ? helloBody.firmwareVersion : null);
 
     // WebSocket na eventy jest bonusem, nie warunkiem połączenia — obecny
     // firmware (CompanionSyncManager.cpp) w ogóle nie implementuje
@@ -189,6 +196,7 @@ export class WifiLink implements DeviceLink {
     this.socket?.close();
     this.socket = null;
     this.isConnected = false;
+    setFirmwareVersion(null);
     void unpinFromDeviceNetwork();
   }
 
