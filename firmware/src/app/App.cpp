@@ -252,6 +252,13 @@ constexpr size_t kWifiNetworksFirstItemIndex = 1;
 constexpr const char *kPrefsNamespace = "rsvp";
 constexpr const char *kPrefBookPath = "book";
 constexpr const char *kPrefLegacyWordIndex = "word";
+// Flaga jednorazowej migracji ze starego, globalnego zapisu pozycji
+// (kPrefLegacyWordIndex, sprzed per-book kluczy) na nowy per-book klucz.
+// Bez niej KAŻDA nowo dodana książka bez własnej zapisanej pozycji
+// dziedziczyła % odczytu z ostatnio czytanej książki (legacy word index
+// jest nadpisywany przy każdym zapisie, więc to ruchomy cel) — patrz
+// docs/roadmap.md.
+constexpr const char *kPrefLegacyMigrated = "word_migrated";
 constexpr const char *kPrefWpm = "wpm";
 constexpr const char *kPrefBrightness = "bright";
 constexpr const char *kPrefDarkMode = "dark";
@@ -882,7 +889,16 @@ void App::begin() {
     }
   }
 
-  maybeAutoCheckForUpdates(bootStartedMs_);
+  // Auto-check firmware przy starcie WYŁĄCZONY na życzenie Karola —
+  // wcześniej odpalał się bezwarunkowo, gdy tylko WiFi domowe było
+  // zapisane (isConfigured() sprawdza tylko czy SSID jest zapisane, nie
+  // czy sieć jest w zasięgu), i próbował się połączyć do 15s
+  // (kWifiConnectTimeoutMs w OtaUpdater.cpp) — blokując menu Sync przez
+  // ten cały czas, nawet gdy sieć domowa nie była w zasięgu (a zwykle nie
+  // jest, bo czytnik normalnie stoi w trybie AP dla Sync z telefonem).
+  // Sprawdzanie aktualizacji nadal działa ręcznie z menu (Update) i przez
+  // appkę na telefonie. Patrz docs/roadmap.md.
+  // maybeAutoCheckForUpdates(bootStartedMs_);
   // Plugin sync runs in background after first update loop iteration
   // (moved out of boot path to prevent blocking)
 
@@ -7451,10 +7467,12 @@ uint32_t App::savedWordIndexForBook(const String &bookPath, bool allowLegacyFall
     return preferences_.getUInt(key.c_str(), 0);
   }
 
-  if (allowLegacyFallback && preferences_.isKey(kPrefLegacyWordIndex)) {
+  if (allowLegacyFallback && !preferences_.getBool(kPrefLegacyMigrated, false) &&
+      preferences_.isKey(kPrefLegacyWordIndex)) {
     const uint32_t legacyWordIndex = preferences_.getUInt(kPrefLegacyWordIndex, 0);
     preferences_.putUInt(key.c_str(), legacyWordIndex);
-    Serial.printf("[app] migrated legacy position word=%u to key=%s\n",
+    preferences_.putBool(kPrefLegacyMigrated, true);
+    Serial.printf("[app] migrated legacy position word=%u to key=%s (one-time)\n",
                   static_cast<unsigned int>(legacyWordIndex), key.c_str());
     return legacyWordIndex;
   }

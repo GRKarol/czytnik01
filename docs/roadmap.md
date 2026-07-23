@@ -17,10 +17,23 @@
   potwierdzenia Karola, za każdym razem, nie jednorazowo.** Firmware i
   appka rozwijają się razem — jeden branch, oba katalogi (`firmware/`,
   `src/app/`, `android/`).
-- Firmware: PlatformIO. Build: `pio run -e waveshare_esp32s3` (z katalogu
-  `firmware/`). Flash po USB: `pio run -e waveshare_esp32s3 -t upload
-  --upload-port COMx` — **zawsze pytaj Karola o potwierdzenie przed
-  flashowaniem** fizycznego czytnika (jedyne dostępne urządzenie testowe).
+- Firmware: PlatformIO. **Build/flash TYLKO środowiskiem
+  `waveshare_esp32s3_usb_msc`** (z katalogu `firmware/`):
+  `pio run -e waveshare_esp32s3_usb_msc -t upload --upload-port COMx` —
+  **zawsze pytaj Karola o potwierdzenie przed flashowaniem** fizycznego
+  czytnika (jedyne dostępne urządzenie testowe). To jest domyślne
+  środowisko (`default_envs` w `platformio.ini`) i dokładnie to, czego
+  używa `.github/workflows/release.yml`/`export_web_firmware.py` do
+  budowania oficjalnych release'ów — **nigdy nie używaj środowiska
+  `waveshare_esp32s3`** do flashowania fizycznego czytnika: różni się
+  trybem USB (`ARDUINO_USB_MODE`/`ARDUINO_USB_MSC_ON_BOOT`), co na tej
+  płytce powoduje losową niestabilność (problem z wejściem w bootloader,
+  urządzenie nie odpala się po wyłączeniu) — źle zdiagnozowane w sesji
+  2026-07-23 jako bug w kodzie appki (kilka godzin debugowania przez
+  eliminację, zanim znaleziono prawdziwą przyczynę: złe środowisko
+  budowania). Środowisko `waveshare_esp32s3` istnieje tylko dla
+  `pio test -e native_test`-owych/deweloperskich celów niezwiązanych z
+  fizycznym flashowaniem — nie flashuj nim czytnika.
 - Appka: TypeScript/Lit (`src/app/`), Vite. PWA (`npm run build`) i
   Capacitor/Android (`npm run build:capacitor && npx cap sync android`)
   to dwa osobne buildy tego samego kodu źródłowego.
