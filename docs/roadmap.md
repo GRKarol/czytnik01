@@ -134,8 +134,13 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       internetem, mimo że telefon nadal jest fizycznie w AP czytnika.
       Zweryfikowane: build (tsc/vite/gradle) + instalacja + rejestracja
       pluginu bez błędów na fizycznym telefonie (SM-G986B).
-- [ ] Natywny share target (odbieranie linków/tekstu z innych aplikacji,
-      jak w `rsvpnano`) — opcjonalnie, jeśli czas pozwoli.
+- [x] Natywny share target (odbieranie tekstu z innych aplikacji, jak w
+      `rsvpnano`) — `ShareTargetPlugin.java` + intent-filter ACTION_SEND
+      dla `text/plain`. Cold start (appka jeszcze nie działała) trafia do
+      `getPending()`, warm start leci od razu jako event. Appka przełącza
+      się na Konwerter i podaje tekst przez ten sam kod co ręczne "wklej
+      tekst". Zweryfikowane end-to-end na fizycznym telefonie przez
+      symulowany intent ACTION_SEND.
 - [x] Background task (WorkManager) do okresowego sprawdzania GitHub
       Releases co 12h, gdy appka nie jest otwarta i telefon ma internet
       (`UpdateCheckWorker.java`) — powiadomienie lokalne przy nowym tagu.
