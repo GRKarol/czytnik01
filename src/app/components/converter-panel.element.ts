@@ -7,9 +7,18 @@ import {
   detectFormat,
   parseFile,
   writeRsvp,
+  type BookEvent,
   type ParsedBook,
   type SupportedFormat,
 } from "../converter";
+import {
+  splitIntoChapters,
+  renameChapter,
+  mergeChapterUp,
+  splitChapterBeforeParagraph,
+  previewText,
+  type ChapterView,
+} from "../converter/chapters";
 import "./first-use-hint.element";
 
 type Stage = "idle" | "parsing" | "ready" | "error";
@@ -27,6 +36,8 @@ export class ConverterPanel extends LitElement {
   @state() private shareError = "";
   @state() private showPaste = false;
   @state() private pastedText = "";
+  @state() private chaptersOpen = false;
+  @state() private expandedChapterEventIndex: number | null = null;
 
   render() {
     return html`
@@ -135,11 +146,120 @@ export class ConverterPanel extends LitElement {
           </button>
         </div>
         ${this.shareError ? html`<p class="error">${this.shareError}</p>` : ""}
+        ${this.renderChapterEditor()}
         <details class="preview">
           <summary>Podgląd pierwszych linii</summary>
           <pre>${this.rsvp.split("\n").slice(0, 20).join("\n")}</pre>
         </details>
       </section>
+    `;
+  }
+
+  private renderChapterEditor() {
+    if (!this.book) return "";
+    const { preamble, chapters } = splitIntoChapters(this.book.events);
+    return html`
+      <button class="paste-toggle" @click=${() => (this.chaptersOpen = !this.chaptersOpen)}>
+        ${this.chaptersOpen ? "Schowaj edycję rozdziałów" : "Edytuj rozdziały"}
+      </button>
+      ${this.chaptersOpen
+        ? html`
+            <section class="chapters">
+              <p class="chapters-hint">
+                Jeśli automatyczny podział na rozdziały nie pasuje — zmień tytuły, scal zbędne
+                podziały albo zaznacz nowy podział w treści rozdziału.
+              </p>
+              ${preamble.length > 0 ? this.renderPreamble(preamble) : ""}
+              ${chapters.length === 0 && preamble.length === 0
+                ? html`<p class="chapters-hint">Ta książka nie ma żadnej treści do podziału.</p>`
+                : ""}
+              ${chapters.map((ch, idx) => this.renderChapter(ch, idx, chapters.length))}
+            </section>
+          `
+        : ""}
+    `;
+  }
+
+  private static readonly PREAMBLE_KEY = -1;
+
+  private renderPreamble(indices: number[]) {
+    const expanded = this.expandedChapterEventIndex === ConverterPanel.PREAMBLE_KEY;
+    return html`
+      <div class="chapter-card">
+        <div class="chapter-head">
+          <button
+            class="chapter-expand"
+            @click=${() =>
+              (this.expandedChapterEventIndex = expanded ? null : ConverterPanel.PREAMBLE_KEY)}
+            title=${expanded ? "Zwiń" : "Pokaż akapity"}
+          >
+            ${expanded ? "▾" : "▸"}
+          </button>
+          <span class="chapter-title chapter-title-static"
+            >Przed pierwszym rozdziałem — brak podziału</span
+          >
+          <span class="chapter-count">${indices.length} akap.</span>
+        </div>
+        ${expanded ? this.renderParagraphList(indices) : ""}
+      </div>
+    `;
+  }
+
+  private renderChapter(ch: ChapterView, idx: number, total: number) {
+    const expanded = this.expandedChapterEventIndex === ch.eventIndex;
+    return html`
+      <div class="chapter-card">
+        <div class="chapter-head">
+          <button
+            class="chapter-expand"
+            @click=${() => (this.expandedChapterEventIndex = expanded ? null : ch.eventIndex)}
+            title=${expanded ? "Zwiń" : "Pokaż akapity"}
+          >
+            ${expanded ? "▾" : "▸"}
+          </button>
+          <input
+            type="text"
+            class="chapter-title"
+            .value=${ch.title}
+            @change=${(e: Event) =>
+              this.renameChapterAt(ch.eventIndex, (e.target as HTMLInputElement).value)}
+          />
+          <span class="chapter-count">${ch.paragraphIndices.length} akap.</span>
+          <button
+            class="chapter-merge"
+            title="Usuń ten podział — dołącz do poprzedniego rozdziału"
+            ?disabled=${idx === 0 || total <= 1}
+            @click=${() => this.mergeChapterUpAt(ch.eventIndex)}
+          >
+            Scal z poprzednim
+          </button>
+        </div>
+        ${expanded ? this.renderParagraphList(ch.paragraphIndices) : ""}
+      </div>
+    `;
+  }
+
+  private renderParagraphList(indices: number[]) {
+    return html`
+      <ul class="paragraph-list">
+        ${indices.map((pIdx) => {
+          const p = this.book!.events[pIdx];
+          return html`
+            <li>
+              <span class="paragraph-preview"
+                >${previewText(p.kind === "paragraph" ? p.text : "")}</span
+              >
+              <button
+                class="paragraph-split"
+                title="Rozpocznij tu nowy rozdział"
+                @click=${() => this.splitAt(pIdx)}
+              >
+                ✂ Podziel tutaj
+              </button>
+            </li>
+          `;
+        })}
+      </ul>
     `;
   }
 
@@ -191,6 +311,37 @@ export class ConverterPanel extends LitElement {
     const guessedName = (firstLine.slice(0, 40) || fallbackName).replace(/[^\w\- ]+/g, "_");
     const file = new File([trimmed], `${guessedName}.txt`, { type: "text/plain" });
     void this.handleFile(file);
+  }
+
+  private renameChapterAt(eventIndex: number, title: string) {
+    if (!this.book) return;
+    this.applyEvents(renameChapter(this.book.events, eventIndex, title));
+  }
+
+  private mergeChapterUpAt(eventIndex: number) {
+    if (!this.book) return;
+    this.applyEvents(mergeChapterUp(this.book.events, eventIndex));
+  }
+
+  private splitAt(paragraphEventIndex: number) {
+    if (!this.book) return;
+    const p = this.book.events[paragraphEventIndex];
+    const suggested = p.kind === "paragraph" ? previewText(p.text, 40) : "Nowy rozdział";
+    const title = window.prompt("Tytuł nowego rozdziału:", suggested);
+    if (title === null) return;
+    this.applyEvents(
+      splitChapterBeforeParagraph(this.book.events, paragraphEventIndex, title || suggested),
+    );
+  }
+
+  /** Po każdej edycji rozdziałów: podmień eventy i przelicz .rsvp (podgląd/statystyki). */
+  private applyEvents(events: BookEvent[]) {
+    if (!this.book) return;
+    this.book = { ...this.book, events };
+    this.rsvp = writeRsvp({
+      ...this.book,
+      metadata: { ...this.book.metadata, title: this.bookTitle, author: this.bookAuthor },
+    });
   }
 
   private async handleFile(file: File) {
@@ -474,6 +625,130 @@ export class ConverterPanel extends LitElement {
       white-space: pre-wrap;
       max-height: 220px;
       overflow-y: auto;
+    }
+    .chapters {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .chapters-hint {
+      margin: 0 0 2px;
+      color: var(--muted);
+      font:
+        0.85rem/1.4 ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .chapter-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper-tint);
+      padding: 8px 10px;
+    }
+    .chapter-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chapter-expand {
+      flex: 0 0 auto;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 4px 6px;
+    }
+    .chapter-title {
+      flex: 1 1 160px;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--ink);
+      font:
+        0.9rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .chapter-title:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .chapter-title-static {
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-style: italic;
+      padding: 8px 2px;
+    }
+    .chapter-count {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font: 0.78rem ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+    }
+    .chapter-merge {
+      flex: 0 0 auto;
+      border: 1.5px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font:
+        600 0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+    }
+    .chapter-merge:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .paragraph-list {
+      list-style: none;
+      margin: 10px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .paragraph-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+    .paragraph-list li:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+    .paragraph-preview {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ink-soft);
+      font: 0.82rem ui-sans-serif, system-ui, sans-serif;
+    }
+    .paragraph-split {
+      flex: 0 0 auto;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font:
+        600 0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+      white-space: nowrap;
+      padding: 4px 6px;
     }
   `;
 }
