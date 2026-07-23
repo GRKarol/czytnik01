@@ -57,11 +57,6 @@ export class LibraryPanel extends LitElement {
         : html`<ul class="list">
             ${list.map((b) => this.row(b))}
           </ul>`}
-
-      <p class="hint muted">
-        Lista jest na razie symulowana w pamięci telefonu — kiedy firmware zacznie odpowiadać przez
-        WiFi, ta sama logika pójdzie na realne API.
-      </p>
     `;
   }
 
@@ -256,10 +251,6 @@ export class LibraryPanel extends LitElement {
       font-size: 0.85rem;
       cursor: pointer;
       flex: 0 0 auto;
-    }
-    .hint {
-      font-size: 0.78rem;
-      font-style: italic;
     }
   `;
 }
