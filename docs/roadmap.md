@@ -341,6 +341,18 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
       Zweryfikowane: **`pio run` dla obu pluginów kończy się `SUCCESS`**
       (wcześniej failowało od 2026-06-10, zawsze — najpierw zasłonięte
       przez `UnknownBoard`, potem przez to).
+- [x] **Ostatni bug w samym CI, znaleziony po wydaniu v0.3.8: cudzysłów
+      wyłączał rozwijanie wzorca `*` w `cp` (`build-plugins.yml`).**
+      `pio run` już przechodził, ale skrypt kopiujący gotowy `.bin` do
+      `dist/` używał `cp "plugins/$id/.pio/build/*/firmware.bin" ...` —
+      gwiazdka wewnątrz cudzysłowu to dla powłoki zwykły znak, nie
+      wzorzec, więc `cp` dostawał dosłowną (nieistniejącą) nazwę pliku.
+      Naprawione (`cp plugins/"$id"/.pio/build/*/firmware.bin ...`) i
+      **zweryfikowane end-to-end na GitHubie** — ręczne odpalenie
+      `build-plugins.yml` dla v0.3.8 przeszło w całości, łącznie z
+      uploadem `focus-timer-plugin.bin`/`rss-plugin.bin`/manifestów do
+      Release'u. **Pierwszy raz w historii projektu cały pipeline CI
+      (firmware + pluginy) jest zielony od początku do końca.**
 - [ ] **Ważne odkrycie (2026-07-23): ten cały osobny system budowania
       pluginów jako plików `.bin` nie ma dziś ŻADNEGO odbiorcy.**
       `firmware/src/plugins/BuiltinPlugins.h` mówi to wprost: "Plugin code
