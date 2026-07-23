@@ -177,6 +177,36 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       sprawdzić czy auto-reconnect z Fazy 6 faktycznie łapie połączenie z
       powrotem (na razie zweryfikowano tylko sam pierwszy connect, nie
       zerwanie w trakcie używania).
+- [x] **Ekran Aktualizacje: prawdziwe "Dostępna/Aktualna" + brak wzmianek
+      o GitHubie.** Wcześniej appka nigdy nie znała wersji firmware na
+      urządzeniu (`currentFw` było zawsze `null`) więc zawsze pokazywała
+      "Dostępna". Teraz `wifi-link.ts` parsuje `firmwareVersion` z
+      `/api/hello` (i tak już go odpytujemy) i appka porównuje realnie.
+      Auto-sprawdzanie przy wejściu w zakładkę (bez klikania). Usunięte
+      wszystkie wzmianki "GitHub"/link do repo/auto-dopisywany
+      "Full Changelog" z opisu release'a. Instalacja gated za
+      rzeczywistym połączeniem z czytnikiem (nie internetem domowym) —
+      pokazuje podpowiedź zamiast martwego przycisku gdy nie połączony.
+- [x] **Bateria czytnika w nagłówku appki.** `/api/info` od dawna zwraca
+      `batteryPercent`, appka nigdy tego nie odpytywała. Teraz
+      `wifi-link.ts` pobiera to raz przy connect + co 60s (osobny,
+      rzadszy interwał niż keep-alive), widoczne w pigułce nagłówka
+      tylko gdy połączony (nie da się tego zrobić jako powiadomienie w
+      tle — appka nie ma stałego połączenia z czytnikiem).
+- [x] **Powiadomienie o nowej wersji appki (nie tylko firmware).**
+      `UpdateCheckWorker` teraz też porównuje zainstalowaną wersję appki
+      (`PackageManager`, bez sieci) z najwyższym assetem
+      `flower-android-vX.Y.Z.apk` w najnowszym Release — osobne
+      powiadomienie, ten sam okresowy job co firmware. **Wymaga bumpowania
+      `versionCode`/`versionName` w `android/app/build.gradle` przy
+      każdym nowym podpisanym APK** (wcześniej utknęło na "1.0" od
+      pierwszego builda — poprawione teraz na 1.0.3, ale to zasada na
+      przyszłość, nie jednorazowa poprawka).
+- [x] **Ikona appki** — prawdziwe logo dmuchawca (to samo co na stronie),
+      wygenerowane we wszystkich rozmiarach (legacy + adaptive-icon),
+      tło dopasowane do papierowego tonu marki.
+- [x] Usunięty niedziałający kod QR ze strony `/appdownload` (nic nie
+      dawał — appka do zeskanowania i tak jest na tym samym telefonie).
 
 ## Faza 6 — Niezawodność połączenia (P0 — realny, potwierdzony bug) ✅ zweryfikowane na sprzęcie
 
