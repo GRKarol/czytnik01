@@ -327,17 +327,27 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
       Zweryfikowane: **`pio run` dla obu pluginów kończy się `SUCCESS`**
       (wcześniej failowało od 2026-06-10, zawsze — najpierw zasłonięte
       przez `UnknownBoard`, potem przez to).
-- [ ] **Nowo znaleziony, głębszy problem — binarka pluginu prawdopodobnie
-      nie nadaje się jeszcze do wgrania.** Skrypt patchujący nagłówek
-      (`tools/pio_plugin_build.py`) zgłasza `Invalid magic` — `esptool.py`
-      zawsze doklej swój własny nagłówek obrazu ESP32 (magic `0xE9`) na
-      początku `.bin`, więc własny nagłówek pluginu (`PluginBinaryHeader`,
-      magic `"PLUG"`) nie ląduje już na bajcie 0, tam gdzie loader go
-      oczekuje. To osobny problem od "build failuje" (surowa binarka vs.
-      format obrazu ESP32) — CI będzie już zielone, ale sam plugin może
-      nadal nie działać po wgraniu na czytnik. Nie badane głębiej w tej
-      sesji, zgodnie z wcześniejszą decyzją że system pluginów to niski
-      priorytet.
+- [ ] **Ważne odkrycie (2026-07-23): ten cały osobny system budowania
+      pluginów jako plików `.bin` nie ma dziś ŻADNEGO odbiorcy.**
+      `firmware/src/plugins/BuiltinPlugins.h` mówi to wprost: "Plugin code
+      is always present in the firmware... no PSRAM binary loading
+      needed." `PluginLoader::load()` woła wyłącznie
+      `BuiltinPlugins::find(pluginId)` — kod wkompilowany na stałe w
+      firmware. Nigdzie w firmware nie ma kodu wczytującego, relokującego
+      ani uruchamiającego plugin z pliku `.bin` na SD. `focus-timer` i
+      `rss` (dostępne dziś na czytniku) działają przez builtin, nie przez
+      te osobno budowane binarki.
+      Praktyczny skutek: naprawiony wyżej build (`pio run` → `SUCCESS`)
+      faktycznie naprawia CI, ale próba dalszego naprawiania formatu
+      binarki (`Invalid magic` — `esptool.py` doklej własny nagłówek
+      obrazu ESP32 przed naszym `PluginBinaryHeader`) naprawiałaby coś,
+      czego nic nie czyta. Świadoma decyzja: **zostawiamy ten szkielet
+      jak jest**, na wypadek gdyby kiedyś ktoś chciał zbudować prawdziwe
+      dynamiczne ładowanie pluginów z karty SD (to byłaby nowa,
+      spora funkcja firmware — relokacja kodu, wczytanie do RAM, skok do
+      vtable pod adresem ustalonym w runtime — a nie poprawka buildu).
+      Do tego czasu `*-plugin.bin` publikowany w Releases jest
+      nieszkodliwym, ale bezużytecznym artefaktem.
 
 ## Otwarte pytania (nadal aktualne)
 
