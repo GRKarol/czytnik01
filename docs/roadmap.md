@@ -97,11 +97,11 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
 
 ## Faza 5 — Natywna appka Android (Capacitor) ✅ połączenie zweryfikowane na sprzęcie
 
-> **Status 2026-07-21:** appka zbudowana, zainstalowana na fizycznym
+> **Status 2026-07-23:** appka zbudowana, zainstalowana na fizycznym
 > telefonie (Samsung SM-G986B) i **realnie połączona z czytnikiem po WiFi**
 > — widać `Połączono · WiFi` w headerze i prawdziwe ustawienia z urządzenia
-> (badge DEV pobrany z firmware). Branch roboczy: `plan/native-app-v2`
-> (jeszcze nie wypchnięty na GitHub).
+> (badge DEV pobrany z firmware). Branch `plan/native-app-v2` wypchnięty na
+> GitHub, firmware wydane jako v0.3.7.
 
 - [x] Dodać Capacitor do projektu (`@capacitor/core`, `@capacitor/android`,
       `@capacitor/cli`). Osobny build tylko appki klienta:
@@ -191,11 +191,10 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
 
 ## Faza 9 — Pełny parytet ustawień firmware ↔ appka
 
-> **Status 2026-07-21:** audyt + implementacja zrobione i **firmware
-> kompiluje się bez błędów** (`pio run -e waveshare_esp32s3`, RAM 23%,
-> Flash 41%). **Nie wgrane jeszcze na fizyczny czytnik** — to osobna,
-> bardziej ryzykowna decyzja (przeflashowanie jedynego dostępnego
-> urządzenia), do wyraźnego potwierdzenia zanim to zrobię.
+> **Status 2026-07-23:** zaimplementowane, wydane jako **v0.3.7** i
+> **potwierdzone na fizycznym czytniku** — urządzenie samo zaciągnęło
+> aktualizację przez auto-OTA po wydaniu release'u, ekran Informacje
+> pokazuje `v0.3.7`.
 
 Audyt: porównałem każdy klucz NVS w `firmware/src/app/App.cpp` (49 kluczy)
 z tym co faktycznie wystawia `/api/settings` w `CompanionSyncManager.cpp`.
@@ -217,10 +216,8 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
       tego co appka wysłała — w `App.cpp` `accurateTimeEstimateEnabled_`
       było zahardkodowane, NVS w ogóle nie było czytane. Naprawione w obu
       miejscach naraz.
-- [ ] **Nie wgrane na czytnik.** Wymaga: `pio run -e waveshare_esp32s3 -t
-      upload` (kabel USB) albo zbudowanie `.bin` i instalacja przez OTA z
-      poziomu appki. Zanim to zrobię — potwierdź, że mogę przeflashować
-      Twoje jedyne urządzenie testowe.
+- [x] Wgrane na czytnik przez auto-OTA po wydaniu v0.3.7, potwierdzone na
+      ekranie Informacje.
 - [ ] Wbudowana strona web companion w samym firmware
       (`kWebCompanionHtml` w `CompanionSyncManager.cpp`) ma **własny**,
       osobny JS do wczytywania/zapisywania ustawień — nie zaktualizowana o
@@ -229,15 +226,14 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
 
 ## Faza 7 — Onboarding przez QR (⚠️ plan skorygowany po realnym użyciu)
 
-> **Korekta 2026-07-21:** "QR jako główna ścieżka" (plan poniżej z Fazy 3)
-> okazał się błędnym założeniem po realnym teście — QR "nic nie tłumaczy"
-> i nie jest tym czego Karol chce jako domyślne. Zamiast tego: **ekran
-> Sync na czytniku pokazuje domyślnie tekst** (nazwa sieci + adres),
-> **QR jest dostępny jako opcja po tapnięciu ekranu** (przesunięcie w
-> bok nadal wychodzi z trybu Sync, tak jak wszędzie indziej w menu).
-> Zaimplementowane w `App.cpp`/`App.h` (`companionSyncShowQr_` +
-> rozróżnienie tap/swipe), skompilowane, **czeka na flash razem z resztą
-> Fazy 9**.
+> **Korekta 2026-07-21, potwierdzone 2026-07-23:** "QR jako główna ścieżka"
+> (plan poniżej z Fazy 3) okazał się błędnym założeniem po realnym teście —
+> QR "nic nie tłumaczy" i nie jest tym czego Karol chce jako domyślne.
+> Zamiast tego: **ekran Sync na czytniku pokazuje domyślnie tekst** (nazwa
+> sieci + adres), **QR jest dostępny jako opcja po tapnięciu ekranu**
+> (przesunięcie w bok nadal wychodzi z trybu Sync, tak jak wszędzie indziej
+> w menu). Zaimplementowane w `App.cpp`/`App.h` (`companionSyncShowQr_` +
+> rozróżnienie tap/swipe), wydane w v0.3.7, żyje na urządzeniu.
 
 - [x] Firmware generuje QR (Faza 3).
 - [x] **Skorygowane:** domyślny widok ekranu Sync to tekst (SSID + URL),
@@ -253,12 +249,27 @@ Znalezione i dopisane (firmware + `api.ts` + `http-api.ts` +
 
 ## Poza głównym planem — do naprawienia niezależnie
 
-- [ ] **CI: `Release firmware` failuje od v0.3.2.** Przyczyna (zweryfikowana
-      w logach, nie zgadywana): `UnknownBoard: Unknown board ID
-      'esp32-s3-r8-opi'` w joście `build-plugins` przy buildowaniu
-      `focus-timer-plugin` — brakuje definicji custom board dla tego ID w
-      PlatformIO. Nie ma to związku z BLE, mimo że tak wcześniej
-      sugerowano w innej rozmowie.
+- [x] **v0.3.7 wydane** — pierwszy release z branchu `plan/native-app-v2`
+      (WiFi reliability, parytet ustawień, poprawki ekranu Sync). Główne
+      binarki (`czytnik01.bin`, `flower-firmware.bin`) budują się i
+      publikują poprawnie.
+- [x] **CI: `UnknownBoard` w joście `build-plugins` naprawione.** Przyczyna:
+      `firmware/boards/esp32-s3-r8-opi.json` jest widoczny tylko gdy `pio
+      run` odpala się z katalogu `firmware/` (auto-discovery). Każdy plugin
+      buduje się jako osobny, izolowany projekt PlatformIO (`cd
+      plugins/<nazwa> && pio run`), więc nigdy nie widział tego pliku.
+      Naprawa: `boards_dir = ../../firmware/boards` w sekcji `[platformio]`
+      obu `plugins/*/platformio.ini`.
+- [ ] **Drugi, głębszy bug w `build-plugins`: `Nothing to build`.** Po
+      naprawieniu `UnknownBoard` build pluginów (`focus-timer`, `rss`)
+      faluje teraz na tym — LDF nie znajduje źródeł mimo że `src/*.cpp`
+      istnieją. Zweryfikowane w historii CI: **ten job nigdy w całej
+      historii projektu się nie udał** (faluje od commitu wprowadzającego
+      system pluginów, 2026-06-10, wcześniej tylko zasłonięte przez
+      UnknownBoard). Nie blokuje głównego firmware — pluginy jako pliki
+      binarne w Release po prostu nie są jeszcze publikowane. Odłożone,
+      zgodnie z wcześniejszą decyzją, że system pluginów to niski
+      priorytet.
 
 ## Otwarte pytania (nadal aktualne)
 
