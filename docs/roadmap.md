@@ -165,9 +165,14 @@ te same braki co nasze (brak auto-reconnect, brak publicznej dystrybucji).
       **Sam plik keystore leży poza repo (scratchpad sesji) — Karol
       przenosi go na stałe miejsce (backup!), inaczej zniknie i żadna
       przyszła aktualizacja nie nadpisze tej instalacji.**
-- [ ] Publikacja podpisanego APK jako asset w GitHub Releases obok
-      firmware, i podpięcie prawdziwego linku pod przycisk "Download"
-      na `flower.theworkpc.com/appdownload`.
+- [x] **Publikacja gotowa.** `flower-android-v1.0.apk` wrzucony jako
+      dodatkowy asset do release'u v0.3.7 na GitHubie, przycisk
+      "Download for Android" na `flower.theworkpc.com/appdownload`
+      podpięty pod prawdziwy link (zweryfikowane: 302 → poprawny plik
+      APK, `content-type: application/vnd.android.package-archive`).
+      Kod QR na tej stronie zostaje na razie jako "coming soon" —
+      generowanie realnego QR bez zewnętrznej usługi/biblioteki to
+      osobna, mniejsza rzecz do zrobienia kiedy indziej.
 - [ ] Dłuższy test odporności: świadomie zerwać WiFi w trakcie sesji i
       sprawdzić czy auto-reconnect z Fazy 6 faktycznie łapie połączenie z
       powrotem (na razie zweryfikowano tylko sam pierwszy connect, nie
