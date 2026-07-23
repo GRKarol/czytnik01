@@ -24,3 +24,8 @@ firmware/.pioenvs/
 firmware/.piolibdeps/
 firmware/.vscode/
 firmware/build/
+
+# Android release signing — sekrety, nigdy do repo.
+android/keystore.properties
+*.keystore
+*.jks

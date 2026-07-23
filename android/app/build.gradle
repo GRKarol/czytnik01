@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Podpisywanie release'ów: android/keystore.properties (gitignored, nigdy
+// nie trafia do repo) wskazuje na plik keystore + hasła. Jeśli tego pliku
+// nie ma (świeże środowisko, CI), buduje się normalnie bez podpisu release —
+// debug build i tak działa niezależnie od tego.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreConfig = keystorePropertiesFile.exists()
+if (hasKeystoreConfig) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "pl.flower.reader"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +27,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasKeystoreConfig) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasKeystoreConfig) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
