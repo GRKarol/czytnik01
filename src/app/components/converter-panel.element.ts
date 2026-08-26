@@ -7,9 +7,11 @@ import {
   type ParsedBook,
   type SupportedFormat,
 } from "../converter";
+import { deviceApi, onDeviceApiChange } from "../device/api";
 import "./first-use-hint.element";
 
 type Stage = "idle" | "parsing" | "ready" | "error";
+type SendStage = "idle" | "sending" | "sent" | "error";
 
 @customElement("converter-panel")
 export class ConverterPanel extends LitElement {
@@ -21,6 +23,23 @@ export class ConverterPanel extends LitElement {
   @state() private dragOver = false;
   @state() private bookTitle = "";
   @state() private bookAuthor = "";
+  @state() private deviceConnected = deviceApi.kind === "http";
+  @state() private sendStage: SendStage = "idle";
+  @state() private sendError = "";
+  private unsubApi: (() => void) | null = null;
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.unsubApi = onDeviceApiChange(() => {
+      this.deviceConnected = deviceApi.kind === "http";
+      this.sendStage = "idle";
+    });
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.unsubApi?.();
+  }
 
   render() {
     return html`
@@ -97,10 +116,25 @@ export class ConverterPanel extends LitElement {
         </ul>
         <div class="row">
           <button class="cta" @click=${this.download}>Pobierz .rsvp</button>
-          <button class="cta ghost" disabled title="Wymaga połączenia z urządzeniem">
-            Wyślij na urządzenie (wkrótce)
+          <button
+            class="cta ghost"
+            ?disabled=${!this.deviceConnected || this.sendStage === "sending"}
+            title=${this.deviceConnected ? "" : "Połącz się z czytnikiem, żeby wysłać bezpośrednio"}
+            @click=${this.sendToDevice}
+          >
+            ${this.sendStage === "sending"
+              ? "Wysyłam…"
+              : this.sendStage === "sent"
+                ? "Wysłano ✓"
+                : "Wyślij na czytnik"}
           </button>
         </div>
+        ${!this.deviceConnected
+          ? html`<p class="hint">
+              Połącz się z czytnikiem (zakładka „Start"), żeby wysłać bezpośrednio.
+            </p>`
+          : ""}
+        ${this.sendStage === "error" ? html`<p class="error">${this.sendError}</p>` : ""}
         <details class="preview">
           <summary>Podgląd pierwszych linii</summary>
           <pre>${this.rsvp.split("\n").slice(0, 20).join("\n")}</pre>
@@ -164,20 +198,42 @@ export class ConverterPanel extends LitElement {
     }
   }
 
+  /** Re-serializuje book z aktualnymi metadanymi (mogły być edytowane w polach powyżej). */
+  private buildRsvpBlob(): Blob {
+    const updated = writeRsvp({
+      ...this.book!,
+      metadata: { ...this.book!.metadata, title: this.bookTitle, author: this.bookAuthor },
+    });
+    return new Blob([updated], { type: "text/plain" });
+  }
+
+  private buildFileName(): string {
+    return `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\w\- ]+/g, "_")}.rsvp`;
+  }
+
   private download = () => {
     if (!this.book) return;
-    // Re-serialize z aktualnymi metadanymi (mogły być edytowane).
-    const updated = writeRsvp({
-      ...this.book,
-      metadata: { ...this.book.metadata, title: this.bookTitle, author: this.bookAuthor },
-    });
-    const blob = new Blob([updated], { type: "text/plain" });
+    const blob = this.buildRsvpBlob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\w\- ]+/g, "_")}.rsvp`;
+    a.download = this.buildFileName();
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  private sendToDevice = async () => {
+    if (!this.book || !this.deviceConnected) return;
+    this.sendStage = "sending";
+    this.sendError = "";
+    try {
+      const name = `books/${this.buildFileName()}`;
+      await deviceApi.uploadBook(this.buildRsvpBlob(), name);
+      this.sendStage = "sent";
+    } catch (err) {
+      this.sendStage = "error";
+      this.sendError = err instanceof Error ? err.message : String(err);
+    }
   };
 
   static styles = css`
@@ -233,6 +289,14 @@ export class ConverterPanel extends LitElement {
       color: var(--err);
       font:
         0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .hint {
+      margin: -4px 0 0;
+      color: var(--muted);
+      font:
+        0.8rem ui-sans-serif,
         system-ui,
         sans-serif;
     }

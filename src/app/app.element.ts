@@ -115,6 +115,7 @@ export class CzytnikApp extends LitElement {
 
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
+  private statusTimer: number | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -130,6 +131,7 @@ export class CzytnikApp extends LitElement {
     this.unsubApi?.();
     this.removeEventListener("tutorial-close", this.handleTutorialClose);
     this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
+    this.stopStatusPolling();
   }
 
   private handleTutorialClose = () => {
@@ -471,6 +473,7 @@ export class CzytnikApp extends LitElement {
             : new SerialLink();
       await this.link.connect();
       this.connected = true;
+      this.startStatusPolling();
 
       // Show tutorial wizard if not yet seen (after first device connection)
       if (getTutorialStatus() === "not_seen") {
@@ -493,6 +496,7 @@ export class CzytnikApp extends LitElement {
   };
 
   private disconnect = async () => {
+    this.stopStatusPolling();
     await this.link?.disconnect();
     this.link = null;
     this.connected = false;
@@ -502,6 +506,33 @@ export class CzytnikApp extends LitElement {
     const { MockDeviceApi } = await import("./device/api");
     setDeviceApi(new MockDeviceApi());
   };
+
+  /**
+   * Odpytuje realny stan linku co kilka sekund — bez tego `connected` zostawał
+   * przyklejony na `true` nawet gdy WebSocket/GATT/port padł w tle (np. telefon
+   * na chwilę zszedł z sieci czytnika, żeby sprawdzić coś wymagającego
+   * internetu). Dzięki temu badge w headerze i ekran "Start" pokazują prawdę,
+   * a użytkownik dostaje jasny powód i przycisk "Sprawdź połączenie" zamiast
+   * milczącego, pozornie losowego rozłączania się i łączenia.
+   */
+  private startStatusPolling(): void {
+    this.stopStatusPolling();
+    this.statusTimer = window.setInterval(() => {
+      const stillConnected = this.link?.connected ?? false;
+      if (this.connected && !stillConnected) {
+        this.connected = false;
+        this.error =
+          "Połączenie z czytnikiem zostało przerwane — telefon mógł na chwilę zejść z jego sieci WiFi. Sprawdź WiFi telefonu i naciśnij „Sprawdź połączenie”.";
+      }
+    }, 2500);
+  }
+
+  private stopStatusPolling(): void {
+    if (this.statusTimer != null) {
+      window.clearInterval(this.statusTimer);
+      this.statusTimer = null;
+    }
+  }
 
   // ─── Style ─────────────────────────────────────────────────────────────────
 

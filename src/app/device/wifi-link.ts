@@ -7,7 +7,7 @@
  * przełączył sieć WiFi telefonu — instrukcję pokazujemy w wizardzie.
  */
 
-import { DEVICE_AP_BASE_URL } from "../../shared/config";
+import { DEVICE_AP_BASE_URL, DEVICE_AP_SSID_PREFIX } from "../../shared/config";
 import type { DeviceCommand, DeviceEvent } from "../../shared/device-protocol";
 import { parseEvent } from "../../shared/device-protocol";
 import type { DeviceLink, TransportInfo } from "./device-link";
@@ -47,7 +47,7 @@ export class WifiLink implements DeviceLink {
       throw new Error(
         isHttps
           ? `Przeglądarka zablokowała połączenie HTTPS → HTTP. Otwórz w telefonie ${this.base}/ bezpośrednio (Chrome/Safari), tam wgrywaj firmware i książki.`
-          : `Nie udało się złapać urządzenia pod ${this.base}. Czy telefon jest podłączony do sieci urządzenia (Flower-…)?`,
+          : `Nie znaleziono czytnika pod ${this.base}. Otwórz ustawienia WiFi w telefonie i połącz się z siecią czytnika (zaczyna się od „${DEVICE_AP_SSID_PREFIX}"), a potem wróć tu i naciśnij „Sprawdź połączenie" jeszcze raz.`,
       );
     }
 

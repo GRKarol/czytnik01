@@ -91,6 +91,8 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
 };
 
 export interface DeviceApi {
+  /** "http" gdy podłączeni realnie przez WiFi, "mock" gdy tylko symulacja. */
+  readonly kind: "mock" | "http";
   listBooks(): Promise<Book[]>;
   uploadBook(file: Blob, name: string): Promise<void>;
   deleteBook(name: string): Promise<void>;
@@ -157,6 +159,8 @@ const MOCK_BOOKS_SEED: Book[] = [
 ];
 
 export class MockDeviceApi implements DeviceApi {
+  readonly kind = "mock" as const;
+
   private async delay<T>(value: T, ms = 200): Promise<T> {
     await new Promise((r) => setTimeout(r, ms));
     return value;
@@ -227,6 +231,9 @@ const _apiListeners = new Set<(api: DeviceApi) => void>();
 export const deviceApi = {
   get current(): DeviceApi {
     return _api;
+  },
+  get kind(): "mock" | "http" {
+    return _api.kind;
   },
   listBooks: () => _api.listBooks(),
   uploadBook: (f: Blob, n: string) => _api.uploadBook(f, n),

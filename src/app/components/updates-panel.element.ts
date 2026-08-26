@@ -46,9 +46,15 @@ export class UpdatesPanel extends LitElement {
       case "idle":
         return html`
           <p class="muted">
-            Sprawdzimy GitHub Releases tego repo i — jeśli będzie nowsza wersja — pobierzemy ją
-            do telefonu. Wysłanie na urządzenie wymaga firmware z endpointem OTA (zrobimy to
-            w fazie 3).
+            Sprawdzimy GitHub Releases tego repo i — jeśli będzie nowsza wersja — pobierzemy ją do
+            telefonu. Wysłanie na urządzenie wymaga firmware z endpointem OTA (zrobimy to w fazie
+            3).
+          </p>
+          <p class="notice">
+            To sprawdzenie wymaga internetu. Jeśli telefon jest połączony z siecią czytnika (bez
+            internetu), telefon może na chwilę przełączyć się na inną sieć, żeby to zrobić — czytnik
+            wtedy chwilowo „zniknie". To normalne: po sprawdzeniu wróć do sieci czytnika, żeby
+            wysłać na niego aktualizację.
           </p>
           <button class="cta" @click=${this.check}>Sprawdź aktualizacje</button>
         `;
@@ -57,8 +63,8 @@ export class UpdatesPanel extends LitElement {
       case "none":
         return html`
           <p class="muted">
-            Brak opublikowanych releasów. Karol musi najpierw zrobić release na GitHubie
-            (Settings → Releases → Draft a new release) z plikiem .bin.
+            Brak opublikowanych releasów. Karol musi najpierw zrobić release na GitHubie (Settings →
+            Releases → Draft a new release) z plikiem .bin.
           </p>
           <button class="cta ghost" @click=${this.check}>Sprawdź ponownie</button>
         `;
@@ -98,7 +104,6 @@ export class UpdatesPanel extends LitElement {
         ${r.body
           ? html`<pre class="changelog">${trimChangelog(r.body)}</pre>`
           : html`<p class="muted">Brak opisu wersji.</p>`}
-
         ${asset
           ? html`
               <div class="asset">
@@ -106,9 +111,7 @@ export class UpdatesPanel extends LitElement {
                 ${this.stage === "downloading" || this.stage === "installing"
                   ? html`<progress max="100" value=${this.progress}></progress>`
                   : ""}
-                ${this.stage === "downloaded"
-                  ? html`<span class="ok">Pobrano</span>`
-                  : ""}
+                ${this.stage === "downloaded" ? html`<span class="ok">Pobrano</span>` : ""}
                 ${this.stage === "installed"
                   ? html`<span class="ok">Zainstalowano · urządzenie się restartuje</span>`
                   : ""}
@@ -120,9 +123,7 @@ export class UpdatesPanel extends LitElement {
                     </button>`
                   : ""}
                 ${this.stage === "downloaded"
-                  ? html`<button class="cta" @click=${this.install}>
-                        Wyślij na urządzenie
-                      </button>
+                  ? html`<button class="cta" @click=${this.install}>Wyślij na urządzenie</button>
                       <button class="cta ghost" @click=${this.savePhone}>
                         Zapisz plik na telefonie
                       </button>`
@@ -221,13 +222,31 @@ export class UpdatesPanel extends LitElement {
     }
     .muted {
       color: var(--muted);
-      font: 0.9rem/1.5 ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.9rem/1.5 ui-sans-serif,
+        system-ui,
+        sans-serif;
       margin: 0;
     }
     .error {
       color: var(--err);
-      font: 0.9rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.9rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       margin: 0;
+    }
+    .notice {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 182, 200, 0.6);
+      background: rgba(255, 182, 200, 0.14);
+      color: var(--ink-soft);
+      font:
+        0.82rem/1.5 ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .cta {
       padding: 12px 18px;
@@ -235,7 +254,10 @@ export class UpdatesPanel extends LitElement {
       border-radius: 999px;
       color: #fff;
       background: var(--accent);
-      font: 700 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        700 0.92rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       cursor: pointer;
     }
     .cta:hover {
@@ -272,14 +294,20 @@ export class UpdatesPanel extends LitElement {
     }
     .release small {
       color: var(--muted);
-      font: 0.78rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .badge {
       padding: 3px 9px;
       border-radius: 999px;
       background: var(--sky-2);
       color: var(--ink-soft);
-      font: 600 0.72rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.72rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .badge.ok {
       background: rgba(45, 190, 117, 0.18);
@@ -291,7 +319,10 @@ export class UpdatesPanel extends LitElement {
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 10px;
-      font: 0.82rem/1.55 ui-monospace, SFMono-Regular, monospace;
+      font:
+        0.82rem/1.55 ui-monospace,
+        SFMono-Regular,
+        monospace;
       color: var(--ink-soft);
       white-space: pre-wrap;
       max-height: 200px;
@@ -301,7 +332,10 @@ export class UpdatesPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font: 0.88rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        0.88rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       color: var(--muted);
     }
     .asset strong {
@@ -321,12 +355,18 @@ export class UpdatesPanel extends LitElement {
     }
     .ok {
       color: var(--ok);
-      font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
     }
     .link {
       align-self: flex-start;
       color: var(--accent);
-      font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font:
+        600 0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
       text-decoration: none;
     }
     .link:hover {

@@ -164,6 +164,8 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
 }
 
 export class HttpDeviceApi implements DeviceApi {
+  readonly kind = "http" as const;
+
   constructor(private baseUrl: string = DEVICE_AP_BASE_URL) {}
 
   private url(path: string): string {
