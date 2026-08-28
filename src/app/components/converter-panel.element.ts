@@ -188,7 +188,6 @@ export class ConverterPanel extends LitElement {
     }
     .drop {
       border: 2px dashed var(--line);
-      border-radius: 18px;
       padding: 28px 18px;
       text-align: center;
       transition:
@@ -210,16 +209,13 @@ export class ConverterPanel extends LitElement {
       cursor: pointer;
     }
     .picker strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: var(--fr);
       color: var(--accent);
       font-size: 1.2rem;
     }
     .picker span {
       color: var(--muted);
-      font:
-        0.92rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.92rem var(--ns);
     }
     .formats {
       margin-top: 6px;
@@ -228,18 +224,12 @@ export class ConverterPanel extends LitElement {
     .status {
       margin: 0;
       color: var(--muted);
-      font:
-        0.92rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.92rem var(--ns);
     }
     .error {
       margin: 0;
       color: var(--err);
-      font:
-        0.92rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.92rem var(--ns);
     }
     .result {
       display: flex;
@@ -248,8 +238,8 @@ export class ConverterPanel extends LitElement {
     }
     .result h4 {
       margin: 4px 0 0;
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
-      font-size: 1rem;
+      font-family: var(--fr);
+      font-size: 1.1rem;
     }
     .meta {
       display: grid;
@@ -259,21 +249,15 @@ export class ConverterPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      font:
-        600 0.78rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.72rem var(--mn);
+      letter-spacing: 0.02em;
       color: var(--muted);
     }
     .meta input {
       padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
       background: #fff;
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
       color: var(--ink);
     }
     .meta input:focus {
@@ -294,16 +278,12 @@ export class ConverterPanel extends LitElement {
       align-items: baseline;
       padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
       background: var(--paper-tint);
-      font:
-        0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.8rem var(--mn);
       color: var(--muted);
     }
     .stats strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: var(--fr);
       font-size: 1.15rem;
       color: var(--ink);
     }
@@ -317,29 +297,22 @@ export class ConverterPanel extends LitElement {
     }
     .cta {
       padding: 12px 18px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid var(--accent);
       color: #fff;
       background: var(--accent);
-      font:
-        700 0.92rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.85rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      transition:
-        background 0.15s ease,
-        transform 0.1s ease;
+      transition: background 0.15s ease;
     }
     .cta:hover {
       background: var(--accent-deep);
-    }
-    .cta:active:not(:disabled) {
-      transform: scale(0.97);
+      border-color: var(--accent-deep);
     }
     .cta.ghost {
       background: transparent;
       color: var(--accent);
-      border: 1.5px solid var(--accent);
+      border: 1px solid var(--accent);
     }
     .cta:disabled {
       opacity: 0.55;
@@ -347,13 +320,9 @@ export class ConverterPanel extends LitElement {
     }
     .preview {
       border: 1px solid var(--line);
-      border-radius: 12px;
       padding: 10px 12px;
       background: var(--paper-tint);
-      font:
-        0.82rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.82rem var(--ns);
     }
     .preview summary {
       cursor: pointer;
@@ -361,10 +330,7 @@ export class ConverterPanel extends LitElement {
     }
     .preview pre {
       margin: 8px 0 0;
-      font:
-        0.78rem/1.5 ui-monospace,
-        SFMono-Regular,
-        monospace;
+      font: 0.78rem/1.5 var(--mn);
       color: var(--ink-soft);
       white-space: pre-wrap;
       max-height: 220px;

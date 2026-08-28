@@ -831,20 +831,14 @@ export class SettingsPanel extends LitElement {
     .muted {
       color: var(--muted);
       margin: 0;
-      font:
-        0.92rem/1.5 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.92rem/1.5 var(--ns);
     }
     .small {
       font-size: 0.8rem;
     }
     .error {
       color: var(--err);
-      font:
-        0.9rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.9rem var(--ns);
       margin: 0;
     }
     .brand {
@@ -853,30 +847,25 @@ export class SettingsPanel extends LitElement {
       gap: 2px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 16px;
       background: var(--paper-tint);
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
     }
     .brand strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: var(--fr);
+      font-weight: 500;
       font-size: 1.4rem;
       color: var(--accent);
     }
     .brand span {
-      font:
-        0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.85rem var(--ns);
       color: var(--muted);
     }
     .tap-hint {
       margin-top: 4px;
-      font:
-        600 0.75rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.7rem var(--mn);
+      letter-spacing: 0.02em;
       color: var(--accent);
     }
     .tap-hint.ok {
@@ -886,12 +875,10 @@ export class SettingsPanel extends LitElement {
       margin: 0;
       padding: 16px;
       border: 1px solid var(--line);
-      border-radius: 18px;
       background: var(--paper-tint);
       display: flex;
       flex-direction: column;
       gap: 12px;
-      box-shadow: 0 6px 16px -10px rgba(35, 32, 27, 0.18);
     }
     fieldset.group.dev {
       border-color: var(--accent);
@@ -909,28 +896,22 @@ export class SettingsPanel extends LitElement {
       flex: 0 0 auto;
       display: grid;
       place-items: center;
-      border-radius: 8px;
+      border: 1px solid var(--line);
       background: var(--sky-2);
       color: var(--accent);
     }
     .legend-text {
-      font:
-        700 0.76rem ui-sans-serif,
-        system-ui,
-        sans-serif;
-      letter-spacing: 0.06em;
+      font: 700 0.72rem var(--mn);
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: var(--ink-soft);
+      color: var(--green);
     }
     .toggle {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
     }
     .toggle input {
       width: 44px;
@@ -963,10 +944,7 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
     }
     .slider span {
       display: flex;
@@ -975,10 +953,7 @@ export class SettingsPanel extends LitElement {
     }
     .slider small {
       color: var(--muted);
-      font:
-        0.82rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.82rem var(--mn);
     }
     .slider input[type="range"] {
       width: 100%;
@@ -988,63 +963,47 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
     }
     .seg-buttons {
       display: grid;
       grid-auto-flow: column;
       grid-auto-columns: 1fr;
       gap: 4px;
-      padding: 3px;
-      border-radius: 999px;
-      background: var(--line);
+      border: 1px solid var(--line);
+      background: transparent;
     }
     .seg-buttons button {
       padding: 8px 10px;
       border: 0;
-      border-radius: 999px;
+      border-right: 1px solid var(--line);
       background: transparent;
       color: var(--ink-soft);
-      font:
-        600 0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.78rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .seg-buttons button:last-child {
+      border-right: 0;
     }
     .seg-buttons button.active {
-      background: #fff;
-      color: var(--accent);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    }
-    .seg-buttons button {
-      transition: transform 0.1s ease;
-    }
-    .seg-buttons button:active {
-      transform: scale(0.94);
+      background: var(--accent);
+      color: #fff;
     }
     .select {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
     }
     .select select,
     .select input[type="text"],
     .select input[type="password"] {
       padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
       background: #fff;
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
       color: var(--ink);
     }
     .wifi-actions,
@@ -1055,19 +1014,16 @@ export class SettingsPanel extends LitElement {
     .mini-cta {
       flex: 1 1 auto;
       padding: 9px 14px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid var(--accent);
       color: #fff;
       background: var(--accent);
-      font:
-        700 0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.8rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      transition: transform 0.1s ease;
+      transition: background 0.15s ease;
     }
     .mini-cta:active:not(:disabled) {
-      transform: scale(0.96);
+      background: var(--accent-deep);
     }
     .mini-cta:disabled {
       opacity: 0.55;
@@ -1076,7 +1032,7 @@ export class SettingsPanel extends LitElement {
     .mini-cta.ghost {
       background: transparent;
       color: var(--accent);
-      border: 1.5px solid var(--accent);
+      border: 1px solid var(--accent);
     }
     .dev-block {
       display: flex;
@@ -1092,10 +1048,7 @@ export class SettingsPanel extends LitElement {
       gap: 10px;
     }
     .dev-block-head strong {
-      font:
-        700 0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.8rem var(--mn);
       color: var(--ink-soft);
     }
     .dev-block-head .mini-cta {
@@ -1108,10 +1061,7 @@ export class SettingsPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      font:
-        0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.8rem var(--mn);
     }
     .diag-list li {
       display: flex;
@@ -1129,8 +1079,7 @@ export class SettingsPanel extends LitElement {
       padding: 10px 12px;
       background: #fff;
       border: 1px solid var(--line);
-      border-radius: 10px;
-      font: 0.72rem/1.5 ui-monospace, SFMono-Regular, monospace;
+      font: 0.72rem/1.5 var(--mn);
       color: var(--ink-soft);
       white-space: pre-wrap;
       word-break: break-all;
@@ -1141,23 +1090,17 @@ export class SettingsPanel extends LitElement {
       gap: 10px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 16px;
       background: var(--paper-tint);
       color: var(--ink);
-      font:
-        600 0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.95rem var(--ns);
       cursor: pointer;
-      transition:
-        border-color 0.15s,
-        transform 0.1s;
+      transition: border-color 0.15s;
     }
     .help-link:hover {
       border-color: var(--accent);
     }
     .help-link:active {
-      transform: scale(0.98);
+      background: var(--sky-2);
     }
     .help-link svg {
       flex-shrink: 0;

@@ -275,21 +275,21 @@ export class TutorialWizard extends LitElement {
       max-width: 420px;
       padding: 28px 24px;
       background: var(--paper, #ffffff);
-      border-radius: 20px;
+      border: 1px solid var(--line, #e2e8f0);
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
       color: var(--ink, #0c2340);
       display: flex;
       flex-direction: column;
       gap: 18px;
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns, inherit);
     }
 
     .progress {
       text-align: center;
-      font-size: 0.85rem;
-      font-weight: 600;
+      font: 600 0.78rem var(--mn, inherit);
       color: var(--muted, #6b7c97);
-      letter-spacing: 0.02em;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
 
     .stage {
@@ -306,7 +306,7 @@ export class TutorialWizard extends LitElement {
       justify-content: center;
       min-height: 68px;
       padding: 12px;
-      border-radius: 14px;
+      border: 1px solid var(--line, #e2e8f0);
       background: var(--sky-1, #e8f4fd);
     }
 
@@ -316,8 +316,9 @@ export class TutorialWizard extends LitElement {
 
     h2 {
       margin: 0;
-      font-size: 1.4rem;
-      font-weight: 700;
+      font-family: var(--fr, inherit);
+      font-size: 1.5rem;
+      font-weight: 400;
       color: var(--ink, #0c2340);
       letter-spacing: -0.01em;
     }
@@ -342,10 +343,7 @@ export class TutorialWizard extends LitElement {
       background: transparent;
       border: 0;
       color: var(--muted, #6b7c97);
-      font:
-        600 0.9rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.8rem var(--mn, inherit);
       cursor: pointer;
       padding: 10px 8px;
       min-height: 44px;
@@ -356,10 +354,7 @@ export class TutorialWizard extends LitElement {
       background: transparent;
       border: 0;
       color: var(--muted, #6b7c97);
-      font:
-        600 0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.78rem var(--mn, inherit);
       cursor: pointer;
       padding: 10px 8px;
       min-height: 44px;
@@ -369,16 +364,12 @@ export class TutorialWizard extends LitElement {
 
     .btn-next {
       padding: 12px 22px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid var(--accent, #2e8eff);
       color: #fff;
       background: var(--accent, #2e8eff);
-      font:
-        700 0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.85rem var(--mn, inherit);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      box-shadow: 0 8px 18px rgba(46, 142, 255, 0.25);
       min-height: 44px;
       transition: background 0.15s;
     }
@@ -392,7 +383,7 @@ export class TutorialWizard extends LitElement {
       display: flex;
       align-items: baseline;
       gap: 8px;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: var(--mn, monospace);
       font-size: 1.3rem;
     }
 

@@ -143,7 +143,7 @@ export class HelpPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 16px;
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
       font-size: 16px;
       color: var(--ink, #0c2340);
     }
@@ -153,14 +153,11 @@ export class HelpPanel extends LitElement {
       align-items: center;
       gap: 6px;
       padding: 8px 12px;
-      border: 0;
-      border-radius: 12px;
+      border: 1px solid var(--line, #e2e8f0);
       background: var(--paper-tint, #f5f8fc);
       color: var(--ink, #0c2340);
-      font:
-        600 0.9rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.8rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
       align-self: flex-start;
       transition: background 0.15s;
@@ -172,13 +169,13 @@ export class HelpPanel extends LitElement {
     .quick-start {
       padding: 16px;
       border: 1px solid var(--line, #e2e8f0);
-      border-radius: 16px;
       background: var(--paper-tint, #f5f8fc);
     }
     .quick-start h2 {
       margin: 0 0 12px 0;
-      font-size: 1.1rem;
-      font-weight: 700;
+      font-family: var(--fr);
+      font-size: 1.2rem;
+      font-weight: 400;
       color: var(--ink, #0c2340);
     }
     .steps {
@@ -200,18 +197,14 @@ export class HelpPanel extends LitElement {
     .category-title {
       margin: 0;
       padding: 0 6px;
-      font:
-        700 0.78rem ui-sans-serif,
-        system-ui,
-        sans-serif;
-      letter-spacing: 0.06em;
+      font: 700 0.72rem var(--mn);
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: var(--muted, #6b7c97);
+      color: var(--green);
     }
 
     .accordion {
       border: 1px solid var(--line, #e2e8f0);
-      border-radius: 16px;
       background: var(--paper-tint, #f5f8fc);
       overflow: hidden;
     }
@@ -228,10 +221,7 @@ export class HelpPanel extends LitElement {
       border: 0;
       background: transparent;
       color: var(--ink, #0c2340);
-      font:
-        0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem var(--ns);
       cursor: pointer;
       text-align: left;
     }
@@ -271,13 +261,10 @@ export class HelpPanel extends LitElement {
     .restart-btn {
       padding: 14px 20px;
       border: 1px solid var(--accent, #2e8eff);
-      border-radius: 16px;
       background: transparent;
       color: var(--accent, #2e8eff);
-      font:
-        600 0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.85rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
       text-align: center;
       transition: background 0.15s;

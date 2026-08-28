@@ -146,10 +146,7 @@ export class SettingTooltip extends LitElement {
       border-radius: 50%;
       background: var(--paper-tint, #f8fbff);
       color: var(--accent, #2e8eff);
-      font:
-        700 0.85rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.8rem var(--mn);
       cursor: pointer;
       transition:
         background 0.12s,
@@ -174,13 +171,9 @@ export class SettingTooltip extends LitElement {
       max-width: 260px;
       padding: 12px 14px;
       border: 1px solid var(--line, #d9e6f6);
-      border-radius: 12px;
       background: var(--paper-tint, #ffffff);
       color: var(--ink-soft, #3d5278);
-      font:
-        0.88rem/1.5 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.88rem/1.5 var(--ns);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
       z-index: 200;
       animation: tooltip-show 0.15s ease-out;

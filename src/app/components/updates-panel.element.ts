@@ -216,41 +216,37 @@ export class UpdatesPanel extends LitElement {
       gap: 2px;
     }
     .head strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
-      font-size: 1rem;
+      font-family: var(--fr);
+      font-size: 1.1rem;
     }
     .muted {
       color: var(--muted);
-      font: 0.9rem/1.5 ui-sans-serif, system-ui, sans-serif;
+      font: 0.9rem/1.5 var(--ns);
       margin: 0;
     }
     .error {
       color: var(--err);
-      font: 0.9rem ui-sans-serif, system-ui, sans-serif;
+      font: 0.9rem var(--ns);
       margin: 0;
     }
     .cta {
       padding: 12px 18px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid var(--accent);
       color: #fff;
       background: var(--accent);
-      font: 700 0.92rem ui-sans-serif, system-ui, sans-serif;
+      font: 700 0.85rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      transition:
-        background 0.15s ease,
-        transform 0.1s ease;
+      transition: background 0.15s ease;
     }
     .cta:hover {
       background: var(--accent-deep);
-    }
-    .cta:active:not(:disabled) {
-      transform: scale(0.97);
+      border-color: var(--accent-deep);
     }
     .cta.ghost {
       background: transparent;
       color: var(--accent);
-      border: 1.5px solid var(--accent);
+      border: 1px solid var(--accent);
     }
     .cta:disabled {
       opacity: 0.55;
@@ -262,7 +258,6 @@ export class UpdatesPanel extends LitElement {
       gap: 10px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 18px;
       background: var(--paper-tint);
     }
     .release header {
@@ -273,31 +268,29 @@ export class UpdatesPanel extends LitElement {
     }
     .release h4 {
       margin: 0;
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
-      font-size: 1.05rem;
+      font-family: var(--fr);
+      font-size: 1.15rem;
     }
     .release small {
       color: var(--muted);
-      font: 0.78rem ui-sans-serif, system-ui, sans-serif;
+      font: 0.78rem var(--mn);
     }
     .badge {
-      padding: 3px 9px;
-      border-radius: 999px;
+      padding: 3px 8px;
       background: var(--sky-2);
       color: var(--ink-soft);
-      font: 600 0.72rem ui-sans-serif, system-ui, sans-serif;
+      font: 600 0.68rem var(--mn);
     }
     .badge.ok {
-      background: rgba(45, 190, 117, 0.18);
-      color: var(--ok);
+      background: rgba(47, 122, 77, 0.14);
+      color: var(--green);
     }
     .changelog {
       margin: 0;
       padding: 10px 12px;
       background: #fff;
       border: 1px solid var(--line);
-      border-radius: 10px;
-      font: 0.82rem/1.55 ui-monospace, SFMono-Regular, monospace;
+      font: 0.82rem/1.55 var(--mn);
       color: var(--ink-soft);
       white-space: pre-wrap;
       max-height: 200px;
@@ -307,7 +300,7 @@ export class UpdatesPanel extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      font: 0.88rem ui-sans-serif, system-ui, sans-serif;
+      font: 0.88rem var(--ns);
       color: var(--muted);
     }
     .asset strong {
@@ -327,12 +320,12 @@ export class UpdatesPanel extends LitElement {
     }
     .ok {
       color: var(--ok);
-      font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font: 600 0.85rem var(--ns);
     }
     .link {
       align-self: flex-start;
       color: var(--accent);
-      font: 600 0.85rem ui-sans-serif, system-ui, sans-serif;
+      font: 600 0.85rem var(--mn);
       text-decoration: none;
     }
     .link:hover {

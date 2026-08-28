@@ -794,19 +794,23 @@ export class CzytnikApp extends LitElement {
       --paper-tint: #fbf8f2;
       --accent: #1488d8;
       --accent-deep: #106bab;
+      --green: #2f7a4d;
       --bloom-yellow: #e3b355;
       --bloom-pink: #d1889b;
       --ok: #2f7a4d;
       --err: #b8443a;
       --line: rgba(35, 32, 27, 0.14);
-      --shadow: 0 16px 34px -12px rgba(35, 32, 27, 0.22);
+      --shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 20px 40px -26px rgba(35, 32, 27, 0.35);
+      --fr: "Fraunces", Georgia, serif;
+      --ns: "Newsreader", Georgia, serif;
+      --mn: "JetBrains Mono", var(--mn);
       display: flex;
       flex-direction: column;
       position: relative;
       min-height: 100vh;
       min-height: 100dvh;
       color: var(--ink);
-      font-family: "Iowan Old Style", "Hoefler Text", "Georgia", "Times New Roman", ui-serif, serif;
+      font-family: var(--ns);
       background: linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 45%, var(--sky-3) 100%);
     }
 
@@ -863,7 +867,8 @@ export class CzytnikApp extends LitElement {
     }
 
     .brand strong {
-      font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
+      font-family: var(--fr);
+      font-weight: 500;
       font-size: 1.25rem;
       letter-spacing: -0.01em;
       line-height: 1;
@@ -871,7 +876,7 @@ export class CzytnikApp extends LitElement {
     }
 
     .brand small {
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--mn);
       font-size: 0.7rem;
       color: var(--muted);
       letter-spacing: 0.06em;
@@ -884,35 +889,31 @@ export class CzytnikApp extends LitElement {
     }
     .badge {
       padding: 4px 8px;
-      border-radius: 6px;
-      font:
-        800 0.7rem/1 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      border: 1px solid currentColor;
+      font: 700 0.68rem/1 var(--mn);
       letter-spacing: 0.1em;
+      text-transform: uppercase;
     }
     .badge.dev {
-      background: linear-gradient(135deg, #ff7a45, #ff9b73);
+      background: #ff7a45;
       color: #fff;
-      box-shadow: 0 4px 10px rgba(255, 122, 69, 0.3);
+      border-color: #ff7a45;
     }
     .pill {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       padding: 5px 10px;
-      border-radius: 999px;
-      background: rgba(107, 124, 151, 0.12);
+      border: 1px solid var(--line);
+      background: transparent;
       color: var(--muted);
-      font:
-        600 0.74rem/1 ui-sans-serif,
-        system-ui,
-        sans-serif;
-      letter-spacing: 0.02em;
+      font: 600 0.72rem/1 var(--mn);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
     }
     .pill.ok {
-      background: rgba(45, 190, 117, 0.14);
-      color: var(--ok);
+      border-color: rgba(47, 122, 77, 0.35);
+      color: var(--green);
     }
     .pill .dot {
       width: 7px;
@@ -966,13 +967,13 @@ export class CzytnikApp extends LitElement {
 
     .hero-flower {
       color: var(--accent);
-      filter: drop-shadow(0 8px 20px rgba(46, 142, 255, 0.25));
     }
 
     .hero h2 {
       margin: 0;
-      font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
-      font-size: 2rem;
+      font-family: var(--fr);
+      font-weight: 300;
+      font-size: 2.1rem;
       letter-spacing: -0.02em;
     }
 
@@ -982,6 +983,7 @@ export class CzytnikApp extends LitElement {
       max-width: 36ch;
       line-height: 1.5;
       font-size: 1rem;
+      font-family: var(--ns);
     }
 
     .card {
@@ -990,7 +992,6 @@ export class CzytnikApp extends LitElement {
       gap: 12px;
       padding: 20px;
       border: 1px solid var(--line);
-      border-radius: 22px;
       background: var(--paper);
       box-shadow: var(--shadow);
     }
@@ -1000,8 +1001,9 @@ export class CzytnikApp extends LitElement {
       align-items: center;
       gap: 8px;
       margin: 0;
-      font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
-      font-size: 1.2rem;
+      font-family: var(--fr);
+      font-weight: 400;
+      font-size: 1.25rem;
       color: var(--ink);
     }
 
@@ -1009,11 +1011,11 @@ export class CzytnikApp extends LitElement {
       color: var(--muted);
       line-height: 1.5;
       margin: 0;
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
     }
 
     code {
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: var(--mn);
       padding: 0.1em 0.4em;
       border-radius: 0.4em;
       background: var(--sky-2);
@@ -1027,21 +1029,18 @@ export class CzytnikApp extends LitElement {
       gap: 14px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 16px;
       background: var(--paper-tint);
       color: var(--ink);
       font: inherit;
       cursor: pointer;
       text-align: left;
-      transition:
-        border-color 0.15s ease,
-        transform 0.1s ease;
+      transition: border-color 0.15s ease;
     }
     .choice:hover:not(:disabled) {
       border-color: var(--accent);
     }
     .choice:active:not(:disabled) {
-      transform: scale(0.98);
+      background: var(--sky-2);
     }
     .choice:disabled {
       opacity: 0.5;
@@ -1056,7 +1055,7 @@ export class CzytnikApp extends LitElement {
       height: 44px;
       display: grid;
       place-items: center;
-      border-radius: 12px;
+      border: 1px solid var(--line);
       background: var(--sky-2);
       color: var(--accent);
     }
@@ -1066,11 +1065,11 @@ export class CzytnikApp extends LitElement {
       gap: 2px;
     }
     .choice-body strong {
-      font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
+      font-family: var(--fr);
       font-size: 1.05rem;
     }
     .choice-body span {
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
       font-size: 0.85rem;
       color: var(--muted);
       line-height: 1.4;
@@ -1084,16 +1083,14 @@ export class CzytnikApp extends LitElement {
       padding: 4px 0;
       cursor: pointer;
       font:
-        600 0.88rem/1 ui-sans-serif,
-        system-ui,
-        sans-serif;
+        600 0.88rem/1 var(--mn);
     }
 
     .steps {
       margin: 0;
       padding-left: 1.2rem;
       color: var(--ink-soft);
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
       line-height: 1.5;
     }
     .steps li {
@@ -1108,7 +1105,6 @@ export class CzytnikApp extends LitElement {
     .steps .callout {
       background: rgba(46, 142, 255, 0.08);
       border: 1px solid rgba(46, 142, 255, 0.25);
-      border-radius: 12px;
       padding: 8px 10px;
       list-style: none;
       margin-left: -1.2rem;
@@ -1124,36 +1120,34 @@ export class CzytnikApp extends LitElement {
 
     .cta {
       padding: 14px 20px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid var(--accent);
       color: #fff;
       background: var(--accent);
-      font:
-        700 0.98rem/1 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.88rem/1 var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
-      transition:
-        background 0.15s ease,
-        transform 0.1s ease;
+      transition: background 0.2s ease, color 0.2s ease;
     }
     .cta:hover {
       background: var(--accent-deep);
+      border-color: var(--accent-deep);
     }
     .cta:active:not(:disabled) {
-      transform: scale(0.97);
+      background: var(--ink);
+      border-color: var(--ink);
     }
     .cta:disabled {
       opacity: 0.55;
       cursor: not-allowed;
-      box-shadow: none;
     }
     .cta.ghost {
       background: transparent;
       color: var(--accent);
-      border: 1.5px solid var(--accent);
-      box-shadow: none;
+      border: 1px solid var(--accent);
+    }
+    .cta.ghost:hover {
+      background: var(--accent);
+      color: #fff;
     }
 
     .grid {
@@ -1169,39 +1163,36 @@ export class CzytnikApp extends LitElement {
       gap: 4px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 16px;
       background: var(--paper-tint);
       color: var(--ink);
       cursor: pointer;
       text-align: left;
       font: inherit;
       min-height: 100px;
-      transition:
-        border-color 0.15s ease,
-        transform 0.1s ease;
+      transition: border-color 0.15s ease, background 0.15s ease;
     }
     .tile:hover {
       border-color: var(--accent);
     }
     .tile:active {
-      transform: scale(0.97);
+      background: var(--sky-2);
     }
     .tile-ico {
       width: 36px;
       height: 36px;
       display: grid;
       place-items: center;
-      border-radius: 10px;
+      border: 1px solid var(--line);
       background: var(--sky-2);
       color: var(--accent);
       margin-bottom: 4px;
     }
     .tile strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: var(--fr);
       font-size: 1rem;
     }
     .tile span {
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
       font-size: 0.78rem;
       color: var(--muted);
       line-height: 1.35;
@@ -1218,7 +1209,6 @@ export class CzytnikApp extends LitElement {
       gap: 12px;
       padding: 12px;
       border: 1px solid var(--line);
-      border-radius: 14px;
       background: var(--paper-tint);
     }
     .plugin-ico {
@@ -1232,33 +1222,28 @@ export class CzytnikApp extends LitElement {
       gap: 1px;
     }
     .plugin-body strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: var(--fr);
       font-size: 1rem;
     }
     .plugin-body span {
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
       font-size: 0.82rem;
       color: var(--muted);
     }
     .badge {
-      padding: 3px 9px;
-      border-radius: 999px;
+      padding: 3px 8px;
       background: var(--sky-2);
       color: var(--ink-soft);
-      font:
-        600 0.7rem/1 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.68rem/1 var(--mn);
     }
     .badge.ok {
-      background: rgba(45, 190, 117, 0.18);
-      color: var(--ok);
+      background: rgba(45, 122, 77, 0.14);
+      color: var(--green);
     }
 
     .cta.small {
       padding: 9px 16px;
-      font-size: 0.85rem;
-      box-shadow: none;
+      font-size: 0.8rem;
     }
 
     .rss-editor {
@@ -1267,9 +1252,8 @@ export class CzytnikApp extends LitElement {
       gap: 10px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 16px;
       background: var(--paper-tint);
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
     }
     .rss-list {
       list-style: none;
@@ -1285,7 +1269,6 @@ export class CzytnikApp extends LitElement {
       justify-content: space-between;
       gap: 10px;
       padding: 8px 10px;
-      border-radius: 10px;
       background: #fff;
       border: 1px solid var(--line);
     }
@@ -1304,9 +1287,8 @@ export class CzytnikApp extends LitElement {
       flex: 1 1 auto;
       padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
       background: #fff;
-      font: 0.88rem ui-sans-serif, system-ui, sans-serif;
+      font: 0.88rem var(--ns);
       color: var(--ink);
     }
     .del {
@@ -1335,7 +1317,7 @@ export class CzytnikApp extends LitElement {
       justify-content: space-between;
       padding: 12px 0;
       border-bottom: 1px solid var(--line);
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
     }
     .settings-list li:last-child {
       border-bottom: 0;
@@ -1350,42 +1332,33 @@ export class CzytnikApp extends LitElement {
     .error {
       color: var(--err);
       font-size: 0.9rem;
-      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-family: var(--ns);
     }
 
     nav {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
-      gap: 2px;
       flex: 0 0 auto;
-      margin: 0 10px calc(10px + env(safe-area-inset-bottom));
-      padding: 6px;
-      border-radius: 20px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.86);
+      padding-bottom: env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: rgba(248, 244, 236, 0.9);
       backdrop-filter: blur(16px);
-      box-shadow: var(--shadow);
     }
     nav button {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
-      padding: 8px 2px 6px;
+      gap: 4px;
+      padding: 10px 1px 8px;
       background: transparent;
       border: 0;
-      border-radius: 14px;
+      border-top: 2px solid transparent;
       color: var(--muted);
-      font:
-        600 0.62rem/1.1 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.52rem/1.05 var(--mn);
       cursor: pointer;
-      letter-spacing: 0.01em;
-      transition:
-        background 0.15s ease,
-        color 0.15s ease,
-        transform 0.1s ease;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      transition: color 0.15s ease, border-color 0.15s ease;
     }
     nav button .ico {
       width: 22px;
@@ -1395,10 +1368,10 @@ export class CzytnikApp extends LitElement {
     }
     nav button.active {
       color: var(--accent);
-      background: rgba(20, 136, 216, 0.12);
+      border-top-color: var(--accent);
     }
     nav button:active:not(:disabled) {
-      transform: scale(0.92);
+      background: var(--sky-2);
     }
     nav button:disabled {
       opacity: 0.3;

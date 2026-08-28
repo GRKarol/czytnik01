@@ -176,7 +176,7 @@ export class PwaInstallDialog extends LitElement {
       max-width: 380px;
       padding: 32px 24px 28px;
       background: #f8f4ec;
-      border-radius: 22px;
+      border: 1px solid rgba(35, 32, 27, 0.14);
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
       display: flex;
       flex-direction: column;
@@ -213,8 +213,9 @@ export class PwaInstallDialog extends LitElement {
 
     h2 {
       margin: 0;
-      font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
-      font-size: 1.5rem;
+      font-family: "Fraunces", Georgia, serif;
+      font-weight: 400;
+      font-size: 1.6rem;
       letter-spacing: -0.02em;
       color: #23201b;
     }
@@ -222,10 +223,7 @@ export class PwaInstallDialog extends LitElement {
     p {
       margin: 0;
       color: #6b665d;
-      font:
-        1rem/1.5 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 1rem/1.5 "Newsreader", Georgia, serif;
       max-width: 32ch;
     }
 
@@ -233,10 +231,7 @@ export class PwaInstallDialog extends LitElement {
       margin: 0;
       padding-left: 1.2rem;
       color: #6b665d;
-      font:
-        0.95rem/1.6 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem/1.6 "Newsreader", Georgia, serif;
       text-align: left;
     }
 
@@ -251,19 +246,16 @@ export class PwaInstallDialog extends LitElement {
     .cta {
       margin-top: 4px;
       padding: 14px 28px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid #1488d8;
       color: #fff;
       background: #1488d8;
-      font:
-        700 0.98rem/1 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.88rem/1 "JetBrains Mono", monospace;
+      letter-spacing: 0.02em;
       cursor: pointer;
-      box-shadow: 0 10px 22px rgba(20, 136, 216, 0.28);
     }
     .cta:hover {
       background: #106bab;
+      border-color: #106bab;
     }
 
     @keyframes fadeIn {

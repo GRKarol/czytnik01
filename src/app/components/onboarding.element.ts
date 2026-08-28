@@ -226,13 +226,14 @@ export class OnboardingWizard extends LitElement {
       padding: 24px 22px;
       padding-bottom: calc(20px + env(safe-area-inset-bottom));
       background: #f8f4ec;
-      border-radius: 26px 26px 18px 18px;
+      border: 1px solid rgba(35, 32, 27, 0.14);
+      border-bottom: 0;
       box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.18);
       color: #23201b;
       display: flex;
       flex-direction: column;
       gap: 14px;
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: "Newsreader", Georgia, serif;
     }
     .dots {
       display: flex;
@@ -262,27 +263,25 @@ export class OnboardingWizard extends LitElement {
     }
     .hero {
       color: #1488d8;
-      filter: drop-shadow(0 12px 24px rgba(20, 136, 216, 0.28));
     }
     .hero.soft {
       color: #1488d8;
       padding: 12px;
-      border-radius: 24px;
-      background: linear-gradient(135deg, #ece5d7, #f0e9dd);
+      border: 1px solid rgba(35, 32, 27, 0.14);
+      background: #f0e9dd;
     }
     h2 {
       margin: 0;
-      font-size: 1.6rem;
+      font-family: "Fraunces", Georgia, serif;
+      font-weight: 400;
+      font-size: 1.7rem;
       letter-spacing: -0.02em;
     }
     p {
       margin: 0;
       max-width: 38ch;
       color: #6b665d;
-      font:
-        1rem/1.55 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 1rem/1.55 "Newsreader", Georgia, serif;
     }
     .hint {
       font-style: italic;
@@ -300,35 +299,29 @@ export class OnboardingWizard extends LitElement {
       background: transparent;
       border: 0;
       color: #9a948a;
-      font:
-        600 0.9rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.78rem "JetBrains Mono", monospace;
+      letter-spacing: 0.02em;
       cursor: pointer;
       padding: 8px 4px;
     }
     .cta {
       padding: 12px 22px;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid #1488d8;
       color: #fff;
       background: #1488d8;
-      font:
-        700 0.95rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.85rem "JetBrains Mono", monospace;
+      letter-spacing: 0.02em;
       cursor: pointer;
-      box-shadow: 0 10px 22px rgba(20, 136, 216, 0.28);
     }
     .cta:hover {
       background: #106bab;
+      border-color: #106bab;
     }
     code {
       padding: 0.12em 0.38em;
-      border-radius: 0.4em;
       background: #f0e9dd;
       color: #106bab;
-      font-family: ui-monospace, monospace;
+      font-family: "JetBrains Mono", monospace;
       font-size: 0.9em;
     }
     strong {
@@ -339,10 +332,7 @@ export class OnboardingWizard extends LitElement {
       padding-left: 1.4rem;
       text-align: left;
       color: #6b665d;
-      font:
-        0.95rem/1.6 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.95rem/1.6 "Newsreader", Georgia, serif;
     }
     .ios-steps li {
       margin-bottom: 6px;

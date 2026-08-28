@@ -81,7 +81,7 @@ export class FirstUseHint extends LitElement {
       max-width: 320px;
       width: calc(100% - 48px);
       padding: 24px;
-      border-radius: 16px;
+      border: 1px solid var(--line, #d9e6f6);
       background: var(--paper-tint, #ffffff);
       color: var(--ink, #1a2a3a);
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
@@ -92,6 +92,7 @@ export class FirstUseHint extends LitElement {
       margin: 0 0 20px;
       font-size: 16px;
       line-height: 1.5;
+      font-family: var(--ns, inherit);
       color: var(--ink-soft, #3d5278);
       word-break: break-word;
     }
@@ -103,14 +104,11 @@ export class FirstUseHint extends LitElement {
       min-width: 44px;
       min-height: 44px;
       padding: 12px 28px;
-      border: none;
-      border-radius: 10px;
+      border: 1px solid var(--accent, #2e8eff);
       background: var(--accent, #2e8eff);
       color: #fff;
-      font:
-        600 1rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.85rem var(--mn, ui-sans-serif);
+      letter-spacing: 0.02em;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       touch-action: manipulation;

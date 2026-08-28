@@ -229,18 +229,12 @@ export class LibraryPanel extends LitElement {
     }
     .muted {
       color: var(--muted);
-      font:
-        0.92rem/1.45 ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.92rem/1.45 var(--ns);
       margin: 0;
     }
     .error {
       color: var(--err);
-      font:
-        0.92rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.92rem var(--ns);
       margin: 0;
     }
     .actions {
@@ -252,25 +246,22 @@ export class LibraryPanel extends LitElement {
       flex: 1 1 auto;
       padding: 11px 16px;
       text-align: center;
-      border: 0;
-      border-radius: 999px;
+      border: 1px solid var(--accent);
       color: #fff;
       background: var(--accent);
-      font:
-        700 0.9rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 700 0.85rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      transition: transform 0.1s ease;
+      transition: background 0.15s ease;
     }
     .btn:active {
-      transform: scale(0.97);
+      background: var(--accent-deep);
     }
     .btn.ghost {
       flex: 0 0 auto;
       background: transparent;
       color: var(--accent);
-      border: 1.5px solid var(--accent);
+      border: 1px solid var(--accent);
     }
     .tabs {
       display: flex;
@@ -280,20 +271,13 @@ export class LibraryPanel extends LitElement {
       flex: 1 1 auto;
       padding: 8px 10px;
       border: 1px solid var(--line);
-      border-radius: 999px;
       background: var(--paper-tint);
       color: var(--ink-soft);
-      font:
-        600 0.78rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.72rem var(--mn);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
       cursor: pointer;
-      transition:
-        background 0.15s ease,
-        transform 0.1s ease;
-    }
-    .tab:active {
-      transform: scale(0.96);
+      transition: background 0.15s ease;
     }
     .tab.active {
       background: var(--accent);
@@ -311,22 +295,18 @@ export class LibraryPanel extends LitElement {
       flex-wrap: wrap;
     }
     .sortbar-label {
-      font:
-        0.78rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.72rem var(--mn);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
       color: var(--muted);
     }
     .sortbtn {
       padding: 5px 10px;
       border: 1px solid var(--line);
-      border-radius: 999px;
       background: transparent;
       color: var(--ink-soft);
-      font:
-        600 0.75rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 600 0.72rem var(--mn);
+      letter-spacing: 0.02em;
       cursor: pointer;
     }
     .sortbtn.active {
@@ -348,22 +328,17 @@ export class LibraryPanel extends LitElement {
       gap: 10px;
       padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 14px;
       background: var(--paper-tint);
     }
     .cover {
       width: 34px;
       height: 34px;
-      border-radius: 8px;
       flex: 0 0 auto;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #fff;
-      font:
-        700 0.95rem ui-serif,
-        Georgia,
-        serif;
+      font: 700 0.95rem var(--fr);
     }
     .meta {
       flex: 1 1 auto;
@@ -373,17 +348,14 @@ export class LibraryPanel extends LitElement {
       min-width: 0;
     }
     .meta strong {
-      font-family: "Iowan Old Style", Georgia, ui-serif, serif;
+      font-family: var(--fr);
       font-size: 0.98rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .meta span {
-      font:
-        0.78rem ui-sans-serif,
-        system-ui,
-        sans-serif;
+      font: 0.78rem var(--ns);
       color: var(--muted);
     }
     .fav {
