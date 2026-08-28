@@ -6,7 +6,6 @@ import type { DeviceLink } from "./device/device-link";
 import { WifiLink } from "./device/wifi-link";
 import { BluetoothLink } from "./device/bluetooth-link";
 import { SerialLink } from "./device/serial-link";
-import "./components/flower-decor.element";
 import { dandelionIcon } from "./components/flower-icon";
 import "./components/converter-panel.element";
 import "./components/updates-panel.element";
@@ -239,10 +238,6 @@ export class CzytnikApp extends LitElement {
       <onboarding-wizard></onboarding-wizard>
       <pwa-install-dialog></pwa-install-dialog>
       ${this.showTutorial ? html`<tutorial-wizard></tutorial-wizard>` : ""}
-
-      <div class="sky">
-        <flower-decor density="medium"></flower-decor>
-      </div>
 
       <header>
         <div class="brand">
@@ -813,13 +808,6 @@ export class CzytnikApp extends LitElement {
       mix-blend-mode: multiply;
       opacity: 0.4;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E");
-    }
-
-    .sky {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
     }
 
     header,
