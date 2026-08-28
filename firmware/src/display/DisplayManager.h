@@ -4,6 +4,8 @@
 #include <vector>
 
 #include "board/BoardConfig.h"
+#include "display/Icons.h"
+#include "ui/UiGrid.h"
 
 class DisplayManager {
  public:
@@ -49,14 +51,64 @@ class DisplayManager {
   };
 
   struct Button {
+    // Shape the button draws itself as. Rect covers the default label/icon
+    // tile; Toggle and Cycle exist so a setting's current value is legible
+    // at a glance (a slider knob position, or which of N dots is lit)
+    // instead of every control looking like the same rectangle regardless
+    // of what it does.
+    enum class ButtonKind : uint8_t {
+      Rect = 0,
+      Toggle = 1,
+      Cycle = 2,
+      // Non-interactive divider row (e.g. the "---" line between installed
+      // plugins and the plugin library entry) — drawn as a thin line, never
+      // tappable, never armed.
+      Separator = 3,
+      // Full-width drag slider (e.g. pacing delay editors): sliderValue
+      // between sliderMin/sliderMax is drawn as a big numeric readout plus a
+      // track+knob. Touch handling lives in App::handlePacingDelayEditorTouch,
+      // which reads the exact same rect back via sliderTrackRectFor() so the
+      // knob's drawn position and the drag hit-test never drift apart.
+      Slider = 4,
+    };
+
     String label;
+    String sublabel;  // optional second line (library-style title+subtitle buttons)
     uint16_t x = 0;
     uint16_t y = 0;
     uint16_t width = 0;
     uint16_t height = 0;
     bool accent = false;
     bool active = false;
+    // Two-step tap confirm (arm-then-confirm, see App::handleGridTap):
+    // drawn filled/outlined in focusColor() instead of the normal style.
+    bool armed = false;
+    // Icon badge in the button's corner. iconBitmap (if set) wins over the
+    // vector glyph — that's the seam for swapping placeholders with real
+    // RGB565 art later, same pattern as the embedded fonts.
+    ui::IconId icon = ui::IconId::None;
+    const uint16_t *iconBitmap = nullptr;
+    uint8_t iconW = 0;
+    uint8_t iconH = 0;
+    ButtonKind kind = ButtonKind::Rect;
+    // Kind::Toggle: `active` is the on/off value, drawn as a track+knob.
+    // Kind::Cycle: cycleCount dots are drawn, cycleState (0-based) is lit —
+    // for settings that step through a short fixed list of named values.
+    uint8_t cycleState = 0;
+    uint8_t cycleCount = 0;
+    // Kind::Slider only.
+    uint16_t sliderMin = 0;
+    uint16_t sliderMax = 0;
+    uint16_t sliderValue = 0;
+    // Suffix drawn right after the big numeric readout (e.g. " ms", " WPM").
+    String sliderUnit = " ms";
   };
+
+  // Track rect (in the same virtual-screen coordinates as touch events) for
+  // a Kind::Slider button, derived purely from that button's own x/y/w/h.
+  // drawButtons() and App's drag handler both call this with the same
+  // button geometry so the drawn knob and the touch hit-test can't diverge.
+  static ui::Rect sliderTrackRectFor(const Button &button);
 
   ~DisplayManager();
 
@@ -116,18 +168,30 @@ class DisplayManager {
   void renderMenu(const char *const *items, size_t itemCount, size_t selectedIndex);
   void renderMenu(const std::vector<String> &items, size_t selectedIndex);
   void renderMenuWithDPad(const std::vector<String> &items, size_t selectedIndex);
+  // Swipe/scroll nav mode: a bare, full-width scrollable text list — no
+  // button chrome, no D-Pad panel. Drag scrolls (App::handleSwipeListGesture
+  // shifts selectedIndex before calling this), tap picks the row under the
+  // finger. See DisplayManager::renderMenuWithDPad() for the shared
+  // windowing math this mirrors.
+  void renderMenuScroll(const std::vector<String> &items, size_t selectedIndex);
   void renderLibrary(const std::vector<LibraryItem> &items, size_t selectedIndex);
   void renderTextEntry(const String &title, const String &prompt, const String &value,
                        const String &helperText, const std::vector<Button> &buttons);
+  void renderButtonGrid(const String &title, const std::vector<Button> &buttons, size_t pageIndex,
+                        size_t pageCount, const String &toastText = "",
+                        bool showBatteryBadge = true, bool dotsOnLeft = false);
   void renderStatus(const String &title, const String &line1 = "", const String &line2 = "");
+  // `hint` to trzecia, przygaszona linijka pod QR-em. Domyślnie zdanie dla
+  // ekranu parowania z telefonem; ekran „zainstaluj aplikację" podaje swoje.
   void renderStatusWithQr(const String &title, const String &line1, const bool *qrData,
-                          uint8_t qrSize);
+                          uint8_t qrSize, const String &hint = "Scan to connect");
   void renderProgress(const String &title, const String &line1 = "", const String &line2 = "",
                       int progressPercent = -1);
   void renderLifeScreensaver(const std::vector<uint32_t> &cells, uint16_t columns, uint16_t rows,
                              uint32_t generation,
                              const std::vector<uint32_t> *dimCells = nullptr,
-                             const String &hintText = "", uint8_t hintAlpha = 0);
+                             const String &hintText = "", uint8_t hintAlpha = 0,
+                             const String &styleLabel = "", uint8_t styleLabelAlpha = 0);
   void renderFocusTimerScreen(const String &mode, const String &genre, const String &timer,
                               const String &instruction, const String &footer = "",
                               int progressPercent = -1, bool breakAccent = false);
@@ -179,6 +243,15 @@ class DisplayManager {
   void drawSerif70TextCentered(const String &text, int y, uint16_t color, int width, int xOffset);
   void drawSerifTextScaledCentered(const String &text, int y, uint16_t color, uint8_t scalePercent,
                                    int width, int xOffset);
+  void drawButtons(const std::vector<Button> &buttons);
+  void drawIcon(ui::IconId id, int x, int y, int size, uint16_t color);
+  void blitIconBitmap(const uint16_t *bitmap, uint8_t w, uint8_t h, int x, int y);
+  // Straight-line helper for the vector icon placeholders in drawIcon() —
+  // linear-interpolation stepping (not true Bresenham, but plenty for
+  // icons a few dozen pixels across) so glyphs aren't limited to
+  // axis-aligned rects.
+  void drawIconLine(int x0, int y0, int x1, int y1, uint16_t color, int thickness = 1);
+  void drawFilledCircle(int cx, int cy, int radius, uint16_t color);
   void drawBatteryBadge();
   void drawBatteryBadge(int logicalWidth, int logicalHeight);
   void drawPreviousSentenceHint();

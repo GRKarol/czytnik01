@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Projektant ekranów — czytnik01</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#1a1d24; --line:#2c313c; --accent:#4fa3ff;
+    --text:#e8eaef; --muted:#8a90a0; --danger:#ff5d5d; --ok:#4fd68c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif; font-size:14px;
+    padding:8px; -webkit-tap-highlight-color:transparent;
+  }
+  h1{font-size:16px; margin:4px 0 8px;}
+  .row{display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px;}
+  select, button, input[type=text]{
+    background:var(--panel); color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:7px 9px; font-size:13px;
+  }
+  button{cursor:pointer;}
+  button.primary{background:var(--accent); color:#04121f; border-color:var(--accent); font-weight:600;}
+  button.danger{background:var(--danger); color:#2a0000; border-color:var(--danger); font-weight:600;}
+  button.ok{background:var(--ok); color:#012; border-color:var(--ok); font-weight:600;}
+  button.active{outline:2px solid var(--accent);}
+  #stageWrap{
+    width:100%; max-width:900px; margin:0 auto 8px; position:relative;
+    border:2px solid var(--line); border-radius:6px; overflow:hidden;
+    background:#000;
+  }
+  #stage{
+    position:relative; width:100%; aspect-ratio:640/172;
+    background:
+      linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px) 0 0/33.33% 100%,
+      linear-gradient(0deg, rgba(255,255,255,.06) 1px, transparent 1px) 0 0/100% 33.33%,
+      #05070a;
+    touch-action:none; overflow:hidden;
+  }
+  .w{
+    position:absolute; border:2px solid var(--accent); border-radius:4px;
+    background:rgba(79,163,255,.15); color:#dff0ff; overflow:hidden;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    padding:2px; cursor:grab; user-select:none; line-height:1.1;
+  }
+  .w.selected{border-color:#fff; background:rgba(255,255,255,.18); box-shadow:0 0 0 2px var(--accent);}
+  .w .tag{position:absolute; top:1px; left:2px; font-size:8px; opacity:.75; letter-spacing:.5px;}
+  .w .lbl{font-size:10px; max-width:100%; word-break:break-word;}
+  .w.type-label{border-style:dashed; background:rgba(200,200,200,.08); cursor:default;}
+  .w.type-icon{border-radius:50%;}
+  .w.type-back{border-color:#ffb84f; background:rgba(255,184,79,.15);}
+  .w.type-battery{border-color:#4fd68c; background:rgba(79,214,140,.15);}
+  .w.type-slider{border-radius:20px;}
+  .w.type-input{border-style:dotted;}
+  .resize{
+    position:absolute; right:-6px; bottom:-6px; width:16px; height:16px;
+    background:#fff; border:2px solid var(--accent); border-radius:3px; cursor:nwse-resize;
+  }
+  #palette{display:flex; gap:5px; flex-wrap:wrap; margin-bottom:8px;}
+  #palette button{font-size:12px; padding:6px 8px;}
+  #inspector{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:8px; margin-bottom:8px; display:none;
+  }
+  #inspector.show{display:block;}
+  #inspector label{display:block; font-size:11px; color:var(--muted); margin:6px 0 2px;}
+  #inspector select, #inspector input{width:100%;}
+  .hint{color:var(--muted); font-size:12px; margin:2px 0 10px; line-height:1.4;}
+  #crumbs{font-size:12px; color:var(--muted); margin-bottom:4px;}
+  textarea#exportOut{
+    width:100%; height:140px; background:var(--panel); color:var(--text);
+    border:1px solid var(--line); border-radius:6px; font-family:monospace; font-size:11px;
+    display:none; margin-top:6px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Projektant ekranów RSVP (640×172)</h1>
+<div class="hint">
+Wybierz ekran, dodaj element z palety, przeciągnij go palcem/myszką na miejsce, złap biały kwadracik w rogu żeby zmienić rozmiar.
+Zaznacz element żeby zmienić jego etykietę i dokąd prowadzi. Tryb „Podgląd” pozwala testować dotyk jak na urządzeniu.
+Wszystko zapisuje się samo w tej przeglądarce.
+</div>
+
+<div class="row">
+  <select id="screenSelect"></select>
+  <button id="newScreenBtn">+ Nowy ekran</button>
+  <button id="renameScreenBtn">Zmień nazwę</button>
+  <button id="clearScreenBtn" class="danger">Wyczyść ekran</button>
+</div>
+
+<div class="row">
+  <button id="modeBtn" class="primary">Tryb: Edycja</button>
+  <button id="backNavBtn">← Wstecz (podgląd)</button>
+  <button id="exportJsonBtn" class="ok">Eksport JSON</button>
+  <button id="exportTextBtn" class="ok">Eksport tekst (Rect)</button>
+  <button id="importBtn">Wgraj JSON</button>
+  <input type="file" id="importFile" accept=".json" style="display:none;">
+</div>
+
+<div id="crumbs"></div>
+
+<div id="stageWrap"><div id="stage"></div></div>
+
+<div id="palette"></div>
+
+<div id="inspector">
+  <label>Etykieta / tekst</label>
+  <input type="text" id="insLabel" placeholder="np. Czytaj">
+  <label>Dokąd prowadzi (tap w trybie Podgląd)</label>
+  <select id="insTarget"></select>
+  <button id="deleteWidgetBtn" class="danger" style="margin-top:8px; width:100%;">Usuń element</button>
+</div>
+
+<textarea id="exportOut" readonly></textarea>
+
+<script>
+(function(){
+  "use strict";
+  var W = 640, H = 172;
+  var STORAGE_KEY = "rsvp_screen_designer_v1";
+
+  var SCREEN_NAMES = [
+    "Boot","ReaderRSVP","ReaderScroll","Main",
+    "SettingsHome","SettingsDisplay","SettingsPacing","SettingsConnectivity","SettingsAbout",
+    "ScreensaverSettings","WifiSettings","WifiNetworks","TextEntry","TypographyTuning",
+    "BookPicker","BookDetails","BookDeleteConfirm","ChapterPicker",
+    "SavePointsList","PluginsList","PluginLibraryScreen","PluginDetail",
+    "RestartConfirm","SdCardRepairConfirm","UpdateConfirm(martwy)",
+    "WelcomeLanguage","WelcomeTheme","WelcomeHighlightColor","WelcomePacing","WelcomeConnect",
+    "TutorialStep1","TutorialStep2","TutorialStep3","TutorialStep4","TutorialStep5",
+    "Presets","PresetsDeleteConfirm","Standby","CompanionSync","UsbTransfer","Sleeping"
+  ];
+
+  var TYPES = [
+    {id:"button", label:"Przycisk", cls:"", defW:22, defH:16},
+    {id:"listitem", label:"Poz. listy", cls:"", defW:96, defH:13},
+    {id:"label", label:"Etykieta info", cls:"type-label", defW:30, defH:12},
+    {id:"icon", label:"Ikona", cls:"type-icon", defW:8, defH:15},
+    {id:"back", label:"Strzałka wstecz", cls:"type-back", defW:6, defH:12},
+    {id:"battery", label:"Bateria", cls:"type-battery", defW:10, defH:12},
+    {id:"slider", label:"Suwak", cls:"type-slider", defW:40, defH:10},
+    {id:"input", label:"Pole tekst.", cls:"type-input", defW:50, defH:16}
+  ];
+
+  var state = {
+    screens: {},      // id -> {name, widgets:[{id,type,label,target,x,y,w,h}]}
+    order: [],        // screen ids in display order
+    current: null,
+    mode: "edit",     // edit | preview
+    navStack: [],
+    nextWidgetId: 1
+  };
+
+  function slug(name){
+    return name.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"") || ("ekran_"+Date.now());
+  }
+
+  function ensureDefaultScreens(){
+    SCREEN_NAMES.forEach(function(n){
+      var id = slug(n);
+      if(!state.screens[id]){
+        state.screens[id] = {name:n, widgets:[]};
+        state.order.push(id);
+      }
+    });
+    if(!state.current) state.current = state.order[0];
+  }
+
+  function save(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        var parsed = JSON.parse(raw);
+        if(parsed && parsed.screens){
+          state.screens = parsed.screens;
+          state.order = parsed.order || Object.keys(parsed.screens);
+          state.current = parsed.current || null;
+          state.nextWidgetId = parsed.nextWidgetId || 1;
+        }
+      }
+    }catch(e){}
+    ensureDefaultScreens();
+  }
+
+  // ---- DOM refs ----
+  var screenSelect = document.getElementById("screenSelect");
+  var stage = document.getElementById("stage");
+  var palette = document.getElementById("palette");
+  var inspector = document.getElementById("inspector");
+  var insLabel = document.getElementById("insLabel");
+  var insTarget = document.getElementById("insTarget");
+  var modeBtn = document.getElementById("modeBtn");
+  var crumbs = document.getElementById("crumbs");
+  var exportOut = document.getElementById("exportOut");
+
+  var selectedId = null;
+
+  function renderScreenSelect(){
+    screenSelect.innerHTML = "";
+    state.order.forEach(function(id){
+      var opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = state.screens[id].name;
+      screenSelect.appendChild(opt);
+    });
+    screenSelect.value = state.current;
+  }
+
+  function renderTargetOptions(){
+    insTarget.innerHTML = "";
+    var none = document.createElement("option");
+    none.value = "";
+    none.textContent = "— brak / zostaje na ekranie —";
+    insTarget.appendChild(none);
+    state.order.forEach(function(id){
+      var opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = state.screens[id].name;
+      insTarget.appendChild(opt);
+    });
+  }
+
+  function renderPalette(){
+    palette.innerHTML = "";
+    TYPES.forEach(function(t){
+      var b = document.createElement("button");
+      b.textContent = "+ " + t.label;
+      b.onclick = function(){ addWidget(t); };
+      palette.appendChild(b);
+    });
+  }
+
+  function currentScreen(){ return state.screens[state.current]; }
+
+  function addWidget(t){
+    var scr = currentScreen();
+    var w = {
+      id: "w" + (state.nextWidgetId++),
+      type: t.id,
+      label: t.label,
+      target: "",
+      x: (100 - t.defW)/2, y: (100 - t.defH)/2,
+      w: t.defW, h: t.defH
+    };
+    scr.widgets.push(w);
+    save();
+    renderStage();
+    selectWidget(w.id);
+  }
+
+  function typeInfo(id){
+    for(var i=0;i<TYPES.length;i++) if(TYPES[i].id===id) return TYPES[i];
+    return TYPES[0];
+  }
+
+  function renderStage(){
+    stage.innerHTML = "";
+    var scr = currentScreen();
+    scr.widgets.forEach(function(w){
+      stage.appendChild(buildWidgetEl(w));
+    });
+    crumbs.textContent = (state.mode === "preview" ? "Podgląd: " : "Edycja: ") + scr.name;
+  }
+
+  function buildWidgetEl(w){
+    var t = typeInfo(w.type);
+    var el = document.createElement("div");
+    el.className = "w " + t.cls + (w.id === selectedId ? " selected" : "");
+    el.style.left = w.x + "%";
+    el.style.top = w.y + "%";
+    el.style.width = w.w + "%";
+    el.style.height = w.h + "%";
+    el.dataset.id = w.id;
+
+    var tag = document.createElement("div");
+    tag.className = "tag";
+    tag.textContent = t.label;
+    el.appendChild(tag);
+
+    var lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = w.label || "";
+    el.appendChild(lbl);
+
+    if(state.mode === "edit"){
+      var rz = document.createElement("div");
+      rz.className = "resize";
+      el.appendChild(rz);
+      attachResize(rz, el, w);
+      attachDrag(el, w);
+    } else {
+      attachTap(el, w);
+    }
+    return el;
+  }
+
+  function stageRect(){ return stage.getBoundingClientRect(); }
+
+  function attachDrag(el, w){
+    var startX, startY, startXp, startYp, moved;
+    el.addEventListener("pointerdown", function(e){
+      e.preventDefault();
+      selectWidget(w.id);
+      startX = e.clientX; startY = e.clientY;
+      startXp = w.x; startYp = w.y; moved = false;
+      el.setPointerCapture(e.pointerId);
+      function onMove(ev){
+        var r = stageRect();
+        var dx = (ev.clientX - startX) / r.width * 100;
+        var dy = (ev.clientY - startY) / r.height * 100;
+        if(Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) moved = true;
+        w.x = clamp(startXp + dx, 0, 100 - w.w);
+        w.y = clamp(startYp + dy, 0, 100 - w.h);
+        el.style.left = w.x + "%";
+        el.style.top = w.y + "%";
+      }
+      function onUp(ev){
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointercancel", onUp);
+        if(moved) save();
+      }
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
+    });
+  }
+
+  function attachResize(handle, el, w){
+    handle.addEventListener("pointerdown", function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var startX = e.clientX, startY = e.clientY;
+      var startW = w.w, startH = w.h;
+      handle.setPointerCapture(e.pointerId);
+      function onMove(ev){
+        var r = stageRect();
+        var dx = (ev.clientX - startX) / r.width * 100;
+        var dy = (ev.clientY - startY) / r.height * 100;
+        w.w = clamp(startW + dx, 3, 100 - w.x);
+        w.h = clamp(startH + dy, 5, 100 - w.y);
+        el.style.width = w.w + "%";
+        el.style.height = w.h + "%";
+      }
+      function onUp(){
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        save();
+      }
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+    });
+  }
+
+  function attachTap(el, w){
+    var downX, downY, moved;
+    el.addEventListener("pointerdown", function(e){
+      downX = e.clientX; downY = e.clientY; moved = false;
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener("pointermove", function(e){
+      if(Math.abs(e.clientX-downX) > 8 || Math.abs(e.clientY-downY) > 8) moved = true;
+    });
+    el.addEventListener("pointerup", function(){
+      if(moved) return;
+      el.style.transition = "background .15s";
+      el.style.background = "rgba(255,255,255,.5)";
+      setTimeout(function(){ el.style.background = ""; }, 120);
+      if(w.target && state.screens[w.target]){
+        state.navStack.push(state.current);
+        state.current = w.target;
+        screenSelect.value = state.current;
+        renderStage();
+      }
+    });
+  }
+
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+  function selectWidget(id){
+    selectedId = id;
+    var scr = currentScreen();
+    var w = scr.widgets.filter(function(x){return x.id===id;})[0];
+    if(!w){ inspector.classList.remove("show"); updateSelectionClasses(); return; }
+    inspector.classList.add("show");
+    insLabel.value = w.label || "";
+    insTarget.value = w.target || "";
+    updateSelectionClasses();
+  }
+
+  function updateSelectionClasses(){
+    var els = stage.querySelectorAll(".w");
+    for(var i=0;i<els.length;i++){
+      els[i].classList.toggle("selected", els[i].dataset.id === selectedId);
+    }
+  }
+
+  insLabel.addEventListener("input", function(){
+    var scr = currentScreen();
+    var w = scr.widgets.filter(function(x){return x.id===selectedId;})[0];
+    if(!w) return;
+    w.label = insLabel.value;
+    save();
+    renderStage();
+  });
+
+  insTarget.addEventListener("change", function(){
+    var scr = currentScreen();
+    var w = scr.widgets.filter(function(x){return x.id===selectedId;})[0];
+    if(!w) return;
+    w.target = insTarget.value;
+    save();
+  });
+
+  document.getElementById("deleteWidgetBtn").onclick = function(){
+    var scr = currentScreen();
+    scr.widgets = scr.widgets.filter(function(x){return x.id!==selectedId;});
+    selectedId = null;
+    inspector.classList.remove("show");
+    save();
+    renderStage();
+  };
+
+  screenSelect.addEventListener("change", function(){
+    state.current = screenSelect.value;
+    selectedId = null;
+    inspector.classList.remove("show");
+    save();
+    renderStage();
+  });
+
+  document.getElementById("newScreenBtn").onclick = function(){
+    var name = prompt("Nazwa nowego ekranu:");
+    if(!name) return;
+    var id = slug(name);
+    if(state.screens[id]){ alert("Taki ekran już istnieje."); return; }
+    state.screens[id] = {name:name, widgets:[]};
+    state.order.push(id);
+    state.current = id;
+    save();
+    renderScreenSelect();
+    renderTargetOptions();
+    renderStage();
+  };
+
+  document.getElementById("renameScreenBtn").onclick = function(){
+    var scr = currentScreen();
+    var name = prompt("Nowa nazwa ekranu:", scr.name);
+    if(!name) return;
+    scr.name = name;
+    save();
+    renderScreenSelect();
+    renderTargetOptions();
+    renderStage();
+  };
+
+  document.getElementById("clearScreenBtn").onclick = function(){
+    if(!confirm("Usunąć wszystkie elementy z tego ekranu?")) return;
+    currentScreen().widgets = [];
+    selectedId = null;
+    inspector.classList.remove("show");
+    save();
+    renderStage();
+  };
+
+  modeBtn.onclick = function(){
+    state.mode = state.mode === "edit" ? "preview" : "edit";
+    modeBtn.textContent = "Tryb: " + (state.mode === "edit" ? "Edycja" : "Podgląd");
+    modeBtn.classList.toggle("primary", state.mode === "edit");
+    modeBtn.classList.toggle("ok", state.mode === "preview");
+    if(state.mode === "preview"){ selectedId = null; inspector.classList.remove("show"); }
+    renderStage();
+  };
+
+  document.getElementById("backNavBtn").onclick = function(){
+    if(state.navStack.length === 0) return;
+    state.current = state.navStack.pop();
+    screenSelect.value = state.current;
+    renderStage();
+  };
+
+  function toRealRect(w){
+    return {
+      x: Math.round(w.x/100*W), y: Math.round(w.y/100*H),
+      w: Math.round(w.w/100*W), h: Math.round(w.h/100*H)
+    };
+  }
+
+  document.getElementById("exportJsonBtn").onclick = function(){
+    var out = {};
+    state.order.forEach(function(id){
+      var scr = state.screens[id];
+      out[id] = {
+        name: scr.name,
+        widgets: scr.widgets.map(function(w){
+          var r = toRealRect(w);
+          return {type:w.type, label:w.label, target:w.target || null, rect:r};
+        })
+      };
+    });
+    var text = JSON.stringify(out, null, 2);
+    exportOut.style.display = "block";
+    exportOut.value = text;
+    exportOut.focus();
+    exportOut.select();
+    tryClipboard(text);
+  };
+
+  document.getElementById("exportTextBtn").onclick = function(){
+    var lines = [];
+    state.order.forEach(function(id){
+      var scr = state.screens[id];
+      if(scr.widgets.length === 0) return;
+      lines.push("### " + scr.name);
+      scr.widgets.forEach(function(w){
+        var r = toRealRect(w);
+        var targetName = w.target && state.screens[w.target] ? state.screens[w.target].name : "(zostaje)";
+        lines.push("- [" + w.type + "] \"" + (w.label||"") + "\" Rect{x=" + r.x + ",y=" + r.y + ",w=" + r.w + ",h=" + r.h + "} -> " + targetName);
+      });
+      lines.push("");
+    });
+    var text = lines.join("\n");
+    exportOut.style.display = "block";
+    exportOut.value = text;
+    exportOut.focus();
+    exportOut.select();
+    tryClipboard(text);
+  };
+
+  function tryClipboard(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).catch(function(){});
+    }
+  }
+
+  document.getElementById("importBtn").onclick = function(){
+    document.getElementById("importFile").click();
+  };
+  document.getElementById("importFile").addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var data = JSON.parse(reader.result);
+        if(!confirm("Zastąpić bieżący projekt zawartością pliku?")) return;
+        var newScreens = {}, newOrder = [];
+        Object.keys(data).forEach(function(id){
+          var d = data[id];
+          newOrder.push(id);
+          newScreens[id] = {
+            name: d.name || id,
+            widgets: (d.widgets||[]).map(function(w, i){
+              var r = w.rect || {x:0,y:0,w:20,h:15};
+              return {
+                id: "w" + (i+1) + "_" + id,
+                type: w.type || "button",
+                label: w.label || "",
+                target: null,
+                x: r.x/W*100, y: r.y/H*100, w: r.w/W*100, h: r.h/H*100,
+                _targetName: w.target
+              };
+            })
+          };
+        });
+        // resolve target names back to ids
+        Object.keys(newScreens).forEach(function(id){
+          newScreens[id].widgets.forEach(function(w){
+            if(w._targetName){
+              var match = Object.keys(newScreens).filter(function(k){return newScreens[k].name===w._targetName;})[0];
+              w.target = match || "";
+              delete w._targetName;
+            } else { w.target = ""; }
+          });
+        });
+        state.screens = newScreens;
+        state.order = newOrder;
+        state.current = newOrder[0];
+        save();
+        renderScreenSelect();
+        renderTargetOptions();
+        renderStage();
+      }catch(err){
+        alert("Nie udało się wczytać pliku: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // click on empty stage deselects
+  stage.addEventListener("pointerdown", function(e){
+    if(e.target === stage){
+      selectedId = null;
+      inspector.classList.remove("show");
+      renderStage();
+    }
+  });
+
+  // ---- init ----
+  load();
+  renderScreenSelect();
+  renderTargetOptions();
+  renderPalette();
+  renderStage();
+  window.addEventListener("resize", renderStage);
+})();
+</script>
+</body>
+</html>

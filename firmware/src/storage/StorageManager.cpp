@@ -2898,6 +2898,53 @@ bool StorageManager::repairSdCardFolders() {
   return ok;
 }
 
+bool StorageManager::deleteBook(size_t index) {
+  if (index >= bookPaths_.size()) {
+    Serial.printf("[storage] deleteBook: index %u out of range\n",
+                  static_cast<unsigned int>(index));
+    return false;
+  }
+
+  const String path = bookPaths_[index];
+  Serial.printf("[storage] deleteBook: removing %s\n", path.c_str());
+
+  // Remove the main book file
+  bool ok = SD_MMC.remove(path.c_str());
+
+  // Remove indexed cache files (.ridx, .rdat) if they exist
+  const String indexPath = path + ".ridx";
+  const String dataPath = path + ".rdat";
+  if (SD_MMC.exists(indexPath.c_str())) {
+    SD_MMC.remove(indexPath.c_str());
+  }
+  if (SD_MMC.exists(dataPath.c_str())) {
+    SD_MMC.remove(dataPath.c_str());
+  }
+
+  // If it was an epub-converted file (.rsvp), also try removing the cached .rsvp
+  // or if it's an epub, remove the cached .rsvp sibling
+  if (hasEpubExtension(path)) {
+    const String rsvpCache = rsvpCachePathForEpub(path);
+    if (SD_MMC.exists(rsvpCache.c_str())) {
+      SD_MMC.remove(rsvpCache.c_str());
+      const String rsvpIdx = rsvpCache + ".ridx";
+      const String rsvpDat = rsvpCache + ".rdat";
+      if (SD_MMC.exists(rsvpIdx.c_str())) SD_MMC.remove(rsvpIdx.c_str());
+      if (SD_MMC.exists(rsvpDat.c_str())) SD_MMC.remove(rsvpDat.c_str());
+    }
+  }
+
+  if (ok) {
+    Serial.printf("[storage] deleteBook: successfully removed %s\n", path.c_str());
+  } else {
+    Serial.printf("[storage] deleteBook: failed to remove %s\n", path.c_str());
+  }
+
+  // Refresh the book list
+  refreshBookPaths();
+  return ok;
+}
+
 void StorageManager::refreshBookPaths(bool includeMetadata) {
   if (!mounted_) {
     clearBookCache();

@@ -123,6 +123,8 @@ export class CzytnikApp extends LitElement {
     this.addEventListener("device-settings-changed", () => this.refreshDevMode());
     this.addEventListener("tutorial-close", this.handleTutorialClose);
     this.addEventListener("restart-tutorial", this.handleRestartTutorial);
+    // Handle Web Share Target: if we were opened via share intent with a file
+    this.handleSharedFile();
   }
 
   disconnectedCallback(): void {
@@ -148,6 +150,84 @@ export class CzytnikApp extends LitElement {
     } catch {
       this.devMode = false;
     }
+  }
+
+  /** Handle Web Share Target: read shared file from IndexedDB and upload */
+  private async handleSharedFile(): Promise<void> {
+    const params = new URLSearchParams(window.location.search);
+    const sharedId = params.get("shared");
+    if (!sharedId) return;
+
+    // Clean the URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete("shared");
+    window.history.replaceState(null, "", url.toString());
+
+    // Switch to library view
+    this.view = "library";
+
+    try {
+      const entry = await this.readSharedFileFromDb(sharedId);
+      if (!entry) return;
+
+      const file = entry.file as File;
+      const name = (entry.name as string) || file.name;
+
+      // Upload via deviceApi (mock or real depending on connection)
+      await deviceApi.uploadBook(file, name);
+
+      // Clean up from IndexedDB
+      await this.removeSharedFileFromDb(sharedId);
+    } catch (err) {
+      this.error = `Nie udało się wgrać udostępnionego pliku: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  private readSharedFileFromDb(id: string): Promise<Record<string, unknown> | null> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("flower-share", 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("pending-files")) {
+          db.createObjectStore("pending-files");
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("pending-files", "readonly");
+        const store = tx.objectStore("pending-files");
+        const get = store.get(id);
+        get.onsuccess = () => {
+          db.close();
+          resolve(get.result ?? null);
+        };
+        get.onerror = () => {
+          db.close();
+          reject(get.error);
+        };
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private removeSharedFileFromDb(id: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("flower-share", 1);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("pending-files", "readwrite");
+        tx.objectStore("pending-files").delete(id);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error);
+        };
+      };
+      request.onerror = () => reject(request.error);
+    });
   }
 
   render() {

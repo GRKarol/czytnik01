@@ -28,6 +28,12 @@ class CompanionSyncManager {
   /** Set device status values (called from App on each update cycle). */
   void setDeviceStatus(uint8_t batteryPercent, uint32_t sdFreeKb, uint32_t sdTotalKb);
 
+  /** Build settings JSON (used by BleApi for get-settings command). */
+  String settingsJson();
+
+  /** Apply settings from JSON body (used by BleApi for set-settings command). */
+  bool applySettingsJson(const String &body, String &error);
+
  private:
   enum class NetworkMode : uint8_t {
     None,
@@ -95,8 +101,6 @@ class CompanionSyncManager {
   void handleLangCodes();
   void handleBookPosition();
   void handleLogClear();
-  String settingsJson();
-  bool applySettingsJson(const String &body, String &error);
   String wifiJson();
   bool applyWifiJson(const String &body, String &error);
   String rssFeedsJson();

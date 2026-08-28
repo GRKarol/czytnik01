@@ -56,9 +56,10 @@ struct BatteryStatus {
   uint8_t percent = 0;
 };
 
-void begin();
+bool begin();
 void lightSleepUntilBootButton();
 void holdBacklightOffForDeepSleep();
+void enablePwrButtonExt0Wakeup();
 bool readBatteryStatus(BatteryStatus &status);
 bool releaseBatteryPowerHold();
 

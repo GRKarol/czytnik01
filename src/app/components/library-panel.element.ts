@@ -3,12 +3,25 @@ import { customElement, state } from "lit/decorators.js";
 import { deviceApi, onDeviceApiChange, type Book } from "../device/api";
 import "./first-use-hint.element";
 
+type SortMode = "added" | "title" | "progress";
+
+const STORE_FAVORITES = "flower.library.favorites";
+const STORE_SORT = "flower.library.sort";
+
+const SORT_LABEL: Record<SortMode, string> = {
+  added: "Ostatnio dodane",
+  title: "Tytuł",
+  progress: "Postęp",
+};
+
 @customElement("library-panel")
 export class LibraryPanel extends LitElement {
   @state() private books: Book[] = [];
   @state() private loading = true;
   @state() private error = "";
   @state() private filter: "all" | "book" | "article" = "all";
+  @state() private sort: SortMode = readSort();
+  @state() private favorites: Set<string> = readFavorites();
   private unsubApi: (() => void) | null = null;
 
   connectedCallback(): void {
@@ -49,6 +62,20 @@ export class LibraryPanel extends LitElement {
         )}
       </div>
 
+      <div class="sortbar">
+        <span class="sortbar-label">Sortuj:</span>
+        ${(Object.keys(SORT_LABEL) as SortMode[]).map(
+          (mode) => html`
+            <button
+              class=${this.sort === mode ? "sortbtn active" : "sortbtn"}
+              @click=${() => this.setSort(mode)}
+            >
+              ${SORT_LABEL[mode]}
+            </button>
+          `,
+        )}
+      </div>
+
       ${list.length === 0
         ? html`<p class="muted">
             Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce
@@ -78,8 +105,10 @@ export class LibraryPanel extends LitElement {
 
   private row(b: Book) {
     const title = b.title || b.name.replace(/^.*\//, "");
+    const isFav = this.favorites.has(b.name);
     return html`
       <li>
+        <div class="cover" style="background:${coverColor(title)}">${coverInitial(title)}</div>
         <div class="meta">
           <strong>${title}</strong>
           <span>
@@ -87,16 +116,51 @@ export class LibraryPanel extends LitElement {
             ${b.progressPercent != null ? html` · ${b.progressPercent}% przeczytane` : ""}
           </span>
         </div>
+        <button
+          class=${isFav ? "fav active" : "fav"}
+          @click=${() => this.toggleFavorite(b.name)}
+          aria-label=${isFav ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+        >
+          ${isFav ? "★" : "☆"}
+        </button>
         <button class="del" @click=${() => this.onDelete(b)} aria-label="Usuń">✕</button>
       </li>
     `;
   }
 
+  private setSort(mode: SortMode): void {
+    this.sort = mode;
+    write(STORE_SORT, mode);
+  }
+
+  private toggleFavorite(name: string): void {
+    const next = new Set(this.favorites);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    this.favorites = next;
+    write(STORE_FAVORITES, Array.from(next));
+  }
+
   private filtered(): Book[] {
-    if (this.filter === "all") return this.books;
-    return this.books.filter((b) =>
-      this.filter === "book" ? b.category !== "article" : b.category === "article",
-    );
+    const byCategory =
+      this.filter === "all"
+        ? this.books
+        : this.books.filter((b) =>
+            this.filter === "book" ? b.category !== "article" : b.category === "article",
+          );
+    const sorted = [...byCategory].sort((a, b) => {
+      switch (this.sort) {
+        case "title":
+          return (a.title || a.name).localeCompare(b.title || b.name, "pl");
+        case "progress":
+          return (b.progressPercent ?? 0) - (a.progressPercent ?? 0);
+        case "added":
+        default:
+          return (b.addedAt ?? "").localeCompare(a.addedAt ?? "");
+      }
+    });
+    sorted.sort((a, b) => Number(this.favorites.has(b.name)) - Number(this.favorites.has(a.name)));
+    return sorted;
   }
 
   private refresh = async () => {
@@ -208,6 +272,36 @@ export class LibraryPanel extends LitElement {
       opacity: 0.7;
       font-weight: 500;
     }
+    .sortbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .sortbar-label {
+      font:
+        0.78rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      color: var(--muted);
+    }
+    .sortbtn {
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink-soft);
+      font:
+        600 0.75rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+    }
+    .sortbtn.active {
+      background: var(--paper-tint);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
     .list {
       list-style: none;
       margin: 0;
@@ -224,6 +318,20 @@ export class LibraryPanel extends LitElement {
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--paper-tint);
+    }
+    .cover {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font:
+        700 0.95rem ui-serif,
+        Georgia,
+        serif;
     }
     .meta {
       flex: 1 1 auto;
@@ -245,6 +353,20 @@ export class LibraryPanel extends LitElement {
         system-ui,
         sans-serif;
       color: var(--muted);
+    }
+    .fav {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--muted);
+      font-size: 1.05rem;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .fav.active {
+      color: #e0a30d;
     }
     .del {
       width: 32px;
@@ -274,4 +396,46 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function readFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORE_FAVORITES);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function readSort(): SortMode {
+  try {
+    const raw = localStorage.getItem(STORE_SORT);
+    return raw === "title" || raw === "progress" || raw === "added" ? raw : "added";
+  } catch {
+    return "added";
+  }
+}
+
+function write<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* ignored */
+  }
+}
+
+// Deterministyczna "okładka": kolor + inicjał z tytułu, bez ekstrakcji
+// obrazu z EPUB (RSVP na urządzeniu i tak nie renderuje grafik).
+const COVER_HUES = [4, 24, 44, 96, 152, 190, 210, 252, 280, 320];
+
+function coverColor(title: string): string {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) hash = (hash * 31 + title.charCodeAt(i)) | 0;
+  const hue = COVER_HUES[Math.abs(hash) % COVER_HUES.length];
+  return `hsl(${hue} 55% 42%)`;
+}
+
+function coverInitial(title: string): string {
+  const trimmed = title.trim();
+  return trimmed ? trimmed[0].toUpperCase() : "?";
 }

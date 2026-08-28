@@ -49,7 +49,9 @@ export default defineConfig({
   plugins: [
     stripPwaFromFlasher(),
     VitePWA({
-      strategies: "generateSW",
+      strategies: "injectManifest",
+      srcDir: "src/app",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       injectRegister: false,
       scope: `${repoBase}app/`,
@@ -67,6 +69,22 @@ export default defineConfig({
         background_color: "#e8f4fd",
         theme_color: "#2e8eff",
         lang: "pl",
+        share_target: {
+          action: `${repoBase}app/share-receive`,
+          method: "POST",
+          enctype: "multipart/form-data",
+          params: {
+            title: "title",
+            text: "text",
+            url: "url",
+            files: [
+              {
+                name: "file",
+                accept: [".epub", ".txt", ".rsvp", "application/epub+zip", "text/plain"],
+              },
+            ],
+          },
+        },
         icons: [
           {
             src: "icons/icon-192.png",
@@ -88,16 +106,8 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        navigateFallback: `${repoBase}app/index.html`,
-        navigateFallbackDenylist: [/^\/firmware/, /^\/$/, /^\/index\.html$/],
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.endsWith(".bin"),
-            handler: "NetworkOnly",
-          },
-        ],
       },
       devOptions: {
         enabled: false,

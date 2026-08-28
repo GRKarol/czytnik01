@@ -23,6 +23,8 @@
 #include "storage/StorageManager.h"
 #include "ble/BleApi.h"
 #include "sync/CompanionSyncManager.h"
+#include "ui/TouchGesture.h"
+#include "ui/UiGrid.h"
 #include "update/OtaUpdater.h"
 #include "usb/UsbMassStorageManager.h"
 
@@ -43,6 +45,7 @@ class App {
   enum class NavMode : uint8_t {
     Swipe = 0,
     DPad = 1,
+    Buttons = 2,
   };
 
   App();
@@ -103,8 +106,10 @@ class App {
     TypographyTuning,
     BookPicker,
     BookDetails,
+    BookDeleteConfirm,
     ChapterPicker,
     SavePointsList,
+    SavePointDeleteConfirm,
     SavePointNameEntry,
     PluginsList,
     PluginLibraryScreen,
@@ -112,6 +117,7 @@ class App {
     RestartConfirm,
     SdCardRepairConfirm,
     UpdateConfirm,
+    WelcomeInstallApp,
     WelcomeLanguage,
     WelcomeTheme,
     WelcomeHighlightColor,
@@ -124,6 +130,17 @@ class App {
     TutorialStep5,
     Presets,
     PresetsDeleteConfirm,
+    PacingDelayEditor,
+    WpmEditor,
+  };
+
+  // Which of the three pacing delays the PacingDelayEditor screen is
+  // currently showing — one shared screen/handler for all three instead of
+  // three near-identical copies.
+  enum class PacingDelayTarget : uint8_t {
+    LongWords,
+    Complexity,
+    Punctuation,
   };
 
   enum class FooterMetricMode : uint8_t {
@@ -226,6 +243,7 @@ class App {
   void handlePowerButton(uint32_t nowMs);
   bool handleStandbyCombo(uint32_t nowMs);
   void toggleMenuFromPowerButton(uint32_t nowMs);
+  void restartFromPowerButtonDoubleTap();
   void openMainMenu(uint32_t nowMs);
   void cycleBrightness();
   void cycleThemeMode(uint32_t nowMs);
@@ -252,6 +270,7 @@ class App {
   void finalizeReaderPause(uint32_t nowMs);
   bool shouldFinalizeReaderPause(uint32_t nowMs) const;
   void resetReaderTapTracking();
+  void flushStaleTouch();
   bool isFooterMetricTap(uint16_t x, uint16_t y) const;
   bool isBatteryBadgeTap(uint16_t x, uint16_t y) const;
   bool isPreviousSentenceTap(uint16_t x, uint16_t y) const;
@@ -298,9 +317,13 @@ class App {
   void rebuildTextEntryButtons();
   void renderTextEntry();
   bool handleTextEntryTap(uint16_t x, uint16_t y, uint32_t nowMs);
+  void firePendingTextEntryFlash(uint32_t nowMs);
   void activateTextEntryButton(size_t buttonIndex, uint32_t nowMs);
   void commitTextEntry(uint32_t nowMs);
   String configuredWifiSsid();
+  String findSavedWifiPassword(const String &ssid);
+  void rememberWifiNetwork(const String &ssid, const String &pass);
+  void forgetSavedWifiNetwork(const String &ssid);
   bool otaAutoCheckEnabled();
   String otaOwnerLabel();
   /// Tryb developera — domyślnie wyłączony. Włączany tylko z poziomu
@@ -340,6 +363,10 @@ class App {
 
   /// First-run welcome wizard — pyta o język i motyw zanim klient zobaczy
   /// główne menu. Pokazywany tylko jeśli `kPrefSetupDone == false`.
+  /// Krok 0 kreatora: kod QR do PWA. Cały ekran jest przyciskiem — dowolny
+  /// tap idzie dalej, do wyboru języka. Ekran włącza się w updateState()
+  /// przy pierwszym boocie (`kPrefSetupDone == false`).
+  void renderWelcomeInstallApp();
   void openWelcomeLanguage();
   void selectWelcomeLanguageItem(uint32_t nowMs);
   void openWelcomeTheme();
@@ -359,7 +386,25 @@ class App {
   void finishTutorial(uint32_t nowMs);
   void renderTutorialStep();
   void handleTutorialTap(uint32_t nowMs);
+  void previousTutorialStep(uint32_t nowMs);
   String pacingDelayLabel(uint16_t delayMs) const;
+  // Full-screen drag-slider editor for the three pacing delays (long words /
+  // complexity / punctuation). Replaces the old "tap to cycle by 50ms with
+  // no way back down" behaviour on those three settings — see the tap
+  // handler in selectSettingsItem()'s SettingsPacing switch.
+  void openPacingDelayEditor(PacingDelayTarget target, uint32_t nowMs);
+  void renderPacingDelayEditor();
+  void handlePacingDelayEditorTouch(const TouchEvent &event, uint32_t nowMs);
+  void applyPacingDelayEditorTouchX(uint16_t x);
+  uint16_t *pacingDelayEditorValuePtr();
+  const char *pacingDelayEditorPrefKey() const;
+  String pacingDelayEditorLabel() const;
+
+  void openWpmEditor(uint32_t nowMs);
+  void renderWpmEditor();
+  void handleWpmEditorTouch(const TouchEvent &event, uint32_t nowMs);
+  void applyWpmEditorTouchX(uint16_t x);
+  String wpmEditorLabel() const;
   String firmwareUpdateMenuLabel() const;
   String themeModeLabel() const;
   String phantomWordsLabel() const;
@@ -383,11 +428,17 @@ class App {
   void selectBookPickerItem(uint32_t nowMs);
   void openBookDetails(size_t bookIndex, uint32_t nowMs);
   void selectBookDetailsItem(uint32_t nowMs);
+  void openBookDeleteConfirm(uint32_t nowMs);
+  void selectBookDeleteConfirmItem(uint32_t nowMs);
+  void executeDeleteBook(uint32_t nowMs);
   void openChapterPicker();
   void openChapterPickerForBook(size_t bookIndex);
   void selectChapterPickerItem(uint32_t nowMs);
   void openSavePointsList();
   void selectSavePointItem(uint32_t nowMs);
+  void openSavePointDeleteConfirm(size_t index, uint32_t nowMs);
+  void selectSavePointDeleteConfirmItem(uint32_t nowMs);
+  void executeDeleteSavePoint(uint32_t nowMs);
   void createSavePoint(uint32_t nowMs);
   void deleteSavePoint(size_t index);
   void loadSavePoints();
@@ -466,8 +517,114 @@ class App {
   uint32_t savedWordIndexForBook(const String &bookPath, bool allowLegacyFallback = false);
   bool bookProgressPercent(size_t bookIndex, uint8_t &percent);
   int findBookIndexByPath(const String &path) const;
+  /// Immediate-mode button grid shared by every menu/list screen: builds
+  /// the same ui::Rect layout used for drawing AND touch hit-testing, so
+  /// the two can never drift apart (see firmware/src/ui/UiGrid.h).
+  /// `headerRows` items at the front of `items` are rendered as a
+  /// non-tappable title above the grid (used by confirm dialogs whose
+  /// index 0 is an informational header, e.g. "Na pewno?").
+  void renderItemGrid(const String &title, const std::vector<String> &items, size_t selectedIndex,
+                      size_t headerRows = 0, bool showBatteryBadge = true);
+  void renderItemGridLibrary(const std::vector<DisplayManager::LibraryItem> &items,
+                             size_t selectedIndex);
+  /// Dispatches to whichever render function matches navMode_ — the button
+  /// grid (Buttons), the cursor list (DPad, via DisplayManager::
+  /// renderMenuWithDPad), or the bare scrollable list (Swipe, via
+  /// DisplayManager::renderMenuScroll). Every menu screen that is a plain
+  /// list of choices should render through this instead of calling
+  /// renderItemGrid() directly, so it behaves consistently in all three nav
+  /// modes. Small confirm dialogs (2-4 items, e.g. RestartConfirm) are left
+  /// calling renderItemGrid() directly — a full-screen grid dialog reads
+  /// fine regardless of nav mode, and DPad/Swipe's list chrome would be
+  /// wasted on them.
+  void renderMenuAnyMode(const String &title, const std::vector<String> &items,
+                         size_t selectedIndex, size_t headerRows = 0);
+  /// Same dispatch as renderMenuAnyMode(), for library-style (title +
+  /// subtitle) lists. DPad/Swipe show titles only — no room for a subtitle
+  /// in a single compact list row.
+  void renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem> &items,
+                                size_t selectedIndex);
+  /// Returns the pointer/count pair describing the currently active menu
+  /// screen's selection state — the single place that knows how each
+  /// MenuScreen maps to its backing vector, reused by moveMenuSelection()
+  /// (D-Pad/legacy swipe) and by the grid tap hit-test.
+  size_t *currentMenuSelectedIndexPtr(size_t &itemCountOut);
+  /// Direct hit-test against the Rects built by the last renderItemGrid*()
+  /// call. Returns true if a button was hit (and dispatches the screen's
+  /// existing selectXItem() handler with the tapped index applied).
+  ///
+  /// Two-step tap confirm: the first tap on a button arms it (highlighted,
+  /// no action yet); a second tap on the SAME button within
+  /// kArmedConfirmWindowMs confirms and runs the action. Tapping a
+  /// different button re-arms it instead of acting on the old one. "Wróć"/
+  /// Back buttons are exempt — a confirm step on a pure navigation action
+  /// is friction without a safety payoff, so Back always fires immediately.
+  bool handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs);
+  /// True if `canonicalIndex` on the current menu screen is the armed
+  /// (first-tapped, awaiting confirm) grid button and the confirm window
+  /// hasn't expired. Shared by handleGridTap() (to decide confirm vs. arm)
+  /// and by renderItemGrid()/renderItemGridLibrary() (to draw the highlight).
+  bool isGridItemArmed(size_t canonicalIndex, uint32_t nowMs) const;
+  /// True if `canonicalIndex` on the current menu screen is mid press-flash
+  /// (tapped, action not fired yet) — see pendingFlashItemIndex_.
+  bool isGridItemFlashing(size_t canonicalIndex, uint32_t nowMs) const;
+  /// If a press-flash is pending and its window elapsed, runs the deferred
+  /// selectMenuItem() now. Called every tick from handleTouch().
+  void firePendingGridFlash(uint32_t nowMs);
+  /// Horizontal swipe changes page for grid screens with more items than
+  /// fit on one page. Returns true if it consumed the gesture.
+  bool handleGridPageSwipe(int deltaX, int deltaY, uint32_t nowMs);
+  /// Shrinks whichever button in currentGridButtons_ is the Back control
+  /// (Button::icon == IconId::Back) down to a small fixed rect pinned in
+  /// the top-left corner, icon-only — instead of taking a full grid cell
+  /// like every other button. Same Rect drives drawing and hit-testing, so
+  /// there is exactly one place that can get the two out of sync.
+  void applyBackButtonCornerLayout();
+  /// SettingsDisplay-only: gives specific rows (booleans, 3-way cycles) a
+  /// widget that shows their current value at a glance — a toggle track or
+  /// a row of state dots — instead of every setting looking like the same
+  /// plain rectangle regardless of what it controls.
+  void annotateSettingsDisplayButton(DisplayManager::Button &button, size_t canonicalIndex) const;
+  /// SavePointsList-only: gives the "+ Add save point" row and each named
+  /// save point the floppy-disk icon (ui::IconId::SavePoint) — drawn via
+  /// drawButtons()'s icon+label combo mode, since (unlike Back) these
+  /// labels are real, variable text that can't be blanked to icon-only.
+  void annotateSavePointsButton(DisplayManager::Button &button, size_t canonicalIndex) const;
+  /// Main menu only: gives each top-level tile (Read/Library/Save
+  /// points/Settings/Plugins/Power off) an icon so the menu reads as an app
+  /// grid, matched by label text like the Back icon above.
+  void annotateMainMenuButton(DisplayManager::Button &button) const;
+  /// Shows toastText for kGridToastVisibleMs on top of the current button
+  /// grid — the uncut version of whatever a Toggle/Cycle button's tap just
+  /// changed. Same shape as showLowBatteryWarning()/
+  /// updateBatteryWarningOverlay(): set-and-timer here, timer checked and
+  /// cleared every tick by updateGridToastOverlay().
+  void showGridToast(const String &text, uint32_t nowMs);
+  /// Clears the grid toast once its visible window elapses and redraws the
+  /// menu so the toast bar disappears. Called every tick from update().
+  void updateGridToastOverlay(uint32_t nowMs);
+  /// Toast text to pass into renderItemGrid()'s display_.renderButtonGrid()
+  /// call — empty once expired or when nothing is pending.
+  String activeGridToastText(uint32_t nowMs) const;
+  /// Hit-tests a tap against the row layout shared by renderMenuWithDPad()
+  /// and renderMenuScroll() (same centered-window math, see
+  /// kCompactMenuRowHeight in DisplayManager.cpp). Returns true and fills
+  /// outIndex if the tap landed on a visible row.
+  bool hitTestMenuListRow(uint16_t tapX, uint16_t tapY, size_t itemCount, size_t selectedIndex,
+                          size_t &outIndex) const;
+  /// Swipe/scroll nav mode's touch handling: tap picks the row under the
+  /// finger (via hitTestMenuListRow), a vertical drag scrolls the list by
+  /// shifting the selected index proportionally to drag distance. Mirrors
+  /// the D-Pad panel's tap handling in applyMenuTouchGesture() but without
+  /// any button chrome. Returns true (gesture always consumed in Swipe
+  /// mode, matching the "ignore taps that hit nothing" DPad behavior).
+  bool handleSwipeListGesture(const TouchEvent &event, int deltaX, int deltaY, uint32_t nowMs);
+
   void renderMenu();
   void renderMainMenu();
+  /// Liczba pozycji, które renderMainMenu() naprawdę rysuje (Pluginy tylko w
+  /// trybie zaawansowanym, +1 gdy widać przycisk aktualizacji).
+  size_t mainMenuItemCount();
   void renderSettings();
   void showScrollSettingsPreview();
   void renderTypographyTuning();
@@ -508,6 +665,12 @@ class App {
   String formatReadingTimeRemaining(uint32_t remainingMs) const;
   String timeEstimateModeLabel() const;
   uint8_t readingProgressPercent() const;
+  // Default name suggested when naming a new save point: "<percent>%
+  // <title/chapter>", one decimal place so two bookmarks made moments
+  // apart (same rounded whole-percent progress) still read as different
+  // entries instead of colliding on an identical suggested name — see the
+  // three call sites in App.cpp that used to duplicate this.
+  String savePointDefaultName() const;
   bool ensureCurrentBookWordAvailable(uint32_t nowMs);
   void handleCurrentBookReadFailure(uint32_t nowMs, const char *detail);
   void renderReaderWord();
@@ -590,6 +753,12 @@ class App {
   size_t currentBookIndex_ = 0;
   size_t pendingBootBookIndex_ = 0;
   size_t menuSelectedIndex_ = 0;
+  // Mapa pozycja-na-ekranie -> MenuItem, budowana przez renderMainMenu()
+  // w tej samej kolejności co przyciski na ekranie. selectMenuItem() czyta
+  // stąd zamiast zakładać stały porządek enuma — kolejność kafelków w
+  // trybie zaawansowanym różni się od podstawowego (Wyłącz jest ostatnie,
+  // za Pluginami, tylko gdy Pluginy w ogóle są widoczne).
+  std::vector<size_t> mainMenuOrder_;
   size_t settingsSelectedIndex_ = 0;
   // Counter dla 10-tap na "Wersji" w SettingsAbout — odblokowuje dev mode
   // bezpośrednio z urządzenia (oprócz odblokowania z PWA).
@@ -610,8 +779,79 @@ class App {
   uint16_t pacingLongWordDelayMs_ = 200;
   uint16_t pacingComplexWordDelayMs_ = 200;
   uint16_t pacingPunctuationDelayMs_ = 200;
+  PacingDelayTarget pacingDelayEditorTarget_ = PacingDelayTarget::LongWords;
+  // True while the touch that is currently down started on the editor's
+  // corner Back icon — set on TouchPhase::Start, consumed on End, so a
+  // press-and-drag off the icon doesn't accidentally exit the screen.
+  bool pacingDelayEditorTouchOnBack_ = false;
+  bool wpmEditorTouchOnBack_ = false;
   size_t typographyTuningSelectedIndex_ = 1;
   size_t typographyPreviewSampleIndex_ = 0;
+  // Rects for the currently-rendered button grid, aligned with
+  // currentGridItemIndices_ (same index i => same underlying item).
+  // Rebuilt every renderItemGrid*() call; consumed by handleGridTap().
+  std::vector<DisplayManager::Button> currentGridButtons_;
+  std::vector<size_t> currentGridItemIndices_;
+  // Pagination bookkeeping from the same renderItemGrid*() call that built
+  // currentGridButtons_ above, cached so handleGridPageSwipe() can page
+  // using the exact same tileCount/itemsPerPage/pageCount math as what was
+  // actually drawn — recomputing it separately from the raw item count
+  // (which includes the Back tile the grid excludes) used to drift by one
+  // and mispage on any screen with a Back button and 2+ pages.
+  size_t gridHeaderRows_ = 0;
+  bool gridHasBack_ = false;
+  size_t gridItemsPerPage_ = 1;
+  size_t gridPageCount_ = 1;
+  size_t gridPage_ = 0;
+  // SavePointsList overrides the grid to one full-width row per savepoint
+  // (name row + its Delete row) instead of the usual multi-column tile
+  // grid — long "42.3% Book Title" names were unreadable packed 4-up, and
+  // multiple bookmarks saved close together used to look identical at a
+  // glance. Paging becomes vertical (one bookmark per "page") with the
+  // page dots moved to the left edge instead of centered at the bottom —
+  // see renderSavePointsList()/handleGridPageSwipe().
+  bool gridPagesVertically_ = false;
+  // Two-step tap confirm state for the grid (see handleGridTap()/
+  // isGridItemArmed()). -1 means nothing is armed. armedGridScreen_ scopes
+  // the armed index to the screen it was armed on, so navigating away and
+  // later landing on the same numeric index elsewhere never confirms it.
+  int armedGridItemIndex_ = -1;
+  uint32_t armedGridArmedAtMs_ = 0;
+  MenuScreen armedGridScreen_ = MenuScreen::Main;
+  // Press-flash: every grid tap (Back included) highlights the button in
+  // focusColor for kPressFlashMs before the action actually runs, so a tap
+  // always gets a visible "yes, I felt that" before the screen changes —
+  // see handleGridTap()/isGridItemFlashing() and the fire check in
+  // handleTouch(). -1 means nothing is pending.
+  int pendingFlashItemIndex_ = -1;
+  uint32_t pendingFlashFireAtMs_ = 0;
+  MenuScreen pendingFlashScreen_ = MenuScreen::Main;
+  // Debounces contact-bounce on cheap capacitive touch: a finger landing can
+  // register as a real release-then-recontact a few ms apart (two Start/End
+  // cycles from one physical tap), which used to fire a Cycle button (e.g.
+  // screensaver style) twice per tap. Tracks the last button actually fired
+  // so a second tap on the exact same button, on the exact same screen,
+  // within kGridTapDebounceMs is swallowed instead of firing again.
+  int lastFiredGridItemIndex_ = -1;
+  uint32_t lastFiredGridAtMs_ = 0;
+  MenuScreen lastFiredGridScreen_ = MenuScreen::Main;
+  // Same press-flash idea, but for the on-screen keyboard (see
+  // handleTextEntryTap()/firePendingTextEntryFlash()) — every key tap
+  // highlights briefly before the character/action actually lands, so
+  // typing feels as responsive/acknowledged as every other button.
+  int pendingTextEntryFlashIndex_ = -1;
+  uint32_t pendingTextEntryFlashFireAtMs_ = 0;
+  // true: the key's action already ran (typing keys — see
+  // handleTextEntryTap()), this pending entry only clears the highlight.
+  // false: the action hasn't run yet and firePendingTextEntryFlash() must
+  // fire it (mode switches / clear / save / cancel).
+  bool pendingTextEntryFlashIsPostActionOnly_ = false;
+  // Grid toast (see showGridToast()/updateGridToastOverlay()): full text of
+  // a Toggle/Cycle button's new value, shown briefly on top of the grid
+  // because the button widget itself is too small to show it uncut. Empty
+  // string means nothing is pending.
+  String pendingToastText_;
+  uint32_t toastVisibleUntilMs_ = 0;
   MenuScreen menuScreen_ = MenuScreen::Main;
   MenuScreen restartConfirmReturnScreen_ = MenuScreen::Main;
   QueueHandle_t otaCheckQueue_ = nullptr;
@@ -625,12 +865,17 @@ class App {
   std::vector<SavePoint> savePoints_;
   std::vector<String> savePointMenuItems_;
   size_t savePointSelectedIndex_ = 0;
+  std::vector<String> savePointDeleteConfirmMenuItems_;
+  size_t savePointDeleteConfirmSelectedIndex_ = 0;
+  size_t savePointDeleteTargetIndex_ = 0;
   std::vector<String> presetFilenames_;
   size_t presetsDeleteTargetIndex_ = 0;
   size_t presetsSelectedIndex_ = 0;
   std::vector<String> bookDetailsMenuItems_;
   size_t bookDetailsSelectedIndex_ = 0;
   size_t bookDetailsBookIndex_ = 0;
+  std::vector<String> bookDeleteConfirmMenuItems_;
+  size_t bookDeleteConfirmSelectedIndex_ = 0;
   std::vector<String> pluginsMenuItems_;
   size_t pluginsSelectedIndex_ = 0;
   std::vector<String> pluginLibraryMenuItems_;
@@ -692,6 +937,8 @@ class App {
   bool bootButtonLongPressHandled_ = false;
   bool powerButtonReleasedSinceBoot_ = false;
   bool powerButtonLongPressHandled_ = false;
+  bool powerTapPending_ = false;
+  uint32_t powerTapPendingMs_ = 0;
   bool powerOffStarted_ = false;
   bool standbyComboActive_ = false;
   bool standbyComboHandled_ = false;
@@ -719,6 +966,11 @@ class App {
   bool readerChapterVisibleWhilePlaying_ = false;
   bool readerProgressVisibleWhilePlaying_ = false;
   bool savePointButtonVisible_ = true;
+  // True while naming a save point created via the in-reader quick-save
+  // button, so committing/cancelling that name entry resumes reading
+  // instead of landing on the SavePointsList menu (which is where naming
+  // one from that list itself should still end up).
+  bool savePointQuickSaveFromReader_ = false;
   bool showHelpHints_ = true;
   bool showingHelpPopup_ = false;
   bool tutorialCompleted_ = false;
@@ -737,6 +989,6 @@ class App {
   UiLanguage uiLanguage_ = UiLanguage::English;
   ReaderMode readerMode_ = ReaderMode::Rsvp;
   HandednessMode handednessMode_ = HandednessMode::Right;
-  NavMode navMode_ = NavMode::Swipe;
+  NavMode navMode_ = NavMode::Buttons;
   DisplayManager::TypographyConfig typographyConfig_;
 };

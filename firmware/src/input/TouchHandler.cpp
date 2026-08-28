@@ -10,7 +10,16 @@ namespace {
 constexpr uint8_t kReadTouchCommand[] = {
     0xB5, 0xAB, 0xA5, 0x5A, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00,
 };
-constexpr uint32_t kPollIntervalMs = 20;
+// A quick double-tap (start reading, save-point taps, etc.) can land its
+// second finger-down before the release of the first is confirmed: with a
+// 20ms poll and a 2-sample release confirmation, the controller can report
+// an empty sample, then a touched sample again before touchActive_ is ever
+// cleared — the two taps get coalesced into one continuous touch (often
+// read back as a hold instead), so the app never sees a real End event to
+// pair against the second tap. Polling twice as fast roughly halves that
+// coalescing window without giving up the 2-sample debounce that protects
+// against single-frame signal dropouts mid-gesture.
+constexpr uint32_t kPollIntervalMs = 10;
 constexpr uint32_t kFailureBackoffMs = 250;
 constexpr uint8_t kReleaseConfirmSamples = 2;
 

@@ -3,6 +3,7 @@
 #include <SD_MMC.h>
 #include <esp_sleep.h>
 #include <esp_log.h>
+#include <qrcode.h>
 #include <WiFi.h>
 #include <algorithm>
 #include <climits>
@@ -28,6 +29,10 @@ constexpr uint32_t kBootSplashMs = 750;
 constexpr uint32_t kWpmFeedbackMs = 900;
 constexpr uint32_t kPowerOffHoldMs = 1600;
 constexpr uint32_t kPowerOffReleaseWaitMs = 4000;
+// PWR button: single tap toggles the menu, but that only fires once this
+// window passes with no second tap — two taps inside it restart the device
+// instead.
+constexpr uint32_t kPowerDoubleTapWindowMs = 350;
 constexpr uint32_t kBatterySampleIntervalMs = 180000;
 constexpr uint32_t kTouchPlayHoldMs = 420;
 constexpr uint32_t kPreviewBrowseHoldMs = 240;
@@ -37,6 +42,22 @@ constexpr uint32_t kScrollAnimationFrameMs = 16;
 constexpr uint16_t kSwipeThresholdPx = 40;
 constexpr uint16_t kAxisBiasPx = 12;
 constexpr uint16_t kTapSlopPx = 26;
+// Two-step tap confirm (arm-then-confirm) window for the immediate-mode
+// button grid — see App::handleGridTap()/isGridItemArmed().
+constexpr uint32_t kArmedConfirmWindowMs = 2500;
+// How long a tapped grid button shows solid focusColor before its action
+// actually runs — short enough to feel instant, long enough to register as
+// "yes, that tap landed" before the screen changes underneath it.
+constexpr uint32_t kPressFlashMs = 140;
+// Minimum gap between two fires of the SAME grid button on the SAME
+// screen — see lastFiredGridItemIndex_ in App.h for why this exists
+// (capacitive-touch contact bounce reads as two quick taps from one
+// physical touch).
+constexpr uint32_t kGridTapDebounceMs = 200;
+// How long the grid toast (full text of a Toggle/Cycle button's new value,
+// see App::showGridToast()) stays on screen before the grid redraws without
+// it — same shape as the low-battery overlay's timed restore.
+constexpr uint32_t kGridToastVisibleMs = 1100;
 constexpr uint16_t kReaderDoubleTapSlopPx = 92;
 constexpr uint16_t kPreviousSentenceTapWidthPx = 96;
 constexpr uint16_t kPreviousSentenceTapHeightPx = 60;
@@ -74,7 +95,7 @@ constexpr uint8_t kBatteryLowWarningPercent = 5;
 constexpr uint8_t kBatteryCriticalPercent = 1;
 constexpr uint8_t kBatteryCriticalConsecutiveSamples = 2;
 constexpr uint32_t kStandbyWakeGraceMs = 900;
-constexpr uint32_t kStandbyFrameMs = 160;
+constexpr uint32_t kStandbyFrameMs = 500;
 constexpr uint16_t kStandbyLifeCellPixels = 2;
 constexpr uint16_t kStandbyLifeColumns = BoardConfig::DISPLAY_WIDTH / kStandbyLifeCellPixels;
 constexpr uint16_t kStandbyLifeRows = BoardConfig::DISPLAY_HEIGHT / kStandbyLifeCellPixels;
@@ -85,13 +106,18 @@ constexpr size_t kBrightnessLevelCount = sizeof(kBrightnessLevels) / sizeof(kBri
 
 namespace {
 
+// Kolejność tego enuma nie musi już odpowiadać kolejności kafelków na
+// ekranie — App::renderMainMenu() buduje mainMenuOrder_ (App.h) w
+// faktycznej kolejności push_back, a selectMenuItem() dispatchuje przez tę
+// mapę, więc pozycja na ekranie i wartość enuma mogą się różnić bez ryzyka
+// trafienia tapem w inną akcję niż narysowana.
 enum MenuItem : size_t {
   MenuRead,
   MenuLibrary,
   MenuSavePoints,
   MenuSettings,
-  MenuPlugins,
   MenuPowerOff,
+  MenuPlugins,  // tylko w trybie zaawansowanym; w ustawieniach stoi po Wyłącz
   MenuItemCount,
 };
 
@@ -149,32 +175,43 @@ constexpr size_t kSdCardRepairConfirmHeaderRows = 1;
 constexpr size_t kUpdateConfirmHeaderRows = 2;
 constexpr size_t kSettingsBackIndex = 0;
 // SettingsHome — nowy układ, ułożony pod codzienne użycie.
-// Indeksy 1–5 są zawsze widoczne; 6 (About) też; 7–8 tylko gdy `devModeEnabled()`.
+// Indeksy 1–6 są zawsze widoczne; 7–9 tylko gdy `devModeEnabled()`
+// (= tryb zaawansowany). Wszystkie pozycje warunkowe leżą NA KOŃCU listy,
+// więc włączenie/wyłączenie trybu nigdy nie przesuwa indeksów 0–6.
+// Advanced siedzi tuż przed About/Help, zaraz za Connectivity — patrz
+// rebuildSettingsMenuItems().
 constexpr size_t kSettingsHomeReadingIndex = 1;       // = stare Pacing
 constexpr size_t kSettingsHomeDisplayIndex = 2;
 constexpr size_t kSettingsHomeTypographyIndex = 3;    // always visible (moved from dev-only)
 constexpr size_t kSettingsHomeConnectivityIndex = 4;
-constexpr size_t kSettingsHomePresetsIndex = 5;       // Presets
+constexpr size_t kSettingsHomeAdvancedIndex = 5;      // przełącznik trybu zaawansowanego
 constexpr size_t kSettingsHomeAboutIndex = 6;
-constexpr size_t kSettingsHomeWifiIndex = 7;          // dev only
-constexpr size_t kSettingsHomeUpdateIndex = 8;        // dev only
+constexpr size_t kSettingsHomePresetsIndex = 7;       // dev only
+constexpr size_t kSettingsHomeWifiIndex = 8;          // dev only
+constexpr size_t kSettingsHomeUpdateIndex = 9;        // dev only
 
 // Zachowujemy starą nazwę dla kompatybilności z pozostałymi miejscami,
 // które do niej odwołują się dla cofania z głębszych ekranów.
 constexpr size_t kSettingsHomePacingIndex = kSettingsHomeReadingIndex;
 
-// SettingsConnectivity items (new layout per menu reorganization)
+// SettingsConnectivity items (new layout per menu reorganization).
+// RSS jest dev-only i dlatego leży NA KOŃCU listy — ukrycie go nie rusza
+// żadnego wcześniejszego indeksu.
 constexpr size_t kSettingsConnWifiIndex = 1;        // Wi-Fi (opens sub-screen)
 #if FLOWER_BLE_ENABLED
 constexpr size_t kSettingsConnBluetoothIndex = 2;   // Bluetooth toggle
 constexpr size_t kSettingsConnSyncToggleIndex = 3;  // Synchronizacja z telefonem
-constexpr size_t kSettingsConnRssIndex = 4;         // Kanaly RSS
-constexpr size_t kSettingsConnUsbIndex = 5;         // Kopiuj przez USB
+constexpr size_t kSettingsConnUsbIndex = 4;         // Kopiuj przez USB
 #else
 constexpr size_t kSettingsConnBluetoothIndex = 99;  // not shown
 constexpr size_t kSettingsConnSyncToggleIndex = 2;  // Synchronizacja z telefonem
-constexpr size_t kSettingsConnRssIndex = 3;         // Kanaly RSS
-constexpr size_t kSettingsConnUsbIndex = 4;         // Kopiuj przez USB
+constexpr size_t kSettingsConnUsbIndex = 3;         // Kopiuj przez USB
+#endif
+#if RSVP_USB_TRANSFER_ENABLED
+constexpr size_t kSettingsConnRssIndex = kSettingsConnUsbIndex + 1;  // dev only
+#else
+// USB nie jest w ogóle budowany, więc jego slot zajmuje RSS.
+constexpr size_t kSettingsConnRssIndex = kSettingsConnUsbIndex;      // dev only
 #endif
 
 // SettingsAbout items
@@ -189,15 +226,18 @@ constexpr const char *kPrefTutorialDone = "tut_done";
 constexpr size_t kSettingsDisplayThemeIndex = 1;
 constexpr size_t kSettingsDisplayBrightnessIndex = 2;
 constexpr size_t kSettingsDisplayHandednessIndex = 3;
-constexpr size_t kSettingsDisplayFooterIndex = 4;
-constexpr size_t kSettingsDisplayBatteryIndex = 5;
-constexpr size_t kSettingsDisplayScreensaverIndex = 6;
-constexpr size_t kSettingsDisplayReaderBatteryIndex = 7;
-constexpr size_t kSettingsDisplayReaderChapterIndex = 8;
-constexpr size_t kSettingsDisplayReaderProgressIndex = 9;
-constexpr size_t kSettingsDisplayLanguageIndex = 10;
-constexpr size_t kSettingsDisplayFocusColorIndex = 11;
-constexpr size_t kSettingsDisplaySavePointBtnIndex = 12;
+// Moved up front (was slot 12, buried on page 2 of the Ekran grid) — save
+// point visibility is a control people reach for often, not a one-time
+// setup choice, so it belongs on the first page next to Theme/Brightness.
+constexpr size_t kSettingsDisplaySavePointBtnIndex = 4;
+constexpr size_t kSettingsDisplayFooterIndex = 5;
+constexpr size_t kSettingsDisplayBatteryIndex = 6;
+constexpr size_t kSettingsDisplayScreensaverIndex = 7;
+constexpr size_t kSettingsDisplayReaderBatteryIndex = 8;
+constexpr size_t kSettingsDisplayReaderChapterIndex = 9;
+constexpr size_t kSettingsDisplayReaderProgressIndex = 10;
+constexpr size_t kSettingsDisplayLanguageIndex = 11;
+constexpr size_t kSettingsDisplayFocusColorIndex = 12;
 constexpr size_t kSettingsDisplayHelpHintsIndex = 13;
 constexpr size_t kSettingsDisplayNavModeIndex = 14;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
@@ -253,6 +293,12 @@ constexpr const char *kPrefDarkMode = "dark";
 constexpr const char *kPrefNightMode = "night";
 constexpr const char *kPrefUiLanguage = "ui_lang";
 constexpr const char *kPrefReaderMode = "read_mode";
+// Jednorazowa migracja: urządzenia flashowane przed zmianą domyślnego trybu
+// czytania na RSVP mogły zapisać "read_mode"=Scroll w NVS z poprzednich
+// testów — sam nowy default w kodzie ich nie dotyczy, bo preferences_
+// przetrwają reflash. Ta flaga pozwala wymusić RSVP dokładnie raz, nie
+// nadpisując decyzji, którą użytkownik podejmie świadomie już po migracji.
+constexpr const char *kPrefReaderModeMigrated = "read_mode_mig";
 constexpr const char *kPrefHandedness = "handed";
 constexpr const char *kPrefPhantomWords = "phantom_on";
 constexpr const char *kPrefFooterMetricMode = "prog_md";
@@ -287,6 +333,14 @@ constexpr const char *kPrefScreensaverSleepGuard = "scrn_slp";
 constexpr const char *kPrefRecentSeq = "seq";
 constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
+// Small remembered-networks ring: kPrefWifiSsid/kPrefWifiPass above only
+// ever hold the *currently active* network, so switching networks and
+// coming back used to mean retyping the password every time. This keeps
+// up to kMaxSavedWifiNetworks past SSID/password pairs in NVS so
+// reconnecting to a known network skips the password prompt entirely.
+constexpr size_t kMaxSavedWifiNetworks = 5;
+constexpr const char *kPrefSavedWifiSsidPrefix = "wnet_s";
+constexpr const char *kPrefSavedWifiPassPrefix = "wnet_p";
 constexpr const char *kPrefOtaAuto = "ota_auto";
 constexpr const char *kPrefOtaOwner = "ota_owner";
 constexpr const char *kPrefDevMode = "dev_mode";
@@ -301,11 +355,22 @@ constexpr uint16_t kPacingDelayMinMs = 0;
 constexpr uint16_t kPacingDelayMaxMs = 600;
 constexpr uint16_t kPacingDelayStepMs = 50;
 constexpr uint16_t kDefaultPacingDelayMs = 200;
+// Geometry of the PacingDelayEditor slider button — shared by
+// App::renderPacingDelayEditor() (draws it) and
+// App::applyPacingDelayEditorTouchX() (hit-tests drags against it), both of
+// which pass these same numbers into DisplayManager::sliderTrackRectFor()
+// so the two can't drift apart.
+constexpr uint16_t kPacingSliderX = 4;
+constexpr uint16_t kPacingSliderY = 20;
+constexpr uint16_t kPacingSliderW = BoardConfig::DISPLAY_WIDTH - 8;
+constexpr uint16_t kPacingSliderH = BoardConfig::DISPLAY_HEIGHT - 24;
+// Generous hit box around the small corner Back icon (drawn at 3,3,26,20 by
+// applyBackButtonCornerLayout()) for the editor's hand-rolled touch handler.
+constexpr int kPacingSliderBackHitX1 = 34;
+constexpr int kPacingSliderBackHitY1 = 26;
 constexpr uint16_t kSettingsWpmMin = 10;
-constexpr uint16_t kSettingsWpmLowMax = 100;
-constexpr uint16_t kSettingsWpmLowStep = 10;
 constexpr uint16_t kSettingsWpmMax = 1000;
-constexpr uint16_t kSettingsWpmHighStep = 25;
+constexpr uint16_t kWpmSliderStepWpm = 10;
 constexpr int8_t kTypographyTrackingMin = -2;
 constexpr int8_t kTypographyTrackingMax = 3;
 constexpr uint8_t kTypographyAnchorMin = 30;
@@ -377,23 +442,6 @@ int nextCyclicSetting(int value, int minValue, int maxValue, int step = 1) {
     next = minValue;
   }
   return next;
-}
-
-uint16_t nextReaderWpmSetting(uint16_t value) {
-  int normalized = clampIntSetting(value, kSettingsWpmMin, kSettingsWpmMax);
-  if (normalized < static_cast<int>(kSettingsWpmLowMax)) {
-    normalized += kSettingsWpmLowStep;
-    if (normalized > static_cast<int>(kSettingsWpmLowMax)) {
-      normalized = kSettingsWpmLowMax;
-    }
-    return static_cast<uint16_t>(normalized);
-  }
-
-  int next = normalized + kSettingsWpmHighStep;
-  if (next > static_cast<int>(kSettingsWpmMax)) {
-    next = kSettingsWpmMin;
-  }
-  return static_cast<uint16_t>(next);
 }
 
 DisplayManager::TypographyConfig defaultTypographyConfig() {
@@ -621,6 +669,30 @@ App::HandednessMode handednessModeFromSetting(uint8_t value) {
   }
 }
 
+App::NavMode navModeFromSetting(uint8_t value) {
+  switch (value) {
+    case static_cast<uint8_t>(App::NavMode::DPad):
+      return App::NavMode::DPad;
+    case static_cast<uint8_t>(App::NavMode::Swipe):
+      return App::NavMode::Swipe;
+    case static_cast<uint8_t>(App::NavMode::Buttons):
+    default:
+      return App::NavMode::Buttons;
+  }
+}
+
+App::NavMode nextNavMode(App::NavMode current) {
+  switch (navModeFromSetting(static_cast<uint8_t>(current))) {
+    case App::NavMode::Buttons:
+      return App::NavMode::Swipe;
+    case App::NavMode::Swipe:
+      return App::NavMode::DPad;
+    case App::NavMode::DPad:
+    default:
+      return App::NavMode::Buttons;
+  }
+}
+
 App::HandednessMode nextHandednessMode(App::HandednessMode current) {
   switch (handednessModeFromSetting(static_cast<uint8_t>(current))) {
     case App::HandednessMode::Left:
@@ -681,8 +753,13 @@ void App::begin() {
   bootButtonLongPressHandled_ = false;
   powerButtonReleasedSinceBoot_ = !powerButton_.isHeld();
   powerButtonLongPressHandled_ = false;
+  powerTapPending_ = false;
   storage_.setStatusCallback(&App::handleStorageStatus, this);
   preferences_.begin(kPrefsNamespace, false);
+  if (!preferences_.getBool(kPrefReaderModeMigrated, false)) {
+    preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(ReaderMode::Rsvp));
+    preferences_.putBool(kPrefReaderModeMigrated, true);
+  }
   pluginLibrary_.begin();
   pluginLibrary_.scanInstalled();
   pluginLoader_.begin();
@@ -703,8 +780,8 @@ void App::begin() {
       preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
   showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
   {
-    uint8_t savedNavMode = preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
-    navMode_ = (savedNavMode == static_cast<uint8_t>(NavMode::DPad)) ? NavMode::DPad : NavMode::Swipe;
+    navMode_ = navModeFromSetting(
+        preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_)));
   }
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
@@ -878,12 +955,20 @@ void App::begin() {
   // Plugin sync runs in background after first update loop iteration
   // (moved out of boot path to prevent blocking)
 
-  // Auto-start BLE peripheral jeśli klient włączył go wcześniej.
-  // Stan jest persistowany, więc telefon „znajduje" Flowera od razu po
-  // boocie, bez wchodzenia do menu Polaczenia po każdym restarcie.
+  // Auto-start BLE peripheral tylko jeśli użytkownik wcześniej włączył je w
+  // Ustawienia > Łączność > Bluetooth (domyślnie wyłączone — patrz
+  // kPrefBleEnabled, ustawiane przez selectSettingsConnectivityItem()).
+  extern BleApi *g_bleApiPtr;
+  g_bleApiPtr = &ble_;
   if (preferences_.getBool(kPrefBleEnabled, false)) {
     ble_.begin(this);
-    Serial.printf("[app] BLE auto-started (name=%s)\n", ble_.deviceName().c_str());
+    Serial.println("========================================");
+    Serial.printf("FLOWER BLE NAME: %s\n", ble_.deviceName().c_str());
+    Serial.printf("FLOWER TOKEN: %s\n", ble_.currentToken().c_str());
+    Serial.printf("FLOWER QR: %s\n", ble_.qrPayload().c_str());
+    Serial.println("========================================");
+  } else {
+    Serial.println("[app] BLE off by default (not enabled in settings)");
   }
 
   // Auto-start companion sync AP for 30 seconds on boot.
@@ -1021,6 +1106,7 @@ void App::update(uint32_t nowMs) {
 
   updateReader(nowMs);
   handleTouch(nowMs);
+  updateGridToastOverlay(nowMs);
 
   // Screensaver idle timeout: activate screensaver if user hasn't interacted
   if (lastActivityMs_ > 0 && state_ != AppState::Booting &&
@@ -1061,6 +1147,22 @@ void App::update(uint32_t nowMs) {
   // menu Polaczenia. Bez tego label „Bluetooth: WLACZONY" zostaje stale
   // gdy telefon się podłączy w trakcie wyświetlania menu.
   ble_.update();
+
+  // Spontaneous BLE events (Protocol v2)
+  if (ble_.isAuthenticated()) {
+    // Battery event: every 60s or when change > 2%
+    static uint32_t lastBleEventBatteryMs = 0;
+    static uint8_t lastBleEventBatteryPercent = 0;
+    if (nowMs - lastBleEventBatteryMs > 60000 ||
+        (batteryPresent_ && abs((int)batteryDisplayedPercent_ - (int)lastBleEventBatteryPercent) >= 2)) {
+      if (batteryPresent_ && batteryDisplayedPercent_ != lastBleEventBatteryPercent) {
+        ble_.emitEvent("{\"ev\":\"battery\",\"percent\":" + String(batteryDisplayedPercent_) + "}");
+        lastBleEventBatteryPercent = batteryDisplayedPercent_;
+      }
+      lastBleEventBatteryMs = nowMs;
+    }
+  }
+
   if (ble_.consumeMenuDirty() && state_ == AppState::Menu &&
       menuScreen_ == MenuScreen::SettingsConnectivity) {
     rebuildSettingsMenuItems();
@@ -1219,9 +1321,10 @@ void App::updateState(uint32_t nowMs) {
     // setState(Menu), bo setState→renderMenu() patrzy na menuScreen_ i bez
     // tego renderuje Main menu zamiast naszej listy języków.
     if (!preferences_.getBool(kPrefSetupDone, false)) {
-      menuScreen_ = MenuScreen::WelcomeLanguage;
+      // Krok 0: QR z adresem aplikacji. Stąd tap prowadzi do WelcomeLanguage
+      // i dalej normalnym łańcuchem kreatora.
+      menuScreen_ = MenuScreen::WelcomeInstallApp;
       settingsSelectedIndex_ = 0;
-      rebuildSettingsMenuItems();
       setState(AppState::Menu, nowMs);
       return;
     }
@@ -1334,6 +1437,7 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
       if (standbyButtonsReleased_) {
         bootButtonLongPressHandled_ = true;
         powerButtonLongPressHandled_ = true;
+        powerTapPending_ = false;
         exitStandby(nowMs);
       }
       return true;
@@ -1344,6 +1448,7 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
       standbyComboHandled_ = false;
       bootButtonLongPressHandled_ = false;
       powerButtonLongPressHandled_ = false;
+      powerTapPending_ = false;
       return true;
     }
 
@@ -1357,6 +1462,7 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
       standbyComboStartedMs_ = nowMs;
       bootButtonLongPressHandled_ = true;
       powerButtonLongPressHandled_ = true;
+      powerTapPending_ = false;
       enterStandby(nowMs);
     }
     return true;
@@ -1367,6 +1473,7 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
     standbyComboHandled_ = false;
     bootButtonLongPressHandled_ = false;
     powerButtonLongPressHandled_ = false;
+    powerTapPending_ = false;
     return true;
   }
 
@@ -1473,6 +1580,7 @@ void App::handlePowerButton(uint32_t nowMs) {
 
   if (powerButton_.isHeld() && nowMs - powerButton_.lastEdgeMs() >= kPowerOffHoldMs) {
     powerButtonLongPressHandled_ = true;
+    powerTapPending_ = false;
     enterPowerOff(nowMs);
     return;
   }
@@ -1483,10 +1591,38 @@ void App::handlePowerButton(uint32_t nowMs) {
 
   if (powerButtonLongPressHandled_) {
     powerButtonLongPressHandled_ = false;
+    powerTapPending_ = false;
     return;
   }
 
+  // Single tap always acts immediately — no waiting to see if a second tap
+  // follows. Double-tap-to-restart is instead detected retroactively: if a
+  // tap opened the menu and a second PWR tap lands within the window while
+  // still on that freshly-opened Main screen (i.e. nothing else navigated
+  // in the meantime), treat it as "restart" instead of the normal in-menu
+  // tap action (back / triple-tap-for-savepoint tracking).
+  if (state_ == AppState::Menu && menuScreen_ == MenuScreen::Main && powerTapPending_ &&
+      nowMs - powerTapPendingMs_ <= kPowerDoubleTapWindowMs) {
+    powerTapPending_ = false;
+    pwrTapCount_ = 0;
+    restartFromPowerButtonDoubleTap();
+    return;
+  }
+
+  const bool openingMenuFromReadingScreen = (state_ != AppState::Menu);
+  powerTapPending_ = false;
   toggleMenuFromPowerButton(nowMs);
+  if (openingMenuFromReadingScreen) {
+    powerTapPending_ = true;
+    powerTapPendingMs_ = nowMs;
+  }
+}
+
+void App::restartFromPowerButtonDoubleTap() {
+  saveReadingPosition(true);
+  display_.renderStatus("", tr(TrKey::Restarting), "");
+  delay(300);
+  ESP.restart();
 }
 
 void App::toggleMenuFromPowerButton(uint32_t nowMs) {
@@ -1520,7 +1656,8 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
       pwrTapCount_ = 0;
       setState(AppState::Paused, nowMs);
     } else {
-      if (menuScreen_ == MenuScreen::WelcomeConnect ||
+      if (menuScreen_ == MenuScreen::WelcomeInstallApp ||
+          menuScreen_ == MenuScreen::WelcomeConnect ||
           menuScreen_ == MenuScreen::WelcomeLanguage ||
           menuScreen_ == MenuScreen::WelcomeTheme ||
           menuScreen_ == MenuScreen::WelcomeHighlightColor ||
@@ -1582,6 +1719,9 @@ void App::applyDisplayPreferences(uint32_t nowMs, bool rerender) {
   if (state_ == AppState::Menu) {
     if (isSettingsListScreen()) {
       rebuildSettingsMenuItems();
+      if (settingsSelectedIndex_ < settingsMenuItems_.size()) {
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
+      }
       renderSettings();
       return;
     }
@@ -1609,6 +1749,9 @@ void App::applyHandednessSettings(uint32_t nowMs, bool rerender) {
 
   if (state_ == AppState::Menu && isSettingsListScreen()) {
     rebuildSettingsMenuItems();
+    if (settingsSelectedIndex_ < settingsMenuItems_.size()) {
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
+    }
   }
 
   applyTypographySettings(nowMs);
@@ -1630,8 +1773,8 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
   showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
   {
-    uint8_t savedNavMode = preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
-    navMode_ = (savedNavMode == static_cast<uint8_t>(NavMode::DPad)) ? NavMode::DPad : NavMode::Swipe;
+    navMode_ = navModeFromSetting(
+        preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_)));
   }
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
@@ -1823,6 +1966,9 @@ void App::cycleUiLanguage(uint32_t nowMs) {
   if (state_ == AppState::Menu) {
     if (isSettingsListScreen()) {
       rebuildSettingsMenuItems();
+      if (settingsSelectedIndex_ < settingsMenuItems_.size()) {
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
+      }
       renderSettings();
       return;
     }
@@ -1843,6 +1989,7 @@ void App::cycleReaderMode(uint32_t nowMs) {
 
   if (state_ == AppState::Menu) {
     rebuildSettingsMenuItems();
+    showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
     renderSettings();
     return;
   }
@@ -2039,6 +2186,31 @@ void App::updateBatteryWarningOverlay(uint32_t nowMs) {
   }
 }
 
+void App::showGridToast(const String &text, uint32_t nowMs) {
+  pendingToastText_ = text;
+  toastVisibleUntilMs_ = nowMs + kGridToastVisibleMs;
+}
+
+void App::updateGridToastOverlay(uint32_t nowMs) {
+  if (pendingToastText_.isEmpty()) {
+    return;
+  }
+  if (nowMs < toastVisibleUntilMs_) {
+    return;
+  }
+  pendingToastText_ = "";
+  if (state_ == AppState::Menu) {
+    renderMenu();
+  }
+}
+
+String App::activeGridToastText(uint32_t nowMs) const {
+  if (pendingToastText_.isEmpty() || nowMs >= toastVisibleUntilMs_) {
+    return "";
+  }
+  return pendingToastText_;
+}
+
 void App::updateWpmFeedback(uint32_t nowMs) {
   if (!wpmFeedbackVisible_ || state_ != AppState::Paused) {
     return;
@@ -2053,6 +2225,20 @@ void App::updateWpmFeedback(uint32_t nowMs) {
 }
 
 void App::resetReaderTapTracking() { lastReaderTapValid_ = false; }
+
+// A finger resting through a blocking delay() (renderStatus + delay after a
+// destructive action) can produce a TouchPhase::End with coordinates from
+// before the screen was rebuilt, which then gets hit-tested against the new,
+// differently-laid-out screen (e.g. deleting the last save point shifts
+// "+ Dodaj punkt zapisu" onto the old delete button's pixels, silently
+// opening the name-entry keyboard). Call this right after such a delay(),
+// before rendering the next screen, so any stale touch is dropped and the
+// user must start a fresh touch-down before a tap can register.
+void App::flushStaleTouch() {
+  touch_.cancel();
+  pausedTouch_.active = false;
+  pausedTouchIntent_ = TouchIntent::None;
+}
 
 bool App::isFooterMetricTap(uint16_t x, uint16_t y) const {
   return x >= BoardConfig::DISPLAY_WIDTH - kFooterMetricTapWidthPx &&
@@ -2070,7 +2256,7 @@ bool App::isPreviousSentenceTap(uint16_t x, uint16_t y) const {
 }
 
 bool App::isSavePointButtonTap(uint16_t x, uint16_t y) const {
-  // Right of "<<", top area: matches "SP" text at (52, 8)
+  // Right of "<<", top area: matches the save-point floppy icon at (40, 4).
   return savePointButtonVisible_ && x >= 38 && x < 120 && y < 30;
 }
 
@@ -2079,7 +2265,12 @@ bool App::isActivelyReading() const { return state_ == AppState::Playing; }
 DisplayManager::ReaderChrome App::readerChrome() const {
   DisplayManager::ReaderChrome chrome;
   const bool reading = isActivelyReading();
-  chrome.showBattery = !reading || readerBatteryVisibleWhilePlaying_;
+  // Unlike chapter/progress (only ever hidden during active flashing, always
+  // shown again once paused), battery visibility follows the toggle in both
+  // Playing and Paused — otherwise the setting only ever takes effect during
+  // the brief moments words are actively flashing, and looks broken/no-op
+  // the rest of the time since the reader is paused far more often than not.
+  chrome.showBattery = readerBatteryVisibleWhilePlaying_;
   chrome.showChapter = !reading || readerChapterVisibleWhilePlaying_;
   chrome.showProgress = !reading || readerProgressVisibleWhilePlaying_;
   chrome.showPreviousSentenceHint = !contextViewVisible_ || scrollModeEnabled();
@@ -2093,10 +2284,11 @@ bool App::readerFooterVisible() const {
 }
 
 String App::readerFooterStatusLabel() const {
-  if (isActivelyReading()) {
-    return String(readingProgressPercent()) + "%";
-  }
-
+  // Used to hardcode "<percent>%" whenever actively playing, ignoring
+  // footerMetricMode_ entirely — cycling the footer to chapter/book time
+  // in Settings had no effect the moment you pressed play, only while
+  // paused. currentFooterMetricLabel() already computes a live value for
+  // every mode (including Percentage), so it works for both states.
   return currentFooterMetricLabel();
 }
 
@@ -2282,6 +2474,24 @@ void App::handleTouch(uint32_t nowMs) {
     return;
   }
 
+  // Grid arm-then-confirm: once the confirm window lapses without a second
+  // tap, clear the highlight even without any new touch input, so the UI
+  // doesn't keep showing a button as "armed" when a tap would actually
+  // re-arm it instead of confirming.
+  if (state_ == AppState::Menu && armedGridItemIndex_ != -1 &&
+      (nowMs - armedGridArmedAtMs_) > kArmedConfirmWindowMs) {
+    armedGridItemIndex_ = -1;
+    renderMenu();
+  }
+
+  if (state_ == AppState::Menu && pendingFlashItemIndex_ != -1) {
+    firePendingGridFlash(nowMs);
+  }
+
+  if (menuScreen_ == MenuScreen::TextEntry && pendingTextEntryFlashIndex_ != -1) {
+    firePendingTextEntryFlash(nowMs);
+  }
+
   if (state_ == AppState::Booting || state_ == AppState::UsbTransfer ||
       state_ == AppState::Sleeping) {
     touch_.cancel();
@@ -2388,17 +2598,10 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
             setState(AppState::Paused, nowMs);
           }
           saveReadingPosition(true);
-          const String chapter = currentChapterLabel();
-          String defaultName;
-          if (chapter.isEmpty() || chapter == currentBookTitle_) {
-            defaultName = currentBookTitle_.substring(0, 16) + " " +
-                          String(static_cast<unsigned int>(readingProgressPercent())) + "%";
-          } else {
-            defaultName = chapter.substring(0, 20) + " " +
-                          String(static_cast<unsigned int>(readingProgressPercent())) + "%";
-          }
+          const String defaultName = savePointDefaultName();
           menuScreen_ = MenuScreen::Main;
           setState(AppState::Menu, nowMs);
+          savePointQuickSaveFromReader_ = true;
           openTextEntry(TextEntryPurpose::SavePointName,
                         polish("Nazwij zakladke", "Name bookmark"),
                         polish("Wpisz nazwe:", "Enter name:"),
@@ -2496,17 +2699,10 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     if (tapLike && isSavePointButtonTap(event.x, event.y)) {
       resetReaderTapTracking();
       saveReadingPosition(true);
-      const String chapter = currentChapterLabel();
-      String defaultName;
-      if (chapter.isEmpty() || chapter == currentBookTitle_) {
-        defaultName = currentBookTitle_.substring(0, 16) + " " +
-                      String(static_cast<unsigned int>(readingProgressPercent())) + "%";
-      } else {
-        defaultName = chapter.substring(0, 20) + " " +
-                      String(static_cast<unsigned int>(readingProgressPercent())) + "%";
-      }
+      const String defaultName = savePointDefaultName();
       menuScreen_ = MenuScreen::Main;
       setState(AppState::Menu, nowMs);
+      savePointQuickSaveFromReader_ = true;
       openTextEntry(TextEntryPurpose::SavePointName,
                     polish("Nazwij zakladke", "Name bookmark"),
                     polish("Wpisz nazwe:", "Enter name:"),
@@ -2625,6 +2821,18 @@ void App::applyBrowseHoldScroll(uint16_t y, uint32_t elapsedMs, uint32_t nowMs) 
 }
 
 void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
+  // Direct-drag slider screen: bypasses the tap/swipe state machine below
+  // entirely — it needs live TouchPhase::Move updates, which that machine
+  // only forwards on TouchPhase::End.
+  if (menuScreen_ == MenuScreen::PacingDelayEditor) {
+    handlePacingDelayEditorTouch(event, nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::WpmEditor) {
+    handleWpmEditorTouch(event, nowMs);
+    return;
+  }
+
   if (event.phase == TouchPhase::Start) {
     pausedTouch_.active = true;
     pausedTouchIntent_ = TouchIntent::None;
@@ -2672,11 +2880,79 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
-  if (menuScreen_ == MenuScreen::TypographyTuning &&
-      absDeltaX >= static_cast<int>(kSwipeThresholdPx) &&
-      absDeltaX > absDeltaY + static_cast<int>(kAxisBiasPx)) {
-    cycleTypographyPreviewSample(deltaX < 0 ? 1 : -1);
+  // Tutorial (5 kroków) nie jest ekranem siatki — renderTutorialStep()
+  // rysuje przez renderStatus(), nie renderItemGrid(), więc currentGridButtons_
+  // poniżej to zawsze zastane dane z ekranu sprzed wejścia w tutorial (np.
+  // Ustawienia > O aplikacji). Bez tej gałęzi tap trafiał w te martwe
+  // przyciski (albo w nic, gdy nawigacja nie była w trybie Swipe — jedynym,
+  // dla którego istniała logika "róg = Wróć") i przycisk Wróć w rogu nie
+  // robił nic. Obsługujemy tap bezpośrednio, niezależnie od navMode_.
+  if (menuScreen_ == MenuScreen::TutorialStep1 || menuScreen_ == MenuScreen::TutorialStep2 ||
+      menuScreen_ == MenuScreen::TutorialStep3 || menuScreen_ == MenuScreen::TutorialStep4 ||
+      menuScreen_ == MenuScreen::TutorialStep5) {
+    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+      if (event.x < 40 && event.y < 40) {
+        previousTutorialStep(nowMs);
+      } else {
+        handleTutorialTap(nowMs);
+      }
+    }
     return;
+  }
+
+  // Krok 0 kreatora (QR aplikacji) nie ma listy ani siatki przycisków —
+  // cały ekran jest jednym przyciskiem. Obsługujemy tap tutaj (tak jak
+  // TypographyTuning niżej), żeby działał w każdym trybie nawigacji, a nie
+  // tylko w starym Swipe.
+  if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
+    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+      openWelcomeLanguage();
+    }
+    return;
+  }
+
+  // Typography is a single-item-at-a-time screen, not a grid — it never
+  // calls renderItemGrid(), so currentGridButtons_/handleGridTap() below
+  // would either do nothing or (worse) hit stale buttons left over from
+  // whatever grid screen was open before. Handle its taps/swipes fully
+  // here, independent of navMode, so it works the same in every nav mode
+  // instead of only in legacy Swipe mode. Horizontal swipe now moves
+  // between the 10 settings (matches the "swipe = change page" rule used
+  // everywhere else); vertical swipe still cycles the preview sample word.
+  if (menuScreen_ == MenuScreen::TypographyTuning) {
+    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+      if (event.x < 80 && event.y < 35) {
+        typographyTuningSelectedIndex_ = TypographyTuningBack;
+      }
+      selectMenuItem(nowMs);
+      return;
+    }
+    if (absDeltaX >= static_cast<int>(kSwipeThresholdPx) &&
+        absDeltaX > absDeltaY + static_cast<int>(kAxisBiasPx)) {
+      moveMenuSelection(deltaX < 0 ? 1 : -1);
+      return;
+    }
+    if (absDeltaY >= static_cast<int>(kSwipeThresholdPx) &&
+        absDeltaY > absDeltaX + static_cast<int>(kAxisBiasPx)) {
+      cycleTypographyPreviewSample(deltaY < 0 ? 1 : -1);
+      return;
+    }
+    return;
+  }
+
+  // Immediate-mode button grid: tap directly hits whichever button is
+  // visible at that spot (same Rects the last render built), swipe
+  // left/right pages through screens with more items than fit at once.
+  // D-Pad mode keeps the legacy scrolling list on the left side of the
+  // screen, so it's excluded here.
+  if (navMode_ != NavMode::DPad) {
+    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+      if (handleGridTap(event.x, event.y, nowMs)) {
+        return;
+      }
+    } else if (handleGridPageSwipe(deltaX, deltaY, nowMs)) {
+      return;
+    }
   }
 
   // D-Pad mode: handle taps on the D-Pad panel (right side of screen)
@@ -2717,7 +2993,7 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     if (event.x >= 28 && event.x < kDPadPanelStartX) {
       // Determine item count and selected index for current screen
       size_t *selectedIndex = &menuSelectedIndex_;
-      size_t itemCount = MenuItemCount;
+      size_t itemCount = mainMenuItemCount();
       if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
         selectedIndex = &presetsSelectedIndex_;
         itemCount = settingsMenuItems_.size();
@@ -2730,12 +3006,18 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       } else if (menuScreen_ == MenuScreen::BookDetails) {
         selectedIndex = &bookDetailsSelectedIndex_;
         itemCount = bookDetailsMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::BookDeleteConfirm) {
+        selectedIndex = &bookDeleteConfirmSelectedIndex_;
+        itemCount = bookDeleteConfirmMenuItems_.size();
       } else if (menuScreen_ == MenuScreen::ChapterPicker) {
         selectedIndex = &chapterPickerSelectedIndex_;
         itemCount = chapterMenuItems_.size();
       } else if (menuScreen_ == MenuScreen::SavePointsList) {
         selectedIndex = &savePointSelectedIndex_;
         itemCount = savePointMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
+        selectedIndex = &savePointDeleteConfirmSelectedIndex_;
+        itemCount = savePointDeleteConfirmMenuItems_.size();
       } else if (menuScreen_ == MenuScreen::PluginsList) {
         selectedIndex = &pluginsSelectedIndex_;
         itemCount = pluginsMenuItems_.size();
@@ -2782,6 +3064,19 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
+  // Everything below this point is the legacy scrolling-list gesture set
+  // (vertical swipe moves a cursor, any tap confirms whatever's currently
+  // selected) — it belongs to Swipe mode only. In Buttons mode the grid-tap
+  // and grid-page-swipe handlers above already own taps and horizontal page
+  // swipes; without this guard, an imprecise/diagonal swipe that neither
+  // one recognized used to fall through into moveMenuSelection() here,
+  // silently cycling focus between buttons (including non-interactive ones
+  // like separators) instead of doing nothing, which read as "swiping to
+  // change page moves buttons around instead."
+  if (navMode_ != NavMode::Swipe) {
+    return;
+  }
+
   if (absDeltaY >= static_cast<int>(kSwipeThresholdPx) &&
       absDeltaY > absDeltaX + static_cast<int>(kAxisBiasPx)) {
     moveMenuSelection(deltaY < 0 ? -1 : 1);
@@ -2793,8 +3088,10 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     if (event.x < 80 && event.y < 35 && menuScreen_ != MenuScreen::Main) {
       // Simulate selecting "Back" (index 0) for list-based screens
       if (isSettingsListScreen() || menuScreen_ == MenuScreen::BookPicker ||
-          menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::ChapterPicker ||
-          menuScreen_ == MenuScreen::SavePointsList || menuScreen_ == MenuScreen::PluginsList ||
+          menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::BookDeleteConfirm ||
+          menuScreen_ == MenuScreen::ChapterPicker ||
+          menuScreen_ == MenuScreen::SavePointsList ||
+          menuScreen_ == MenuScreen::SavePointDeleteConfirm || menuScreen_ == MenuScreen::PluginsList ||
           menuScreen_ == MenuScreen::PluginLibraryScreen ||
           menuScreen_ == MenuScreen::PluginDetail ||
           menuScreen_ == MenuScreen::TypographyTuning) {
@@ -2807,10 +3104,14 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           bookPickerSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::BookDetails) {
           bookDetailsSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::BookDeleteConfirm) {
+          bookDeleteConfirmSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::ChapterPicker) {
           chapterPickerSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::SavePointsList) {
           savePointSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
+          savePointDeleteConfirmSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::PluginsList) {
           pluginsSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
@@ -2832,13 +3133,9 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   }
 }
 
-void App::moveMenuSelection(int direction) {
-  if (direction == 0 || menuScreen_ == MenuScreen::TextEntry) {
-    return;
-  }
-
+size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
   size_t *selectedIndex = &menuSelectedIndex_;
-  size_t itemCount = MenuItemCount;
+  size_t itemCount = mainMenuItemCount();
   if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
     selectedIndex = &presetsSelectedIndex_;
     itemCount = settingsMenuItems_.size();
@@ -2861,12 +3158,18 @@ void App::moveMenuSelection(int direction) {
   } else if (menuScreen_ == MenuScreen::BookDetails) {
     selectedIndex = &bookDetailsSelectedIndex_;
     itemCount = bookDetailsMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::BookDeleteConfirm) {
+    selectedIndex = &bookDeleteConfirmSelectedIndex_;
+    itemCount = bookDeleteConfirmMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::ChapterPicker) {
     selectedIndex = &chapterPickerSelectedIndex_;
     itemCount = chapterMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::SavePointsList) {
     selectedIndex = &savePointSelectedIndex_;
     itemCount = savePointMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
+    selectedIndex = &savePointDeleteConfirmSelectedIndex_;
+    itemCount = savePointDeleteConfirmMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::PluginsList) {
     selectedIndex = &pluginsSelectedIndex_;
     itemCount = pluginsMenuItems_.size();
@@ -2886,6 +3189,18 @@ void App::moveMenuSelection(int direction) {
     selectedIndex = &updateConfirmSelectedIndex_;
     itemCount = UpdateConfirmItemCount;
   }
+
+  itemCountOut = itemCount;
+  return selectedIndex;
+}
+
+void App::moveMenuSelection(int direction) {
+  if (direction == 0 || menuScreen_ == MenuScreen::TextEntry) {
+    return;
+  }
+
+  size_t itemCount = 0;
+  size_t *selectedIndex = currentMenuSelectedIndexPtr(itemCount);
 
   if (itemCount == 0) {
     return;
@@ -2942,7 +3257,10 @@ void App::moveMenuSelection(int direction) {
     Serial.printf("[ota] selected=%s\n", selectedLabel.c_str());
   } else {
     String selectedLabel = uiText(UiText::Read);
-    switch (menuSelectedIndex_) {
+    const size_t menuItem = (menuSelectedIndex_ < mainMenuOrder_.size())
+                                 ? mainMenuOrder_[menuSelectedIndex_]
+                                 : static_cast<size_t>(MenuItemCount);
+    switch (menuItem) {
       case MenuRead:
         selectedLabel = uiText(UiText::Read);
         break;
@@ -2968,7 +3286,555 @@ void App::moveMenuSelection(int direction) {
   }
 }
 
+namespace {
+// SavePointsList's vertical paging (see gridPagesVertically_): tile 0 is
+// "+ Add save point" and gets a page to itself (full-width, not squeezed
+// next to a bookmark); every tile after that is a (name, delete) pair for
+// one bookmark, two tiles per page. Both renderItemGrid() (draws it) and
+// handleGridPageSwipe() (pages it) must agree on this exact mapping or a
+// swipe would land on a different bookmark than what's drawn.
+size_t savePointsPageCount(size_t tileCount) {
+  if (tileCount <= 1) {
+    return 1;
+  }
+  return 1 + ((tileCount - 1) + 1) / 2;
+}
+size_t savePointsPageForTile(size_t tileIndex) {
+  return tileIndex == 0 ? 0 : 1 + (tileIndex - 1) / 2;
+}
+size_t savePointsTileStartForPage(size_t page) {
+  return page == 0 ? 0 : 1 + (page - 1) * 2;
+}
+}  // namespace
+
+void App::renderItemGrid(const String &title, const std::vector<String> &items,
+                         size_t selectedIndex, size_t headerRows, bool showBatteryBadge) {
+  applyReaderUiOrientation();
+
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
+
+  if (items.size() <= headerRows) {
+    display_.renderButtonGrid(title, currentGridButtons_, 0, 1);
+    return;
+  }
+
+  const size_t actionableCount = items.size() - headerRows;
+  size_t effectiveSelected = selectedIndex >= headerRows ? selectedIndex - headerRows : 0;
+  if (effectiveSelected >= actionableCount) {
+    effectiveSelected = actionableCount - 1;
+  }
+
+  // Back (canonicalIndex 0, when present) is never a real grid tile — it's
+  // a fixed icon-only affordance pinned to the top-left corner (see
+  // applyBackButtonCornerLayout()). It used to still be counted as one of
+  // the tiles the grid laid out, then get yanked into the corner
+  // afterward, leaving the tile it vacated permanently blank. Exclude it
+  // from the grid math entirely and lay out only the real, tappable tiles;
+  // the corner Back icon is added separately below, on every page.
+  const bool hasBack = actionableCount > 0 && items[headerRows] == uiText(UiText::Back);
+  const size_t tileCount = hasBack ? actionableCount - 1 : actionableCount;
+  const size_t tileSelected =
+      hasBack ? (effectiveSelected == 0 ? 0 : effectiveSelected - 1) : effectiveSelected;
+
+  ui::GridSpec spec = ui::computeGridSpec(tileCount);
+  gridPagesVertically_ = menuScreen_ == MenuScreen::SavePointsList;
+  if (gridPagesVertically_) {
+    // One full-width row per savepoint's name, one below it for its Delete
+    // — long "42.3% Book Title" names get real room instead of being
+    // truncated in a 4-up tile, and every page is unambiguously "this one
+    // bookmark", not two rows of eight that all look alike.
+    spec.columns = 1;
+    spec.rows = 2;
+    spec.itemsPerPage = 2;
+  }
+  const size_t itemsPerPage = std::max<size_t>(1, spec.itemsPerPage);
+  size_t pageCount;
+  size_t page;
+  size_t pageStart;
+  size_t itemsOnPage;
+  if (gridPagesVertically_) {
+    pageCount = savePointsPageCount(tileCount);
+    page = tileCount == 0 ? 0 : savePointsPageForTile(tileSelected);
+    pageStart = savePointsTileStartForPage(page);
+    const size_t pageCapacity = page == 0 ? 1 : 2;
+    itemsOnPage = std::min(pageCapacity, tileCount - pageStart);
+  } else {
+    pageCount = tileCount == 0 ? 1 : (tileCount + itemsPerPage - 1) / itemsPerPage;
+    page = tileCount == 0 ? 0 : tileSelected / itemsPerPage;
+    pageStart = page * itemsPerPage;
+    itemsOnPage = std::min(itemsPerPage, tileCount - pageStart);
+  }
+
+  gridHeaderRows_ = headerRows;
+  gridHasBack_ = hasBack;
+  gridItemsPerPage_ = itemsPerPage;
+  gridPageCount_ = pageCount;
+  gridPage_ = page;
+
+  // Left-edge dot column needs room carved out of the left margin; every
+  // other screen keeps the dots bottom-centered and doesn't need it.
+  const uint16_t kAreaX = (gridPagesVertically_ && pageCount > 1) ? 16 : 6;
+  // 32, not the tile height's natural 24: leaves a real gap below the
+  // enlarged corner Back button (applyBackButtonCornerLayout(), bottom edge
+  // at y=28) so a few px of touch-coordinate jitter can't land a Back tap on
+  // the first grid tile — see the ghost-touch bug report this fixed.
+  constexpr uint16_t kAreaY = 32;
+  constexpr uint16_t kGap = 4;
+  const uint16_t areaW = static_cast<uint16_t>(BoardConfig::DISPLAY_WIDTH - 2 * kAreaX);
+  const uint16_t bottomReserve = (pageCount > 1 && !gridPagesVertically_) ? 10 : 2;
+  const uint16_t areaH =
+      static_cast<uint16_t>(BoardConfig::DISPLAY_HEIGHT - kAreaY - bottomReserve);
+
+  // Page 0 ("+ Add save point") is a single tile — give it the full-height
+  // 1-row spec instead of the 2-row spec so it isn't squeezed into the top
+  // half with an empty gap below it.
+  ui::GridSpec pageSpec = spec;
+  if (gridPagesVertically_ && page == 0) {
+    pageSpec.rows = 1;
+  }
+  const std::vector<ui::Rect> rects =
+      ui::layoutGrid(pageSpec, itemsOnPage, kAreaX, kAreaY, areaW, areaH, kGap);
+
+  currentGridButtons_.reserve(itemsOnPage + (hasBack ? 1 : 0));
+
+  if (hasBack) {
+    DisplayManager::Button backButton;
+    backButton.icon = ui::IconId::Back;
+    backButton.active = effectiveSelected == 0;
+    backButton.armed = isGridItemArmed(0, millis()) || isGridItemFlashing(0, millis());
+    currentGridButtons_.push_back(backButton);
+    currentGridItemIndices_.push_back(0);
+  }
+
+  for (size_t i = 0; i < itemsOnPage && i < rects.size(); ++i) {
+    const size_t canonicalIndex = (hasBack ? 1 : 0) + pageStart + i;
+    const size_t labelIndex = headerRows + canonicalIndex;
+    DisplayManager::Button button;
+    button.label = items[labelIndex];
+    button.x = rects[i].x;
+    button.y = rects[i].y;
+    button.width = rects[i].w;
+    button.height = rects[i].h;
+    if (button.label == "---") {
+      button.kind = DisplayManager::Button::ButtonKind::Separator;
+      currentGridButtons_.push_back(button);
+      currentGridItemIndices_.push_back(canonicalIndex);
+      continue;
+    }
+    button.active = canonicalIndex == effectiveSelected;
+    button.armed = isGridItemArmed(canonicalIndex, millis()) || isGridItemFlashing(canonicalIndex, millis());
+    if (menuScreen_ == MenuScreen::SettingsDisplay) {
+      annotateSettingsDisplayButton(button, canonicalIndex);
+    } else if (menuScreen_ == MenuScreen::SavePointsList) {
+      annotateSavePointsButton(button, canonicalIndex);
+    } else if (menuScreen_ == MenuScreen::Main) {
+      annotateMainMenuButton(button);
+    }
+    currentGridButtons_.push_back(button);
+    currentGridItemIndices_.push_back(canonicalIndex);
+  }
+
+  applyBackButtonCornerLayout();
+  display_.renderButtonGrid(title, currentGridButtons_, page, pageCount, activeGridToastText(millis()),
+                            showBatteryBadge, gridPagesVertically_);
+}
+
+void App::renderItemGridLibrary(const std::vector<DisplayManager::LibraryItem> &items,
+                                size_t selectedIndex) {
+  applyReaderUiOrientation();
+
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
+
+  if (items.empty()) {
+    display_.renderButtonGrid("", currentGridButtons_, 0, 1);
+    return;
+  }
+
+  size_t effectiveSelected = selectedIndex;
+  if (effectiveSelected >= items.size()) {
+    effectiveSelected = items.size() - 1;
+  }
+
+  // Same corner-Back exclusion as renderItemGrid() — see the comment there.
+  const bool hasBack = items[0].title == uiText(UiText::Back);
+  const size_t tileCount = hasBack ? items.size() - 1 : items.size();
+  const size_t tileSelected =
+      hasBack ? (effectiveSelected == 0 ? 0 : effectiveSelected - 1) : effectiveSelected;
+
+  const ui::GridSpec spec = ui::computeGridSpec(tileCount);
+  const size_t itemsPerPage = std::max<size_t>(1, spec.itemsPerPage);
+  const size_t pageCount = tileCount == 0 ? 1 : (tileCount + itemsPerPage - 1) / itemsPerPage;
+  const size_t page = tileCount == 0 ? 0 : tileSelected / itemsPerPage;
+  const size_t pageStart = page * itemsPerPage;
+  const size_t itemsOnPage = std::min(itemsPerPage, tileCount - pageStart);
+
+  gridHeaderRows_ = 0;
+  gridHasBack_ = hasBack;
+  gridItemsPerPage_ = itemsPerPage;
+  gridPageCount_ = pageCount;
+  gridPage_ = page;
+  gridPagesVertically_ = false;
+
+  constexpr uint16_t kAreaX = 6;
+  // 32, not the tile height's natural 24: leaves a real gap below the
+  // enlarged corner Back button (applyBackButtonCornerLayout(), bottom edge
+  // at y=28) so a few px of touch-coordinate jitter can't land a Back tap on
+  // the first grid tile — see the ghost-touch bug report this fixed.
+  constexpr uint16_t kAreaY = 32;
+  constexpr uint16_t kGap = 4;
+  const uint16_t areaW = static_cast<uint16_t>(BoardConfig::DISPLAY_WIDTH - 2 * kAreaX);
+  const uint16_t bottomReserve = pageCount > 1 ? 10 : 2;
+  const uint16_t areaH =
+      static_cast<uint16_t>(BoardConfig::DISPLAY_HEIGHT - kAreaY - bottomReserve);
+
+  const std::vector<ui::Rect> rects =
+      ui::layoutGrid(spec, itemsOnPage, kAreaX, kAreaY, areaW, areaH, kGap);
+
+  currentGridButtons_.reserve(itemsOnPage + (hasBack ? 1 : 0));
+
+  if (hasBack) {
+    DisplayManager::Button backButton;
+    backButton.icon = ui::IconId::Back;
+    backButton.active = effectiveSelected == 0;
+    backButton.armed = isGridItemArmed(0, millis()) || isGridItemFlashing(0, millis());
+    currentGridButtons_.push_back(backButton);
+    currentGridItemIndices_.push_back(0);
+  }
+
+  for (size_t i = 0; i < itemsOnPage && i < rects.size(); ++i) {
+    const size_t absoluteItemIndex = (hasBack ? 1 : 0) + pageStart + i;
+    DisplayManager::Button button;
+    button.label = items[absoluteItemIndex].title;
+    button.sublabel = items[absoluteItemIndex].subtitle;
+    button.x = rects[i].x;
+    button.y = rects[i].y;
+    button.width = rects[i].w;
+    button.height = rects[i].h;
+    button.active = absoluteItemIndex == effectiveSelected;
+    button.armed = isGridItemArmed(absoluteItemIndex, millis()) || isGridItemFlashing(absoluteItemIndex, millis());
+    currentGridButtons_.push_back(button);
+    currentGridItemIndices_.push_back(absoluteItemIndex);
+  }
+
+  applyBackButtonCornerLayout();
+  display_.renderButtonGrid("", currentGridButtons_, page, pageCount);
+}
+
+void App::renderMenuAnyMode(const String &title, const std::vector<String> &items,
+                            size_t selectedIndex, size_t headerRows) {
+  if (navMode_ == NavMode::DPad) {
+    applyReaderUiOrientation();
+    display_.renderMenuWithDPad(items, selectedIndex);
+  } else if (navMode_ == NavMode::Swipe) {
+    applyReaderUiOrientation();
+    display_.renderMenuScroll(items, selectedIndex);
+  } else {
+    renderItemGrid(title, items, selectedIndex, headerRows);
+  }
+}
+
+void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem> &items,
+                                   size_t selectedIndex) {
+  if (navMode_ == NavMode::Buttons) {
+    renderItemGridLibrary(items, selectedIndex);
+    return;
+  }
+
+  // DPad/Swipe are single-line lists — no room for the subtitle, so fall
+  // back to titles only.
+  std::vector<String> titles;
+  titles.reserve(items.size());
+  for (const DisplayManager::LibraryItem &item : items) {
+    titles.push_back(item.title);
+  }
+
+  applyReaderUiOrientation();
+  if (navMode_ == NavMode::DPad) {
+    display_.renderMenuWithDPad(titles, selectedIndex);
+  } else {
+    display_.renderMenuScroll(titles, selectedIndex);
+  }
+}
+
+bool App::isGridItemArmed(size_t canonicalIndex, uint32_t nowMs) const {
+  return armedGridItemIndex_ >= 0 && armedGridScreen_ == menuScreen_ &&
+         static_cast<size_t>(armedGridItemIndex_) == canonicalIndex &&
+         (nowMs - armedGridArmedAtMs_) <= kArmedConfirmWindowMs;
+}
+
+bool App::isGridItemFlashing(size_t canonicalIndex, uint32_t nowMs) const {
+  return pendingFlashItemIndex_ >= 0 && pendingFlashScreen_ == menuScreen_ &&
+         static_cast<size_t>(pendingFlashItemIndex_) == canonicalIndex &&
+         nowMs < pendingFlashFireAtMs_;
+}
+
+void App::firePendingGridFlash(uint32_t nowMs) {
+  if (pendingFlashItemIndex_ == -1 || pendingFlashScreen_ != menuScreen_ ||
+      nowMs < pendingFlashFireAtMs_) {
+    return;
+  }
+  pendingFlashItemIndex_ = -1;
+  selectMenuItem(nowMs);
+}
+
+void App::applyBackButtonCornerLayout() {
+  for (DisplayManager::Button &button : currentGridButtons_) {
+    if (button.icon == ui::IconId::Back) {
+      button.label = "";
+      button.sublabel = "";
+      button.x = 0;
+      button.y = 2;
+      // Wider than the old 32px so a slightly off-center thumb tap in the
+      // corner still lands on Back. Height is left at 26 (bottom edge at
+      // y=28) on purpose — see the kAreaY=32 comment in renderItemGrid():
+      // growing it further would eat into the jitter gap that keeps a Back
+      // tap from landing on the first grid tile below it.
+      button.width = 44;
+      button.height = 26;
+      break;
+    }
+  }
+}
+
+namespace {
+// SettingsDisplay rows are built as "<Name>: <current value>" — for
+// Toggle/Cycle buttons the widget itself shows the value (switch position,
+// lit dot), so keep only the name to avoid saying the same thing twice.
+void stripTrailingValueLabel(String &label) {
+  const int sep = label.lastIndexOf(": ");
+  if (sep >= 0) {
+    label = label.substring(0, sep);
+  }
+}
+}  // namespace
+
+void App::annotateSettingsDisplayButton(DisplayManager::Button &button,
+                                        size_t canonicalIndex) const {
+  switch (canonicalIndex) {
+    case kSettingsDisplayFooterIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Cycle;
+      button.cycleCount = 3;
+      button.cycleState = static_cast<uint8_t>(footerMetricMode_);
+      break;
+    case kSettingsDisplayBatteryIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Cycle;
+      button.cycleCount = 3;
+      button.cycleState = static_cast<uint8_t>(batteryLabelMode_);
+      break;
+    case kSettingsDisplayNavModeIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Cycle;
+      button.cycleCount = 3;
+      button.cycleState = static_cast<uint8_t>(navMode_);
+      break;
+    case kSettingsDisplayReaderBatteryIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Toggle;
+      button.active = readerBatteryVisibleWhilePlaying_;
+      break;
+    case kSettingsDisplayReaderChapterIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Toggle;
+      button.active = readerChapterVisibleWhilePlaying_;
+      break;
+    case kSettingsDisplayReaderProgressIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Toggle;
+      button.active = readerProgressVisibleWhilePlaying_;
+      break;
+    case kSettingsDisplaySavePointBtnIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Toggle;
+      button.active = savePointButtonVisible_;
+      break;
+    case kSettingsDisplayHelpHintsIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Toggle;
+      button.active = showHelpHints_;
+      break;
+    default:
+      return;
+  }
+  stripTrailingValueLabel(button.label);
+}
+
+void App::annotateSavePointsButton(DisplayManager::Button &button, size_t canonicalIndex) const {
+  // Index 0 is "Back" — already handled generically (icon-only corner
+  // button) by the label match in renderItemGrid(). Index 1 is
+  // "+ Dodaj punkt zapisu"/"+ Add save point". From index 2 on, entries
+  // alternate: the save point's own name (even offset), then its paired
+  // "Usun: <nazwa>"/"Delete: <name>" button (odd offset) — see
+  // openSavePointsList(). Give the "+ Add" row and every save-point-name
+  // row the floppy-disk icon so a save point reads as one at a glance;
+  // leave the Delete rows alone.
+  if (canonicalIndex == 0) {
+    return;
+  }
+  if (canonicalIndex == 1) {
+    button.icon = ui::IconId::SavePoint;
+    return;
+  }
+  if ((canonicalIndex - 2) % 2 == 0) {
+    button.icon = ui::IconId::SavePoint;
+  }
+}
+
+void App::annotateMainMenuButton(DisplayManager::Button &button) const {
+  if (button.label == uiText(UiText::Read)) {
+    button.icon = ui::IconId::Play;
+  } else if (button.label == uiText(UiText::Library)) {
+    button.icon = ui::IconId::Book;
+  } else if (button.label == uiText(UiText::SavePoints)) {
+    button.icon = ui::IconId::SavePoint;
+  } else if (button.label == uiText(UiText::Settings)) {
+    button.icon = ui::IconId::Settings;
+  } else if (button.label == uiText(UiText::Plugins)) {
+    button.icon = ui::IconId::Plugin;
+  } else if (button.label == uiText(UiText::PowerOff)) {
+    button.icon = ui::IconId::Power;
+  }
+}
+
+namespace {
+// Arm-then-confirm exists to protect against fat-finger data loss, not to
+// gate every tap in the UI. It only makes sense for buttons that commit an
+// irreversible action immediately, with no dedicated Yes/No screen behind
+// them — the "Usuń: <nazwa>"/"Delete: <name>" rows built inline into
+// SavePointsList/PresetsDeleteConfirm/BookDeleteConfirm. Everything else
+// (navigation, settings toggles, opening a book/chapter/preset/plugin, and
+// the Yes/No buttons on screens that are themselves a confirmation step
+// like RestartConfirm/UpdateConfirm/SdCardRepairConfirm) should act on the
+// first tap like a normal app button — doubling that up with a second
+// required tap only makes the UI feel unresponsive and broken.
+bool isDestructiveGridLabel(const String &label) {
+  const bool startsWithDelete = label.startsWith("Usun") || label.startsWith("Usuń") ||
+                                 label.startsWith("Delete");
+  return startsWithDelete && label.indexOf(": ") >= 0;
+}
+}  // namespace
+
+bool App::handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs) {
+  for (size_t i = 0; i < currentGridButtons_.size(); ++i) {
+    const DisplayManager::Button &button = currentGridButtons_[i];
+    if (button.width <= 2 || button.height <= 2) {
+      continue;
+    }
+    if (button.kind == DisplayManager::Button::ButtonKind::Separator) {
+      continue;
+    }
+    if (x < button.x || x >= button.x + button.width || y < button.y ||
+        y >= button.y + button.height) {
+      continue;
+    }
+
+    size_t itemCount = 0;
+    size_t *selectedIndex = currentMenuSelectedIndexPtr(itemCount);
+    const size_t canonicalIndex =
+        (i < currentGridItemIndices_.size()) ? currentGridItemIndices_[i] : i;
+
+    // Back/Wróć is exempt from arm-then-confirm: it's pure navigation, not
+    // a committing action, so a second tap would only add friction. Same
+    // goes for every non-destructive button (see isDestructiveGridLabel).
+    // Checked by icon, not label text: the corner Back button's label is
+    // blanked out by applyBackButtonCornerLayout() (icon-only rendering).
+    const bool isBack = button.icon == ui::IconId::Back;
+    const bool needsConfirm = !isBack && isDestructiveGridLabel(button.label);
+
+    if (!needsConfirm || isGridItemArmed(canonicalIndex, nowMs)) {
+      // Contact-bounce guard: a physical tap that briefly loses and regains
+      // contact can reach here twice for the same button a few ms apart —
+      // most visible on Cycle buttons like screensaver style, where it
+      // read as one tap skipping two steps ahead. Swallow the repeat
+      // instead of scheduling another fire.
+      if (lastFiredGridItemIndex_ == static_cast<int>(canonicalIndex) &&
+          lastFiredGridScreen_ == menuScreen_ &&
+          (nowMs - lastFiredGridAtMs_) < kGridTapDebounceMs) {
+        return true;
+      }
+      if (canonicalIndex < itemCount) {
+        *selectedIndex = canonicalIndex;
+      }
+      armedGridItemIndex_ = -1;
+      lastFiredGridItemIndex_ = static_cast<int>(canonicalIndex);
+      lastFiredGridScreen_ = menuScreen_;
+      lastFiredGridAtMs_ = nowMs;
+      // Don't fire the action immediately — flash the tapped button in
+      // focusColor for kPressFlashMs first (see firePendingGridFlash()) so
+      // every tap gets a visible "yes, that landed" before the screen
+      // changes underneath it.
+      pendingFlashScreen_ = menuScreen_;
+      pendingFlashItemIndex_ = static_cast<int>(canonicalIndex);
+      pendingFlashFireAtMs_ = nowMs + kPressFlashMs;
+      renderMenu();
+      return true;
+    }
+
+    // First tap on this button (or a different button than what was armed,
+    // or the previous arm expired): arm it and redraw so it highlights,
+    // without performing the action yet.
+    armedGridScreen_ = menuScreen_;
+    armedGridItemIndex_ = static_cast<int>(canonicalIndex);
+    armedGridArmedAtMs_ = nowMs;
+    renderMenu();
+    return true;
+  }
+
+  // Tap missed every button on screen: disarm whatever was armed.
+  if (armedGridItemIndex_ != -1) {
+    armedGridItemIndex_ = -1;
+    renderMenu();
+  }
+  return false;
+}
+
+bool App::handleGridPageSwipe(int deltaX, int deltaY, uint32_t nowMs) {
+  (void)nowMs;
+  // Uses gridPageCount_/gridItemsPerPage_/gridHasBack_/gridHeaderRows_,
+  // cached by the renderItemGrid*() call that last drew the screen — NOT
+  // recomputed from the raw item count here, which used to include the
+  // Back tile the grid itself excludes and drifted the page math by one
+  // (a screen with a Back button could think it had 2 pages, swipe to a
+  // "page 2" that didn't really exist, and land back on page 1 with the
+  // wrong item selected). See the App.h comment on those fields.
+  if (gridPageCount_ <= 1) {
+    return false;
+  }
+
+  const int absDeltaX = abs(deltaX);
+  const int absDeltaY = abs(deltaY);
+  // SavePointsList pages vertically (one bookmark per page, dots on the
+  // left) instead of the usual horizontal paging — see gridPagesVertically_.
+  const int pagingDelta = gridPagesVertically_ ? deltaY : deltaX;
+  const int primaryAbs = gridPagesVertically_ ? absDeltaY : absDeltaX;
+  const int crossAbs = gridPagesVertically_ ? absDeltaX : absDeltaY;
+  if (primaryAbs < static_cast<int>(kSwipeThresholdPx) ||
+      primaryAbs <= crossAbs + static_cast<int>(kAxisBiasPx)) {
+    return false;
+  }
+
+  size_t itemCount = 0;
+  size_t *selectedIndex = currentMenuSelectedIndexPtr(itemCount);
+  if (itemCount == 0) {
+    return false;
+  }
+
+  size_t page = gridPage_;
+  if (pagingDelta < 0) {
+    page = (page + 1 < gridPageCount_) ? page + 1 : page;
+  } else {
+    page = (page > 0) ? page - 1 : 0;
+  }
+  const size_t newTileSelected =
+      gridPagesVertically_ ? savePointsTileStartForPage(page) : page * gridItemsPerPage_;
+  *selectedIndex = gridHeaderRows_ + (gridHasBack_ ? 1 : 0) + newTileSelected;
+  renderMenu();
+  return true;
+}
+
 void App::selectMenuItem(uint32_t nowMs) {
+  if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
+    // Cały ekran = jeden przycisk "dalej". Bez tego wejścia potwierdzenie
+    // z D-Pada/przycisku wpadłoby w switch menu głównego i wyrzuciło
+    // użytkownika z kreatora.
+    openWelcomeLanguage();
+    return;
+  }
   if (menuScreen_ == MenuScreen::TutorialStep1 ||
       menuScreen_ == MenuScreen::TutorialStep2 ||
       menuScreen_ == MenuScreen::TutorialStep3 ||
@@ -2997,12 +3863,20 @@ void App::selectMenuItem(uint32_t nowMs) {
     selectBookDetailsItem(nowMs);
     return;
   }
+  if (menuScreen_ == MenuScreen::BookDeleteConfirm) {
+    selectBookDeleteConfirmItem(nowMs);
+    return;
+  }
   if (menuScreen_ == MenuScreen::ChapterPicker) {
     selectChapterPickerItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::SavePointsList) {
     selectSavePointItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
+    selectSavePointDeleteConfirmItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::PluginsList) {
@@ -3043,7 +3917,10 @@ void App::selectMenuItem(uint32_t nowMs) {
     effectiveIndex = menuSelectedIndex_ - 1;
   }
 
-  switch (effectiveIndex) {
+  if (effectiveIndex >= mainMenuOrder_.size()) {
+    return;
+  }
+  switch (mainMenuOrder_[effectiveIndex]) {
     case MenuRead:
       setState(AppState::Paused, nowMs);
       return;
@@ -3056,11 +3933,13 @@ void App::selectMenuItem(uint32_t nowMs) {
     case MenuSettings:
       openSettings();
       return;
-    case MenuPlugins:
-      openPluginsList();
-      return;
     case MenuPowerOff:
       enterPowerOff(nowMs);
+      return;
+    case MenuPlugins:
+      // Rysowany tylko w trybie zaawansowanym — mainMenuOrder_ w ogóle nie
+      // zawiera tego wpisu w trybie podstawowym.
+      openPluginsList();
       return;
     default:
       return;
@@ -3090,6 +3969,16 @@ void App::selectSettingsItem(uint32_t nowMs) {
         menuScreen_ = MenuScreen::Main;
         renderMainMenu();
         return;
+      case kSettingsHomeAdvancedIndex:
+        // Widoczny przełącznik prosty/zaawansowany. Po przełączeniu MUSIMY
+        // przebudować listę — pozycje dev-only (Presety, Wi-Fi, Aktualizacja)
+        // pojawiają się/znikają natychmiast, tak samo jak Pluginy w menu
+        // głównym i RSS w Łączności.
+        setDevModeEnabled(!devModeEnabled());
+        rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
+        renderSettings();
+        return;
       case kSettingsHomeReadingIndex:
         settingsSelectedIndex_ = kSettingsPacingReadingModeIndex;
         menuScreen_ = MenuScreen::SettingsPacing;
@@ -3106,7 +3995,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         openSettingsConnectivity();
         return;
       case kSettingsHomePresetsIndex:
-        openPresets();
+        if (devModeEnabled()) openPresets();
         return;
       case kSettingsHomeAboutIndex:
         openSettingsAbout();
@@ -3217,6 +4106,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         }
         preferences_.putUChar(kPrefFooterMetricMode, static_cast<uint8_t>(footerMetricMode_));
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayBatteryIndex:
@@ -3236,6 +4126,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         batteryLabel_ = currentBatteryLabel();
         display_.setBatteryLabel(batteryLabel_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayScreensaverIndex:
@@ -3245,44 +4136,51 @@ void App::selectSettingsItem(uint32_t nowMs) {
         readerBatteryVisibleWhilePlaying_ = !readerBatteryVisibleWhilePlaying_;
         preferences_.putBool(kPrefReaderBatteryVisible, readerBatteryVisibleWhilePlaying_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayReaderChapterIndex:
         readerChapterVisibleWhilePlaying_ = !readerChapterVisibleWhilePlaying_;
         preferences_.putBool(kPrefReaderChapterVisible, readerChapterVisibleWhilePlaying_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayReaderProgressIndex:
         readerProgressVisibleWhilePlaying_ = !readerProgressVisibleWhilePlaying_;
         preferences_.putBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayLanguageIndex:
         cycleUiLanguage(nowMs);
         return;
       case kSettingsDisplayFocusColorIndex:
+        // cycleFocusColor() -> applyDisplayPreferences() already rebuilds
+        // the list, shows the toast and re-renders (see kPrefFocusColorIndex
+        // path) — nothing left to do here.
         cycleFocusColor(nowMs);
-        rebuildSettingsMenuItems();
-        renderSettings();
         return;
       case kSettingsDisplaySavePointBtnIndex:
         savePointButtonVisible_ = !savePointButtonVisible_;
         preferences_.putBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayHelpHintsIndex:
         showHelpHints_ = !showHelpHints_;
         preferences_.putBool(kPrefShowHelpHints, showHelpHints_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsDisplayNavModeIndex:
-        navMode_ = (navMode_ == NavMode::Swipe) ? NavMode::DPad : NavMode::Swipe;
+        navMode_ = nextNavMode(navMode_);
         preferences_.putUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       default:
@@ -3322,6 +4220,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         display_.setScrollFontSize(scrollFontSize_);
         Serial.printf("[settings] scroll font size=%u\n", scrollFontSize_);
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsPacingScrollLineSpacingIndex:
@@ -3330,6 +4229,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         display_.setScrollLineSpacing(scrollLineSpacing_);
         Serial.printf("[settings] scroll line spacing=%s\n", scrollLineSpacingLabel().c_str());
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsPacingScrollMarginIndex:
@@ -3338,6 +4238,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
         display_.setScrollMargin(scrollMargin_);
         Serial.printf("[settings] scroll margin=%s\n", scrollMarginLabel().c_str());
         rebuildSettingsMenuItems();
+        showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
         return;
       case kSettingsPacingScrollPreviewIndex:
@@ -3355,32 +4256,21 @@ void App::selectSettingsItem(uint32_t nowMs) {
       preferences_.putUChar(kPrefPauseMode, static_cast<uint8_t>(pauseMode_));
       Serial.printf("[settings] pause mode=%s\n", pauseModeLabel().c_str());
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     case kSettingsPacingWpmIndex:
-      reader_.setWpm(nextReaderWpmSetting(reader_.wpm()));
-      preferences_.putUShort(kPrefWpm, reader_.wpm());
-      Serial.printf("[settings] WPM=%u interval=%lu ms\n", reader_.wpm(),
-                    static_cast<unsigned long>(reader_.wordIntervalMs()));
-      break;
+      openWpmEditor(nowMs);
+      return;
     case kSettingsPacingLongWordsIndex:
-      pacingLongWordDelayMs_ = static_cast<uint16_t>(nextCyclicSetting(
-          pacingLongWordDelayMs_, kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs));
-      preferences_.putUShort(kPrefPacingLongMs, pacingLongWordDelayMs_);
-      pacingConfigChanged = true;
-      break;
+      openPacingDelayEditor(PacingDelayTarget::LongWords, nowMs);
+      return;
     case kSettingsPacingComplexityIndex:
-      pacingComplexWordDelayMs_ = static_cast<uint16_t>(nextCyclicSetting(
-          pacingComplexWordDelayMs_, kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs));
-      preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
-      pacingConfigChanged = true;
-      break;
+      openPacingDelayEditor(PacingDelayTarget::Complexity, nowMs);
+      return;
     case kSettingsPacingPunctuationIndex:
-      pacingPunctuationDelayMs_ = static_cast<uint16_t>(nextCyclicSetting(
-          pacingPunctuationDelayMs_, kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs));
-      preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
-      pacingConfigChanged = true;
-      break;
+      openPacingDelayEditor(PacingDelayTarget::Punctuation, nowMs);
+      return;
     case kSettingsPacingResetIndex:
       pacingLongWordDelayMs_ = kDefaultPacingDelayMs;
       pacingComplexWordDelayMs_ = kDefaultPacingDelayMs;
@@ -3398,6 +4288,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
     applyPacingSettings();
   }
   rebuildSettingsMenuItems();
+  showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
   renderSettings();
 }
 
@@ -3417,7 +4308,11 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
         wifiReturnScreen_ = MenuScreen::SettingsHome;
         openPluginsList();
       } else {
-        settingsSelectedIndex_ = kSettingsHomeWifiIndex;
+        // W trybie podstawowym pozycji "Wi-Fi zaawansowane" nie ma na liście
+        // (Wi-Fi otwiera się wtedy z Łączności), więc wracamy na Łączność —
+        // inaczej kursor wskazywałby indeks poza listą.
+        settingsSelectedIndex_ =
+            devModeEnabled() ? kSettingsHomeWifiIndex : kSettingsHomeConnectivityIndex;
         menuScreen_ = MenuScreen::SettingsHome;
         rebuildSettingsMenuItems();
         renderSettings();
@@ -3430,9 +4325,11 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
     case kWifiSettingsAutoUpdateIndex:
       preferences_.putBool(kPrefOtaAuto, !otaAutoCheckEnabled());
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     case kWifiSettingsForgetIndex:
+      forgetSavedWifiNetwork(configuredWifiSsid());
       preferences_.remove(kPrefWifiSsid);
       preferences_.remove(kPrefWifiPass);
       WiFi.disconnect(true, true);  // disconnect + erase stored credentials
@@ -3526,7 +4423,7 @@ void App::renderWifiNetworks() {
     return;
   }
 
-  display_.renderLibrary(wifiNetworkMenuItems_, wifiNetworkSelectedIndex_);
+  renderMenuAnyModeLibrary(wifiNetworkMenuItems_, wifiNetworkSelectedIndex_);
 }
 
 void App::selectWifiNetworkItem(uint32_t nowMs) {
@@ -3545,6 +4442,17 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
 
   const WifiNetworkInfo &network = wifiNetworks_[networkIndex];
   if (wifiNetworkRequiresPassword(network.authMode)) {
+    const String savedPassword = findSavedWifiPassword(network.ssid);
+    if (!savedPassword.isEmpty()) {
+      // Already connected to this network before — reuse the remembered
+      // password instead of asking for it again.
+      preferences_.putString(kPrefWifiSsid, network.ssid);
+      preferences_.putString(kPrefWifiPass, savedPassword);
+      display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), network.ssid);
+      delay(900);
+      openWifiSettings();
+      return;
+    }
     String initialValue;
     if (configuredWifiSsid() == network.ssid) {
       initialValue = preferredOtaConfig().wifiPassword;
@@ -3714,11 +4622,56 @@ bool App::handleTextEntryTap(uint16_t x, uint16_t y, uint32_t nowMs) {
       continue;
     }
 
-    activateTextEntryButton(i, nowMs);
+    // Letter/space/backspace keys get typed immediately — never delay the
+    // character landing, or typing at any real speed drops keystrokes
+    // whenever the next tap lands inside the still-pending flash window.
+    // The visible "press" flash still happens, just *after* the character
+    // is already in, as a pure highlight-then-clear with no action queued
+    // (see pendingTextEntryFlashIsPostActionOnly_).
+    const TextEntryAction action = textEntryButtons_[i].action;
+    const bool isTypingKey = action == TextEntryAction::Insert ||
+                             action == TextEntryAction::Space ||
+                             action == TextEntryAction::Backspace;
+    if (isTypingKey) {
+      activateTextEntryButton(i, nowMs);
+      if (i < textEntryButtons_.size()) {
+        textEntryButtons_[i].view.armed = true;
+        pendingTextEntryFlashIndex_ = static_cast<int>(i);
+        pendingTextEntryFlashFireAtMs_ = nowMs + kPressFlashMs;
+        pendingTextEntryFlashIsPostActionOnly_ = true;
+        renderTextEntry();
+      }
+      return true;
+    }
+
+    // Everything else (mode switches, clear, save, cancel...) is tapped
+    // rarely, not spammed — flash first, then fire, same as the menu grid.
+    textEntryButtons_[i].view.armed = true;
+    pendingTextEntryFlashIndex_ = static_cast<int>(i);
+    pendingTextEntryFlashFireAtMs_ = nowMs + kPressFlashMs;
+    pendingTextEntryFlashIsPostActionOnly_ = false;
+    renderTextEntry();
     return true;
   }
 
   return false;
+}
+
+void App::firePendingTextEntryFlash(uint32_t nowMs) {
+  if (pendingTextEntryFlashIndex_ == -1 || nowMs < pendingTextEntryFlashFireAtMs_) {
+    return;
+  }
+  const size_t index = static_cast<size_t>(pendingTextEntryFlashIndex_);
+  const bool postActionOnly = pendingTextEntryFlashIsPostActionOnly_;
+  pendingTextEntryFlashIndex_ = -1;
+  if (postActionOnly) {
+    if (index < textEntryButtons_.size()) {
+      textEntryButtons_[index].view.armed = false;
+      renderTextEntry();
+    }
+    return;
+  }
+  activateTextEntryButton(index, nowMs);
 }
 
 void App::activateTextEntryButton(size_t buttonIndex, uint32_t nowMs) {
@@ -3764,6 +4717,15 @@ void App::activateTextEntryButton(size_t buttonIndex, uint32_t nowMs) {
       commitTextEntry(nowMs);
       return;
     case TextEntryAction::Cancel:
+      if (textEntrySession_.purpose == TextEntryPurpose::SavePointName &&
+          savePointQuickSaveFromReader_) {
+        savePointQuickSaveFromReader_ = false;
+        textEntrySession_ = TextEntrySession();
+        textEntryButtons_.clear();
+        menuScreen_ = MenuScreen::Main;
+        setState(AppState::Paused, nowMs);
+        return;
+      }
       menuScreen_ = textEntrySession_.returnScreen;
       textEntrySession_ = TextEntrySession();
       textEntryButtons_.clear();
@@ -3790,6 +4752,7 @@ void App::commitTextEntry(uint32_t nowMs) {
       const String ssid = textEntrySession_.contextValue;
       preferences_.putString(kPrefWifiSsid, ssid);
       preferences_.putString(kPrefWifiPass, textEntrySession_.value);
+      rememberWifiNetwork(ssid, textEntrySession_.value);
       textEntrySession_ = TextEntrySession();
       textEntryButtons_.clear();
       display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), ssid);
@@ -3840,6 +4803,16 @@ void App::commitTextEntry(uint32_t nowMs) {
         display_.renderStatus(uiText(UiText::SavePoints),
                               polish("Zakladka dodana", "Bookmark added"), name);
         delay(1200);
+      }
+      flushStaleTouch();
+      if (savePointQuickSaveFromReader_) {
+        // Quick-save from the reader: go back to reading, not to the
+        // SavePointsList menu — the point was already saved, the user
+        // wants to keep reading, not browse their bookmarks.
+        savePointQuickSaveFromReader_ = false;
+        menuScreen_ = MenuScreen::Main;
+        setState(AppState::Paused, nowMs);
+        return;
       }
       openSavePointsList();
       return;
@@ -3962,13 +4935,16 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(polish("Czytanie", "Reading"));   // 1 = Reading settings
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
-    settingsMenuItems_.push_back(uiText(UiText::TypographyTune)); // 3 = Typography (always)
+    settingsMenuItems_.push_back(uiText(UiText::TypographyTune));  // 3 = Typography (always)
     settingsMenuItems_.push_back(tr(TrKey::Connectivity));         // 4
-    settingsMenuItems_.push_back(polish("Presety", "Presets"));    // 5 = Presets
+    settingsMenuItems_.push_back(polish("Tryb zaawansowany: ",     // 5 = przełącznik
+                                        "Advanced mode: ") +
+                                 onOffLabel(devModeEnabled()));
     settingsMenuItems_.push_back(tr(TrKey::AboutHelp));            // 6
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));       // 7 dev
-      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());     // 8 dev
+      settingsMenuItems_.push_back(polish("Presety", "Presets"));  // 7 dev
+      settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));       // 8 dev
+      settingsMenuItems_.push_back(firmwareUpdateMenuLabel());     // 9 dev
     }
   } else if (menuScreen_ == MenuScreen::SettingsConnectivity) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
@@ -3990,12 +4966,15 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(
         String(tr(TrKey::PhoneSync)) +
         (syncActive ? tr(TrKey::Yes) : tr(TrKey::No)));
-    // 4. Kanaly RSS
-    settingsMenuItems_.push_back(tr2(TrKey2::RssFeeds));
 #if RSVP_USB_TRANSFER_ENABLED
-    // 5. Kopiuj przez USB
+    // 4. Kopiuj przez USB
     settingsMenuItems_.push_back(uiText(UiText::UsbTransfer));
 #endif
+    // Ostatnia: Kanaly RSS — tylko w trybie zaawansowanym, bo prowadzi do
+    // ekranu Pluginów, który w trybie podstawowym jest schowany.
+    if (devModeEnabled()) {
+      settingsMenuItems_.push_back(tr2(TrKey2::RssFeeds));
+    }
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::Version)) +
@@ -4051,6 +5030,8 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Brightness) + ": " +
                                  String(currentBrightnessPercent()) + "%");
     settingsMenuItems_.push_back(String(tr(TrKey::ReaderHand)) + handednessLabel());
+    settingsMenuItems_.push_back(polish("Przycisk zapisu: ", "Save btn: ") +
+                                 onOffLabel(savePointButtonVisible_));
     settingsMenuItems_.push_back(String(tr(TrKey::FooterLabel)) +
                                  footerMetricModeLabel());
     settingsMenuItems_.push_back(String(tr(TrKey::BatteryLabel)) +
@@ -4065,8 +5046,6 @@ void App::rebuildSettingsMenuItems() {
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
     settingsMenuItems_.push_back(polish("Kolor litery: ", "Focus color: ") + focusColorLabel());
-    settingsMenuItems_.push_back(polish("Przycisk zapisu: ", "Save btn: ") +
-                                 onOffLabel(savePointButtonVisible_));
     settingsMenuItems_.push_back(polish("Pomoc (?): ", "Help (?): ") +
                                  onOffLabel(showHelpHints_));
     settingsMenuItems_.push_back(polish("Nawigacja: ", "Navigation: ") + navModeLabel());
@@ -4134,7 +5113,14 @@ void App::applyPacingSettings() {
                 static_cast<unsigned int>(pacingLongWordDelayMs_),
                 static_cast<unsigned int>(pacingComplexWordDelayMs_),
                 static_cast<unsigned int>(pacingPunctuationDelayMs_));
-  if (state_ == AppState::Menu && menuScreen_ == MenuScreen::SettingsPacing) {
+  // Defer the (potentially slow, screen-clobbering) rebuild while still on
+  // a pacing-related screen — it draws its own "Reading time..." status
+  // screen over whatever's currently showing, which on PacingDelayEditor
+  // meant the slider screen visibly flickered to that status screen and
+  // back on every single finger-release. flushPendingTimeEstimateRebuild()
+  // (called when leaving either screen) applies it once, off-screen.
+  if (state_ == AppState::Menu &&
+      (menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::PacingDelayEditor)) {
     pacingCacheDirty_ = true;
   } else {
     rebuildTimeEstimateCache();
@@ -4272,6 +5258,7 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
         Serial.printf("[app] BLE turned ON by user (name=%s)\n", ble_.deviceName().c_str());
       }
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     }
@@ -4283,14 +5270,15 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
         enterCompanionSync(nowMs);
       }
       return;
-    case kSettingsConnRssIndex:
-      runRssFeedCheck(nowMs);
-      return;
 #if RSVP_USB_TRANSFER_ENABLED
     case kSettingsConnUsbIndex:
       enterUsbTransfer(nowMs);
       return;
 #endif
+    case kSettingsConnRssIndex:
+      // Dev-only — branchuje tylko gdy menu faktycznie pokazało tę pozycję.
+      if (devModeEnabled()) runRssFeedCheck(nowMs);
+      return;
     default:
       return;
   }
@@ -4325,11 +5313,16 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
       }
       aboutLastTapMs_ = nowMs;
       aboutTapCount_++;
+      bool justUnlocked = false;
       if (!devModeEnabled() && aboutTapCount_ >= kTapsToUnlock) {
         setDevModeEnabled(true);
         aboutTapCount_ = 0;
+        justUnlocked = true;
       }
       rebuildSettingsMenuItems();
+      if (justUnlocked) {
+        showGridToast(polish("Tryb zaawansowany: ", "Advanced mode: ") + onOffLabel(true), nowMs);
+      }
       renderSettings();
       return;
     }
@@ -4343,6 +5336,10 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
       // Pokazane tylko gdy dev mode jest już włączone — pozwala wyłączyć.
       if (devModeEnabled()) {
         setDevModeEnabled(false);
+        rebuildSettingsMenuItems();
+        showGridToast(polish("Tryb zaawansowany: ", "Advanced mode: ") + onOffLabel(false), nowMs);
+        renderSettings();
+        return;
       }
       rebuildSettingsMenuItems();
       renderSettings();
@@ -4354,6 +5351,61 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
 }
 
 // ─── First-run welcome wizard ────────────────────────────────────────────────
+
+namespace {
+// Krok 0 kreatora — adres PWA zaszyty na sztywno w QR. Statyczny tekst, więc
+// generujemy go raz, przy pierwszym rysowaniu ekranu.
+constexpr const char *kInstallAppUrl = "https://grkarol.github.io/czytnik01/app/";
+// Wersja 4 = 33x33 modułów, ECC_LOW mieści 78 bajtów — URL ma ~40 znaków,
+// czyli zapas jest spory, a moduł nadal wychodzi 4 px na 172 px wysokości.
+constexpr uint8_t kInstallAppQrVersion = 4;
+constexpr uint8_t kInstallAppQrMaxSize = 33;  // 4 * 4 + 17
+bool g_installAppQrData[kInstallAppQrMaxSize * kInstallAppQrMaxSize] = {};
+uint8_t g_installAppQrSize = 0;
+bool g_installAppQrTried = false;
+
+void ensureInstallAppQr() {
+  if (g_installAppQrTried) {
+    return;
+  }
+  g_installAppQrTried = true;
+
+  QRCode qrcode;
+  uint8_t qrcodeData[qrcode_getBufferSize(kInstallAppQrVersion)];
+  const int8_t result =
+      qrcode_initText(&qrcode, qrcodeData, kInstallAppQrVersion, ECC_LOW, kInstallAppUrl);
+  if (result != 0 || qrcode.size > kInstallAppQrMaxSize) {
+    g_installAppQrSize = 0;
+    Serial.printf("[welcome] install QR failed (result=%d size=%u)\n", result,
+                  static_cast<unsigned>(result == 0 ? qrcode.size : 0));
+    return;
+  }
+  g_installAppQrSize = qrcode.size;
+  for (uint8_t y = 0; y < g_installAppQrSize; ++y) {
+    for (uint8_t x = 0; x < g_installAppQrSize; ++x) {
+      g_installAppQrData[y * g_installAppQrSize + x] = qrcode_getModule(&qrcode, x, y);
+    }
+  }
+  Serial.printf("[welcome] install QR ready %ux%u\n", static_cast<unsigned>(g_installAppQrSize),
+                static_cast<unsigned>(g_installAppQrSize));
+}
+}  // namespace
+
+void App::renderWelcomeInstallApp() {
+  ensureInstallAppQr();
+  // Tytuł idzie dużym krojem serif, który się nie zawija — stąd krótki.
+  // Zdanie właściwe leci w linijce pod nim (mała czcionka, ~37 znaków).
+  const char *title = polish("Zeskanuj kod", "Scan the code");
+  const char *line1 = polish("Zainstaluj aplikacje", "Install the app");
+  const char *hint = polish("Dotknij ekranu, by przejsc dalej",
+                            "Tap the screen to continue");
+  if (g_installAppQrSize > 0) {
+    display_.renderStatusWithQr(title, line1, g_installAppQrData, g_installAppQrSize, hint);
+  } else {
+    // Bez QR nadal pokazujemy adres — ekran nigdy nie zostaje pusty.
+    display_.renderStatus(title, kInstallAppUrl, hint);
+  }
+}
 
 void App::openWelcomeLanguage() {
   menuScreen_ = MenuScreen::WelcomeLanguage;
@@ -4535,8 +5587,8 @@ void App::renderTutorialStep() {
       break;
     case MenuScreen::TutorialStep2:
       title = polish("Tempo", "Speed");
-      desc = polish("Przytrzymaj + gora/dol = zmiana predkosci.",
-                    "Hold + up/down = change speed.");
+      desc = polish("Przytrzymaj + gora/dol: zmiana predkosci.",
+                    "Hold + up/down: change speed.");
       step = 2;
       break;
     case MenuScreen::TutorialStep3:
@@ -4553,8 +5605,8 @@ void App::renderTutorialStep() {
       break;
     case MenuScreen::TutorialStep5:
       title = polish("Pomoc ?", "Help ?");
-      desc = polish("W menu nacisnij boczny przycisk = opis.",
-                    "In menu press side button = description.");
+      desc = polish("W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis.",
+                    "In Display/Pacing settings: side button shows info.");
       step = 5;
       break;
     default:
@@ -4572,6 +5624,21 @@ void App::handleTutorialTap(uint32_t nowMs) {
     case MenuScreen::TutorialStep3: openTutorialStep4(); break;
     case MenuScreen::TutorialStep4: openTutorialStep5(); break;
     case MenuScreen::TutorialStep5: finishTutorial(nowMs); break;
+    default: break;
+  }
+}
+
+void App::previousTutorialStep(uint32_t nowMs) {
+  (void)nowMs;
+  switch (menuScreen_) {
+    // Krok 1 to początek — nie ma dokąd wrócić (tutorial bywa uruchamiany
+    // zarówno z kreatora pierwszego uruchomienia, jak i ręcznie z Ustawienia
+    // > O aplikacji, więc nie ma jednego stałego ekranu "przed" nim).
+    case MenuScreen::TutorialStep1: renderTutorialStep(); break;
+    case MenuScreen::TutorialStep2: openTutorialStep1(); break;
+    case MenuScreen::TutorialStep3: openTutorialStep2(); break;
+    case MenuScreen::TutorialStep4: openTutorialStep3(); break;
+    case MenuScreen::TutorialStep5: openTutorialStep4(); break;
     default: break;
   }
 }
@@ -4620,6 +5687,60 @@ String App::configuredWifiSsid() {
   }
   ssid.trim();
   return ssid;
+}
+
+String App::findSavedWifiPassword(const String &ssid) {
+  if (ssid.isEmpty()) {
+    return "";
+  }
+  for (size_t i = 0; i < kMaxSavedWifiNetworks; ++i) {
+    const String key = String(kPrefSavedWifiSsidPrefix) + String(i);
+    if (preferences_.getString(key.c_str(), "") == ssid) {
+      const String passKey = String(kPrefSavedWifiPassPrefix) + String(i);
+      return preferences_.getString(passKey.c_str(), "");
+    }
+  }
+  return "";
+}
+
+void App::rememberWifiNetwork(const String &ssid, const String &pass) {
+  if (ssid.isEmpty()) {
+    return;
+  }
+  // Overwrite the slot if this SSID is already remembered; otherwise use
+  // the first empty slot; otherwise evict slot 0 (oldest-ish — good enough
+  // for a handful of home/work networks, no need for real LRU tracking).
+  int targetSlot = -1;
+  for (size_t i = 0; i < kMaxSavedWifiNetworks; ++i) {
+    const String key = String(kPrefSavedWifiSsidPrefix) + String(i);
+    const String storedSsid = preferences_.getString(key.c_str(), "");
+    if (storedSsid == ssid) {
+      targetSlot = static_cast<int>(i);
+      break;
+    }
+    if (targetSlot < 0 && storedSsid.isEmpty()) {
+      targetSlot = static_cast<int>(i);
+    }
+  }
+  if (targetSlot < 0) {
+    targetSlot = 0;
+  }
+  preferences_.putString((String(kPrefSavedWifiSsidPrefix) + String(targetSlot)).c_str(), ssid);
+  preferences_.putString((String(kPrefSavedWifiPassPrefix) + String(targetSlot)).c_str(), pass);
+}
+
+void App::forgetSavedWifiNetwork(const String &ssid) {
+  if (ssid.isEmpty()) {
+    return;
+  }
+  for (size_t i = 0; i < kMaxSavedWifiNetworks; ++i) {
+    const String key = String(kPrefSavedWifiSsidPrefix) + String(i);
+    if (preferences_.getString(key.c_str(), "") == ssid) {
+      preferences_.remove(key.c_str());
+      preferences_.remove((String(kPrefSavedWifiPassPrefix) + String(i)).c_str());
+      return;
+    }
+  }
 }
 
 bool App::otaAutoCheckEnabled() {
@@ -4880,6 +6001,252 @@ void App::runRssFeedCheck(uint32_t nowMs) {
 
 String App::pacingDelayLabel(uint16_t delayMs) const { return String(delayMs) + " ms"; }
 
+uint16_t *App::pacingDelayEditorValuePtr() {
+  switch (pacingDelayEditorTarget_) {
+    case PacingDelayTarget::Complexity:
+      return &pacingComplexWordDelayMs_;
+    case PacingDelayTarget::Punctuation:
+      return &pacingPunctuationDelayMs_;
+    case PacingDelayTarget::LongWords:
+    default:
+      return &pacingLongWordDelayMs_;
+  }
+}
+
+const char *App::pacingDelayEditorPrefKey() const {
+  switch (pacingDelayEditorTarget_) {
+    case PacingDelayTarget::Complexity:
+      return kPrefPacingComplexMs;
+    case PacingDelayTarget::Punctuation:
+      return kPrefPacingPunctuationMs;
+    case PacingDelayTarget::LongWords:
+    default:
+      return kPrefPacingLongMs;
+  }
+}
+
+String App::pacingDelayEditorLabel() const {
+  switch (pacingDelayEditorTarget_) {
+    case PacingDelayTarget::Complexity:
+      return uiText(UiText::Complexity);
+    case PacingDelayTarget::Punctuation:
+      return uiText(UiText::Punctuation);
+    case PacingDelayTarget::LongWords:
+    default:
+      return uiText(UiText::LongWords);
+  }
+}
+
+void App::openPacingDelayEditor(PacingDelayTarget target, uint32_t nowMs) {
+  pacingDelayEditorTarget_ = target;
+  pacingDelayEditorTouchOnBack_ = false;
+  menuScreen_ = MenuScreen::PacingDelayEditor;
+  renderPacingDelayEditor();
+}
+
+void App::renderPacingDelayEditor() {
+  applyReaderUiOrientation();
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
+
+  DisplayManager::Button backButton;
+  backButton.icon = ui::IconId::Back;
+  currentGridButtons_.push_back(backButton);
+  currentGridItemIndices_.push_back(0);
+
+  DisplayManager::Button slider;
+  slider.kind = DisplayManager::Button::ButtonKind::Slider;
+  slider.label = pacingDelayEditorLabel();
+  slider.x = kPacingSliderX;
+  slider.y = kPacingSliderY;
+  slider.width = kPacingSliderW;
+  slider.height = kPacingSliderH;
+  slider.sliderMin = kPacingDelayMinMs;
+  slider.sliderMax = kPacingDelayMaxMs;
+  slider.sliderValue = *pacingDelayEditorValuePtr();
+  currentGridButtons_.push_back(slider);
+  currentGridItemIndices_.push_back(1);
+
+  applyBackButtonCornerLayout();
+  display_.renderButtonGrid("", currentGridButtons_, 0, 1, activeGridToastText(millis()));
+}
+
+void App::applyPacingDelayEditorTouchX(uint16_t x) {
+  DisplayManager::Button geom;
+  geom.x = kPacingSliderX;
+  geom.y = kPacingSliderY;
+  geom.width = kPacingSliderW;
+  geom.height = kPacingSliderH;
+  const ui::Rect track = DisplayManager::sliderTrackRectFor(geom);
+
+  const int clampedX = std::max(static_cast<int>(track.x),
+                                std::min(static_cast<int>(x), static_cast<int>(track.x + track.w)));
+  const float ratio = track.w > 0 ? static_cast<float>(clampedX - track.x) /
+                                        static_cast<float>(track.w)
+                                  : 0.0f;
+  const int rawValue =
+      kPacingDelayMinMs +
+      static_cast<int>(ratio * static_cast<float>(kPacingDelayMaxMs - kPacingDelayMinMs) + 0.5f);
+  const int step = std::max<int>(1, kPacingDelayStepMs);
+  int snapped = ((rawValue + step / 2) / step) * step;
+  snapped = clampIntSetting(snapped, kPacingDelayMinMs, kPacingDelayMaxMs);
+
+  uint16_t *value = pacingDelayEditorValuePtr();
+  if (*value != static_cast<uint16_t>(snapped)) {
+    *value = static_cast<uint16_t>(snapped);
+    renderPacingDelayEditor();
+  }
+}
+
+void App::handlePacingDelayEditorTouch(const TouchEvent &event, uint32_t nowMs) {
+  if (event.phase == TouchPhase::Start) {
+    pacingDelayEditorTouchOnBack_ =
+        event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1;
+    if (!pacingDelayEditorTouchOnBack_) {
+      applyPacingDelayEditorTouchX(event.x);
+    }
+    return;
+  }
+
+  if (pacingDelayEditorTouchOnBack_) {
+    if (event.phase == TouchPhase::End) {
+      pacingDelayEditorTouchOnBack_ = false;
+      if (event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1) {
+        flushPendingTimeEstimateRebuild();
+        switch (pacingDelayEditorTarget_) {
+          case PacingDelayTarget::Complexity:
+            settingsSelectedIndex_ = kSettingsPacingComplexityIndex;
+            break;
+          case PacingDelayTarget::Punctuation:
+            settingsSelectedIndex_ = kSettingsPacingPunctuationIndex;
+            break;
+          case PacingDelayTarget::LongWords:
+          default:
+            settingsSelectedIndex_ = kSettingsPacingLongWordsIndex;
+            break;
+        }
+        menuScreen_ = MenuScreen::SettingsPacing;
+        rebuildSettingsMenuItems();
+        renderSettings();
+      }
+    }
+    return;
+  }
+
+  applyPacingDelayEditorTouchX(event.x);
+
+  if (event.phase == TouchPhase::End) {
+    const uint16_t value = *pacingDelayEditorValuePtr();
+    preferences_.putUShort(pacingDelayEditorPrefKey(), value);
+    applyPacingSettings();
+    showGridToast(pacingDelayEditorLabel() + ": " + pacingDelayLabel(value), nowMs);
+    renderPacingDelayEditor();
+  }
+}
+
+String App::wpmEditorLabel() const {
+  String label = tr(TrKey::BaseSpeed);
+  while (label.endsWith(" ") || label.endsWith(":")) {
+    label.remove(label.length() - 1);
+  }
+  return label;
+}
+
+void App::openWpmEditor(uint32_t nowMs) {
+  (void)nowMs;
+  wpmEditorTouchOnBack_ = false;
+  menuScreen_ = MenuScreen::WpmEditor;
+  renderWpmEditor();
+}
+
+void App::renderWpmEditor() {
+  applyReaderUiOrientation();
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
+
+  DisplayManager::Button backButton;
+  backButton.icon = ui::IconId::Back;
+  currentGridButtons_.push_back(backButton);
+  currentGridItemIndices_.push_back(0);
+
+  DisplayManager::Button slider;
+  slider.kind = DisplayManager::Button::ButtonKind::Slider;
+  slider.label = wpmEditorLabel();
+  slider.sliderUnit = " WPM";
+  slider.x = kPacingSliderX;
+  slider.y = kPacingSliderY;
+  slider.width = kPacingSliderW;
+  slider.height = kPacingSliderH;
+  slider.sliderMin = kSettingsWpmMin;
+  slider.sliderMax = kSettingsWpmMax;
+  slider.sliderValue = reader_.wpm();
+  currentGridButtons_.push_back(slider);
+  currentGridItemIndices_.push_back(1);
+
+  applyBackButtonCornerLayout();
+  display_.renderButtonGrid("", currentGridButtons_, 0, 1, activeGridToastText(millis()));
+}
+
+void App::applyWpmEditorTouchX(uint16_t x) {
+  DisplayManager::Button geom;
+  geom.x = kPacingSliderX;
+  geom.y = kPacingSliderY;
+  geom.width = kPacingSliderW;
+  geom.height = kPacingSliderH;
+  const ui::Rect track = DisplayManager::sliderTrackRectFor(geom);
+
+  const int clampedX = std::max(static_cast<int>(track.x),
+                                std::min(static_cast<int>(x), static_cast<int>(track.x + track.w)));
+  const float ratio = track.w > 0 ? static_cast<float>(clampedX - track.x) /
+                                        static_cast<float>(track.w)
+                                  : 0.0f;
+  const int rawValue =
+      kSettingsWpmMin +
+      static_cast<int>(ratio * static_cast<float>(kSettingsWpmMax - kSettingsWpmMin) + 0.5f);
+  const int step = std::max<int>(1, kWpmSliderStepWpm);
+  int snapped = ((rawValue + step / 2) / step) * step;
+  snapped = clampIntSetting(snapped, kSettingsWpmMin, kSettingsWpmMax);
+
+  if (reader_.wpm() != static_cast<uint16_t>(snapped)) {
+    reader_.setWpm(static_cast<uint16_t>(snapped));
+    renderWpmEditor();
+  }
+}
+
+void App::handleWpmEditorTouch(const TouchEvent &event, uint32_t nowMs) {
+  if (event.phase == TouchPhase::Start) {
+    wpmEditorTouchOnBack_ =
+        event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1;
+    if (!wpmEditorTouchOnBack_) {
+      applyWpmEditorTouchX(event.x);
+    }
+    return;
+  }
+
+  if (wpmEditorTouchOnBack_) {
+    if (event.phase == TouchPhase::End) {
+      wpmEditorTouchOnBack_ = false;
+      if (event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1) {
+        settingsSelectedIndex_ = kSettingsPacingWpmIndex;
+        menuScreen_ = MenuScreen::SettingsPacing;
+        rebuildSettingsMenuItems();
+        renderSettings();
+      }
+    }
+    return;
+  }
+
+  applyWpmEditorTouchX(event.x);
+
+  if (event.phase == TouchPhase::End) {
+    preferences_.putUShort(kPrefWpm, reader_.wpm());
+    Serial.printf("[settings] WPM=%u interval=%lu ms\n", reader_.wpm(),
+                  static_cast<unsigned long>(reader_.wordIntervalMs()));
+    showGridToast(wpmEditorLabel() + ": " + String(reader_.wpm()) + " WPM", nowMs);
+    renderWpmEditor();
+  }
+}
+
 String App::firmwareUpdateMenuLabel() const {
   return tr(TrKey::FirmwareUpdate);
 }
@@ -5013,7 +6380,15 @@ String App::handednessLabel() const {
 }
 
 String App::navModeLabel() const {
-  return navMode_ == NavMode::DPad ? "D-Pad" : "Swipe";
+  switch (navMode_) {
+    case NavMode::DPad:
+      return "D-Pad";
+    case NavMode::Buttons:
+      return polish("Przyciski", "Buttons");
+    case NavMode::Swipe:
+    default:
+      return "Swipe";
+  }
 }
 
 String App::readerFontSizeLabel() const {
@@ -5274,6 +6649,7 @@ void App::openBookDetails(size_t bookIndex, uint32_t nowMs) {
   bookDetailsMenuItems_.push_back(polish("Czytaj od miejsca", "Read from place"));
   bookDetailsMenuItems_.push_back(uiText(UiText::Chapters));
   bookDetailsMenuItems_.push_back(uiText(UiText::RestartBook));
+  bookDetailsMenuItems_.push_back(polish("Usun ksiazke", "Delete book"));
 
   bookDetailsSelectedIndex_ = 3;  // "Czytaj od miejsca"
   menuScreen_ = MenuScreen::BookDetails;
@@ -5327,13 +6703,112 @@ void App::selectBookDetailsItem(uint32_t nowMs) {
       }
       openRestartConfirm();
       return;
+    case 6:  // Delete book
+      openBookDeleteConfirm(nowMs);
+      return;
     default:
       return;
   }
 }
 
 void App::renderBookDetails() {
-  display_.renderMenu(bookDetailsMenuItems_, bookDetailsSelectedIndex_);
+  renderMenuAnyMode("", bookDetailsMenuItems_, bookDetailsSelectedIndex_);
+}
+
+// ─── Book Delete Confirm ─────────────────────────────────────────────────────
+
+void App::openBookDeleteConfirm(uint32_t nowMs) {
+  (void)nowMs;
+  bookDeleteConfirmMenuItems_.clear();
+  bookDeleteConfirmMenuItems_.push_back(uiText(UiText::Back));
+
+  const String title = storage_.bookDisplayName(bookDetailsBookIndex_);
+  bookDeleteConfirmMenuItems_.push_back(polish("Usunac: ", "Delete: ") + title);
+  bookDeleteConfirmMenuItems_.push_back(polish("Nie, wroc", "No, go back"));
+  bookDeleteConfirmMenuItems_.push_back(polish("Tak, usun", "Yes, delete"));
+
+  bookDeleteConfirmSelectedIndex_ = 2;  // default to "No"
+  menuScreen_ = MenuScreen::BookDeleteConfirm;
+  renderItemGrid("", bookDeleteConfirmMenuItems_, bookDeleteConfirmSelectedIndex_);
+}
+
+void App::selectBookDeleteConfirmItem(uint32_t nowMs) {
+  switch (bookDeleteConfirmSelectedIndex_) {
+    case 0:  // Back
+    case 2:  // Nie, wroc
+      menuScreen_ = MenuScreen::BookDetails;
+      renderBookDetails();
+      return;
+    case 1:  // Title (info only)
+      return;
+    case 3:  // Tak, usun
+      executeDeleteBook(nowMs);
+      return;
+    default:
+      return;
+  }
+}
+
+void App::executeDeleteBook(uint32_t nowMs) {
+  (void)nowMs;
+  const String bookPath = storage_.bookPath(bookDetailsBookIndex_);
+  const String bookTitle = storage_.bookDisplayName(bookDetailsBookIndex_);
+
+  // Clear saved progress for this book
+  const String positionKey = bookPositionKey(bookPath);
+  const String countKey = bookWordCountKey(bookPath);
+  const String recentKey = bookRecentKey(bookPath);
+  if (preferences_.isKey(positionKey.c_str())) {
+    preferences_.remove(positionKey.c_str());
+  }
+  if (preferences_.isKey(countKey.c_str())) {
+    preferences_.remove(countKey.c_str());
+  }
+  if (preferences_.isKey(recentKey.c_str())) {
+    preferences_.remove(recentKey.c_str());
+  }
+
+  // If we're deleting the currently loaded book, close it FIRST so the file
+  // handle is released before we attempt to remove the file from SD.
+  // Note: for EPUBs, currentBookPath_ points to the converted .rsvp while
+  // bookPath is the .epub source. Check both paths.
+  const bool deletingCurrent = usingStorageBook_ &&
+      (currentBookPath_ == bookPath ||
+       currentBookIndex_ == bookDetailsBookIndex_);
+  if (deletingCurrent) {
+    activeBookStore_.close();
+    reader_.clearLoadedBook(millis());
+    usingStorageBook_ = false;
+    currentBookPath_ = "";
+    currentBookTitle_ = "";
+  }
+
+  // Delete the book file from SD
+  const bool deleted = storage_.deleteBook(bookDetailsBookIndex_);
+
+  if (deleted) {
+    display_.renderStatus(polish("Usunieto", "Deleted"), bookTitle, "");
+  } else {
+    display_.renderStatus(polish("Blad", "Error"),
+                          polish("Nie mozna usunac", "Cannot delete"), bookTitle);
+  }
+  delay(1400);
+  flushStaleTouch();
+
+  // If we deleted the current book, load another one
+  if (deletingCurrent) {
+    if (storage_.bookCount() > 0) {
+      loadBookAtIndex(0, millis());
+    }
+  } else {
+    // Update currentBookIndex_ if it shifted
+    if (bookDetailsBookIndex_ < currentBookIndex_) {
+      --currentBookIndex_;
+    }
+  }
+
+  // Return to library
+  openBookPicker(false);
 }
 
 // ─── Save Points ─────────────────────────────────────────────────────────────
@@ -5425,7 +6900,12 @@ void App::openSavePointsList() {
     const auto &sp = savePoints_[i];
     String label = sp.name.isEmpty() ? sp.bookTitle : sp.name;
     savePointMenuItems_.push_back(label);
-    savePointMenuItems_.push_back(polish("Usun: ", "Delete: ") + label);
+    // No colon in this label on purpose: a colon makes isDestructiveGridLabel()
+    // treat it as an irreversible action requiring its own arm-then-confirm
+    // tap, but this button only opens the confirm screen below — the actual
+    // delete already gets its own Tak/Nie step there (same convention as
+    // "Usun ksiazke" opening BookDeleteConfirm).
+    savePointMenuItems_.push_back(polish("Usun ", "Delete ") + label);
   }
 
   savePointSelectedIndex_ = savePoints_.empty() ? 1 : 2;
@@ -5452,15 +6932,8 @@ void App::selectSavePointItem(uint32_t nowMs) {
       return;
     }
     // Generate default name
-    const String chapter = currentChapterLabel();
-    String defaultName;
-    if (chapter.isEmpty() || chapter == currentBookTitle_) {
-      defaultName = currentBookTitle_.substring(0, 16) + " " +
-                    String(static_cast<unsigned int>(readingProgressPercent())) + "%";
-    } else {
-      defaultName = chapter.substring(0, 20) + " " +
-                    String(static_cast<unsigned int>(readingProgressPercent())) + "%";
-    }
+    const String defaultName = savePointDefaultName();
+    savePointQuickSaveFromReader_ = false;
     openTextEntry(TextEntryPurpose::SavePointName,
                   polish("Nazwij zakladke", "Name bookmark"),
                   polish("Wpisz nazwe:", "Enter name:"),
@@ -5479,12 +6952,7 @@ void App::selectSavePointItem(uint32_t nowMs) {
   }
 
   if (isDeleteButton) {
-    // Delete — confirm
-    deleteSavePoint(spIndex);
-    display_.renderStatus(uiText(UiText::SavePoints),
-                          polish("Usunieto", "Deleted"), "");
-    delay(800);
-    openSavePointsList();
+    openSavePointDeleteConfirm(spIndex, nowMs);
     return;
   }
 
@@ -5518,7 +6986,58 @@ void App::selectSavePointItem(uint32_t nowMs) {
 }
 
 void App::renderSavePointsList() {
-  display_.renderMenu(savePointMenuItems_, savePointSelectedIndex_);
+  renderMenuAnyMode("", savePointMenuItems_, savePointSelectedIndex_);
+}
+
+// ─── Save Point Delete Confirm ────────────────────────────────────────────────
+
+void App::openSavePointDeleteConfirm(size_t index, uint32_t nowMs) {
+  (void)nowMs;
+  if (index >= savePoints_.size()) return;
+  savePointDeleteTargetIndex_ = index;
+  const auto &sp = savePoints_[index];
+  const String label = sp.name.isEmpty() ? sp.bookTitle : sp.name;
+
+  savePointDeleteConfirmMenuItems_.clear();
+  savePointDeleteConfirmMenuItems_.push_back(uiText(UiText::Back));
+  savePointDeleteConfirmMenuItems_.push_back(polish("Usunac: ", "Delete: ") + label);
+  savePointDeleteConfirmMenuItems_.push_back(polish("Nie, wroc", "No, go back"));
+  savePointDeleteConfirmMenuItems_.push_back(polish("Tak, usun", "Yes, delete"));
+
+  savePointDeleteConfirmSelectedIndex_ = 2;  // default to "No"
+  menuScreen_ = MenuScreen::SavePointDeleteConfirm;
+  renderItemGrid("", savePointDeleteConfirmMenuItems_, savePointDeleteConfirmSelectedIndex_);
+}
+
+void App::selectSavePointDeleteConfirmItem(uint32_t nowMs) {
+  switch (savePointDeleteConfirmSelectedIndex_) {
+    case 0:  // Back
+    case 2:  // Nie, wroc
+      menuScreen_ = MenuScreen::SavePointsList;
+      openSavePointsList();
+      return;
+    case 1:  // Title (info only)
+      return;
+    case 3:  // Tak, usun
+      executeDeleteSavePoint(nowMs);
+      return;
+    default:
+      return;
+  }
+}
+
+void App::executeDeleteSavePoint(uint32_t nowMs) {
+  (void)nowMs;
+  deleteSavePoint(savePointDeleteTargetIndex_);
+  display_.renderStatus(uiText(UiText::SavePoints),
+                        polish("Usunieto", "Deleted"), "");
+  delay(800);
+  // The finger that tapped "Tak, usun" may still be resting on the screen
+  // when this fires; flush any stale touch before rebuilding the (now
+  // shorter) list so a lingering End event can't land on whatever button
+  // ends up under those same pixels (see flushStaleTouch()).
+  flushStaleTouch();
+  openSavePointsList();
 }
 
 // ─── Plugins ─────────────────────────────────────────────────────────────────
@@ -5559,7 +7078,11 @@ void App::selectPluginsItem(uint32_t nowMs) {
   // Back
   if (pluginsSelectedIndex_ == 0) {
     menuScreen_ = MenuScreen::Main;
-    menuSelectedIndex_ = MenuPlugins;
+    // Pluginy są osiągalne tylko z trybu zaawansowanego, gdzie
+    // renderMainMenu() rysuje je zaraz po Ustawieniach (Wyłącz jest
+    // dosunięte na sam koniec) — patrz kolejność push_back tam.
+    // +1 gdy na górze menu wisi przycisk "Update" — patrz selectMenuItem().
+    menuSelectedIndex_ = (MenuSettings + 1) + (otaUpdatePromptPending_ ? 1 : 0);
     renderMainMenu();
     return;
   }
@@ -5697,7 +7220,7 @@ void App::selectPluginLibraryItem(uint32_t nowMs) {
 }
 
 void App::renderPluginLibraryScreen() {
-  display_.renderMenu(pluginLibraryMenuItems_, pluginLibrarySelectedIndex_);
+  renderMenuAnyMode("", pluginLibraryMenuItems_, pluginLibrarySelectedIndex_);
 }
 
 void App::openPluginDetail(size_t registryIndex) {
@@ -5800,11 +7323,19 @@ void App::selectPluginDetailItem(uint32_t nowMs) {
 }
 
 void App::renderPluginDetail() {
-  display_.renderMenu(pluginDetailMenuItems_, pluginDetailSelectedIndex_);
+  renderItemGrid("", pluginDetailMenuItems_, pluginDetailSelectedIndex_);
 }
 
 void App::renderPluginsList() {
-  display_.renderMenu(pluginsMenuItems_, pluginsSelectedIndex_);
+  // No battery badge here: this screen is a dense grid (installed plugins +
+  // separator + library tile) and the corner badge visually collided with
+  // the tiles — the badge is genuinely useful on lighter screens (Main,
+  // Settings), not here.
+  if (navMode_ == NavMode::Buttons) {
+    renderItemGrid("", pluginsMenuItems_, pluginsSelectedIndex_, 0, false);
+    return;
+  }
+  renderMenuAnyMode("", pluginsMenuItems_, pluginsSelectedIndex_);
 }
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
@@ -5836,7 +7367,7 @@ void App::openPresets() {
   }
 
   presetsSelectedIndex_ = 0;
-  display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
+  renderMenuAnyMode("", settingsMenuItems_, presetsSelectedIndex_);
 }
 
 void App::selectPresetsItem(uint32_t nowMs) {
@@ -5936,7 +7467,7 @@ void App::confirmDeletePreset(size_t index, uint32_t nowMs) {
   settingsMenuItems_.push_back(polish("Usun: ", "Delete: ") + presetName);
 
   presetsSelectedIndex_ = 0;
-  display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
+  renderItemGrid("", settingsMenuItems_, presetsSelectedIndex_);
 }
 
 void App::executeDeletePreset(uint32_t nowMs) {
@@ -5958,6 +7489,7 @@ void App::executeDeletePreset(uint32_t nowMs) {
       break;
   }
 
+  flushStaleTouch();
   openPresets();
 }
 
@@ -6190,8 +7722,9 @@ void App::enterUsbTransfer(uint32_t nowMs) {
   const uint64_t sizeMb = usbTransfer_.cardSizeBytes() / (1024ULL * 1024ULL);
   Serial.printf("[app] USB transfer active (%llu MB). Eject from computer when finished.\n",
                 sizeMb);
-  display_.renderStatus(polish("< Wroc | USB", "< Back | USB"),
-                        tr2(TrKey2::CopyBooksNow), tr2(TrKey2::EjectThenHoldPwr));
+  display_.renderStatus(polish("USB | Tap = wroc", "USB | Tap = back"),
+                        polish("Podlacz kabel USB", "Connect USB cable"),
+                        polish("SD widoczna na telefonie/PC", "SD visible on phone/PC"));
 }
 
 void App::updateUsbTransfer(uint32_t nowMs) {
@@ -6914,7 +8447,6 @@ void App::openScreensaverSettings() {
 }
 
 void App::selectScreensaverSettingsItem(uint32_t nowMs) {
-  (void)nowMs;
   switch (settingsSelectedIndex_) {
     case kScreensaverSettingsBackIndex:
       settingsSelectedIndex_ = kSettingsDisplayScreensaverIndex;
@@ -6947,6 +8479,7 @@ void App::selectScreensaverSettingsItem(uint32_t nowMs) {
       }
       preferences_.putUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_));
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     case kScreensaverSettingsTimeoutIndex:
@@ -6954,6 +8487,7 @@ void App::selectScreensaverSettingsItem(uint32_t nowMs) {
           (screensaverTimeoutIndex_ + 1) % kScreensaverTimeoutCount;
       preferences_.putUChar(kPrefScreensaverTimeout, screensaverTimeoutIndex_);
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     case kScreensaverSettingsAutoOffIndex:
@@ -6961,6 +8495,7 @@ void App::selectScreensaverSettingsItem(uint32_t nowMs) {
           (screensaverAutoOffIndex_ + 1) % kScreensaverAutoOffCount;
       preferences_.putUChar(kPrefScreensaverAutoOff, screensaverAutoOffIndex_);
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     case kScreensaverSettingsSleepGuardIndex:
@@ -6968,6 +8503,7 @@ void App::selectScreensaverSettingsItem(uint32_t nowMs) {
           (screensaverSleepGuardIndex_ + 1) % kScreensaverSleepGuardCount;
       preferences_.putUChar(kPrefScreensaverSleepGuard, screensaverSleepGuardIndex_);
       rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
       return;
     case kScreensaverSettingsPreviewIndex:
@@ -7065,11 +8601,26 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
     hintText = tr(TrKey::ScreensaverHint);
   }
 
+  // Style name at the top for the first ~2s of standby: full brightness,
+  // then a quick fade — so glancing at the screensaver (including the
+  // dedicated Settings > Screensaver > Preview button) tells you which
+  // style is active instead of showing an unlabeled animation.
+  String styleLabel;
+  uint8_t styleLabelAlpha = 0;
+  if (standbyElapsed < 1600) {
+    styleLabelAlpha = 255;
+  } else if (standbyElapsed < 2000) {
+    styleLabelAlpha = static_cast<uint8_t>(255 - ((standbyElapsed - 1600UL) * 255UL) / 400UL);
+  }
+  if (styleLabelAlpha > 0) {
+    styleLabel = screensaverModeLabel();
+  }
+
   display_.renderLifeScreensaver(standbyLifeCells_, kStandbyLifeColumns, kStandbyLifeRows,
                                  standbyLifeGeneration_,
                                  standbyScreensaverDimCells_.empty() ? nullptr
                                                                       : &standbyScreensaverDimCells_,
-                                 hintText, hintAlpha);
+                                 hintText, hintAlpha, styleLabel, styleLabelAlpha);
 }
 
 void App::enterPowerOff(uint32_t nowMs) {
@@ -7107,7 +8658,7 @@ void App::enterPowerOff(uint32_t nowMs) {
     delay(10);
   }
 
-  esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(BoardConfig::PIN_PWR_BUTTON), 0);
+  BoardConfig::enablePwrButtonExt0Wakeup();
   esp_deep_sleep_start();
 }
 
@@ -7139,6 +8690,7 @@ void App::wakeFromSleep() {
   bootButtonLongPressHandled_ = false;
   powerButtonReleasedSinceBoot_ = !powerButton_.isHeld();
   powerButtonLongPressHandled_ = false;
+  powerTapPending_ = false;
   powerOffStarted_ = false;
   updateBatteryStatus(nowMs, true);
   storage_.setStatusCallback(&App::handleStorageStatus, this);
@@ -7316,20 +8868,37 @@ bool App::loadBookAtIndex(size_t index, uint32_t nowMs, bool allowLegacyPosition
   lastSavedWordIndex_ = static_cast<size_t>(-1);
   usingStorageBook_ = true;
   preferences_.putString(kPrefBookPath, currentBookPath_);
-  preferences_.putUInt(bookWordCountKey(currentBookPath_).c_str(),
-                       static_cast<uint32_t>(reader_.wordCount()));
   markBookRecent(currentBookPath_);
 
   const uint32_t savedWordIndex =
       savedWordIndexForBook(currentBookPath_, allowLegacyPositionFallback);
   if (savedWordIndex != kNoSavedWordIndex) {
-    renderStorageStatus("Opening book", currentBookTitle_.c_str(), "Restoring position", 78);
-    reader_.seekTo(savedWordIndex);
-    lastSavedWordIndex_ = reader_.currentIndex();
-    Serial.printf("[app] restored book position word=%u key=%s\n",
-                  static_cast<unsigned int>(reader_.currentIndex()),
-                  bookPositionKey(currentBookPath_).c_str());
+    // Check if saved position belongs to this exact book version by comparing
+    // word counts. If the count differs, the book content changed (e.g. a new
+    // book was uploaded to the same path) — discard the stale position.
+    const String countKey = bookWordCountKey(currentBookPath_);
+    const uint32_t savedWordCount = preferences_.getUInt(countKey.c_str(), 0);
+    const uint32_t currentWordCount = static_cast<uint32_t>(reader_.wordCount());
+    if (savedWordCount != 0 && savedWordCount != currentWordCount) {
+      // Word count mismatch — book content changed, reset position to start
+      preferences_.remove(bookPositionKey(currentBookPath_).c_str());
+      Serial.printf("[app] word count mismatch (saved=%u current=%u), resetting position for %s\n",
+                    static_cast<unsigned int>(savedWordCount),
+                    static_cast<unsigned int>(currentWordCount),
+                    currentBookPath_.c_str());
+    } else if (savedWordIndex < reader_.wordCount()) {
+      renderStorageStatus("Opening book", currentBookTitle_.c_str(), "Restoring position", 78);
+      reader_.seekTo(savedWordIndex);
+      lastSavedWordIndex_ = reader_.currentIndex();
+      Serial.printf("[app] restored book position word=%u key=%s\n",
+                    static_cast<unsigned int>(reader_.currentIndex()),
+                    bookPositionKey(currentBookPath_).c_str());
+    }
   }
+
+  // Update the word count key to the current book's word count
+  preferences_.putUInt(bookWordCountKey(currentBookPath_).c_str(),
+                       static_cast<uint32_t>(reader_.wordCount()));
 
   if (rebuildTimeEstimate) {
     rebuildTimeEstimateCache();
@@ -7456,26 +9025,34 @@ void App::renderMenu() {
       menuScreen_ == MenuScreen::WelcomePacing ||
       menuScreen_ == MenuScreen::WelcomeConnect) {
     renderSettings();
-  } else if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
-    if (navMode_ == NavMode::DPad) {
-      display_.renderMenuWithDPad(settingsMenuItems_, presetsSelectedIndex_);
-    } else {
-      display_.renderMenu(settingsMenuItems_, presetsSelectedIndex_);
-    }
+  } else if (menuScreen_ == MenuScreen::Presets) {
+    renderMenuAnyMode("", settingsMenuItems_, presetsSelectedIndex_);
+  } else if (menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
+    // 3-item confirm dialog (Back/Apply/Delete) — always the grid, like the
+    // other confirm dialogs (see renderMenuAnyMode()'s doc comment).
+    renderItemGrid("", settingsMenuItems_, presetsSelectedIndex_);
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     renderWifiNetworks();
   } else if (menuScreen_ == MenuScreen::TextEntry) {
     renderTextEntry();
   } else if (menuScreen_ == MenuScreen::TypographyTuning) {
     renderTypographyTuning();
+  } else if (menuScreen_ == MenuScreen::PacingDelayEditor) {
+    renderPacingDelayEditor();
+  } else if (menuScreen_ == MenuScreen::WpmEditor) {
+    renderWpmEditor();
   } else if (menuScreen_ == MenuScreen::BookPicker) {
     renderBookPicker();
   } else if (menuScreen_ == MenuScreen::BookDetails) {
     renderBookDetails();
+  } else if (menuScreen_ == MenuScreen::BookDeleteConfirm) {
+    renderItemGrid("", bookDeleteConfirmMenuItems_, bookDeleteConfirmSelectedIndex_);
   } else if (menuScreen_ == MenuScreen::ChapterPicker) {
     renderChapterPicker();
   } else if (menuScreen_ == MenuScreen::SavePointsList) {
     renderSavePointsList();
+  } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
+    renderItemGrid("", savePointDeleteConfirmMenuItems_, savePointDeleteConfirmSelectedIndex_);
   } else if (menuScreen_ == MenuScreen::PluginsList) {
     renderPluginsList();
   } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
@@ -7488,6 +9065,8 @@ void App::renderMenu() {
     renderSdCardRepairConfirm();
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
     renderUpdateConfirm();
+  } else if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
+    renderWelcomeInstallApp();
   } else if (menuScreen_ == MenuScreen::TutorialStep1 ||
              menuScreen_ == MenuScreen::TutorialStep2 ||
              menuScreen_ == MenuScreen::TutorialStep3 ||
@@ -7515,17 +9094,36 @@ void App::renderMainMenu() {
     }
   }
 
+  // mainMenuOrder_ mówi selectMenuItem(), który MenuItem odpowiada której
+  // pozycji na ekranie — w trybie zaawansowanym Wyłącz siedzi po Pluginach,
+  // więc kolejności nie da się już wyprowadzić ze stałego enuma.
+  mainMenuOrder_.clear();
   items.push_back(uiText(UiText::Read));
+  mainMenuOrder_.push_back(MenuRead);
   items.push_back(uiText(UiText::Library));
+  mainMenuOrder_.push_back(MenuLibrary);
   items.push_back(uiText(UiText::SavePoints));
+  mainMenuOrder_.push_back(MenuSavePoints);
   items.push_back(uiText(UiText::Settings));
-  items.push_back(uiText(UiText::Plugins));
-  items.push_back(uiText(UiText::PowerOff));
-  if (navMode_ == NavMode::DPad) {
-    display_.renderMenuWithDPad(items, menuSelectedIndex_);
-  } else {
-    display_.renderMenu(items, menuSelectedIndex_);
+  mainMenuOrder_.push_back(MenuSettings);
+  if (devModeEnabled()) {
+    items.push_back(uiText(UiText::Plugins));
+    mainMenuOrder_.push_back(MenuPlugins);
   }
+  items.push_back(uiText(UiText::PowerOff));
+  mainMenuOrder_.push_back(MenuPowerOff);
+  renderMenuAnyMode("", items, menuSelectedIndex_);
+}
+
+// Ile pozycji faktycznie rysuje renderMainMenu() — potrzebne nawigacji
+// (moveMenuSelection/D-Pad), żeby kursor nie wchodził na nieistniejący
+// wiersz i żeby zawijanie listy działało na realnej długości.
+size_t App::mainMenuItemCount() {
+  size_t count = devModeEnabled() ? MenuItemCount : MenuItemCount - 1;
+  if (otaUpdatePromptPending_) {
+    ++count;  // przycisk ">> Update" doklejany na górze
+  }
+  return count;
 }
 
 void App::renderSettings() {
@@ -7549,11 +9147,7 @@ void App::renderSettings() {
     }
   }
 
-  if (navMode_ == NavMode::DPad) {
-    display_.renderMenuWithDPad(renderItems, settingsSelectedIndex_);
-  } else {
-    display_.renderMenu(renderItems, settingsSelectedIndex_);
-  }
+  renderMenuAnyMode("", renderItems, settingsSelectedIndex_);
 }
 
 void App::renderTypographyTuning() {
@@ -7600,11 +9194,11 @@ void App::renderTypographyTuning() {
 }
 
 void App::renderBookPicker() {
-  display_.renderLibrary(bookMenuItems_, bookPickerSelectedIndex_);
+  renderMenuAnyModeLibrary(bookMenuItems_, bookPickerSelectedIndex_);
 }
 
 void App::renderChapterPicker() {
-  display_.renderMenu(chapterMenuItems_, chapterPickerSelectedIndex_);
+  renderMenuAnyMode("", chapterMenuItems_, chapterPickerSelectedIndex_);
 }
 
 void App::renderRestartConfirm() {
@@ -7614,7 +9208,8 @@ void App::renderRestartConfirm() {
   items.push_back(uiText(UiText::NoKeepPlace));
   items.push_back(uiText(UiText::YesRestart));
 
-  display_.renderMenu(items, restartConfirmSelectedIndex_ + kRestartConfirmHeaderRows);
+  renderItemGrid(items[0], items, restartConfirmSelectedIndex_ + kRestartConfirmHeaderRows,
+                 kRestartConfirmHeaderRows);
 }
 
 void App::renderSdCardRepairConfirm() {
@@ -7624,7 +9219,9 @@ void App::renderSdCardRepairConfirm() {
   items.push_back(tr2(TrKey2::NotNow));
   items.push_back(tr2(TrKey2::CreateFolders));
 
-  display_.renderMenu(items, sdCardRepairConfirmSelectedIndex_ + kSdCardRepairConfirmHeaderRows);
+  renderItemGrid(items[0], items,
+                 sdCardRepairConfirmSelectedIndex_ + kSdCardRepairConfirmHeaderRows,
+                 kSdCardRepairConfirmHeaderRows);
 }
 
 void App::renderUpdateConfirm() {
@@ -7635,7 +9232,9 @@ void App::renderUpdateConfirm() {
   items.push_back(tr2(TrKey2::SkipForNow));
   items.push_back(tr2(TrKey2::Update));
 
-  display_.renderMenu(items, updateConfirmSelectedIndex_ + kUpdateConfirmHeaderRows);
+  renderItemGrid(items[0] + ": " + items[1], items,
+                 updateConfirmSelectedIndex_ + kUpdateConfirmHeaderRows,
+                 kUpdateConfirmHeaderRows);
 }
 
 bool App::updateChapterTransition(uint32_t nowMs) {
@@ -8115,6 +9714,22 @@ String App::formatReadingTimeRemaining(uint32_t remainingMs) const {
     return String(days) + "d";
   }
   return String(days) + "d" + String(hours) + "h";
+}
+
+String App::savePointDefaultName() const {
+  const size_t count = reader_.wordCount();
+  const size_t index = count > 1 ? std::min(reader_.currentIndex(), count - 1) : 0;
+  const float percent = count > 1 ? (100.0f * static_cast<float>(index)) /
+                                        static_cast<float>(count - 1)
+                                  : 0.0f;
+  char percentBuf[8];
+  snprintf(percentBuf, sizeof(percentBuf), "%.1f%%", percent);
+
+  const String chapter = currentChapterLabel();
+  const String label = (chapter.isEmpty() || chapter == currentBookTitle_)
+                            ? currentBookTitle_.substring(0, 16)
+                            : chapter.substring(0, 20);
+  return String(percentBuf) + " " + label;
 }
 
 uint8_t App::readingProgressPercent() const {

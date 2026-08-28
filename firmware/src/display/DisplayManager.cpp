@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 
 #include <esp_heap_caps.h>
@@ -1665,11 +1666,13 @@ void DisplayManager::drawSavePointButton() {
 void DisplayManager::drawSavePointButton(int logicalWidth, int logicalHeight) {
   (void)logicalWidth;
   (void)logicalHeight;
-  // Draw "SP" text label in the top area, to the right of the "<<" hint
-  // Position: after "<<" which is at x=12, so we start at x~50
-  const int spX = 52;
-  const int spY = 8;  // same Y as "<<" (top of screen)
-  drawTinyTextAt("SP", spX, spY, focusColor(), kTinyScale);
+  // Same floppy-disk glyph as the Punkty zapisu list (ui::IconId::SavePoint)
+  // instead of a bare "SP" label, so the shortcut reads as "save" at a
+  // glance instead of needing to be learned. Positioned right of the "<<"
+  // hint, same top row.
+  const int spX = 40;
+  const int spY = 4;
+  drawIcon(ui::IconId::SavePoint, spX, spY, 16, focusColor());
 }
 
 void DisplayManager::drawFooter(const String &chapterLabel, const String &statusLabel,
@@ -3001,6 +3004,77 @@ void DisplayManager::renderMenuWithDPad(const std::vector<String> &items, size_t
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
+void DisplayManager::renderMenuScroll(const std::vector<String> &items, size_t selectedIndex) {
+  if (items.empty()) {
+    renderCenteredWord("MENU");
+    return;
+  }
+
+  if (selectedIndex >= items.size()) {
+    selectedIndex = items.size() - 1;
+  }
+
+  String renderKey = "menuscroll|";
+  renderKey += String(selectedIndex);
+  renderKey += "|b:";
+  renderKey += batteryLabel_;
+  renderKey += "|d:";
+  renderKey += String(darkMode_ ? 1 : 0);
+  renderKey += "|n:";
+  renderKey += String(nightMode_ ? 1 : 0);
+  for (const String &item : items) {
+    renderKey += "|";
+    renderKey += item;
+  }
+
+  if (!initialized_ || renderKey == lastRenderKey_) {
+    return;
+  }
+
+  lastRenderKey_ = renderKey;
+
+  const int scale = 1;
+  const int virtualWidth = kDisplayWidth;
+  const int virtualHeight = kDisplayHeight;
+
+  const size_t itemCount = items.size();
+  const size_t visibleCount =
+      std::min(itemCount, static_cast<size_t>(std::max(1, virtualHeight / kCompactMenuRowHeight)));
+  size_t firstVisible = 0;
+  if (selectedIndex >= visibleCount / 2) {
+    firstVisible = selectedIndex - visibleCount / 2;
+  }
+  if (firstVisible + visibleCount > itemCount) {
+    firstVisible = itemCount - visibleCount;
+  }
+
+  const int rowHeight = kCompactMenuRowHeight;
+  const int totalHeight = rowHeight * static_cast<int>(visibleCount);
+  int y = std::max(0, (virtualHeight - totalHeight) / 2);
+
+  clearVirtualBuffer(virtualWidth, virtualHeight);
+
+  // Bare scrollable list: no button chrome, no D-Pad side panel. A drag
+  // (handled in App::handleSwipeListGesture) shifts selectedIndex to scroll;
+  // a tap hits whichever row is under the finger.
+  constexpr int kListX = 16;
+  for (size_t row = 0; row < visibleCount; ++row) {
+    const size_t itemIndex = firstVisible + row;
+    const bool selected = itemIndex == selectedIndex;
+    const uint16_t color = selected ? focusColor() : wordColor();
+    const int maxWidth = virtualWidth - kListX - 16;
+    if (selected) {
+      fillVirtualRect(6, y + 2, 5, kTinyGlyphHeight * kTinyScale + 2, selectedBarColor());
+    }
+    drawTinyTextAt(fitTinyText(items[itemIndex], maxWidth, kTinyScale), kListX, y + 3, color,
+                   kTinyScale);
+    y += rowHeight;
+  }
+
+  drawBatteryBadge();
+  flushScaledFrame(scale, virtualWidth, virtualHeight);
+}
+
 void DisplayManager::renderLibrary(const std::vector<LibraryItem> &items, size_t selectedIndex) {
   if (items.empty()) {
     renderCenteredWord("LIBRARY");
@@ -3112,6 +3186,8 @@ void DisplayManager::renderTextEntry(const String &title, const String &prompt, 
     renderKey += String(button.accent ? 1 : 0);
     renderKey += ",";
     renderKey += String(button.active ? 1 : 0);
+    renderKey += ",";
+    renderKey += String(button.armed ? 1 : 0);
   }
 
   if (!initialized_ || renderKey == lastRenderKey_) {
@@ -3155,22 +3231,424 @@ void DisplayManager::renderTextEntry(const String &title, const String &prompt, 
     drawSerifTextScaledAt(fieldValue, fieldX + 8, fieldTextY, wordColor(), kFieldTextScalePercent);
   }
 
+  drawButtons(buttons);
+
+  drawBatteryBadge();
+  flushScaledFrame(scale, virtualWidth, virtualHeight);
+}
+
+void DisplayManager::drawIconLine(int x0, int y0, int x1, int y1, uint16_t color, int thickness) {
+  const int dx = x1 - x0;
+  const int dy = y1 - y0;
+  const int steps = std::max(std::abs(dx), std::abs(dy));
+  if (steps == 0) {
+    fillVirtualRect(x0, y0, thickness, thickness, color);
+    return;
+  }
+  for (int i = 0; i <= steps; ++i) {
+    const int x = x0 + (dx * i) / steps;
+    const int y = y0 + (dy * i) / steps;
+    fillVirtualRect(x, y, thickness, thickness, color);
+  }
+}
+
+void DisplayManager::drawFilledCircle(int cx, int cy, int radius, uint16_t color) {
+  if (radius <= 0) {
+    return;
+  }
+  for (int dy = -radius; dy <= radius; ++dy) {
+    const int span = static_cast<int>(
+        std::sqrt(static_cast<double>(radius * radius - dy * dy)));
+    fillVirtualRect(cx - span, cy + dy, span * 2 + 1, 1, color);
+  }
+}
+
+// Minimal vector placeholder glyphs for the built-in IconId set — every
+// shape is built from fillVirtualRect (axis-aligned fills) and
+// drawIconLine (linearly-interpolated strokes), the only 2D primitives
+// DisplayManager exposes. These are intentionally blocky; real RGB565
+// bitmap art (button.iconBitmap) takes priority once it exists — see
+// blitIconBitmap() below and the Button::iconBitmap comment in the header.
+void DisplayManager::drawIcon(ui::IconId id, int x, int y, int size, uint16_t color) {
+  if (id == ui::IconId::None || size <= 0) {
+    return;
+  }
+  const int s = size;
+  const int cx = x + s / 2;
+  const int cy = y + s / 2;
+
+  switch (id) {
+    case ui::IconId::Back: {
+      // "<" chevron: two strokes meeting at the left-center point.
+      const int tipX = x + s * 2 / 10;
+      drawIconLine(x + s * 7 / 10, y + s * 2 / 10, tipX, cy, color, 2);
+      drawIconLine(tipX, cy, x + s * 7 / 10, y + s * 8 / 10, color, 2);
+      break;
+    }
+    case ui::IconId::Book: {
+      // Cover outline + spine + a couple of page lines.
+      fillVirtualRect(x, y, s, 2, color);
+      fillVirtualRect(x, y + s - 2, s, 2, color);
+      fillVirtualRect(x, y, 2, s, color);
+      fillVirtualRect(x + s - 2, y, 2, s, color);
+      fillVirtualRect(cx - 1, y, 2, s, color);
+      fillVirtualRect(cx + 2, y + s * 3 / 10, s * 3 / 10, 1, color);
+      fillVirtualRect(cx + 2, y + s * 6 / 10, s * 3 / 10, 1, color);
+      break;
+    }
+    case ui::IconId::SavePoint: {
+      // Floppy disk drawn as an outline in the accent color (frame, slider
+      // notch, label rect) — no solid background fill, so it reads as "a
+      // colored card on whatever's already behind it" instead of always
+      // punching a solid accent-colored square with a black center.
+      fillVirtualRect(x, y, s, 2, color);
+      fillVirtualRect(x, y + s - 2, s, 2, color);
+      fillVirtualRect(x, y, 2, s, color);
+      fillVirtualRect(x + s - 2, y, 2, s, color);
+      fillVirtualRect(x + s * 2 / 10, y, s * 6 / 10, s * 3 / 10, color);
+      fillVirtualRect(x + s * 3 / 10, y + s * 5 / 10, s * 4 / 10, s * 4 / 10 - 2, color);
+      break;
+    }
+    case ui::IconId::Settings: {
+      // Gear: square ring, four teeth, filled hub.
+      fillVirtualRect(x + s * 2 / 10, y + s * 2 / 10, s * 6 / 10, 2, color);
+      fillVirtualRect(x + s * 2 / 10, y + s * 8 / 10 - 2, s * 6 / 10, 2, color);
+      fillVirtualRect(x + s * 2 / 10, y + s * 2 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(x + s * 8 / 10 - 2, y + s * 2 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(cx - 1, y, 2, s * 2 / 10, color);
+      fillVirtualRect(cx - 1, y + s * 8 / 10, 2, s * 2 / 10, color);
+      fillVirtualRect(x, cy - 1, s * 2 / 10, 2, color);
+      fillVirtualRect(x + s * 8 / 10, cy - 1, s * 2 / 10, 2, color);
+      fillVirtualRect(cx - 2, cy - 2, 4, 4, color);
+      break;
+    }
+    case ui::IconId::Plugin: {
+      // Puzzle piece: square body with a bump on the right edge.
+      fillVirtualRect(x, y + s * 2 / 10, s * 7 / 10, s * 6 / 10, color);
+      fillVirtualRect(x + s * 6 / 10, cy - s / 10, s * 3 / 10, s / 5, color);
+      fillVirtualRect(x + 2, y + s * 3 / 10, s * 5 / 10, s * 4 / 10, backgroundColor());
+      break;
+    }
+    case ui::IconId::Power: {
+      // Ring with a gap at top + a stem through the gap (power symbol).
+      fillVirtualRect(x, y + s * 2 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(x + s - 2, y + s * 2 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(x, y + s * 8 / 10 - 2, s, 2, color);
+      fillVirtualRect(x, y + s * 2 / 10, s * 3 / 10, 2, color);
+      fillVirtualRect(x + s * 7 / 10, y + s * 2 / 10, s * 3 / 10, 2, color);
+      fillVirtualRect(cx - 1, y, 2, s / 2, color);
+      break;
+    }
+    case ui::IconId::Wifi: {
+      // Ascending signal bars.
+      fillVirtualRect(x, y + s * 7 / 10, s * 2 / 10, s * 3 / 10, color);
+      fillVirtualRect(x + s * 4 / 10, y + s * 4 / 10, s * 2 / 10, s * 6 / 10, color);
+      fillVirtualRect(x + s * 8 / 10 - 1, y + s / 10, s * 2 / 10, s * 9 / 10, color);
+      break;
+    }
+    case ui::IconId::Play: {
+      // Right-pointing triangle, rasterized row by row.
+      const int half = s / 2;
+      for (int row = 0; row <= s; ++row) {
+        const int distFromCenter = std::abs(row - half);
+        const int w = std::max(0, (s * (half - distFromCenter)) / std::max(1, half));
+        if (w > 0) {
+          fillVirtualRect(x, y + row, w, 1, color);
+        }
+      }
+      break;
+    }
+    case ui::IconId::Delete: {
+      // Trash can: open-top body + lid + a couple of ribs.
+      fillVirtualRect(x + s / 10, y + s * 3 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(x + s * 9 / 10 - 2, y + s * 3 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(x + s / 10, y + s - 2, s * 8 / 10, 2, color);
+      fillVirtualRect(x, y + s * 2 / 10, s, 2, color);
+      fillVirtualRect(x + s * 3 / 10, y, s * 4 / 10, 2, color);
+      fillVirtualRect(cx - 1, y + s * 4 / 10, 1, s * 4 / 10, color);
+      break;
+    }
+    case ui::IconId::Reset: {
+      // Circular-arrow placeholder: ring with a gap + small arrowhead.
+      fillVirtualRect(x, y + s * 2 / 10, 2, s * 6 / 10, color);
+      fillVirtualRect(x, y + s * 8 / 10 - 2, s * 7 / 10, 2, color);
+      fillVirtualRect(x, y + s * 2 / 10, s * 7 / 10, 2, color);
+      fillVirtualRect(x + s * 7 / 10 - 2, y + s / 10, 2, s * 3 / 10, color);
+      drawIconLine(x + s * 5 / 10, y + s / 10, x + s * 8 / 10, y + s / 10, color, 2);
+      drawIconLine(x + s * 8 / 10, y + s / 10, x + s * 6 / 10, y + s * 3 / 10, color, 2);
+      break;
+    }
+    case ui::IconId::Check: {
+      drawIconLine(x + s / 10, cy, x + s * 4 / 10, y + s * 8 / 10, color, 2);
+      drawIconLine(x + s * 4 / 10, y + s * 8 / 10, x + s * 9 / 10, y + s * 2 / 10, color, 2);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void DisplayManager::blitIconBitmap(const uint16_t *bitmap, uint8_t w, uint8_t h, int x, int y) {
+  if (bitmap == nullptr || w == 0 || h == 0) {
+    return;
+  }
+  for (int row = 0; row < h; ++row) {
+    for (int col = 0; col < w; ++col) {
+      const uint16_t pixel = bitmap[row * w + col];
+      // Pure black is treated as transparent, matching the embedded-font
+      // convention elsewhere in this file — real icon art should keep true
+      // background pixels out of the glyph's silhouette.
+      if (pixel == 0x0000) {
+        continue;
+      }
+      fillVirtualRect(x + col, y + row, 1, 1, pixel);
+    }
+  }
+}
+
+ui::Rect DisplayManager::sliderTrackRectFor(const Button &button) {
+  const int trackH = 16;
+  const int marginX = 24;
+  const int trackY = static_cast<int>(button.y) + static_cast<int>(button.height) - trackH - 30;
+  const int trackX = static_cast<int>(button.x) + marginX;
+  const int trackW = std::max(10, static_cast<int>(button.width) - marginX * 2);
+  ui::Rect rect;
+  rect.x = static_cast<uint16_t>(trackX);
+  rect.y = static_cast<uint16_t>(trackY);
+  rect.w = static_cast<uint16_t>(trackW);
+  rect.h = static_cast<uint16_t>(trackH);
+  return rect;
+}
+
+void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
   for (const Button &button : buttons) {
     if (button.width <= 2 || button.height <= 2) {
       continue;
     }
 
-    const uint16_t borderColor =
-        button.active ? selectedBarColor() : (button.accent ? focusColor() : dimColor());
+    if (button.kind == Button::ButtonKind::Separator) {
+      const int lineY = static_cast<int>(button.y) + static_cast<int>(button.height) / 2;
+      fillVirtualRect(button.x + 4, lineY, std::max(0, static_cast<int>(button.width) - 8), 1,
+                      dimColor());
+      continue;
+    }
+
+    if (button.kind == Button::ButtonKind::Slider) {
+      // Setting name, small and dim, at the top.
+      const int maxWidth = std::max(0, static_cast<int>(button.width) - 16);
+      const String labelText = fitTinyText(button.label, maxWidth, kTinyScale);
+      const int labelY = static_cast<int>(button.y) + 4;
+      drawTinyTextCentered(labelText, labelY, dimColor(), kTinyScale, button.width, button.x);
+
+      // Big numeric readout — the whole point of this widget is that the
+      // current value is legible without reading a cramped grid label.
+      const int valueScale = 4;
+      const String valueText = String(button.sliderValue) + button.sliderUnit;
+      const int valueW = measureTinyTextWidth(valueText, valueScale);
+      const int valueX = static_cast<int>(button.x) +
+                         std::max(0, (static_cast<int>(button.width) - valueW) / 2);
+      const int valueY = labelY + kTinyGlyphHeight * kTinyScale + 10;
+      drawTinyTextAt(valueText, valueX, valueY, focusColor(), valueScale);
+
+      const ui::Rect track = sliderTrackRectFor(button);
+      fillVirtualRect(track.x, track.y, track.w, track.h, dimColor());
+      fillVirtualRect(track.x + 1, track.y + 1, std::max(0, static_cast<int>(track.w) - 2),
+                      std::max(0, static_cast<int>(track.h) - 2), backgroundColor());
+      const int range = static_cast<int>(button.sliderMax) - static_cast<int>(button.sliderMin);
+      const int clampedValue =
+          std::max(static_cast<int>(button.sliderMin),
+                   std::min(static_cast<int>(button.sliderValue), static_cast<int>(button.sliderMax)));
+      const int filledW = range > 0 ? (static_cast<int>(track.w) * (clampedValue - button.sliderMin)) / range : 0;
+      if (filledW > 2) {
+        fillVirtualRect(track.x + 1, track.y + 1, filledW - 2, std::max(0, static_cast<int>(track.h) - 2),
+                        blendOverBackground(focusColor(), nightMode_ ? 128 : 60));
+      }
+      const int knobR = static_cast<int>(track.h) / 2 + 2;
+      const int knobCx = static_cast<int>(track.x) +
+                         (range > 0 ? (static_cast<int>(track.w) * (clampedValue - button.sliderMin)) / range : 0);
+      drawFilledCircle(knobCx, static_cast<int>(track.y) + static_cast<int>(track.h) / 2, knobR, focusColor());
+
+      // Min/max endpoints under the track so the range reads at a glance.
+      const String minText = String(button.sliderMin);
+      const String maxText = String(button.sliderMax);
+      const int endY = static_cast<int>(track.y) + static_cast<int>(track.h) + 4;
+      drawTinyTextAt(minText, track.x, endY, dimColor(), kTinyScale);
+      const int maxTextW = measureTinyTextWidth(maxText, kTinyScale);
+      drawTinyTextAt(maxText, static_cast<int>(track.x) + static_cast<int>(track.w) - maxTextW, endY,
+                     dimColor(), kTinyScale);
+      continue;
+    }
+
+    // Armed (tap-to-confirm) buttons get a full solid fill in the focus
+    // color, not just a tinted border — it has to read as unmistakably
+    // different from the merely-selected state at a glance, since a second
+    // tap is required to actually commit the action.
+    //
+    // Toggle/Cycle buttons don't use the whole-tile "active" tint at all:
+    // their on/off or which-of-N state is already communicated by the
+    // track+knob or dot row drawn below the label, so tinting the tile too
+    // just made an "on" toggle look like it was mid-press (same accent
+    // color as the armed/press-flash fill, just less saturated), reading as
+    // "did I already tap this by accident?".
+    const bool tileActiveTint = button.active && button.kind != Button::ButtonKind::Toggle &&
+                                 button.kind != Button::ButtonKind::Cycle;
+    const uint16_t borderColor = button.armed
+                                      ? focusColor()
+                                      : (tileActiveTint ? selectedBarColor()
+                                                        : (button.accent ? focusColor() : dimColor()));
     uint16_t fillColor = backgroundColor();
-    if (button.active) {
+    if (button.armed) {
+      fillColor = focusColor();
+    } else if (tileActiveTint) {
       fillColor = blendOverBackground(borderColor, nightMode_ ? 128 : 40);
     } else if (button.accent) {
       fillColor = blendOverBackground(borderColor, nightMode_ ? 92 : 24);
     }
+    const uint16_t labelColor = button.armed ? backgroundColor() : wordColor();
 
     fillVirtualRect(button.x, button.y, button.width, button.height, borderColor);
     fillVirtualRect(button.x + 1, button.y + 1, button.width - 2, button.height - 2, fillColor);
+
+    // Icon-only button (no label): the back-corner arrow and anything else
+    // that reads better as a glyph than as text. Nothing else to draw.
+    if (button.label.isEmpty() && button.icon != ui::IconId::None) {
+      const int iconSize =
+          std::min(static_cast<int>(button.width), static_cast<int>(button.height)) - 8;
+      if (iconSize > 0) {
+        const int iconX = static_cast<int>(button.x) + (static_cast<int>(button.width) - iconSize) / 2;
+        const int iconY = static_cast<int>(button.y) + (static_cast<int>(button.height) - iconSize) / 2;
+        if (button.iconBitmap != nullptr) {
+          blitIconBitmap(button.iconBitmap, button.iconW, button.iconH, iconX, iconY);
+        } else {
+          drawIcon(button.icon, iconX, iconY, iconSize, labelColor);
+        }
+      }
+      continue;
+    }
+
+    // Icon + label combo: a small glyph on the left, the label filling the
+    // rest of the button — for buttons whose label is real, variable data
+    // (e.g. a save-point name) that can't be blanked out the way Back's
+    // icon-only corner button is (see App::annotateSavePointsButton()).
+    if (button.icon != ui::IconId::None && button.kind == Button::ButtonKind::Rect &&
+        button.sublabel.isEmpty()) {
+      const int iconSize = std::min(static_cast<int>(button.height) - 8, 16);
+      const int iconX = static_cast<int>(button.x) + 4;
+      const int iconY = static_cast<int>(button.y) + (static_cast<int>(button.height) - iconSize) / 2;
+      if (iconSize > 0) {
+        if (button.iconBitmap != nullptr) {
+          blitIconBitmap(button.iconBitmap, button.iconW, button.iconH, iconX, iconY);
+        } else {
+          // Icon in the accent color, not plain text color — a neutral
+          // tile with a colored glyph reads as "this is the save/book/
+          // settings icon", not an inverted accent-fill block. Skipped
+          // only while armed, where labelColor is already flipped to
+          // backgroundColor() for contrast against the solid focus fill —
+          // an accent-colored icon there would vanish into that same fill.
+          const uint16_t iconColor = button.armed ? labelColor : focusColor();
+          drawIcon(button.icon, iconX, iconY, iconSize, iconColor);
+        }
+      }
+      const int textAreaX = iconX + iconSize + 4;
+      const int maxWidth =
+          std::max(0, static_cast<int>(button.x) + static_cast<int>(button.width) - textAreaX - 4);
+      const String label = fitTinyText(button.label, maxWidth, kTinyScale);
+      const int labelW = measureTinyTextWidth(label, kTinyScale);
+      const int textX = textAreaX + std::max(0, (maxWidth - labelW) / 2);
+      const int textY = static_cast<int>(button.y) +
+                        std::max(1, (static_cast<int>(button.height) - kTinyGlyphHeight * kTinyScale) / 2);
+      drawTinyTextAt(label, textX, textY, labelColor, kTinyScale);
+      continue;
+    }
+
+    if (button.kind == Button::ButtonKind::Toggle) {
+      // Label on top, a track+knob switch below it — the knob sits on the
+      // right in focusColor when on, left and dim when off, so the state
+      // reads from the knob position alone (not just a text swap).
+      //
+      // The label runs at half the usual tile-label scale: these widgets
+      // stack label + track in one tile (less headroom than a plain
+      // button), and Polish setting names ("Bateria w czytniku") routinely
+      // ran past the tile width at the normal scale and got "..."-cut —
+      // dropping to scale 1 buys roughly double the characters before that
+      // kicks in.
+      constexpr int kToggleLabelScale = 1;
+      const int maxWidth = std::max(0, static_cast<int>(button.width) - 8);
+      const String labelText = fitTinyText(button.label, maxWidth, kToggleLabelScale);
+      const int labelW = measureTinyTextWidth(labelText, kToggleLabelScale);
+      const int trackW = std::min(maxWidth, 34);
+      const int trackH = 12;
+      const int trackX = static_cast<int>(button.x) + (static_cast<int>(button.width) - trackW) / 2;
+      const int contentH = (kTinyGlyphHeight * kToggleLabelScale) + 4 + trackH;
+      int drawY = static_cast<int>(button.y) + std::max(1, (static_cast<int>(button.height) - contentH) / 2);
+      const int labelX = static_cast<int>(button.x) +
+                         std::max(0, (static_cast<int>(button.width) - labelW) / 2);
+      drawTinyTextAt(labelText, labelX, drawY, labelColor, kToggleLabelScale);
+      drawY += (kTinyGlyphHeight * kToggleLabelScale) + 4;
+      const uint16_t trackColor = button.active ? focusColor() : dimColor();
+      fillVirtualRect(trackX, drawY, trackW, trackH, trackColor);
+      fillVirtualRect(trackX + 1, drawY + 1, trackW - 2, trackH - 2, backgroundColor());
+      const int knobR = trackH / 2 - 1;
+      const int knobCx = button.active ? (trackX + trackW - knobR - 2) : (trackX + knobR + 2);
+      drawFilledCircle(knobCx, drawY + trackH / 2, knobR, trackColor);
+      continue;
+    }
+
+    if (button.kind == Button::ButtonKind::Cycle && button.cycleCount > 0) {
+      // Label on top, one dot per possible value below it — the lit dot is
+      // the current value, so "which of N states am I in" is legible
+      // without re-reading the text after every tap. Same half-scale label
+      // as Toggle above, same reason (long Polish labels + a widget stacked
+      // underneath eating into the tile's headroom).
+      constexpr int kCycleLabelScale = 1;
+      const int maxWidth = std::max(0, static_cast<int>(button.width) - 8);
+      const String labelText = fitTinyText(button.label, maxWidth, kCycleLabelScale);
+      const int labelW = measureTinyTextWidth(labelText, kCycleLabelScale);
+      const int dotR = 3;
+      const int dotGap = 8;
+      const int dotsW = static_cast<int>(button.cycleCount - 1) * dotGap;
+      const int contentH = (kTinyGlyphHeight * kCycleLabelScale) + 6 + dotR * 2;
+      int drawY = static_cast<int>(button.y) + std::max(1, (static_cast<int>(button.height) - contentH) / 2);
+      const int labelX = static_cast<int>(button.x) +
+                         std::max(0, (static_cast<int>(button.width) - labelW) / 2);
+      drawTinyTextAt(labelText, labelX, drawY, labelColor, kCycleLabelScale);
+      drawY += (kTinyGlyphHeight * kCycleLabelScale) + 6 + dotR;
+      int dotX = static_cast<int>(button.x) + (static_cast<int>(button.width) - dotsW) / 2;
+      for (uint8_t i = 0; i < button.cycleCount; ++i) {
+        if (i == button.cycleState) {
+          drawFilledCircle(dotX, drawY, dotR, focusColor());
+        } else {
+          drawFilledCircle(dotX, drawY, dotR, dimColor());
+          drawFilledCircle(dotX, drawY, dotR - 1, backgroundColor());
+        }
+        dotX += dotGap;
+      }
+      continue;
+    }
+
+    if (!button.sublabel.isEmpty()) {
+      // Library-style two-line button: title on top, dimmed subtitle below.
+      const int maxWidth = std::max(0, static_cast<int>(button.width) - 8);
+      const String titleText = fitTinyText(button.label, maxWidth, kTinyScale);
+      const String subtitleText = fitTinyText(button.sublabel, maxWidth, kTinyScale);
+      const int lineH = kTinyGlyphHeight * kTinyScale;
+      const int titleY =
+          static_cast<int>(button.y) + std::max(1, static_cast<int>(button.height) / 2 - lineH - 1);
+      const int subtitleY = static_cast<int>(button.y) + static_cast<int>(button.height) / 2 + 1;
+      const int titleX = static_cast<int>(button.x) +
+                         std::max(0, (static_cast<int>(button.width) -
+                                      measureTinyTextWidth(titleText, kTinyScale)) /
+                                         2);
+      const int subtitleX = static_cast<int>(button.x) +
+                            std::max(0, (static_cast<int>(button.width) -
+                                         measureTinyTextWidth(subtitleText, kTinyScale)) /
+                                            2);
+      const uint16_t titleColor = button.armed ? labelColor : (button.active ? focusColor() : wordColor());
+      drawTinyTextAt(titleText, titleX, titleY, titleColor, kTinyScale);
+      drawTinyTextAt(subtitleText, subtitleX, subtitleY,
+                     blendOverBackground(titleColor, kLibrarySubtitleAlpha), kTinyScale);
+      continue;
+    }
 
     const bool singleAsciiLetter =
         button.label.length() == 1 &&
@@ -3189,12 +3667,12 @@ void DisplayManager::renderTextEntry(const String &title, const String &prompt, 
         static_cast<int>(button.y) +
         std::max(1, (static_cast<int>(button.height) - labelHeight) / 2);
     if (singleAsciiLetter) {
-      drawSerifTextScaledAt(label, textX, textY, wordColor(), labelScalePercent);
+      drawSerifTextScaledAt(label, textX, textY, labelColor, labelScalePercent);
       continue;
     }
 
     if (!label.isEmpty()) {
-      drawSerifTextScaledAt(label, textX, textY, wordColor(), labelScalePercent);
+      drawSerifTextScaledAt(label, textX, textY, labelColor, labelScalePercent);
       continue;
     }
 
@@ -3208,10 +3686,144 @@ void DisplayManager::renderTextEntry(const String &title, const String &prompt, 
                           std::max(1, (static_cast<int>(button.height) -
                                        (kTinyGlyphHeight * fallbackScale)) /
                                           2);
-    drawTinyTextAt(fallbackLabel, fallbackX, fallbackY, wordColor(), fallbackScale);
+    drawTinyTextAt(fallbackLabel, fallbackX, fallbackY, labelColor, fallbackScale);
+  }
+}
+
+void DisplayManager::renderButtonGrid(const String &title, const std::vector<Button> &buttons,
+                                      size_t pageIndex, size_t pageCount,
+                                      const String &toastText, bool showBatteryBadge,
+                                      bool dotsOnLeft) {
+  String renderKey = "grid|";
+  renderKey += showBatteryBadge ? "1" : "0";
+  renderKey += dotsOnLeft ? "1" : "0";
+  renderKey += title;
+  renderKey += "|p:";
+  renderKey += String(pageIndex);
+  renderKey += "/";
+  renderKey += String(pageCount);
+  renderKey += "|b:";
+  renderKey += batteryLabel_;
+  renderKey += "|d:";
+  renderKey += String(darkMode_ ? 1 : 0);
+  renderKey += "|n:";
+  renderKey += String(nightMode_ ? 1 : 0);
+  for (const Button &button : buttons) {
+    renderKey += "|";
+    renderKey += button.label;
+    renderKey += "~";
+    renderKey += button.sublabel;
+    renderKey += "@";
+    renderKey += String(button.x);
+    renderKey += ",";
+    renderKey += String(button.y);
+    renderKey += ",";
+    renderKey += String(button.width);
+    renderKey += ",";
+    renderKey += String(button.height);
+    renderKey += ",";
+    renderKey += String(button.accent ? 1 : 0);
+    renderKey += ",";
+    renderKey += String(button.active ? 1 : 0);
+    renderKey += ",";
+    renderKey += String(button.armed ? 1 : 0);
+    renderKey += ",";
+    renderKey += String(static_cast<int>(button.icon));
+    renderKey += ",";
+    renderKey += String(static_cast<int>(button.kind));
+    renderKey += ",";
+    renderKey += String(button.cycleState);
+    renderKey += ",";
+    renderKey += String(button.cycleCount);
+    renderKey += ",";
+    renderKey += String(button.sliderValue);
+  }
+  renderKey += "|t:";
+  renderKey += toastText;
+
+  if (!initialized_ || renderKey == lastRenderKey_) {
+    return;
   }
 
-  drawBatteryBadge();
+  lastRenderKey_ = renderKey;
+
+  const int scale = 1;
+  const int virtualWidth = kDisplayWidth;
+  const int virtualHeight = kDisplayHeight;
+
+  clearVirtualBuffer(virtualWidth, virtualHeight);
+
+  // The Back control used to be this static, non-interactive "<" glyph
+  // plus a separate full-size grid button doing the real navigating —
+  // now App builds one small tappable Back button (Button::icon =
+  // IconId::Back) at this same corner and it's drawn by drawButtons()
+  // below, so there is exactly one Back affordance, and it's the one you
+  // can actually hit.
+  if (!title.isEmpty()) {
+    drawTinyTextCentered(fitTinyText(title, virtualWidth - 40, 1), 4, footerColor(), 1);
+  }
+
+  drawButtons(buttons);
+
+  if (pageCount > 1 && dotsOnLeft) {
+    // Vertical dot column along the left edge (SavePointsList's one page
+    // per bookmark) instead of the usual bottom-centered row — see
+    // App::renderItemGrid()'s gridPagesVertically_ comment. Squeezes the
+    // gap, not the dot size, when there are enough pages that the column
+    // would otherwise run off the bottom of a 172px-tall screen.
+    const int dotSize = 3;
+    const int topClear = 34;   // stay clear of the corner Back button
+    const int bottomClear = 4;
+    const int maxDotAreaH = virtualHeight - topClear - bottomClear;
+    int dotGap = 4;
+    int totalHeight = static_cast<int>(pageCount) * dotSize + static_cast<int>(pageCount - 1) * dotGap;
+    if (totalHeight > maxDotAreaH && pageCount > 1) {
+      dotGap = std::max(1, (maxDotAreaH - static_cast<int>(pageCount) * dotSize) /
+                               static_cast<int>(pageCount - 1));
+      totalHeight = static_cast<int>(pageCount) * dotSize + static_cast<int>(pageCount - 1) * dotGap;
+    }
+    int dotY = topClear + std::max(0, (maxDotAreaH - totalHeight) / 2);
+    const int dotX = 3;
+    for (size_t i = 0; i < pageCount; ++i) {
+      const uint16_t color = (i == pageIndex) ? focusColor() : dimColor();
+      fillVirtualRect(dotX, dotY, dotSize, dotSize, color);
+      dotY += dotSize + dotGap;
+    }
+  } else if (pageCount > 1) {
+    const int dotSize = 4;
+    const int dotGap = 5;
+    const int totalWidth =
+        static_cast<int>(pageCount) * dotSize + static_cast<int>(pageCount - 1) * dotGap;
+    int dotX = std::max(0, (virtualWidth - totalWidth) / 2);
+    const int dotY = virtualHeight - dotSize - 2;
+    for (size_t i = 0; i < pageCount; ++i) {
+      const uint16_t color = (i == pageIndex) ? focusColor() : dimColor();
+      fillVirtualRect(dotX, dotY, dotSize, dotSize, color);
+      dotX += dotSize + dotGap;
+    }
+  }
+
+  // Grid toast: full, untruncated text of whatever a Toggle/Cycle button's
+  // tap just changed (its own label is too small to show it — see
+  // App::showGridToast()). Drawn last so it sits on top of everything;
+  // centered and narrower than the screen so it never covers the Back
+  // corner button.
+  if (!toastText.isEmpty()) {
+    const int barW = std::min(320, virtualWidth - 20);
+    const int barH = 18;
+    const int barX = (virtualWidth - barW) / 2;
+    const int barY = 2;
+    fillVirtualRect(barX, barY, barW, barH, focusColor());
+    const String fitted = fitTinyText(toastText, barW - 8, kTinyScale);
+    const int textW = measureTinyTextWidth(fitted, kTinyScale);
+    const int textX = barX + std::max(0, (barW - textW) / 2);
+    const int textY = barY + std::max(0, (barH - kTinyGlyphHeight * kTinyScale) / 2);
+    drawTinyTextAt(fitted, textX, textY, backgroundColor(), kTinyScale);
+  }
+
+  if (showBatteryBadge) {
+    drawBatteryBadge();
+  }
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
@@ -3236,8 +3848,10 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
                               line1Y + kTinyGlyphHeight * kTinyScale + 10);
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
-  // Back arrow hint in top-left
-  drawTinyTextAt("<", 4, 4, dimColor(), kTinyScale);
+  // Back arrow hint in top-left — vector chevron (same drawIcon() path as
+  // every other corner Back button), not a tiny bitmap-font glyph, so it
+  // can't come out looking like an unrelated fallback character.
+  drawIcon(ui::IconId::Back, 4, 4, 16, dimColor());
   drawWordLine(title, titleY, wordColor());
   if (!line1.isEmpty()) {
     drawTinyTextCentered(line1, line1Y, dimColor(), kTinyScale);
@@ -3251,7 +3865,7 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
 }
 
 void DisplayManager::renderStatusWithQr(const String &title, const String &line1,
-                                        const bool *qrData, uint8_t qrSize) {
+                                        const bool *qrData, uint8_t qrSize, const String &hint) {
   if (!initialized_ || qrData == nullptr || qrSize == 0) {
     return;
   }
@@ -3320,8 +3934,7 @@ void DisplayManager::renderStatusWithQr(const String &title, const String &line1
     drawTinyTextCentered(line1, line1Y, focusColor(), kTinyScale, textAreaWidth, textAreaX);
   }
 
-  // Instrukcja "Zeskanuj telefonem"
-  const String hint = "Scan to connect";
+  // Trzecia linijka — instrukcja dla użytkownika (patrz parametr `hint`).
   drawTinyTextCentered(hint, line2Y, dimColor(), kTinyScale, textAreaWidth, textAreaX);
 
   // Wskazówka nawigacji
@@ -3382,7 +3995,8 @@ void DisplayManager::renderProgress(const String &title, const String &line1, co
 void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, uint16_t columns,
                                            uint16_t rows, uint32_t generation,
                                            const std::vector<uint32_t> *dimCells,
-                                           const String &hintText, uint8_t hintAlpha) {
+                                           const String &hintText, uint8_t hintAlpha,
+                                           const String &styleLabel, uint8_t styleLabelAlpha) {
   const String renderKey = "life|" + String(generation) + "|" + String(columns) + "|" +
                            String(rows) + "|d:" + String(darkMode_ ? 1 : 0) + "|n:" +
                            String(nightMode_ ? 1 : 0) + "|w0:" +
@@ -3395,7 +4009,8 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
                            String((dimCells == nullptr || dimCells->empty())
                                       ? 0UL
                                       : static_cast<unsigned long>((*dimCells)[0])) +
-                           "|h:" + String(hintAlpha);
+                           "|h:" + String(hintAlpha) + "|s:" + styleLabel + "|sa:" +
+                           String(styleLabelAlpha);
   if (!initialized_ || renderKey == lastRenderKey_ || columns == 0 || rows == 0) {
     return;
   }
@@ -3452,6 +4067,15 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
     const uint16_t hintColor = panelColor(blendOverBackground(wordColor(), hintAlpha));
     const int hintY = virtualHeight - 20;
     drawTinyTextCentered(hintText, hintY, hintColor, 1);
+  }
+
+  // Style name, shown briefly at the top when the screensaver first starts
+  // (fades out — see App::updateStandbyScreensaver()) so entering it (e.g.
+  // via the Settings > Screensaver Preview button) tells you which style
+  // you're looking at instead of just an unlabeled animation.
+  if (styleLabel.length() > 0 && styleLabelAlpha > 0) {
+    const uint16_t styleColor = panelColor(blendOverBackground(wordColor(), styleLabelAlpha));
+    drawTinyTextCentered(styleLabel, 4, styleColor, 1);
   }
 
   flushScaledFrame(scale, virtualWidth, virtualHeight);

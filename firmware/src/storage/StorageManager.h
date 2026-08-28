@@ -52,6 +52,7 @@ class StorageManager {
                      size_t *loadedIndex = nullptr);
   DiagnosticResult diagnoseSdCard();
   bool repairSdCardFolders();
+  bool deleteBook(size_t index);
 
  private:
   bool ensureIndexedBook(const String &path, BookMetadata &metadata, bool rsvpFormat,

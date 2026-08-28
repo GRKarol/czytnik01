@@ -36,9 +36,11 @@ void pulseUsbReconnect() {
     return;
   }
 
+  // Disconnect for longer to ensure Android/phone re-enumerates as MSC
   tud_disconnect();
-  delay(120);
+  delay(500);
   tud_connect();
+  delay(500);
 #endif
 }
 

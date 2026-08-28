@@ -10,6 +10,12 @@
 #include <vector>
 
 #include "sync/WifiQrCode.h"
+#include "ble/BleApi.h"
+#include <qrcode.h>
+
+// Global BLE API pointer — set by App during init, used by CompanionSyncManager
+// to generate BLE pairing QR code instead of WiFi QR.
+BleApi *g_bleApiPtr = nullptr;
 
 #ifndef RSVP_FIRMWARE_VERSION
 #define RSVP_FIRMWARE_VERSION "dev"
@@ -235,7 +241,7 @@ function html(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 function renderList(id,items){$(id).innerHTML=items.length?items.map(b=>'<div class="item"><div class="item-info"><div class="item-title">'+html(b.title||b.name)+'</div><div class="item-meta">'+html([b.author,bytes(b.bytes),b.progressPercent!=null?b.progressPercent+'%':''].filter(Boolean).join(' · '))+'</div></div><button class="danger" data-delete="'+html(encodeURIComponent(b.name))+'">Usuń</button></div>').join(''):'<span class="muted">Pusto — wgraj pierwszą książkę.</span>';document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>delBook(decodeURIComponent(b.dataset.delete)))}
 async function refresh(){try{const info=await api('/api/info');$('infoBox').innerHTML='<strong>'+html(info.name)+'</strong><br><span class="muted">'+html(info.mode)+' · '+html(info.networkSsid||'')+'</span>';const data=await api('/api/books');renderList('booksList',data.books);status('Połączono z czytnikiem.')}catch(e){status('Problem z połączeniem: '+e.message)}}
 async function delBook(name){if(!confirm('Usunąć „'+decodeURIComponent(name)+'"?'))return;try{await api('/api/books?name='+encodeURIComponent(name),{method:'DELETE'});await refresh();status('Usunięto.')}catch(e){status('Błąd usuwania: '+e.message)}}
-async function uploadPicked(inputId,category){const f=$(inputId).files[0];if(!f){status('Najpierw wybierz plik.');return}try{const fd=new FormData();fd.append('file',f,f.name);await api('/api/books?name='+encodeURIComponent(f.name)+'&category='+encodeURIComponent(category),{method:'POST',body:fd});$(inputId).value='';await refresh();status('Wgrano: '+f.name)}catch(e){status('Błąd uploadu: '+e.message)}}
+async function uploadPicked(inputId,category){const f=$(inputId).files[0];if(!f){status('Najpierw wybierz plik.');return}const fd=new FormData();fd.append('file',f,f.name);const xhr=new XMLHttpRequest();xhr.open('POST','/api/books?name='+encodeURIComponent(f.name)+'&category='+encodeURIComponent(category));xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.round(e.loaded*100/e.total);status('Wysylanie: '+pct+'% ('+Math.round(e.loaded/1024)+'/'+Math.round(e.total/1024)+' KB) - '+f.name)}};xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){$(inputId).value='';refresh();status('Wgrano: '+f.name)}else{status('Blad uploadu: '+xhr.responseText)}};xhr.onerror=()=>{status('Polaczenie zerwane podczas uploadu.')};status('Wysylanie: 0% - '+f.name+' ('+bytes(f.size)+')');xhr.send(fd)}
 function val(id){const e=$(id);return e.type==='checkbox'?e.checked:e.value}
 function setVal(id,v){const e=$(id);if(!e)return;if(e.type==='checkbox')e.checked=!!v;else e.value=v}
 function updateLabels(){['wpm','longWordMs','complexWordMs','punctuationMs','brightnessIndex','fontSizeIndex','tracking','anchorPercent','guideWidth','guideGap','scrollFontSize','scrollLineSpacing','scrollMargin'].forEach(id=>{const l=$(id+'Value');if(l)l.textContent=$(id).value+(id==='wpm'?' WPM':id.includes('Ms')?' ms':'')})}
@@ -818,12 +824,36 @@ bool CompanionSyncManager::startAccessPoint() {
   networkMode_ = NetworkMode::AccessPoint;
   Serial.printf("[sync] softAP ssid=%s ip=%s\n", ssid.c_str(), ipToString(WiFi.softAPIP()).c_str());
 
-  // Generuj QR kod — WiFi format (kompatybilność z telefonami do połączenia)
-  qrSize_ = WifiQrCode::generate(ssid, "", qrData_, 64);
-  if (qrSize_ > 0) {
-    Serial.printf("[sync] QR code generated: %dx%d\n", qrSize_, qrSize_);
-  } else {
-    Serial.println("[sync] QR code generation failed");
+  // Generate BLE pairing QR code (Protocol v2: flower://pair?t=...&n=...)
+  // instead of WiFi QR (old format). App scans this to get token + BLE name.
+  {
+    extern BleApi *g_bleApiPtr;  // set by App during BLE init
+    String qrPayload;
+    if (g_bleApiPtr && g_bleApiPtr->hasToken()) {
+      qrPayload = g_bleApiPtr->qrPayload();
+    } else {
+      // Fallback: WiFi QR if no BLE token available
+      qrPayload = "WIFI:T:nopass;S:" + ssid + ";;";
+    }
+    // Generate QR using qrcode library directly
+    QRCode qrcode;
+    // Use version 6 for longer payloads (flower://pair URL is ~90 chars)
+    uint8_t qrcodeData[qrcode_getBufferSize(6)];
+    int8_t result = qrcode_initText(&qrcode, qrcodeData, 6, ECC_LOW, qrPayload.c_str());
+    if (result == 0 && qrcode.size <= 64) {
+      qrSize_ = qrcode.size;
+      for (uint8_t y = 0; y < qrSize_; y++) {
+        for (uint8_t x = 0; x < qrSize_; x++) {
+          qrData_[y * qrSize_ + x] = qrcode_getModule(&qrcode, x, y);
+        }
+      }
+      Serial.printf("[sync] BLE pairing QR generated: %dx%d payload=%s\n",
+                    qrSize_, qrSize_, qrPayload.substring(0, 30).c_str());
+    } else {
+      qrSize_ = 0;
+      Serial.printf("[sync] QR generation failed (result=%d size=%d)\n", result,
+                    result == 0 ? qrcode.size : 0);
+    }
   }
 
   return true;

@@ -9,53 +9,72 @@
 class App;
 
 /**
- * Minimalne API BLE peripheral dla Flowera. GATT service z dwoma
- * characteristics:
+ * BleApi v2 — Flower GATT peripheral with chunked framing protocol.
  *
- *   CMD   (write)  — telefon wysyła JSON Lines: {"cmd":"ping"}\n
- *   EVENT (notify) — urządzenie odsyła JSON Lines: {"ev":"pong"}\n
+ * Architecture:
+ *   Service UUID: f10e7e10-f10e-7e10-f10e-7e10f10e7e10
+ *   CMD char (write):  f10e7e11-... — phone → reader, JSON Lines + chunked framing
+ *   EVT char (notify): f10e7e12-... — reader → phone, JSON Lines + chunked framing
  *
- * UUID-y współdzielone z PWA (`src/shared/config.ts`).
+ * Chunked Framing (1-byte header per BLE packet):
+ *   bit 0 (MORE):  1 = more chunks follow, 0 = last chunk
+ *   bit 1 (START): 1 = first chunk of new message, 0 = continuation
+ *   0x02 = single complete message
+ *   0x03 = first of multi-chunk
+ *   0x01 = middle chunk
+ *   0x00 = last chunk
  *
- * Duże transfery (książki, OTA) zostają w torze WiFi (Companion Sync).
- * BLE ~50 kB/s, dla 2 MB firmware to ~40 s — nie ma sensu. BLE służy
- * krótkim komendom: status, settings get/set, toggle dev mode.
+ * Auth: persistent token in NVS. Phone must send {cmd:auth, token:...}
+ * before any other command is accepted.
  *
- * Cały moduł jest "feature-flagged" — `FLOWER_BLE_ENABLED=0` daje stub
- * z pustymi metodami, dzięki czemu nawet bez NimBLE w lib_deps firmware
- * się zbuduje (przydatne do bisectowania jak coś się posypie).
+ * Always-on: BLE advertising runs whenever reader is not in deep sleep.
+ * No "Sync mode" required for daily use — only for initial QR pairing.
  */
 class BleApi {
  public:
   BleApi();
   ~BleApi();
 
-  /// Inicjalizuje NimBLE stack, rejestruje service, zaczyna advertising.
-  /// `app` jest używane do dispatchu komend (np. set theme/lang).
-  /// Idempotentne — drugie wywołanie nie robi nic.
+  /// Initialize NimBLE stack, register service, start advertising.
+  /// Idempotent — second call is no-op.
   void begin(App *app);
 
-  /// Zatrzymuje advertising + zamyka aktywne połączenia + zwalnia stack.
+  /// Stop advertising, disconnect clients, deinit NimBLE.
   void stop();
 
-  /// **MUSI być wywoływane z głównego loopa App** (App::update). Drenuje
-  /// zakolejkowane komendy BLE — przetwarza je w kontekście main taska,
-  /// dzięki czemu mutacje App::settingsMenuItems_, NVS, itp. są
-  /// bezpieczne (BLE host task tylko parsuje + kolejkuje).
+  /// Must be called from main loop (App::update). Drains queued BLE
+  /// commands and processes them in main task context.
   void update();
 
   bool isActive() const;
   bool isConnected() const;
-  String deviceName() const;  // np. "Flower-A1B2C3"
+  bool isAuthenticated() const;
+  String deviceName() const;  // e.g. "Flower-A1B2C3"
 
-  /// Wysyła event JSON do połączonego klienta. Bezpieczne wywołanie
-  /// nawet bez klienta — wtedy ignoruje.
+  /// Send a JSON event to connected+authenticated client.
+  /// Handles chunked framing automatically. Safe to call without client.
   void emitEvent(const String &json);
 
-  /// Atomic test-and-clear: czy stan połączenia BLE zmienił się odkąd
-  /// ostatnio sprawdziliśmy? App używa tego żeby odświeżyć menu
-  /// SettingsConnectivity gdy pojawi się / zniknie klient.
+  /// Atomic test-and-clear: has BLE connection state changed?
   bool consumeMenuDirty();
+
+  // --- Token management ---
+
+  /// Generate a new auth token (32 random hex bytes) and save to NVS.
+  /// Called when user enters "Pair with phone" screen.
+  void generateNewToken();
+
+  /// Get current token (for QR display). Empty if never generated.
+  String currentToken() const;
+
+  /// Check if a token has been generated (device has been set up for pairing).
+  bool hasToken() const;
+
+  /// Clear token from NVS (factory reset / "forget pairing").
+  void clearToken();
+
+  /// Build QR payload string: flower://pair?t=<token>&n=<deviceName>
+  String qrPayload() const;
 
  private:
 #if FLOWER_BLE_ENABLED

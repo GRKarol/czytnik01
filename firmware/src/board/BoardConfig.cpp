@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <algorithm>
 #include <driver/gpio.h>
+#include <driver/rtc_io.h>
 #include <esp_sleep.h>
 
 namespace BoardConfig {
@@ -68,13 +69,26 @@ void holdBatteryPowerIfAvailable() {
     return;
   }
 
-  if (!configureTca9554OutputPin(TCA9554_PIN_SYS_EN, true)) {
-    Serial.println("[board] TCA9554 not detected; battery power hold not configured");
-    return;
+  // On a cold battery power-on the TCA9554 rail has just been latched by the
+  // PWR button and may not have settled yet, so the very first I2C
+  // transaction here can race the chip's own power-on reset and fail. A USB
+  // boot doesn't hit this because the rail has already been stable for a
+  // while. Retry a few times with a short backoff before giving up, instead
+  // of failing permanently on the first attempt.
+  constexpr int kMaxAttempts = 5;
+  constexpr uint32_t kRetryDelayMs = 5;
+  for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+    if (configureTca9554OutputPin(TCA9554_PIN_SYS_EN, true)) {
+      gBatteryPowerHoldEnabled = true;
+      Serial.println("[board] Battery power hold enabled");
+      return;
+    }
+    if (attempt < kMaxAttempts) {
+      delay(kRetryDelayMs);
+    }
   }
 
-  gBatteryPowerHoldEnabled = true;
-  Serial.println("[board] Battery power hold enabled");
+  Serial.println("[board] TCA9554 not detected; battery power hold not configured");
 }
 
 void enableBatteryAdcPathIfAvailable() {
@@ -142,9 +156,16 @@ uint8_t batteryPercentForVoltage(float voltage) {
 
 }  // namespace
 
-void begin() {
+bool begin() {
   pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
   pinMode(PIN_PWR_BUTTON, INPUT_PULLUP);
+  // A genuine power-on only happens while PWR is physically held (the
+  // battery rail needs the button closed long enough for the SYS_EN latch
+  // below to take over). Plugging the USB cable in just to charge powers
+  // the board without anyone touching PWR, so this read is what tells the
+  // two cases apart for the caller.
+  const bool pwrButtonHeld = digitalRead(PIN_PWR_BUTTON) == LOW;
+
   gpio_deep_sleep_hold_dis();
   gpio_hold_dis(static_cast<gpio_num_t>(PIN_LCD_BACKLIGHT));
   pinMode(PIN_LCD_BACKLIGHT, OUTPUT);
@@ -157,12 +178,31 @@ void begin() {
   Wire1.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   Wire1.setClock(300000);
   Wire1.setTimeOut(10);
-  holdBatteryPowerIfAvailable();
+  if (pwrButtonHeld) {
+    holdBatteryPowerIfAvailable();
+  }
   disableBatteryAdcPathIfAvailable();
 
   pinMode(PIN_BATTERY_ADC, INPUT);
   analogReadResolution(12);
   analogSetPinAttenuation(PIN_BATTERY_ADC, ADC_11db);
+
+  return pwrButtonHeld;
+}
+
+// pinMode(INPUT_PULLUP) only configures the digital GPIO matrix pull. During
+// deep sleep, RTC-capable pins (like PWR) are handed off to the RTC domain,
+// which has its own separate pull configuration that pinMode() never
+// touches. Without this, the pin can float while asleep, making ext0
+// wakeup unreliable (missed presses, or spurious wakes). Must be called
+// every time right before arming ext0 wakeup on this pin.
+void enablePwrButtonExt0Wakeup() {
+  const gpio_num_t pin = static_cast<gpio_num_t>(PIN_PWR_BUTTON);
+  rtc_gpio_init(pin);
+  rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+  rtc_gpio_pullup_en(pin);
+  rtc_gpio_pulldown_dis(pin);
+  esp_sleep_enable_ext0_wakeup(pin, 0);
 }
 
 void lightSleepUntilBootButton() {
