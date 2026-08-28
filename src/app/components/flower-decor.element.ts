@@ -2,45 +2,50 @@ import { LitElement, css, html, svg } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 /**
- * Dekoracyjne kwiatki rozsiane po tle — proste, geometryczne, w kolorach
- * Flower (niebieski / żółty / róż). Czysto wizualne, pointer-events: none.
+ * Motyw dmuchawca w rogu tła — jeden cienki, monochromatyczny rysunek
+ * kreskowy, tak jak na flower.theworkpc.com (nie kolorowe kwiatki
+ * porozrzucane po ekranie). Czysto wizualne, pointer-events: none.
  */
 @customElement("flower-decor")
 export class FlowerDecor extends LitElement {
   @property({ type: String }) density: "low" | "medium" | "high" = "medium";
 
-  render() {
-    const blossoms: Array<{ x: number; y: number; r: number; rot: number; tone: string; o: number }> =
-      [
-        { x: 8, y: 12, r: 18, rot: 14, tone: "var(--bloom-yellow)", o: 0.55 },
-        { x: 86, y: 8, r: 14, rot: -22, tone: "var(--bloom-pink)", o: 0.55 },
-        { x: 18, y: 78, r: 22, rot: 38, tone: "var(--bloom-pink)", o: 0.45 },
-        { x: 78, y: 64, r: 16, rot: -8, tone: "var(--bloom-yellow)", o: 0.5 },
-        { x: 50, y: 92, r: 12, rot: 0, tone: "var(--bloom-blue)", o: 0.4 },
-      ];
+  private dandelion(cx: number, cy: number, r: number, seeds: number) {
+    const stems = Array.from({ length: seeds }, (_, i) => (360 / seeds) * i + (cx + i * 7));
+    return svg`
+      <g transform="translate(${cx} ${cy})">
+        ${stems.map((a) => {
+          const len = r * (0.62 + ((a * 13) % 30) / 100);
+          return svg`
+            <g transform="rotate(${a})">
+              <line x1="0" y1="0" x2="0" y2="${-len}" stroke="currentColor" stroke-width="0.35"/>
+              <circle cx="0" cy="${-len}" r="0.9" fill="currentColor"/>
+            </g>
+          `;
+        })}
+        <circle r="1.6" fill="currentColor"/>
+      </g>
+    `;
+  }
 
-    const picks =
+  render() {
+    const corners: Array<{ x: number; y: number; r: number; seeds: number }> =
       this.density === "low"
-        ? blossoms.slice(0, 2)
+        ? [{ x: 6, y: 96, r: 26, seeds: 18 }]
         : this.density === "high"
-          ? blossoms
-          : blossoms.slice(0, 4);
+          ? [
+              { x: 6, y: 96, r: 30, seeds: 22 },
+              { x: 96, y: 6, r: 16, seeds: 14 },
+              { x: 92, y: 70, r: 12, seeds: 10 },
+            ]
+          : [
+              { x: 6, y: 98, r: 28, seeds: 20 },
+              { x: 97, y: 4, r: 14, seeds: 12 },
+            ];
 
     return html`
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        ${picks.map(
-          (b) => svg`
-          <g transform="translate(${b.x} ${b.y}) rotate(${b.rot})" opacity=${b.o}>
-            ${[0, 72, 144, 216, 288].map(
-              (a) => svg`
-              <ellipse cx="0" cy="${-b.r * 0.36}" rx="${b.r * 0.22}" ry="${b.r * 0.36}"
-                       fill=${b.tone} transform="rotate(${a})"/>
-            `,
-            )}
-            <circle r="${b.r * 0.16}" fill="var(--bloom-center)"/>
-          </g>
-        `,
-        )}
+        ${corners.map((c) => this.dandelion(c.x, c.y, c.r, c.seeds))}
       </svg>
     `;
   }
@@ -52,10 +57,8 @@ export class FlowerDecor extends LitElement {
       pointer-events: none;
       overflow: hidden;
       z-index: 0;
-      --bloom-yellow: #e3b355;
-      --bloom-pink: #d1889b;
-      --bloom-blue: #5db4ee;
-      --bloom-center: #e3b355;
+      color: var(--ink-soft, #6b665d);
+      opacity: 0.16;
     }
     svg {
       width: 100%;
