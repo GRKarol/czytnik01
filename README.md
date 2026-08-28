@@ -84,6 +84,24 @@ Workflow: [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 Aby Pages serwowało pod ścieżką `/czytnik01/`, build w CI ustawia
 `VITE_BASE=/czytnik01/`. Lokalnie domyślnie używa `/`.
 
+## Workflow: staging vs release
+
+Dwa zdalne repo, dwie różne role:
+
+| Remote    | Adres                              | Widoczność | Rola                                    |
+| --------- | ----------------------------------- | ---------- | ---------------------------------------- |
+| `staging` | GRKarol/czytnik01-staging            | prywatne   | codzienna praca, testy, buildy .apk debug |
+| `origin`  | GRKarol/czytnik01                    | publiczne  | jedyne źródło GitHub Pages i release'ów   |
+
+Cała bieżąca praca (redesign, nowe funkcje, poprawki) idzie na `staging`.
+Push na `origin/main` uruchamia realny deploy na GitHub Pages — dlatego
+tam trafia wyłącznie to, co Karol już przetestował i wyraźnie potwierdził.
+
+Zasada dla Claude: nigdy nie pushować na `origin` samodzielnie. Domyślny cel
+push to `staging`. Push na `origin` (main albo release/*) wymaga jawnego
+"tak, wypchnij na główne repo" od Karola — nie wystarczy samo "wygląda dobrze"
+czy zaakceptowanie buildu .apk, bo to tylko test na staging.
+
 ## Plan dalszej pracy
 
 Patrz [`docs/architecture.md`](docs/architecture.md) i
