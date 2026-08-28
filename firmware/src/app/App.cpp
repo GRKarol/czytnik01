@@ -3,6 +3,7 @@
 #include <SD_MMC.h>
 #include <esp_sleep.h>
 #include <esp_log.h>
+#include <esp_ota_ops.h>
 #include <qrcode.h>
 #include <WiFi.h>
 #include <algorithm>
@@ -993,6 +994,13 @@ void App::begin() {
   state_ = AppState::Booting;
   lastActivityMs_ = millis();
   Serial.println("[app] READY splash active");
+
+  // Boot reached a confirmed-healthy point (display drawn, storage/reader
+  // init ran) — cancel the OTA rollback timer for this image. If a bad OTA
+  // update crashes before ever reaching here, the image stays in
+  // PENDING_VERIFY state and the bootloader reverts to the previous working
+  // partition on the next reset instead of leaving the reader bricked.
+  esp_ota_mark_app_valid_cancel_rollback();
 }
 
 void App::update(uint32_t nowMs) {
