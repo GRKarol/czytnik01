@@ -123,6 +123,18 @@ export class LibraryPanel extends LitElement {
         >
           ${isFav ? "★" : "☆"}
         </button>
+        ${b.progressPercent
+          ? html`
+              <button
+                class="reset"
+                @click=${() => this.onResetProgress(b)}
+                aria-label="Zresetuj postęp czytania"
+                title="Zresetuj postęp czytania"
+              >
+                ⟲
+              </button>
+            `
+          : ""}
         <button class="del" @click=${() => this.onDelete(b)} aria-label="Usuń">✕</button>
       </li>
     `;
@@ -192,6 +204,16 @@ export class LibraryPanel extends LitElement {
     if (!confirm(`Usunąć „${b.title || b.name}"?`)) return;
     try {
       await deviceApi.deleteBook(b.name);
+      await this.refresh();
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+    }
+  };
+
+  private onResetProgress = async (b: Book) => {
+    if (!confirm(`Zresetować postęp czytania „${b.title || b.name}"?`)) return;
+    try {
+      await deviceApi.setBookPosition(b.name, { wordIndex: 0 });
       await this.refresh();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
@@ -382,6 +404,21 @@ export class LibraryPanel extends LitElement {
     }
     .fav.active {
       color: #e0a30d;
+    }
+    .reset {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(20, 136, 216, 0.1);
+      color: var(--accent);
+      font-size: 1rem;
+      cursor: pointer;
+      flex: 0 0 auto;
+      transition: transform 0.1s ease;
+    }
+    .reset:active {
+      transform: scale(0.88) rotate(-40deg);
     }
     .del {
       width: 32px;

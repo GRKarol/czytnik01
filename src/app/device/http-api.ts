@@ -24,6 +24,12 @@ import {
   type Typeface,
   type FooterMetric,
   type BatteryLabel,
+  type WifiStationConfig,
+  type PluginInfo,
+  type DeviceLogTail,
+  type BookPosition,
+  type DeviceCapabilities,
+  type DeviceInfo,
 } from "./api";
 
 const LANG_INDEX: Language[] = ["pl", "en", "de", "es", "fr", "it"];
@@ -252,6 +258,95 @@ export class HttpDeviceApi implements DeviceApi {
       xhr.onerror = () => reject(new Error("Połączenie z urządzeniem zerwane przed końcem OTA."));
       xhr.send(fd);
     });
+  }
+
+  async getWifiStation(): Promise<WifiStationConfig> {
+    return this.json<WifiStationConfig>(await fetch(this.url("/api/wifi")));
+  }
+
+  async setWifiStation(ssid: string, password: string): Promise<WifiStationConfig> {
+    const res = await fetch(this.url("/api/wifi"), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ssid, password }),
+    });
+    return this.json<WifiStationConfig>(res);
+  }
+
+  async clearWifiStation(): Promise<WifiStationConfig> {
+    return this.json<WifiStationConfig>(await fetch(this.url("/api/wifi"), { method: "DELETE" }));
+  }
+
+  async getRssFeeds(): Promise<string[]> {
+    const data = await this.json<{ feeds: string[] }>(await fetch(this.url("/api/rss-feeds")));
+    return data.feeds;
+  }
+
+  async setRssFeeds(feeds: string[]): Promise<string[]> {
+    const res = await fetch(this.url("/api/rss-feeds"), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ feeds }),
+    });
+    const data = await this.json<{ feeds: string[] }>(res);
+    return data.feeds;
+  }
+
+  async getPlugins(): Promise<PluginInfo[]> {
+    const data = await this.json<{ plugins: PluginInfo[] }>(await fetch(this.url("/api/plugins")));
+    return data.plugins;
+  }
+
+  async setWifiTimeoutSeconds(seconds?: number): Promise<number> {
+    const res = await fetch(this.url("/api/power/wifi-timeout"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(seconds == null ? {} : { timeout: seconds }),
+    });
+    const data = await this.json<{ timeoutSeconds: number }>(res);
+    return data.timeoutSeconds;
+  }
+
+  async getCapabilities(): Promise<DeviceCapabilities> {
+    const data = await this.json<{
+      api: number;
+      firmwareVersion: string;
+      features: Omit<DeviceCapabilities, "api" | "firmwareVersion">;
+    }>(await fetch(this.url("/api/capabilities")));
+    return { api: data.api, firmwareVersion: data.firmwareVersion, ...data.features };
+  }
+
+  async getDeviceInfo(): Promise<DeviceInfo> {
+    const data = await this.json<{ info: DeviceInfo }>(await fetch(this.url("/api/state")));
+    return data.info;
+  }
+
+  async getLogTail(n = 50): Promise<DeviceLogTail> {
+    return this.json<DeviceLogTail>(
+      await fetch(this.url(`/api/log/tail?n=${encodeURIComponent(String(n))}`)),
+    );
+  }
+
+  async clearLog(): Promise<void> {
+    await this.json(await fetch(this.url("/api/log"), { method: "DELETE" }));
+  }
+
+  async getBookPosition(name: string): Promise<BookPosition> {
+    return this.json<BookPosition>(
+      await fetch(this.url(`/api/books/position?name=${encodeURIComponent(name)}`)),
+    );
+  }
+
+  async setBookPosition(
+    name: string,
+    patch: { wordIndex?: number; wordCount?: number },
+  ): Promise<BookPosition> {
+    const res = await fetch(this.url(`/api/books/position?name=${encodeURIComponent(name)}`), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    return this.json<BookPosition>(res);
   }
 }
 

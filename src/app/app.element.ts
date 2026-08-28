@@ -14,7 +14,13 @@ import "./components/settings-panel.element";
 import "./components/onboarding.element";
 import "./components/pwa-install-dialog.element";
 import "./components/tutorial-wizard.element";
-import { deviceApi, onDeviceApiChange, setDeviceApi, type DeviceSettings } from "./device/api";
+import {
+  deviceApi,
+  onDeviceApiChange,
+  setDeviceApi,
+  type DeviceSettings,
+  type PluginInfo,
+} from "./device/api";
 import { HttpDeviceApi, pingDevice } from "./device/http-api";
 import { getTutorialStatus } from "./onboarding/onboarding-store";
 
@@ -113,6 +119,13 @@ export class CzytnikApp extends LitElement {
   @state() private showAdvanced = false;
   @state() private devMode = false;
   @state() private showTutorial = false;
+
+  @state() private plugins: PluginInfo[] = [];
+  @state() private pluginsLoading = false;
+  @state() private pluginsError = "";
+  @state() private rssFeeds: string[] = [];
+  @state() private rssBusy = false;
+  @state() private newFeedUrl = "";
 
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
@@ -278,12 +291,17 @@ export class CzytnikApp extends LitElement {
       <button
         class=${this.view === v ? "active" : ""}
         ?disabled=${disabled}
-        @click=${() => (this.view = v)}
+        @click=${() => this.switchView(v)}
       >
         <span class="ico">${ico}</span>
         ${label}
       </button>
     `;
+  }
+
+  private switchView(v: View): void {
+    this.view = v;
+    if (v === "plugins") void this.loadPlugins();
   }
 
   private renderView() {
@@ -442,7 +460,7 @@ export class CzytnikApp extends LitElement {
             <strong>Konwerter</strong>
             <span>EPUB · PDF · MOBI · TXT → .rsvp</span>
           </button>
-          <button class="tile" @click=${() => (this.view = "plugins")}>
+          <button class="tile" @click=${() => this.switchView("plugins")}>
             <span class="tile-ico">${iconPlug(28)}</span>
             <strong>Pluginy</strong>
             <span>Klepsydra, dyktafon i więcej.</span>
@@ -483,18 +501,41 @@ export class CzytnikApp extends LitElement {
   }
 
   private renderPlugins() {
+    const focusTimer = this.plugins.find((p) => p.id === "focus-timer");
+    const rss = this.plugins.find((p) => p.id === "rss");
     return html`
       <section class="card">
         <h3>${iconPlug(22)} Pluginy</h3>
         <p class="muted">
-          Dodatkowe funkcje, które możesz wgrać na urządzenie — klepsydra, dyktafon, odtwarzacz
-          muzyki, itd. Nowe pluginy pojawiają się tu sukcesywnie.
+          Dodatkowe funkcje wgrane na urządzeniu. Nowe pluginy pojawiają się tu sukcesywnie.
         </p>
-        <div class="plugin-list">
-          ${this.pluginCard("Klepsydra", "Sesja czytania z timerem 25/5.", "Wkrótce")}
-          ${this.pluginCard("Dyktafon", "Notatki głosowe podczas czytania.", "Wkrótce")}
-          ${this.pluginCard("Odtwarzacz muzyki", "Cicha muzyka tła z SD.", "Wkrótce")}
-        </div>
+        ${this.pluginsError ? html`<p class="error">${this.pluginsError}</p>` : ""}
+        ${!this.connected
+          ? html`<p class="muted">Połącz się z czytnikiem, żeby zobaczyć realny stan pluginów.</p>`
+          : this.pluginsLoading
+            ? html`<p class="muted">Wczytuję…</p>`
+            : html`
+                <div class="plugin-list">
+                  ${this.pluginCard(
+                    "Klepsydra (Focus Timer)",
+                    "Sesja czytania z timerem.",
+                    focusTimer?.active ? "Aktywny" : "Niedostępny",
+                  )}
+                  ${this.pluginCard(
+                    "RSS Feeds",
+                    "Artykuły z Twoich subskrypcji trafiają na czytnik.",
+                    rss?.active ? "Aktywny" : "Niedostępny",
+                  )}
+                  ${this.pluginCard(
+                    "Dyktafon",
+                    "Notatki głosowe podczas czytania — nie jest jeszcze zarejestrowany w firmware.",
+                    "Niedostępne",
+                  )}
+                  ${this.pluginCard("Odtwarzacz muzyki", "Cicha muzyka tła z SD.", "Wkrótce")}
+                </div>
+
+                ${rss?.active ? this.renderRssEditor() : ""}
+              `}
       </section>
     `;
   }
@@ -507,10 +548,90 @@ export class CzytnikApp extends LitElement {
           <strong>${name}</strong>
           <span>${tagline}</span>
         </div>
-        <span class=${`badge ${badge === "Gotowy" ? "ok" : ""}`}>${badge}</span>
+        <span class=${`badge ${badge === "Aktywny" ? "ok" : ""}`}>${badge}</span>
       </div>
     `;
   }
+
+  private renderRssEditor() {
+    return html`
+      <div class="rss-editor">
+        <strong>Kanały RSS</strong>
+        ${this.rssFeeds.length === 0
+          ? html`<p class="muted">Brak dodanych kanałów.</p>`
+          : html`<ul class="rss-list">
+              ${this.rssFeeds.map(
+                (url, i) => html`
+                  <li>
+                    <span>${url}</span>
+                    <button
+                      class="del"
+                      ?disabled=${this.rssBusy}
+                      @click=${() => this.removeRssFeed(i)}
+                      aria-label="Usuń kanał"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                `,
+              )}
+            </ul>`}
+        <div class="rss-add">
+          <input
+            type="url"
+            placeholder="https://przyklad.pl/rss.xml"
+            .value=${this.newFeedUrl}
+            @input=${(e: Event) => (this.newFeedUrl = (e.target as HTMLInputElement).value)}
+          />
+          <button class="cta ghost small" ?disabled=${this.rssBusy} @click=${this.addRssFeed}>
+            Dodaj
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private async loadPlugins(): Promise<void> {
+    if (!this.connected) return;
+    this.pluginsLoading = true;
+    this.pluginsError = "";
+    try {
+      this.plugins = await deviceApi.getPlugins();
+      this.rssFeeds = await deviceApi.getRssFeeds();
+    } catch (err) {
+      this.pluginsError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.pluginsLoading = false;
+    }
+  }
+
+  private addRssFeed = async () => {
+    const url = this.newFeedUrl.trim();
+    if (!url) return;
+    this.rssBusy = true;
+    this.pluginsError = "";
+    try {
+      this.rssFeeds = await deviceApi.setRssFeeds([...this.rssFeeds, url]);
+      this.newFeedUrl = "";
+    } catch (err) {
+      this.pluginsError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.rssBusy = false;
+    }
+  };
+
+  private removeRssFeed = async (index: number) => {
+    this.rssBusy = true;
+    this.pluginsError = "";
+    try {
+      const next = this.rssFeeds.filter((_, i) => i !== index);
+      this.rssFeeds = await deviceApi.setRssFeeds(next);
+    } catch (err) {
+      this.pluginsError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.rssBusy = false;
+    }
+  };
 
   private renderUpdates() {
     return html`
@@ -1132,6 +1253,72 @@ export class CzytnikApp extends LitElement {
     .badge.ok {
       background: rgba(45, 190, 117, 0.18);
       color: var(--ok);
+    }
+
+    .cta.small {
+      padding: 9px 16px;
+      font-size: 0.85rem;
+      box-shadow: none;
+    }
+
+    .rss-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper-tint);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    .rss-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .rss-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid var(--line);
+    }
+    .rss-list li span {
+      font-size: 0.82rem;
+      color: var(--ink-soft);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rss-add {
+      display: flex;
+      gap: 8px;
+    }
+    .rss-add input {
+      flex: 1 1 auto;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      font: 0.88rem ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink);
+    }
+    .del {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(228, 77, 101, 0.1);
+      color: var(--err);
+      font-size: 0.8rem;
+      cursor: pointer;
     }
 
     .settings-list {

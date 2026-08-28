@@ -12,6 +12,8 @@ import {
   type Typeface,
   type FooterMetric,
   type BatteryLabel,
+  type WifiStationConfig,
+  type DeviceInfo,
 } from "../device/api";
 import { setLang } from "../i18n/index";
 import { deviceLangToSupported } from "../i18n/lang-map";
@@ -126,6 +128,15 @@ const icoGlobe = svg`
   </svg>
 `;
 const icoCode = ico("M8 5L3 12l5 7M16 5l5 7-5 7");
+const icoWifi = svg`
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 8.5a17 17 0 0 1 20 0"/>
+    <path d="M5 12a13 13 0 0 1 14 0"/>
+    <path d="M8.5 15.5a8 8 0 0 1 7 0"/>
+    <circle cx="12" cy="19" r="1.2" fill="currentColor"/>
+  </svg>
+`;
 
 function legend(icon: unknown, text: string) {
   return html`<span class="legend-ico">${icon}</span><span class="legend-text">${text}</span>`;
@@ -142,6 +153,20 @@ export class SettingsPanel extends LitElement {
   private tapResetTimer: number | null = null;
   private unsubApi: (() => void) | null = null;
 
+  // ─── Sieć: stacja WiFi + auto-off ────────────────────────────────────────
+  @state() private wifi: WifiStationConfig | null = null;
+  @state() private wifiSsidInput = "";
+  @state() private wifiPasswordInput = "";
+  @state() private wifiBusy = false;
+  @state() private wifiError = "";
+  @state() private wifiTimeoutMinutes = 0;
+
+  // ─── Diagnostyka + logi (developer) ──────────────────────────────────────
+  @state() private deviceInfo: DeviceInfo | null = null;
+  @state() private logLines: string[] = [];
+  @state() private showLogs = false;
+  @state() private diagBusy = false;
+
   private get effectiveMode(): ReaderMode {
     const m = this.settings?.readerMode;
     return m === "scroll" ? "scroll" : "rsvp";
@@ -150,7 +175,11 @@ export class SettingsPanel extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     void this.load();
-    this.unsubApi = onDeviceApiChange(() => void this.load());
+    void this.loadNetwork();
+    this.unsubApi = onDeviceApiChange(() => {
+      void this.load();
+      void this.loadNetwork();
+    });
   }
 
   disconnectedCallback(): void {
@@ -368,6 +397,69 @@ export class SettingsPanel extends LitElement {
         </label>
       </fieldset>
 
+      <fieldset class="group">
+        <legend>${legend(icoWifi, "Sieć")}</legend>
+        <p class="muted small">
+          Podłącz czytnik do domowego WiFi — nie będzie już wymagał trybu AP, żeby zsynchronizować
+          się z internetem (aktualizacje, RSS).
+        </p>
+        ${this.wifi?.configured
+          ? html`<p class="muted small">
+              Zapisana sieć: <strong>${this.wifi.ssid}</strong>${this.wifi.passwordSet
+                ? " (z hasłem)"
+                : " (bez hasła)"}
+            </p>`
+          : html`<p class="muted small">Czytnik nie ma jeszcze zapisanej sieci domowej.</p>`}
+        <label class="select">
+          <span>SSID</span>
+          <input
+            type="text"
+            .value=${this.wifiSsidInput}
+            placeholder="Nazwa sieci WiFi"
+            @input=${(e: Event) => (this.wifiSsidInput = (e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label class="select">
+          <span>Hasło</span>
+          <input
+            type="password"
+            .value=${this.wifiPasswordInput}
+            placeholder=${this.wifi?.passwordSet ? "•••••••• (zostaw puste bez zmian)" : "Hasło"}
+            @input=${(e: Event) =>
+              (this.wifiPasswordInput = (e.target as HTMLInputElement).value)}
+          />
+        </label>
+        ${this.wifiError ? html`<p class="error">${this.wifiError}</p>` : ""}
+        <div class="wifi-actions">
+          <button class="mini-cta" ?disabled=${this.wifiBusy} @click=${this.saveWifiStation}>
+            Zapisz sieć
+          </button>
+          <button
+            class="mini-cta ghost"
+            ?disabled=${this.wifiBusy || !this.wifi?.configured}
+            @click=${this.forgetWifiStation}
+          >
+            Zapomnij
+          </button>
+        </div>
+        <label class="slider">
+          <span
+            >Auto-wyłączenie WiFi/AP<small
+              >${this.wifiTimeoutMinutes === 0 ? "nigdy" : `${this.wifiTimeoutMinutes} min`}</small
+            ></span
+          >
+          <input
+            type="range"
+            min="0"
+            max="60"
+            step="5"
+            .value=${String(this.wifiTimeoutMinutes)}
+            @change=${(e: Event) =>
+              this.setWifiTimeoutMinutes(Number((e.target as HTMLInputElement).value))}
+          />
+        </label>
+      </fieldset>
+
       ${s.devMode
         ? html`
             <fieldset class="group dev">
@@ -381,6 +473,56 @@ export class SettingsPanel extends LitElement {
                 Po wyłączeniu trybu developera advanced ustawienia (OTA owner, Auto OTA, RSS feed
                 editor, etc.) znikają zarówno z urządzenia jak i z tej aplikacji.
               </p>
+
+              <div class="dev-block">
+                <div class="dev-block-head">
+                  <strong>Diagnostyka urządzenia</strong>
+                  <button class="mini-cta ghost" ?disabled=${this.diagBusy} @click=${this.refreshDiagnostics}>
+                    Odśwież
+                  </button>
+                </div>
+                ${this.deviceInfo
+                  ? html`
+                      <ul class="diag-list">
+                        <li><span>Firmware</span><strong>${this.deviceInfo.firmwareVersion}</strong></li>
+                        <li><span>Tryb sieci</span><strong>${this.deviceInfo.mode === "station" ? "Stacja WiFi" : "Access Point"}</strong></li>
+                        <li><span>SSID</span><strong>${this.deviceInfo.networkSsid || "—"}</strong></li>
+                        <li><span>Bateria</span><strong>${this.deviceInfo.batteryPercent}%</strong></li>
+                        <li>
+                          <span>Karta SD</span>
+                          <strong
+                            >${formatKb(this.deviceInfo.sdFreeKb)} wolne /
+                            ${formatKb(this.deviceInfo.sdTotalKb)}</strong
+                          >
+                        </li>
+                      </ul>
+                    `
+                  : html`<p class="muted small">Kliknij „Odśwież", żeby pobrać stan z urządzenia.</p>`}
+              </div>
+
+              <div class="dev-block">
+                <div class="dev-block-head">
+                  <strong>Logi urządzenia</strong>
+                  <button class="mini-cta ghost" @click=${this.toggleLogs}>
+                    ${this.showLogs ? "Ukryj" : "Pokaż"}
+                  </button>
+                </div>
+                ${this.showLogs
+                  ? html`
+                      <div class="log-actions">
+                        <button class="mini-cta ghost" ?disabled=${this.diagBusy} @click=${this.refreshLogs}>
+                          Odśwież
+                        </button>
+                        <button class="mini-cta ghost" ?disabled=${this.diagBusy} @click=${this.clearLogs}>
+                          Wyczyść
+                        </button>
+                      </div>
+                      <pre class="log-view">${this.logLines.length
+                        ? this.logLines.join("\n")
+                        : "(pusto)"}</pre>
+                    `
+                  : ""}
+              </div>
             </fieldset>
           `
         : ""}
@@ -559,6 +701,105 @@ export class SettingsPanel extends LitElement {
       this.saving = false;
     }
   }
+
+  // ─── Sieć: stacja WiFi + auto-off ────────────────────────────────────────
+
+  private async loadNetwork(): Promise<void> {
+    try {
+      this.wifi = await deviceApi.getWifiStation();
+      this.wifiSsidInput = this.wifi.ssid;
+    } catch {
+      /* urządzenie nie odpowiada — zostaw poprzedni stan */
+    }
+    try {
+      this.wifiTimeoutMinutes = Math.round((await deviceApi.setWifiTimeoutSeconds()) / 60);
+    } catch {
+      /* ignored */
+    }
+  }
+
+  private saveWifiStation = async () => {
+    const ssid = this.wifiSsidInput.trim();
+    if (!ssid) {
+      this.wifiError = "Podaj nazwę sieci (SSID).";
+      return;
+    }
+    this.wifiBusy = true;
+    this.wifiError = "";
+    try {
+      this.wifi = await deviceApi.setWifiStation(ssid, this.wifiPasswordInput);
+      this.wifiPasswordInput = "";
+    } catch (err) {
+      this.wifiError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.wifiBusy = false;
+    }
+  };
+
+  private forgetWifiStation = async () => {
+    this.wifiBusy = true;
+    this.wifiError = "";
+    try {
+      this.wifi = await deviceApi.clearWifiStation();
+      this.wifiSsidInput = "";
+      this.wifiPasswordInput = "";
+    } catch (err) {
+      this.wifiError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.wifiBusy = false;
+    }
+  };
+
+  private setWifiTimeoutMinutes = async (minutes: number) => {
+    this.wifiTimeoutMinutes = minutes;
+    try {
+      await deviceApi.setWifiTimeoutSeconds(minutes * 60);
+    } catch (err) {
+      this.wifiError = err instanceof Error ? err.message : String(err);
+    }
+  };
+
+  // ─── Diagnostyka + logi (developer) ──────────────────────────────────────
+
+  private refreshDiagnostics = async () => {
+    this.diagBusy = true;
+    try {
+      this.deviceInfo = await deviceApi.getDeviceInfo();
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.diagBusy = false;
+    }
+  };
+
+  private toggleLogs = async () => {
+    this.showLogs = !this.showLogs;
+    if (this.showLogs) await this.refreshLogs();
+  };
+
+  private refreshLogs = async () => {
+    this.diagBusy = true;
+    try {
+      const tail = await deviceApi.getLogTail(80);
+      this.logLines = tail.lines;
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.diagBusy = false;
+    }
+  };
+
+  private clearLogs = async () => {
+    this.diagBusy = true;
+    try {
+      await deviceApi.clearLog();
+      this.logLines = [];
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.diagBusy = false;
+    }
+  };
 
   // ─── 10-tap unlock ────────────────────────────────────────────────────────
 
@@ -793,7 +1034,9 @@ export class SettingsPanel extends LitElement {
         system-ui,
         sans-serif;
     }
-    .select select {
+    .select select,
+    .select input[type="text"],
+    .select input[type="password"] {
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -803,6 +1046,94 @@ export class SettingsPanel extends LitElement {
         system-ui,
         sans-serif;
       color: var(--ink);
+    }
+    .wifi-actions,
+    .log-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .mini-cta {
+      flex: 1 1 auto;
+      padding: 9px 14px;
+      border: 0;
+      border-radius: 999px;
+      color: #fff;
+      background: var(--accent);
+      font:
+        700 0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    .mini-cta:active:not(:disabled) {
+      transform: scale(0.96);
+    }
+    .mini-cta:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .mini-cta.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1.5px solid var(--accent);
+    }
+    .dev-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+    }
+    .dev-block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .dev-block-head strong {
+      font:
+        700 0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+      color: var(--ink-soft);
+    }
+    .dev-block-head .mini-cta {
+      flex: 0 0 auto;
+    }
+    .diag-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font:
+        0.85rem ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    .diag-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+    }
+    .diag-list strong {
+      color: var(--ink);
+    }
+    .log-view {
+      margin: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 10px 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font: 0.72rem/1.5 ui-monospace, SFMono-Regular, monospace;
+      color: var(--ink-soft);
+      white-space: pre-wrap;
+      word-break: break-all;
     }
     .help-link {
       display: flex;
@@ -844,4 +1175,10 @@ declare global {
   interface HTMLElementTagNameMap {
     "settings-panel": SettingsPanel;
   }
+}
+
+function formatKb(kb: number): string {
+  if (kb < 1024) return `${kb} kB`;
+  if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
+  return `${(kb / 1024 / 1024).toFixed(2)} GB`;
 }

@@ -10,9 +10,21 @@
  */
 
 import type { DeviceEvent } from "../../shared/device-protocol";
-import type { Book, DeviceApi, DeviceSettings } from "./api";
+import type {
+  Book,
+  DeviceApi,
+  DeviceSettings,
+  WifiStationConfig,
+  PluginInfo,
+  DeviceLogTail,
+  BookPosition,
+  DeviceCapabilities,
+  DeviceInfo,
+} from "./api";
 import { DEFAULT_SETTINGS } from "./api";
 import { BluetoothLink } from "./bluetooth-link";
+
+const BLE_UNSUPPORTED = "Ta funkcja nie jest jeszcze wspierana przez Bluetooth. Połącz się przez WiFi.";
 
 const UPLOAD_CHUNK_SIZE = 8192; // 8KB raw bytes per chunk (becomes ~11KB base64)
 
@@ -129,6 +141,58 @@ export class BleDeviceApi implements DeviceApi {
 
   async installOta(): Promise<void> {
     throw new Error("OTA przez BLE nie jest wspierane. Użyj WiFi.");
+  }
+
+  async getWifiStation(): Promise<WifiStationConfig> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async setWifiStation(): Promise<WifiStationConfig> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async clearWifiStation(): Promise<WifiStationConfig> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getRssFeeds(): Promise<string[]> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async setRssFeeds(): Promise<string[]> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getPlugins(): Promise<PluginInfo[]> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async setWifiTimeoutSeconds(): Promise<number> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getCapabilities(): Promise<DeviceCapabilities> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getDeviceInfo(): Promise<DeviceInfo> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getLogTail(): Promise<DeviceLogTail> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async clearLog(): Promise<void> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getBookPosition(): Promise<BookPosition> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async setBookPosition(): Promise<BookPosition> {
+    throw new Error(BLE_UNSUPPORTED);
   }
 }
 
