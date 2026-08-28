@@ -123,6 +123,10 @@ export class OnboardingWizard extends LitElement {
             i Android działają tak samo.
           </p>
           <p class="hint">
+            Telefon może zapytać „Połączono, brak internetu" — to normalne, wybierz
+            <strong>„Połącz mimo to"</strong>, inaczej sam się rozłączy.
+          </p>
+          <p class="hint">
             Na razie aplikacja działa też bez urządzenia — pełen interfejs z mockowanymi danymi,
             żeby było co testować.
           </p>
@@ -168,8 +172,8 @@ export class OnboardingWizard extends LitElement {
                      transform="rotate(${a})"/>
           `,
           )}
-          <circle r="10" fill="#fff2bf"/>
-          <circle r="6" fill="#ffd66e"/>
+          <circle r="10" fill="#f3e2bd"/>
+          <circle r="6" fill="#e3b355"/>
         </g>
       </svg>
     `;
@@ -212,7 +216,7 @@ export class OnboardingWizard extends LitElement {
       place-items: end center;
       padding: 12px;
       padding-bottom: calc(12px + env(safe-area-inset-bottom));
-      background: rgba(12, 35, 64, 0.55);
+      background: rgba(35, 32, 27, 0.55);
       backdrop-filter: blur(8px);
       pointer-events: auto;
     }
@@ -221,10 +225,10 @@ export class OnboardingWizard extends LitElement {
       max-width: 460px;
       padding: 24px 22px;
       padding-bottom: calc(20px + env(safe-area-inset-bottom));
-      background: #ffffff;
+      background: #f8f4ec;
       border-radius: 26px 26px 18px 18px;
       box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.18);
-      color: #0c2340;
+      color: #23201b;
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -240,13 +244,13 @@ export class OnboardingWizard extends LitElement {
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #d9e6f6;
+      background: #e4ddd0;
       transition: width 0.2s;
     }
     .dot.active {
       width: 22px;
       border-radius: 999px;
-      background: #2e8eff;
+      background: #1488d8;
     }
     .stage {
       display: flex;
@@ -257,14 +261,14 @@ export class OnboardingWizard extends LitElement {
       padding: 6px 0;
     }
     .hero {
-      color: #2e8eff;
-      filter: drop-shadow(0 12px 24px rgba(46, 142, 255, 0.28));
+      color: #1488d8;
+      filter: drop-shadow(0 12px 24px rgba(20, 136, 216, 0.28));
     }
     .hero.soft {
-      color: #2e8eff;
+      color: #1488d8;
       padding: 12px;
       border-radius: 24px;
-      background: linear-gradient(135deg, #e8f4fd, #d1e9fb);
+      background: linear-gradient(135deg, #ece5d7, #f0e9dd);
     }
     h2 {
       margin: 0;
@@ -274,7 +278,7 @@ export class OnboardingWizard extends LitElement {
     p {
       margin: 0;
       max-width: 38ch;
-      color: #3d5278;
+      color: #6b665d;
       font:
         1rem/1.55 ui-sans-serif,
         system-ui,
@@ -283,7 +287,7 @@ export class OnboardingWizard extends LitElement {
     .hint {
       font-style: italic;
       font-size: 0.9rem;
-      color: #6b7c97;
+      color: #9a948a;
     }
     .footer {
       display: flex;
@@ -295,7 +299,7 @@ export class OnboardingWizard extends LitElement {
     .link {
       background: transparent;
       border: 0;
-      color: #6b7c97;
+      color: #9a948a;
       font:
         600 0.9rem ui-sans-serif,
         system-ui,
@@ -308,33 +312,33 @@ export class OnboardingWizard extends LitElement {
       border: 0;
       border-radius: 999px;
       color: #fff;
-      background: #2e8eff;
+      background: #1488d8;
       font:
         700 0.95rem ui-sans-serif,
         system-ui,
         sans-serif;
       cursor: pointer;
-      box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
+      box-shadow: 0 10px 22px rgba(20, 136, 216, 0.28);
     }
     .cta:hover {
-      background: #1f6fd4;
+      background: #106bab;
     }
     code {
       padding: 0.12em 0.38em;
       border-radius: 0.4em;
-      background: #d1e9fb;
-      color: #1f6fd4;
+      background: #f0e9dd;
+      color: #106bab;
       font-family: ui-monospace, monospace;
       font-size: 0.9em;
     }
     strong {
-      color: #0c2340;
+      color: #23201b;
     }
     .ios-steps {
       margin: 0;
       padding-left: 1.4rem;
       text-align: left;
-      color: #3d5278;
+      color: #6b665d;
       font:
         0.95rem/1.6 ui-sans-serif,
         system-ui,

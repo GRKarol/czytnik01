@@ -96,8 +96,8 @@ const iconFlower = (s = 64) => svg`
                  transform="rotate(${a})"/>
       `,
       )}
-      <circle r="10" fill="#fff2bf"/>
-      <circle r="6" fill="#ffd66e"/>
+      <circle r="10" fill="#f3e2bd"/>
+      <circle r="6" fill="#e3b355"/>
     </g>
   </svg>
 `;
@@ -115,6 +115,7 @@ export class CzytnikApp extends LitElement {
 
   private link: DeviceLink | null = null;
   private unsubApi: (() => void) | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -129,6 +130,7 @@ export class CzytnikApp extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.stopHeartbeat();
     this.unsubApi?.();
     this.removeEventListener("tutorial-close", this.handleTutorialClose);
     this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
@@ -393,10 +395,19 @@ export class CzytnikApp extends LitElement {
         ${this.chosenTransport === "wifi"
           ? html`
               <ol class="steps">
-                <li>Włącz urządzenie i poczekaj, aż wyświetli kod sieci.</li>
+                <li>Włącz urządzenie i poczekaj, aż wyświetli kod sieci (np. <code>Flower-AB12</code>).</li>
                 <li>
-                  Wejdź w ustawienia WiFi telefonu i wybierz
-                  <code>Flower-…</code>.
+                  Otwórz ustawienia WiFi telefonu i wybierz tę sieć.
+                  <button class="cta ghost small" @click=${this.openSystemWifiSettings}>
+                    Otwórz ustawienia WiFi
+                  </button>
+                </li>
+                <li class="callout">
+                  Telefon prawdopodobnie ostrzeże „Połączono, brak internetu" —
+                  to normalne, czytnik nie ma dostępu do internetu, tylko
+                  lokalne WiFi. Wybierz <strong>„Połącz mimo to"</strong> albo
+                  <strong>„Zostań połączony"</strong> — inaczej telefon sam się
+                  rozłączy i przeskoczy na inną sieć.
                 </li>
                 <li>Wróć tutaj i naciśnij „Sprawdź połączenie".</li>
               </ol>
@@ -538,6 +549,16 @@ export class CzytnikApp extends LitElement {
     this.error = null;
   };
 
+  /**
+   * Best-effort otwarcie systemowych ustawień WiFi przez Android intent URI.
+   * Działa w Chrome i w TWA (bo TWA to Chrome pod maską) — nie ma
+   * standardowego web API do tego, więc na innych przeglądarkach/platformach
+   * (iOS, desktop) ten link po prostu nic nie zrobi zamiast crashować.
+   */
+  private openSystemWifiSettings = () => {
+    window.location.href = "intent:#Intent;action=android.settings.WIFI_SETTINGS;end";
+  };
+
   private connect = async () => {
     if (!this.chosenTransport) return;
     this.error = null;
@@ -563,6 +584,7 @@ export class CzytnikApp extends LitElement {
       if (this.chosenTransport === "wifi") {
         const reachable = await pingDevice();
         if (reachable) setDeviceApi(new HttpDeviceApi());
+        this.startHeartbeat();
       }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
@@ -573,6 +595,7 @@ export class CzytnikApp extends LitElement {
   };
 
   private disconnect = async () => {
+    this.stopHeartbeat();
     await this.link?.disconnect();
     this.link = null;
     this.connected = false;
@@ -583,26 +606,78 @@ export class CzytnikApp extends LitElement {
     setDeviceApi(new MockDeviceApi());
   };
 
+  /**
+   * Doc `docs/flower-companion-api.md` §"Zasady niezawodności" mówi: hello
+   * co 8s, timeout 3s, max 2 retry — nigdzie w kliencie to nie było
+   * zaimplementowane. Bez tego prawdziwy rozłącz (restart po OTA, wyjście
+   * z zasięgu WiFi) jest wykrywany dopiero gdy user coś kliknie i dostanie
+   * wyjątek — pill "Połączono" w headerze kłamie do tego czasu.
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => void this.checkHeartbeat(), 8000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private checkHeartbeat = async () => {
+    if (!this.connected || this.chosenTransport !== "wifi") return;
+
+    // WifiLink flips jej własny `connected` na false gdy WebSocket dostanie
+    // "close" (np. reboot urządzenia po OTA) — sprawdź to najpierw, zanim
+    // w ogóle uderzymy w sieć.
+    if (this.link && !this.link.connected) {
+      await this.handleLinkLost();
+      return;
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await pingDevice()) return;
+    }
+    await this.handleLinkLost();
+  };
+
+  private handleLinkLost = async () => {
+    this.stopHeartbeat();
+    await this.link?.disconnect().catch(() => {});
+    this.link = null;
+    this.connected = false;
+    this.chosenTransport = null;
+    this.error = "Połączenie z czytnikiem zerwane. Sprawdź WiFi i połącz ponownie.";
+    const { MockDeviceApi } = await import("./device/api");
+    setDeviceApi(new MockDeviceApi());
+  };
+
   // ─── Style ─────────────────────────────────────────────────────────────────
 
   static styles = css`
     :host {
-      --ink: #0c2340;
-      --ink-soft: #3d5278;
-      --muted: #6b7c97;
-      --sky-1: #e8f4fd;
-      --sky-2: #d1e9fb;
-      --sky-3: #b8dcff;
-      --paper: #ffffff;
-      --paper-tint: #fbfcff;
-      --accent: #2e8eff;
-      --accent-deep: #1f6fd4;
-      --bloom-yellow: #ffd66e;
-      --bloom-pink: #ffb6c8;
-      --ok: #2dbe75;
-      --err: #e44d65;
-      --line: #d9e6f6;
-      --shadow: 0 12px 28px rgba(46, 142, 255, 0.14);
+      /* Paleta zainspirowana flower.theworkpc.com — ciepły papier zamiast
+         jaskrawego błękitu, atrament zamiast granatu, przygaszony
+         niebiesko-zielony akcent. Nazwy zmiennych zostają te same, więc
+         wszystkie komponenty potomne (shadow DOM, var(--...) dziedziczy się
+         przez granicę) przestylowują się automatycznie. */
+      --ink: #23201b;
+      --ink-soft: #6b665d;
+      --muted: #9a948a;
+      --sky-1: #ece5d7;
+      --sky-2: #f0e9dd;
+      --sky-3: #f5f0e7;
+      --paper: #f8f4ec;
+      --paper-tint: #fbf8f2;
+      --accent: #1488d8;
+      --accent-deep: #106bab;
+      --bloom-yellow: #e3b355;
+      --bloom-pink: #d1889b;
+      --ok: #2f7a4d;
+      --err: #b8443a;
+      --line: rgba(35, 32, 27, 0.14);
+      --shadow: 0 16px 34px -12px rgba(35, 32, 27, 0.22);
       display: flex;
       flex-direction: column;
       position: relative;
@@ -610,10 +685,20 @@ export class CzytnikApp extends LitElement {
       min-height: 100dvh;
       color: var(--ink);
       font-family: "Iowan Old Style", "Hoefler Text", "Georgia", "Times New Roman", ui-serif, serif;
-      background:
-        radial-gradient(circle at 18% 4%, rgba(255, 214, 110, 0.35), transparent 36rem),
-        radial-gradient(circle at 90% 12%, rgba(255, 182, 200, 0.3), transparent 30rem),
-        linear-gradient(160deg, var(--sky-1) 0%, var(--sky-2) 55%, var(--sky-3) 100%);
+      background: linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 45%, var(--sky-3) 100%);
+    }
+
+    /* Papierowa faktura — subtelny szum, ten sam trik co na referencyjnej
+       stronie (feTurbulence w inline SVG), zero requestów sieciowych. */
+    :host::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      opacity: 0.4;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E");
     }
 
     .sky {
@@ -638,7 +723,7 @@ export class CzytnikApp extends LitElement {
       padding: 16px 18px;
       padding-top: calc(16px + env(safe-area-inset-top));
       border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.65);
+      background: rgba(248, 244, 236, 0.72);
       backdrop-filter: blur(12px);
       flex: 0 0 auto;
     }
@@ -860,6 +945,23 @@ export class CzytnikApp extends LitElement {
       color: var(--ink-soft);
       font-family: ui-sans-serif, system-ui, sans-serif;
       line-height: 1.5;
+    }
+    .steps li {
+      margin: 8px 0;
+    }
+    .steps .cta.small {
+      display: block;
+      margin-top: 6px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+    }
+    .steps .callout {
+      background: rgba(46, 142, 255, 0.08);
+      border: 1px solid rgba(46, 142, 255, 0.25);
+      border-radius: 12px;
+      padding: 8px 10px;
+      list-style: none;
+      margin-left: -1.2rem;
     }
 
     .row {

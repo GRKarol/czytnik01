@@ -175,7 +175,9 @@ export class ConverterPanel extends LitElement {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\w\- ]+/g, "_")}.rsvp`;
+    // \p{L}/\p{N} (Unicode letters/numbers) zamiast \w, żeby polskie znaki
+    // (ą,ć,ę,ł,ń,ó,ś,ź,ż) w nazwie pliku nie zamieniały się na "_".
+    a.download = `${(this.bookTitle || stripExt(this.fileName) || "book").replace(/[^\p{L}\p{N}\- ]+/gu, "_")}.rsvp`;
     a.click();
     URL.revokeObjectURL(url);
   };

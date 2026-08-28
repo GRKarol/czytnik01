@@ -92,7 +92,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
 
 export interface DeviceApi {
   listBooks(): Promise<Book[]>;
-  uploadBook(file: Blob, name: string): Promise<void>;
+  uploadBook(file: Blob, name: string, category?: "book" | "article"): Promise<void>;
   deleteBook(name: string): Promise<void>;
   getSettings(): Promise<DeviceSettings>;
   putSettings(patch: Partial<DeviceSettings>): Promise<DeviceSettings>;
@@ -166,15 +166,16 @@ export class MockDeviceApi implements DeviceApi {
     return this.delay(read<Book[]>(STORE_BOOKS, MOCK_BOOKS_SEED));
   }
 
-  async uploadBook(file: Blob, name: string): Promise<void> {
+  async uploadBook(file: Blob, name: string, category: "book" | "article" = "book"): Promise<void> {
     const list = read<Book[]>(STORE_BOOKS, MOCK_BOOKS_SEED);
+    const dir = category === "article" ? "articles" : "books";
     list.unshift({
-      name: name.startsWith("books/") ? name : `books/${name}`,
-      title: stripExt(name.replace(/^books\//, "")),
+      name: name.startsWith(`${dir}/`) ? name : `${dir}/${name}`,
+      title: stripExt(name.replace(/^(books|articles)\//, "")),
       author: "",
       bytes: file.size,
       progressPercent: 0,
-      category: "book",
+      category,
       addedAt: new Date().toISOString(),
     });
     write(STORE_BOOKS, list);
@@ -229,7 +230,7 @@ export const deviceApi = {
     return _api;
   },
   listBooks: () => _api.listBooks(),
-  uploadBook: (f: Blob, n: string) => _api.uploadBook(f, n),
+  uploadBook: (f: Blob, n: string, c?: "book" | "article") => _api.uploadBook(f, n, c),
   deleteBook: (n: string) => _api.deleteBook(n),
   getSettings: () => _api.getSettings(),
   putSettings: (p: Partial<DeviceSettings>) => _api.putSettings(p),

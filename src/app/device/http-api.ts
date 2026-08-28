@@ -183,10 +183,13 @@ export class HttpDeviceApi implements DeviceApi {
     return data.books;
   }
 
-  async uploadBook(file: Blob, name: string): Promise<void> {
+  async uploadBook(file: Blob, name: string, category: "book" | "article" = "book"): Promise<void> {
     const fd = new FormData();
     fd.append("file", file, name);
-    const res = await fetch(this.url("/api/books"), { method: "POST", body: fd });
+    // name+category jako query params — firmware (CompanionSyncManager::handleBookUpload)
+    // czyta je przez server_.arg(), nie z multipart body.
+    const query = `name=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`;
+    const res = await fetch(this.url(`/api/books?${query}`), { method: "POST", body: fd });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`Upload nie powiódł się (${res.status}). ${text}`);
@@ -194,7 +197,10 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async deleteBook(name: string): Promise<void> {
-    const res = await fetch(this.url(`/api/books/${encodeURIComponent(name)}`), {
+    // Firmware rejestruje tylko dokładny path "/api/books" (HTTP_DELETE) —
+    // nazwa musi iść jako ?name= query param, nie jako segment ścieżki
+    // (ten wcześniej zawsze dawał 404).
+    const res = await fetch(this.url(`/api/books?name=${encodeURIComponent(name)}`), {
       method: "DELETE",
     });
     if (!res.ok && res.status !== 404) {

@@ -52,10 +52,10 @@ export class FlowerDecor extends LitElement {
       pointer-events: none;
       overflow: hidden;
       z-index: 0;
-      --bloom-yellow: #ffd66e;
-      --bloom-pink: #ffb6c8;
-      --bloom-blue: #7cc4ff;
-      --bloom-center: #ffd66e;
+      --bloom-yellow: #e3b355;
+      --bloom-pink: #d1889b;
+      --bloom-blue: #5db4ee;
+      --bloom-center: #e3b355;
     }
     svg {
       width: 100%;

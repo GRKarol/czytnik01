@@ -144,8 +144,8 @@ export class PwaInstallDialog extends LitElement {
                      transform="rotate(${a})"/>
           `,
           )}
-          <circle r="10" fill="#fff2bf"/>
-          <circle r="6" fill="#ffd66e"/>
+          <circle r="10" fill="#f3e2bd"/>
+          <circle r="6" fill="#e3b355"/>
         </g>
       </svg>
     `;
@@ -164,7 +164,7 @@ export class PwaInstallDialog extends LitElement {
       inset: 0;
       display: grid;
       place-items: center;
-      background: rgba(12, 35, 64, 0.55);
+      background: rgba(35, 32, 27, 0.55);
       backdrop-filter: blur(8px);
       pointer-events: auto;
       animation: fadeIn 300ms ease both;
@@ -175,7 +175,7 @@ export class PwaInstallDialog extends LitElement {
       width: calc(100% - 32px);
       max-width: 380px;
       padding: 32px 24px 28px;
-      background: #ffffff;
+      background: #f8f4ec;
       border-radius: 22px;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
       display: flex;
@@ -197,7 +197,7 @@ export class PwaInstallDialog extends LitElement {
       border: 0;
       border-radius: 50%;
       background: rgba(107, 124, 151, 0.12);
-      color: #6b7c97;
+      color: #9a948a;
       font-size: 1rem;
       cursor: pointer;
       line-height: 1;
@@ -207,8 +207,8 @@ export class PwaInstallDialog extends LitElement {
     }
 
     .icon {
-      color: #2e8eff;
-      filter: drop-shadow(0 8px 16px rgba(46, 142, 255, 0.25));
+      color: #1488d8;
+      filter: drop-shadow(0 8px 16px rgba(20, 136, 216, 0.25));
     }
 
     h2 {
@@ -216,12 +216,12 @@ export class PwaInstallDialog extends LitElement {
       font-family: "Iowan Old Style", "Hoefler Text", Georgia, ui-serif, serif;
       font-size: 1.5rem;
       letter-spacing: -0.02em;
-      color: #0c2340;
+      color: #23201b;
     }
 
     p {
       margin: 0;
-      color: #3d5278;
+      color: #6b665d;
       font:
         1rem/1.5 ui-sans-serif,
         system-ui,
@@ -232,7 +232,7 @@ export class PwaInstallDialog extends LitElement {
     ol {
       margin: 0;
       padding-left: 1.2rem;
-      color: #3d5278;
+      color: #6b665d;
       font:
         0.95rem/1.6 ui-sans-serif,
         system-ui,
@@ -245,7 +245,7 @@ export class PwaInstallDialog extends LitElement {
     }
 
     strong {
-      color: #0c2340;
+      color: #23201b;
     }
 
     .cta {
@@ -254,16 +254,16 @@ export class PwaInstallDialog extends LitElement {
       border: 0;
       border-radius: 999px;
       color: #fff;
-      background: #2e8eff;
+      background: #1488d8;
       font:
         700 0.98rem/1 ui-sans-serif,
         system-ui,
         sans-serif;
       cursor: pointer;
-      box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
+      box-shadow: 0 10px 22px rgba(20, 136, 216, 0.28);
     }
     .cta:hover {
-      background: #1f6fd4;
+      background: #106bab;
     }
 
     @keyframes fadeIn {
