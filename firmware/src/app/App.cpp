@@ -1962,14 +1962,16 @@ void App::cycleBrightness() {
 }
 
 void App::cycleThemeMode(uint32_t nowMs) {
-  if (nightMode_) {
-    nightMode_ = false;
-    darkMode_ = true;
-  } else if (darkMode_) {
+  if (darkMode_ && nightMode_) {
+    // night -> light
     darkMode_ = false;
-  } else {
-    darkMode_ = true;
+    nightMode_ = false;
+  } else if (darkMode_) {
+    // dark -> night
     nightMode_ = true;
+  } else {
+    // light -> dark
+    darkMode_ = true;
   }
 
   preferences_.putBool(kPrefDarkMode, darkMode_);
@@ -5942,10 +5944,13 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
                       currentBase.c_str(), latest.c_str());
         return;
       }
-      // Just flag it — user will see "Update" button in menu
+      // Flag it — the reading screen will be interrupted with a blocking
+      // Update/Later tile (see maybeOpenUpdateConfirm), and it also shows
+      // as a row in the main menu for later.
       pendingUpdateCurrentVersion_ = currentBase;
       pendingUpdateNewVersion_ = latest;
       otaUpdatePromptPending_ = true;
+      otaUpdatePromptDismissed_ = false;
       Serial.printf("[ota] update available: %s -> %s (user will be notified)\n",
                     currentBase.c_str(), latest.c_str());
     }
@@ -5953,14 +5958,24 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
 }
 
 bool App::updateConfirmCanOpen() const {
-  return otaUpdatePromptPending_ && !pendingBootBookLoad_ && state_ == AppState::Paused;
+  return otaUpdatePromptPending_ && !otaUpdatePromptDismissed_ && !pendingBootBookLoad_ &&
+         (state_ == AppState::Paused || state_ == AppState::Playing);
 }
 
 void App::maybeOpenUpdateConfirm(uint32_t nowMs) {
-  // Don't auto-open a confirm dialog — the update button appears in main menu.
-  // This is intentionally a no-op now. The menu renders the "Update" item
-  // when otaUpdatePromptPending_ is true.
-  (void)nowMs;
+  if (menuScreen_ == MenuScreen::UpdateConfirm || !updateConfirmCanOpen()) {
+    return;
+  }
+
+  // Route through the same Menu state transition every other confirm
+  // screen (Restart, SD repair) relies on for its tap-to-confirm grid
+  // input handling — opening straight from Playing/Paused would leave
+  // taps on this screen unresponsive, and Menu also halts reading
+  // (updateReader() only advances while state_ == Playing).
+  if (state_ != AppState::Menu) {
+    setState(AppState::Menu, nowMs);
+  }
+  openUpdateConfirm();
 }
 
 bool App::blockNetworkActionForOtaCheck(const String &title, uint32_t nowMs) {
@@ -7580,6 +7595,7 @@ void App::openUpdateConfirm() {
 void App::selectUpdateConfirmItem(uint32_t nowMs) {
   if (updateConfirmSelectedIndex_ != UpdateConfirmUpdate) {
     Serial.println("[ota] update skipped by user");
+    otaUpdatePromptDismissed_ = true;
     menuScreen_ = MenuScreen::Main;
     setState(AppState::Paused, nowMs);
     return;

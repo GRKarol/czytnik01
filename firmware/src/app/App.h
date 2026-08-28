@@ -950,6 +950,7 @@ class App {
   bool batteryWarningOverlayVisible_ = false;
   bool otaCheckInProgress_ = false;
   bool otaUpdatePromptPending_ = false;
+  bool otaUpdatePromptDismissed_ = false;
   uint8_t pwrTapCount_ = 0;
   uint32_t pwrFirstTapMs_ = 0;
   bool contextViewVisible_ = false;
