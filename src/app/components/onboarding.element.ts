@@ -2,6 +2,7 @@ import { LitElement, css, html, svg, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { BRAND_NAME, DEVICE_LABEL } from "../../shared/config";
 import type { PwaInstallDialog } from "./pwa-install-dialog.element";
+import { dandelionIcon } from "./flower-icon";
 
 const STORAGE_KEY = "flower.onboarded.v1";
 
@@ -163,20 +164,7 @@ export class OnboardingWizard extends LitElement {
   // ─── ikony ────────────────────────────────────────────────────────────────
 
   private flower(s: number) {
-    return svg`
-      <svg width=${s} height=${s} viewBox="0 0 100 100" aria-hidden="true">
-        <g transform="translate(50 50)">
-          ${[0, 60, 120, 180, 240, 300].map(
-            (a) => svg`
-            <ellipse cx="0" cy="-22" rx="14" ry="22" fill="currentColor" opacity="0.9"
-                     transform="rotate(${a})"/>
-          `,
-          )}
-          <circle r="10" fill="#f3e2bd"/>
-          <circle r="6" fill="#e3b355"/>
-        </g>
-      </svg>
-    `;
+    return dandelionIcon(s);
   }
 
   private iconAdd() {

@@ -1,5 +1,6 @@
-import { LitElement, css, html, svg } from "lit";
+import { LitElement, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { dandelionIcon } from "./flower-icon";
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -135,20 +136,7 @@ export class PwaInstallDialog extends LitElement {
   }
 
   private flowerIcon() {
-    return svg`
-      <svg width="64" height="64" viewBox="0 0 100 100" aria-hidden="true">
-        <g transform="translate(50 50)">
-          ${[0, 60, 120, 180, 240, 300].map(
-            (a) => svg`
-            <ellipse cx="0" cy="-22" rx="14" ry="22" fill="currentColor" opacity="0.85"
-                     transform="rotate(${a})"/>
-          `,
-          )}
-          <circle r="10" fill="#f3e2bd"/>
-          <circle r="6" fill="#e3b355"/>
-        </g>
-      </svg>
-    `;
+    return dandelionIcon(64);
   }
 
   static styles = css`

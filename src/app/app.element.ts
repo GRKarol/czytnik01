@@ -7,6 +7,7 @@ import { WifiLink } from "./device/wifi-link";
 import { BluetoothLink } from "./device/bluetooth-link";
 import { SerialLink } from "./device/serial-link";
 import "./components/flower-decor.element";
+import { dandelionIcon } from "./components/flower-icon";
 import "./components/converter-panel.element";
 import "./components/updates-panel.element";
 import "./components/library-panel.element";
@@ -94,20 +95,7 @@ const iconUsb = (s = 28) => svg`
     <rect x="9" y="20" width="6" height="2" rx="1"/>
   </svg>
 `;
-const iconFlower = (s = 64) => svg`
-  <svg width=${s} height=${s} viewBox="0 0 100 100" aria-hidden="true">
-    <g transform="translate(50 50)">
-      ${[0, 60, 120, 180, 240, 300].map(
-        (a) => svg`
-        <ellipse cx="0" cy="-22" rx="14" ry="22" fill="currentColor" opacity="0.85"
-                 transform="rotate(${a})"/>
-      `,
-      )}
-      <circle r="10" fill="#f3e2bd"/>
-      <circle r="6" fill="#e3b355"/>
-    </g>
-  </svg>
-`;
+const iconFlower = dandelionIcon;
 
 @customElement("czytnik-app")
 export class CzytnikApp extends LitElement {
