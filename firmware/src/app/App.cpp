@@ -259,6 +259,7 @@ constexpr size_t kWifiSettingsForgetIndex = 3;
 // Dev-only items start after ForgetNetwork
 constexpr size_t kWifiSettingsAutoUpdateIndex = 4;
 constexpr size_t kWifiSettingsOtaOwnerIndex = 5;
+constexpr size_t kWifiSettingsOtaChannelIndex = 6;
 
 // ScreensaverSettings submenu indices
 constexpr size_t kScreensaverSettingsBackIndex = 0;
@@ -344,6 +345,11 @@ constexpr const char *kPrefSavedWifiSsidPrefix = "wnet_s";
 constexpr const char *kPrefSavedWifiPassPrefix = "wnet_p";
 constexpr const char *kPrefOtaAuto = "ota_auto";
 constexpr const char *kPrefOtaOwner = "ota_owner";
+// Staging repo mirrors the public one for pre-release testing (see
+// GRKarol/czytnik01-staging) — switching this flag repoints OTA checks there
+// without touching the owner field, which stays reserved for forks.
+constexpr const char *kPrefOtaChannel = "ota_channel";
+constexpr const char *kOtaStagingRepo = "czytnik01-staging";
 constexpr const char *kPrefDevMode = "dev_mode";
 constexpr const char *kPrefBleEnabled = "ble_on";
 constexpr const char *kPrefShowHelpHints = "help_hints";
@@ -4351,6 +4357,12 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
                     preferences_.getString(kPrefOtaOwner, ""), "", false, 39,
                     MenuScreen::WifiSettings);
       return;
+    case kWifiSettingsOtaChannelIndex:
+      preferences_.putBool(kPrefOtaChannel, !otaChannelEnabled());
+      rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
+      renderSettings();
+      return;
     default:
       return;
   }
@@ -5102,6 +5114,7 @@ void App::rebuildSettingsMenuItems() {
       settingsMenuItems_.push_back(String("Auto OTA: ") +
                                    (otaAutoCheckEnabled() ? tr(TrKey::Yes) : tr(TrKey::No)));
       settingsMenuItems_.push_back(String("OTA Owner: ") + otaOwnerLabel());
+      settingsMenuItems_.push_back(String("OTA Channel: ") + otaChannelLabel());
     }
   }
 
@@ -5682,6 +5695,9 @@ OtaUpdater::Config App::preferredOtaConfig() {
   if (preferences_.isKey(kPrefOtaOwner)) {
     otaConfig.githubOwner = preferences_.getString(kPrefOtaOwner, "");
   }
+  if (otaChannelEnabled()) {
+    otaConfig.githubRepo = kOtaStagingRepo;
+  }
 
   return otaConfig;
 }
@@ -5758,6 +5774,15 @@ bool App::otaAutoCheckEnabled() {
 
   // Default to true — silent auto-update is always on unless explicitly disabled
   return true;
+}
+
+bool App::otaChannelEnabled() {
+  // Default to false — production repo unless the tester flips this on.
+  return preferences_.getBool(kPrefOtaChannel, false);
+}
+
+String App::otaChannelLabel() {
+  return otaChannelEnabled() ? polish("Testowy", "Staging") : polish("Produkcyjny", "Production");
 }
 
 void App::maybeAutoCheckForUpdates(uint32_t nowMs) {

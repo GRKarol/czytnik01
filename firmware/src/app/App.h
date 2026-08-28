@@ -326,6 +326,8 @@ class App {
   void forgetSavedWifiNetwork(const String &ssid);
   bool otaAutoCheckEnabled();
   String otaOwnerLabel();
+  bool otaChannelEnabled();
+  String otaChannelLabel();
   /// Tryb developera — domyślnie wyłączony. Włączany tylko z poziomu
   /// aplikacji-towarzysza (ukryty 10-tap w PWA → settings sync API).
   /// Kiedy wyłączony, advanced ustawienia (OTA owner, auto-OTA itp.)
