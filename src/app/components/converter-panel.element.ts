@@ -196,6 +196,9 @@ export class ConverterPanel extends LitElement {
         background 0.15s ease;
       background: var(--paper-tint);
     }
+    .drop:hover {
+      border-color: var(--accent);
+    }
     .drop.over {
       border-color: var(--accent);
       background: rgba(46, 142, 255, 0.08);
@@ -323,9 +326,15 @@ export class ConverterPanel extends LitElement {
         system-ui,
         sans-serif;
       cursor: pointer;
+      transition:
+        background 0.15s ease,
+        transform 0.1s ease;
     }
     .cta:hover {
       background: var(--accent-deep);
+    }
+    .cta:active:not(:disabled) {
+      transform: scale(0.97);
     }
     .cta.ghost {
       background: transparent;

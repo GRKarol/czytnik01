@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   deviceApi,
@@ -89,6 +89,48 @@ const BATTERY_LABEL_LABEL: Record<BatteryLabel, string> = {
 
 type SettingsSubView = "settings" | "help";
 
+const ico = (d: string) => svg`
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d=${d}/>
+  </svg>
+`;
+const icoBook = svg`
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H4z"/>
+    <path d="M20 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/>
+  </svg>
+`;
+const icoGauge = svg`
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 12l4-4"/>
+    <path d="M3 12a9 9 0 1 1 18 0"/>
+  </svg>
+`;
+const icoType = ico("M5 4h14M12 4v16M9 20h6");
+const icoSun = svg`
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+  </svg>
+`;
+const icoActivity = ico("M3 12h4l2 8 4-16 2 8h6");
+const icoGlobe = svg`
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>
+  </svg>
+`;
+const icoCode = ico("M8 5L3 12l5 7M16 5l5 7-5 7");
+
+function legend(icon: unknown, text: string) {
+  return html`<span class="legend-ico">${icon}</span><span class="legend-text">${text}</span>`;
+}
+
 @customElement("settings-panel")
 export class SettingsPanel extends LitElement {
   @state() private settings: DeviceSettings | null = null;
@@ -146,7 +188,7 @@ export class SettingsPanel extends LitElement {
       ${this.error ? html`<p class="error">${this.error}</p>` : ""}
 
       <fieldset class="group">
-        <legend>Tryb czytania</legend>
+        <legend>${legend(icoBook, "Tryb czytania")}</legend>
         ${this.segmented(
           "readerMode",
           s.readerMode,
@@ -160,7 +202,7 @@ export class SettingsPanel extends LitElement {
       ${this.effectiveMode === "rsvp"
         ? html`
             <fieldset class="group">
-              <legend>Ustawienia RSVP</legend>
+              <legend>${legend(icoGauge, "Ustawienia RSVP")}</legend>
               ${this.segmented(
                 "pauseBehaviour",
                 s.pauseBehaviour,
@@ -204,7 +246,7 @@ export class SettingsPanel extends LitElement {
             </fieldset>
 
             <fieldset class="group">
-              <legend>Typografia RSVP</legend>
+              <legend>${legend(icoType, "Typografia RSVP")}</legend>
               ${this.segmented(
                 "fontSizeIndex",
                 s.fontSizeIndex,
@@ -228,7 +270,7 @@ export class SettingsPanel extends LitElement {
           `
         : html`
             <fieldset class="group">
-              <legend>Ustawienia Scroll</legend>
+              <legend>${legend(icoType, "Ustawienia Scroll")}</legend>
               ${this.segmented(
                 "scrollFontSize",
                 s.scrollFontSize,
@@ -254,7 +296,7 @@ export class SettingsPanel extends LitElement {
           `}
 
       <fieldset class="group">
-        <legend>Wyświetlanie</legend>
+        <legend>${legend(icoSun, "Wyświetlanie")}</legend>
         ${this.segmented(
           "theme",
           s.theme,
@@ -275,7 +317,7 @@ export class SettingsPanel extends LitElement {
       </fieldset>
 
       <fieldset class="group">
-        <legend>HUD podczas czytania</legend>
+        <legend>${legend(icoActivity, "HUD podczas czytania")}</legend>
         ${this.toggle(
           "showBatteryWhileReading",
           "Bateria",
@@ -311,7 +353,7 @@ export class SettingsPanel extends LitElement {
       </fieldset>
 
       <fieldset class="group">
-        <legend>Język</legend>
+        <legend>${legend(icoGlobe, "Język")}</legend>
         <label class="select">
           <span>Język interfejsu</span>
           <select
@@ -329,7 +371,7 @@ export class SettingsPanel extends LitElement {
       ${s.devMode
         ? html`
             <fieldset class="group dev">
-              <legend>Developer</legend>
+              <legend>${legend(icoCode, "Developer")}</legend>
               <p class="muted small">
                 Te opcje są ukryte przed klientem. Włączasz je tylko z aplikacji — na samym
                 urządzeniu też nic nie widzi, dopóki tu jest „On".
@@ -601,27 +643,43 @@ export class SettingsPanel extends LitElement {
     }
     fieldset.group {
       margin: 0;
-      padding: 14px;
+      padding: 16px;
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 18px;
       background: var(--paper-tint);
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
+      box-shadow: 0 6px 16px -10px rgba(35, 32, 27, 0.18);
     }
     fieldset.group.dev {
       border-color: var(--accent);
       background: rgba(46, 142, 255, 0.05);
     }
     legend {
-      padding: 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 4px;
+    }
+    .legend-ico {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--sky-2);
+      color: var(--accent);
+    }
+    .legend-text {
       font:
-        700 0.78rem ui-sans-serif,
+        700 0.76rem ui-sans-serif,
         system-ui,
         sans-serif;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      color: var(--muted);
+      color: var(--ink-soft);
     }
     .toggle {
       display: flex;
@@ -720,6 +778,12 @@ export class SettingsPanel extends LitElement {
       color: var(--accent);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     }
+    .seg-buttons button {
+      transition: transform 0.1s ease;
+    }
+    .seg-buttons button:active {
+      transform: scale(0.94);
+    }
     .select {
       display: flex;
       flex-direction: column;
@@ -754,10 +818,15 @@ export class SettingsPanel extends LitElement {
         system-ui,
         sans-serif;
       cursor: pointer;
-      transition: border-color 0.15s;
+      transition:
+        border-color 0.15s,
+        transform 0.1s;
     }
     .help-link:hover {
       border-color: var(--accent);
+    }
+    .help-link:active {
+      transform: scale(0.98);
     }
     .help-link svg {
       flex-shrink: 0;

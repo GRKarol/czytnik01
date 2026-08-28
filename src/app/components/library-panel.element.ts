@@ -239,6 +239,10 @@ export class LibraryPanel extends LitElement {
         system-ui,
         sans-serif;
       cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    .btn:active {
+      transform: scale(0.97);
     }
     .btn.ghost {
       flex: 0 0 auto;
@@ -262,6 +266,12 @@ export class LibraryPanel extends LitElement {
         system-ui,
         sans-serif;
       cursor: pointer;
+      transition:
+        background 0.15s ease,
+        transform 0.1s ease;
+    }
+    .tab:active {
+      transform: scale(0.96);
     }
     .tab.active {
       background: var(--accent);
@@ -316,7 +326,7 @@ export class LibraryPanel extends LitElement {
       gap: 10px;
       padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 14px;
       background: var(--paper-tint);
     }
     .cover {
@@ -364,6 +374,11 @@ export class LibraryPanel extends LitElement {
       font-size: 1.05rem;
       cursor: pointer;
       flex: 0 0 auto;
+      transition: transform 0.1s ease;
+    }
+    .fav:active,
+    .del:active {
+      transform: scale(0.88);
     }
     .fav.active {
       color: #e0a30d;
@@ -378,6 +393,7 @@ export class LibraryPanel extends LitElement {
       font-size: 0.85rem;
       cursor: pointer;
       flex: 0 0 auto;
+      transition: transform 0.1s ease;
     }
     .hint {
       font-size: 0.78rem;

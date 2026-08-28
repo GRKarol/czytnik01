@@ -237,9 +237,15 @@ export class UpdatesPanel extends LitElement {
       background: var(--accent);
       font: 700 0.92rem ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
+      transition:
+        background 0.15s ease,
+        transform 0.1s ease;
     }
     .cta:hover {
       background: var(--accent-deep);
+    }
+    .cta:active:not(:disabled) {
+      transform: scale(0.97);
     }
     .cta.ghost {
       background: transparent;
@@ -256,7 +262,7 @@ export class UpdatesPanel extends LitElement {
       gap: 10px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 18px;
       background: var(--paper-tint);
     }
     .release header {

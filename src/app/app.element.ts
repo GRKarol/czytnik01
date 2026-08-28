@@ -1,5 +1,6 @@
 import { LitElement, css, html, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { keyed } from "lit/directives/keyed.js";
 import { BRAND_NAME, DEVICE_LABEL, APP_VERSION } from "../shared/config";
 import type { DeviceLink } from "./device/device-link";
 import { WifiLink } from "./device/wifi-link";
@@ -259,7 +260,7 @@ export class CzytnikApp extends LitElement {
         </div>
       </header>
 
-      <main>${this.renderView()}</main>
+      <main><div class="view-anim">${keyed(this.view, this.renderView())}</div></main>
 
       <nav>
         ${this.navButton("home", "Start", iconHome())}
@@ -720,11 +721,11 @@ export class CzytnikApp extends LitElement {
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 16px 18px;
-      padding-top: calc(16px + env(safe-area-inset-top));
-      border-bottom: 1px solid var(--line);
-      background: rgba(248, 244, 236, 0.72);
-      backdrop-filter: blur(12px);
+      padding: 14px 18px 16px;
+      padding-top: calc(14px + env(safe-area-inset-top));
+      background: rgba(248, 244, 236, 0.78);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 1px 0 var(--line);
       flex: 0 0 auto;
     }
 
@@ -804,10 +805,33 @@ export class CzytnikApp extends LitElement {
       flex: 1 1 auto;
       display: flex;
       flex-direction: column;
-      gap: 16px;
       padding: 20px;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
+    }
+
+    .view-anim {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: view-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes view-in {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .view-anim {
+        animation: none;
+      }
     }
 
     .hero {
@@ -888,10 +912,15 @@ export class CzytnikApp extends LitElement {
       font: inherit;
       cursor: pointer;
       text-align: left;
-      transition: border-color 0.15s ease;
+      transition:
+        border-color 0.15s ease,
+        transform 0.1s ease;
     }
     .choice:hover:not(:disabled) {
       border-color: var(--accent);
+    }
+    .choice:active:not(:disabled) {
+      transform: scale(0.98);
     }
     .choice:disabled {
       opacity: 0.5;
@@ -984,9 +1013,15 @@ export class CzytnikApp extends LitElement {
         sans-serif;
       cursor: pointer;
       box-shadow: 0 10px 22px rgba(46, 142, 255, 0.28);
+      transition:
+        background 0.15s ease,
+        transform 0.1s ease;
     }
     .cta:hover {
       background: var(--accent-deep);
+    }
+    .cta:active:not(:disabled) {
+      transform: scale(0.97);
     }
     .cta:disabled {
       opacity: 0.55;
@@ -1020,9 +1055,15 @@ export class CzytnikApp extends LitElement {
       text-align: left;
       font: inherit;
       min-height: 100px;
+      transition:
+        border-color 0.15s ease,
+        transform 0.1s ease;
     }
     .tile:hover {
       border-color: var(--accent);
+    }
+    .tile:active {
+      transform: scale(0.97);
     }
     .tile-ico {
       width: 36px;
@@ -1128,27 +1169,36 @@ export class CzytnikApp extends LitElement {
     nav {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
-      border-top: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(12px);
-      padding-bottom: env(safe-area-inset-bottom);
+      gap: 2px;
       flex: 0 0 auto;
+      margin: 0 10px calc(10px + env(safe-area-inset-bottom));
+      padding: 6px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
     }
     nav button {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 3px;
-      padding: 9px 0 8px;
+      gap: 2px;
+      padding: 8px 2px 6px;
       background: transparent;
       border: 0;
+      border-radius: 14px;
       color: var(--muted);
       font:
-        600 0.65rem/1.1 ui-sans-serif,
+        600 0.62rem/1.1 ui-sans-serif,
         system-ui,
         sans-serif;
       cursor: pointer;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
+      transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        transform 0.1s ease;
     }
     nav button .ico {
       width: 22px;
@@ -1158,6 +1208,10 @@ export class CzytnikApp extends LitElement {
     }
     nav button.active {
       color: var(--accent);
+      background: rgba(20, 136, 216, 0.12);
+    }
+    nav button:active:not(:disabled) {
+      transform: scale(0.92);
     }
     nav button:disabled {
       opacity: 0.3;
