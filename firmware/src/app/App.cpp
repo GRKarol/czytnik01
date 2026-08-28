@@ -1006,6 +1006,12 @@ void App::begin() {
   // update crashes before ever reaching here, the image stays in
   // PENDING_VERIFY state and the bootloader reverts to the previous working
   // partition on the next reset instead of leaving the reader bricked.
+  //
+  // No platformio.ini flag needed for this: CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
+  // is already 1 in the precompiled Arduino core for our board (qio_opi memory
+  // type), and boards/esp32-s3-r8-opi.json's default_16MB.csv already carries
+  // otadata + ota_0/ota_1 slots, which rollback requires. Verified directly in
+  // framework-arduinoespressif32/tools/sdk/esp32s3/qio_opi/include/sdkconfig.h.
   esp_ota_mark_app_valid_cancel_rollback();
 }
 
