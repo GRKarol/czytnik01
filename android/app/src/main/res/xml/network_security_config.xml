@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Czytnik w trybie Sync tworzy własną sieć WiFi bez internetu i wystawia
+  API po zwykłym HTTP pod stałym adresem 192.168.4.1 (patrz
+  docs/flower-companion-api.md). Android domyślnie blokuje cleartext HTTP
+  dla całej appki od API 28 — zamiast globalnie to wyłączać
+  (android:usesCleartextTraffic="true"), zezwalamy tylko dla tego jednego
+  adresu. Reszta appki (np. sprawdzanie GitHub Releases) nadal wymaga HTTPS.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.4.1</domain>
+    </domain-config>
+</network-security-config>

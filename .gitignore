@@ -23,3 +23,18 @@ firmware/.pioenvs/
 firmware/.piolibdeps/
 firmware/.vscode/
 firmware/build/
+firmware/pwr_debug_log.txt
+firmware/pwr_debug_watch.ps1
+
+# Capacitor web build output (mirrors dist/)
+dist-capacitor/
+
+# Built .apk drops — too large for git, distribute separately
+Mobilna aplikacja/
+
+# Telegram bot delivery folder (ephemeral)
+pliki_bota/
+
+# APK signing secrets — never commit
+android/keystore.properties
+*.keystore
