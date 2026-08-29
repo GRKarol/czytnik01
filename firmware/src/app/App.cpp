@@ -196,8 +196,6 @@ constexpr size_t kSettingsHomeUpdateIndex = 9;        // dev only
 constexpr size_t kSettingsHomePacingIndex = kSettingsHomeReadingIndex;
 
 // SettingsConnectivity items (new layout per menu reorganization).
-// RSS jest dev-only i dlatego leży NA KOŃCU listy — ukrycie go nie rusza
-// żadnego wcześniejszego indeksu.
 constexpr size_t kSettingsConnWifiIndex = 1;        // Wi-Fi (opens sub-screen)
 #if FLOWER_BLE_ENABLED
 constexpr size_t kSettingsConnBluetoothIndex = 2;   // Bluetooth toggle
@@ -207,12 +205,6 @@ constexpr size_t kSettingsConnUsbIndex = 4;         // Kopiuj przez USB
 constexpr size_t kSettingsConnBluetoothIndex = 99;  // not shown
 constexpr size_t kSettingsConnSyncToggleIndex = 2;  // Synchronizacja z telefonem
 constexpr size_t kSettingsConnUsbIndex = 3;         // Kopiuj przez USB
-#endif
-#if RSVP_USB_TRANSFER_ENABLED
-constexpr size_t kSettingsConnRssIndex = kSettingsConnUsbIndex + 1;  // dev only
-#else
-// USB nie jest w ogóle budowany, więc jego slot zajmuje RSS.
-constexpr size_t kSettingsConnRssIndex = kSettingsConnUsbIndex;      // dev only
 #endif
 
 // SettingsAbout items
@@ -768,7 +760,6 @@ void App::begin() {
     preferences_.putBool(kPrefReaderModeMigrated, true);
   }
   pluginLibrary_.begin();
-  pluginLibrary_.scanInstalled();
   pluginLoader_.begin();
   recorder_.begin();
   pluginLoader_.setManagers(&display_, &audio_, &recorder_);
@@ -1030,7 +1021,7 @@ void App::update(uint32_t nowMs) {
       display_.renderStatus("Plugin", errMsg ? errMsg : "Plugin error", "");
       delay(2000);
       pluginLoader_.unload();
-      openPluginsList();
+      openPluginsActive();
       return;
     }
 
@@ -1046,7 +1037,7 @@ void App::update(uint32_t nowMs) {
     if (powerButton_.wasReleasedEvent()) {
       Serial.println("[plugin] power button pressed — unloading plugin");
       pluginLoader_.unload();
-      openPluginsList();
+      openPluginsActive();
       return;
     }
 
@@ -3040,9 +3031,12 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
         selectedIndex = &savePointDeleteConfirmSelectedIndex_;
         itemCount = savePointDeleteConfirmMenuItems_.size();
-      } else if (menuScreen_ == MenuScreen::PluginsList) {
-        selectedIndex = &pluginsSelectedIndex_;
-        itemCount = pluginsMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::PluginsHome) {
+        selectedIndex = &pluginsHomeSelectedIndex_;
+        itemCount = pluginsHomeMenuItems_.size();
+      } else if (menuScreen_ == MenuScreen::PluginsActive) {
+        selectedIndex = &pluginsActiveSelectedIndex_;
+        itemCount = pluginsActiveMenuItems_.size();
       } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
         selectedIndex = &pluginLibrarySelectedIndex_;
         itemCount = pluginLibraryMenuItems_.size();
@@ -3113,7 +3107,8 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::BookDeleteConfirm ||
           menuScreen_ == MenuScreen::ChapterPicker ||
           menuScreen_ == MenuScreen::SavePointsList ||
-          menuScreen_ == MenuScreen::SavePointDeleteConfirm || menuScreen_ == MenuScreen::PluginsList ||
+          menuScreen_ == MenuScreen::SavePointDeleteConfirm || menuScreen_ == MenuScreen::PluginsHome ||
+          menuScreen_ == MenuScreen::PluginsActive ||
           menuScreen_ == MenuScreen::PluginLibraryScreen ||
           menuScreen_ == MenuScreen::PluginDetail ||
           menuScreen_ == MenuScreen::TypographyTuning) {
@@ -3134,8 +3129,10 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           savePointSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
           savePointDeleteConfirmSelectedIndex_ = 0;
-        } else if (menuScreen_ == MenuScreen::PluginsList) {
-          pluginsSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::PluginsHome) {
+          pluginsHomeSelectedIndex_ = 0;
+        } else if (menuScreen_ == MenuScreen::PluginsActive) {
+          pluginsActiveSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
           pluginLibrarySelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::PluginDetail) {
@@ -3192,9 +3189,12 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
   } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
     selectedIndex = &savePointDeleteConfirmSelectedIndex_;
     itemCount = savePointDeleteConfirmMenuItems_.size();
-  } else if (menuScreen_ == MenuScreen::PluginsList) {
-    selectedIndex = &pluginsSelectedIndex_;
-    itemCount = pluginsMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::PluginsHome) {
+    selectedIndex = &pluginsHomeSelectedIndex_;
+    itemCount = pluginsHomeMenuItems_.size();
+  } else if (menuScreen_ == MenuScreen::PluginsActive) {
+    selectedIndex = &pluginsActiveSelectedIndex_;
+    itemCount = pluginsActiveMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
     selectedIndex = &pluginLibrarySelectedIndex_;
     itemCount = pluginLibraryMenuItems_.size();
@@ -3360,8 +3360,9 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
       hasBack ? (effectiveSelected == 0 ? 0 : effectiveSelected - 1) : effectiveSelected;
 
   ui::GridSpec spec = ui::computeGridSpec(tileCount);
-  gridPagesVertically_ = menuScreen_ == MenuScreen::SavePointsList;
-  if (gridPagesVertically_) {
+  gridPagesVertically_ = menuScreen_ == MenuScreen::SavePointsList ||
+                        menuScreen_ == MenuScreen::PluginsActive;
+  if (menuScreen_ == MenuScreen::SavePointsList) {
     // One full-width row per savepoint's name, one below it for its Delete
     // — long "42.3% Book Title" names get real room instead of being
     // truncated in a 4-up tile, and every page is unambiguously "this one
@@ -3369,13 +3370,20 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
     spec.columns = 1;
     spec.rows = 2;
     spec.itemsPerPage = 2;
+  } else if (menuScreen_ == MenuScreen::PluginsActive) {
+    // Full-width single-column tiles, 3 per page — same vertical
+    // swipe/paging feel as SavePointsList, just without its "+Add gets its
+    // own page" pairing (every tile here is equally a plugin to launch).
+    spec.columns = 1;
+    spec.rows = 3;
+    spec.itemsPerPage = 3;
   }
   const size_t itemsPerPage = std::max<size_t>(1, spec.itemsPerPage);
   size_t pageCount;
   size_t page;
   size_t pageStart;
   size_t itemsOnPage;
-  if (gridPagesVertically_) {
+  if (menuScreen_ == MenuScreen::SavePointsList) {
     pageCount = savePointsPageCount(tileCount);
     page = tileCount == 0 ? 0 : savePointsPageForTile(tileSelected);
     pageStart = savePointsTileStartForPage(page);
@@ -3412,7 +3420,7 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
   // 1-row spec instead of the 2-row spec so it isn't squeezed into the top
   // half with an empty gap below it.
   ui::GridSpec pageSpec = spec;
-  if (gridPagesVertically_ && page == 0) {
+  if (menuScreen_ == MenuScreen::SavePointsList && page == 0) {
     pageSpec.rows = 1;
   }
   const std::vector<ui::Rect> rects =
@@ -3842,8 +3850,9 @@ bool App::handleGridPageSwipe(int deltaX, int deltaY, uint32_t nowMs) {
   } else {
     page = (page > 0) ? page - 1 : 0;
   }
-  const size_t newTileSelected =
-      gridPagesVertically_ ? savePointsTileStartForPage(page) : page * gridItemsPerPage_;
+  const size_t newTileSelected = menuScreen_ == MenuScreen::SavePointsList
+                                      ? savePointsTileStartForPage(page)
+                                      : page * gridItemsPerPage_;
   *selectedIndex = gridHeaderRows_ + (gridHasBack_ ? 1 : 0) + newTileSelected;
   renderMenu();
   return true;
@@ -3901,8 +3910,12 @@ void App::selectMenuItem(uint32_t nowMs) {
     selectSavePointDeleteConfirmItem(nowMs);
     return;
   }
-  if (menuScreen_ == MenuScreen::PluginsList) {
-    selectPluginsItem(nowMs);
+  if (menuScreen_ == MenuScreen::PluginsHome) {
+    selectPluginsHomeItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::PluginsActive) {
+    selectPluginsActiveItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
@@ -3961,7 +3974,7 @@ void App::selectMenuItem(uint32_t nowMs) {
     case MenuPlugins:
       // Rysowany tylko w trybie zaawansowanym — mainMenuOrder_ w ogóle nie
       // zawiera tego wpisu w trybie podstawowym.
-      openPluginsList();
+      openPluginsHome();
       return;
     default:
       return;
@@ -4326,19 +4339,14 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
 
   switch (settingsSelectedIndex_) {
     case kSettingsBackIndex:
-      if (wifiReturnScreen_ == MenuScreen::PluginsList) {
-        wifiReturnScreen_ = MenuScreen::SettingsHome;
-        openPluginsList();
-      } else {
-        // W trybie podstawowym pozycji "Wi-Fi zaawansowane" nie ma na liście
-        // (Wi-Fi otwiera się wtedy z Łączności), więc wracamy na Łączność —
-        // inaczej kursor wskazywałby indeks poza listą.
-        settingsSelectedIndex_ =
-            devModeEnabled() ? kSettingsHomeWifiIndex : kSettingsHomeConnectivityIndex;
-        menuScreen_ = MenuScreen::SettingsHome;
-        rebuildSettingsMenuItems();
-        renderSettings();
-      }
+      // W trybie podstawowym pozycji "Wi-Fi zaawansowane" nie ma na liście
+      // (Wi-Fi otwiera się wtedy z Łączności), więc wracamy na Łączność —
+      // inaczej kursor wskazywałby indeks poza listą.
+      settingsSelectedIndex_ =
+          devModeEnabled() ? kSettingsHomeWifiIndex : kSettingsHomeConnectivityIndex;
+      menuScreen_ = MenuScreen::SettingsHome;
+      rebuildSettingsMenuItems();
+      renderSettings();
       return;
     case kWifiSettingsNetworkIndex:
     case kWifiSettingsChooseIndex:
@@ -4998,11 +5006,6 @@ void App::rebuildSettingsMenuItems() {
     // 4. Kopiuj przez USB
     settingsMenuItems_.push_back(uiText(UiText::UsbTransfer));
 #endif
-    // Ostatnia: Kanaly RSS — tylko w trybie zaawansowanym, bo prowadzi do
-    // ekranu Pluginów, który w trybie podstawowym jest schowany.
-    if (devModeEnabled()) {
-      settingsMenuItems_.push_back(tr2(TrKey2::RssFeeds));
-    }
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::Version)) +
@@ -5304,10 +5307,6 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
       enterUsbTransfer(nowMs);
       return;
 #endif
-    case kSettingsConnRssIndex:
-      // Dev-only — branchuje tylko gdy menu faktycznie pokazało tę pozycję.
-      if (devModeEnabled()) runRssFeedCheck(nowMs);
-      return;
     default:
       return;
   }
@@ -5804,54 +5803,6 @@ void App::maybeAutoCheckForUpdates(uint32_t nowMs) {
   startBackgroundOtaCheck(otaConfig);
 }
 
-void App::autoSyncPlugins() {
-  const String ssid = preferences_.getString(kPrefWifiSsid, "");
-  const String pass = preferences_.getString(kPrefWifiPass, "");
-
-  if (ssid.isEmpty()) {
-    Serial.println("[plugin-sync] no WiFi configured, skipping auto-sync");
-    return;
-  }
-
-  pluginLibrary_.setWifiCredentials(ssid, pass);
-
-  Serial.println("[plugin-sync] fetching registry...");
-  PluginLibrary::FetchResult fetchResult = pluginLibrary_.fetchRegistry();
-  if (fetchResult != PluginLibrary::FetchResult::Success) {
-    Serial.printf("[plugin-sync] registry fetch failed: %u\n", static_cast<unsigned>(fetchResult));
-    return;
-  }
-
-  Serial.printf("[plugin-sync] registry has %u plugins\n",
-                static_cast<unsigned>(pluginLibrary_.registry().size()));
-
-  // Auto-install any plugin from registry that isn't installed yet
-  bool anyInstalled = false;
-  for (const auto& entry : pluginLibrary_.registry()) {
-    if (!pluginLibrary_.isInstalled(entry.id.c_str())) {
-      Serial.printf("[plugin-sync] installing new plugin: %s\n", entry.id.c_str());
-      if (pluginLibrary_.downloadPlugin(entry.id.c_str())) {
-        anyInstalled = true;
-        Serial.printf("[plugin-sync] installed: %s\n", entry.id.c_str());
-      } else {
-        Serial.printf("[plugin-sync] failed to install: %s\n", entry.id.c_str());
-      }
-    } else if (pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
-      // Update existing plugins to latest version
-      Serial.printf("[plugin-sync] updating plugin: %s\n", entry.id.c_str());
-      pluginLibrary_.downloadPlugin(entry.id.c_str());
-    }
-  }
-
-  if (anyInstalled) {
-    pluginLibrary_.scanInstalled();
-    Serial.printf("[plugin-sync] sync complete, %u plugins installed\n",
-                  static_cast<unsigned>(pluginLibrary_.installed().size()));
-  } else {
-    Serial.println("[plugin-sync] all plugins up to date");
-  }
-}
-
 bool App::startBackgroundOtaCheck(const OtaUpdater::Config &config) {
   if (otaCheckInProgress_) {
     Serial.println("[ota] background check already running");
@@ -6046,12 +5997,6 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
   }
 }
 
-void App::runRssFeedCheck(uint32_t nowMs) {
-  (void)nowMs;
-  // RSS functionality is now provided by the RSS plugin.
-  // Redirect to the plugins list where user can launch it.
-  openPluginsList();
-}
 
 String App::pacingDelayLabel(uint16_t delayMs) const { return String(delayMs) + " ms"; }
 
@@ -7095,161 +7040,138 @@ void App::executeDeleteSavePoint(uint32_t nowMs) {
 }
 
 // ─── Plugins ─────────────────────────────────────────────────────────────────
+//
+// Pluginy są teraz wbudowane w firmware (BuiltinPlugins) i "instalacja" to
+// tylko lokalna flaga włącz/wyłącz w PluginLibrary (NVS) — bez WiFi, bez SD.
+// Trzy ekrany:
+//   PluginsHome    — [Aktywne] [Biblioteka], wejście z głównego menu.
+//   PluginsActive  — tylko włączone pluginy, pełna szerokość, 3/stronę
+//                    (patrz gridPagesVertically_ w renderItemGrid()).
+//   PluginLibraryScreen (Biblioteka) — wszystkie pluginy, tap → PluginDetail.
+//   PluginDetail   — nazwa, opis, przycisk Włącz/Wyłącz.
 
-// New dynamic plugin system — builds menu from PluginLibrary::installed()
-// Menu layout:
-//   [0]: Back
-//   [1..N]: Installed plugins (each with "Launch" / "Remove" sub-actions)
-//   [N+1]: separator "---"
-//   [N+2]: "Biblioteka" (opens PluginLibraryScreen)
+void App::openPluginsHome() {
+  pluginsHomeMenuItems_.clear();
+  pluginsHomeMenuItems_.push_back(uiText(UiText::Back));
+  pluginsHomeMenuItems_.push_back(polish("Aktywne", "Active"));
+  pluginsHomeMenuItems_.push_back(tr2(TrKey2::PluginLibrary));
 
-void App::openPluginsList() {
-  pluginsMenuItems_.clear();
-  pluginLibrary_.scanInstalled();
-
-  // [0] Back
-  pluginsMenuItems_.push_back(uiText(UiText::Back));
-
-  // Installed plugins — each shows name + "[Launch] [Remove]"
-  const auto& installed = pluginLibrary_.installed();
-  for (const auto& plugin : installed) {
-    String label = plugin.name + " v" + plugin.version;
-    pluginsMenuItems_.push_back(label);
-  }
-
-  // Separator
-  pluginsMenuItems_.push_back("---");
-
-  // Biblioteka (Library) item — opens online store
-  pluginsMenuItems_.push_back(tr2(TrKey2::PluginLibrary));
-
-  pluginsSelectedIndex_ = installed.empty() ? (pluginsMenuItems_.size() - 1) : 1;
-  menuScreen_ = MenuScreen::PluginsList;
-  renderPluginsList();
+  pluginsHomeSelectedIndex_ = 1;
+  menuScreen_ = MenuScreen::PluginsHome;
+  renderPluginsHome();
 }
 
-void App::selectPluginsItem(uint32_t nowMs) {
-  // Back
-  if (pluginsSelectedIndex_ == 0) {
-    menuScreen_ = MenuScreen::Main;
-    // Pluginy są osiągalne tylko z trybu zaawansowanego, gdzie
-    // renderMainMenu() rysuje je zaraz po Ustawieniach (Wyłącz jest
-    // dosunięte na sam koniec) — patrz kolejność push_back tam.
-    // +1 gdy na górze menu wisi przycisk "Update" — patrz selectMenuItem().
-    menuSelectedIndex_ = (MenuSettings + 1) + (otaUpdatePromptPending_ ? 1 : 0);
-    renderMainMenu();
-    return;
-  }
-
-  const auto& installed = pluginLibrary_.installed();
-  const size_t installedCount = installed.size();
-  const size_t separatorIndex = 1 + installedCount;
-  const size_t libraryIndex = separatorIndex + 1;
-
-  // Separator — ignore tap
-  if (pluginsSelectedIndex_ == separatorIndex) {
-    return;
-  }
-
-  // Biblioteka — open the online store screen
-  if (pluginsSelectedIndex_ == libraryIndex) {
-    openPluginLibraryScreen(nowMs);
-    return;
-  }
-
-  // Installed plugin item — launch the plugin
-  if (pluginsSelectedIndex_ >= 1 && pluginsSelectedIndex_ <= installedCount) {
-    const size_t pluginIdx = pluginsSelectedIndex_ - 1;
-    const auto& plugin = installed[pluginIdx];
-    const char* pluginId = plugin.id.c_str();
-
-    // Try to load and launch the plugin
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginLaunch),
-                          plugin.name.c_str());
-
-    PluginLoader::LoadResult result = pluginLoader_.load(pluginId);
-    if (result.success) {
-      Serial.printf("[plugin] launched plugin: %s\n", pluginId);
-      // Plugin is now running in its own FreeRTOS task.
-      // The update loop (task 6.2) will handle forwarding events.
-      return;
-    }
-
-    // Load failed — show error
-    Serial.printf("[plugin] load failed: %s — %s\n", pluginId, result.message);
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginInstallFailed),
-                          result.message ? result.message : "");
-    delay(2000);
-    renderPluginsList();
-    return;
-  }
-}
-
-void App::openPluginLibraryScreen(uint32_t nowMs) {
+void App::selectPluginsHomeItem(uint32_t nowMs) {
   (void)nowMs;
-
-  if (configuredWifiSsid().isEmpty()) {
-    display_.renderStatus(uiText(UiText::Plugins),
-                          polish("Polacz z WiFi", "Connect to WiFi"), "");
-    delay(900);
-    wifiReturnScreen_ = MenuScreen::PluginsList;
-    openWifiSettings();
-    return;
+  switch (pluginsHomeSelectedIndex_) {
+    case 0:  // Back
+      menuScreen_ = MenuScreen::Main;
+      // Pluginy są osiągalne tylko z trybu zaawansowanego, gdzie
+      // renderMainMenu() rysuje je zaraz po Ustawieniach (Wyłącz jest
+      // dosunięte na sam koniec) — patrz kolejność push_back tam.
+      // +1 gdy na górze menu wisi przycisk "Update" — patrz selectMenuItem().
+      menuSelectedIndex_ = (MenuSettings + 1) + (otaUpdatePromptPending_ ? 1 : 0);
+      renderMainMenu();
+      return;
+    case 1:  // Aktywne
+      openPluginsActive();
+      return;
+    case 2:  // Biblioteka
+      openPluginLibraryScreen();
+      return;
+    default:
+      return;
   }
+}
 
-  // Set WiFi credentials and fetch registry
-  const String ssid = preferences_.getString(kPrefWifiSsid, "");
-  const String pass = preferences_.getString(kPrefWifiPass, "");
-  pluginLibrary_.setWifiCredentials(ssid, pass);
+void App::renderPluginsHome() {
+  renderMenuAnyMode("", pluginsHomeMenuItems_, pluginsHomeSelectedIndex_);
+}
 
-  display_.renderStatus(uiText(UiText::Plugins),
-                        tr2(TrKey2::PluginFetchingRegistry), "");
+void App::openPluginsActive() {
+  pluginsActiveMenuItems_.clear();
+  pluginsActiveMenuItems_.push_back(uiText(UiText::Back));
 
-  PluginLibrary::FetchResult fetchResult = pluginLibrary_.fetchRegistry();
-  if (fetchResult != PluginLibrary::FetchResult::Success) {
-    const char* errorMsg = "";
-    switch (fetchResult) {
-      case PluginLibrary::FetchResult::WifiError:
-        errorMsg = tr2(TrKey2::PluginNoWifi);
-        break;
-      case PluginLibrary::FetchResult::HttpError:
-        errorMsg = tr2(TrKey2::PluginFetchFailed);
-        break;
-      case PluginLibrary::FetchResult::ParseError:
-        errorMsg = tr2(TrKey2::PluginInstallFailed);
-        break;
-      default:
-        break;
+  const auto enabled = pluginLibrary_.enabledEntries();
+  if (enabled.empty()) {
+    // Info-only tile, same non-selectable treatment as a "---" separator —
+    // an empty grid with just a Back icon reads as broken, not "empty".
+    pluginsActiveMenuItems_.push_back(
+        polish("Brak aktywnych pluginow", "No active plugins"));
+  } else {
+    for (const auto& entry : enabled) {
+      pluginsActiveMenuItems_.push_back(entry.name);
     }
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginFetchFailed), errorMsg);
-    delay(2000);
-    renderPluginsList();
+  }
+
+  pluginsActiveSelectedIndex_ = enabled.empty() ? 0 : 1;
+  menuScreen_ = MenuScreen::PluginsActive;
+  renderPluginsActive();
+}
+
+void App::selectPluginsActiveItem(uint32_t nowMs) {
+  // Back
+  if (pluginsActiveSelectedIndex_ == 0) {
+    openPluginsHome();
     return;
   }
 
-  // Build library menu from registry
+  const auto enabled = pluginLibrary_.enabledEntries();
+  if (enabled.empty()) {
+    // Only the info tile is present — nothing to launch.
+    return;
+  }
+
+  const size_t idx = pluginsActiveSelectedIndex_ - 1;
+  if (idx >= enabled.size()) {
+    return;
+  }
+  const auto& entry = enabled[idx];
+  const char* pluginId = entry.id.c_str();
+
+  display_.renderStatus(uiText(UiText::Plugins), tr2(TrKey2::PluginLaunch),
+                        entry.name.c_str());
+
+  PluginLoader::LoadResult result = pluginLoader_.load(pluginId);
+  if (result.success) {
+    Serial.printf("[plugin] launched plugin: %s\n", pluginId);
+    // Plugin is now running in its own FreeRTOS task.
+    // The update loop (task 6.2) will handle forwarding events.
+    return;
+  }
+
+  // Load failed — show error
+  Serial.printf("[plugin] load failed: %s — %s\n", pluginId, result.message);
+  display_.renderStatus(uiText(UiText::Plugins), tr2(TrKey2::PluginInstallFailed),
+                        result.message ? result.message : "");
+  delay(2000);
+  (void)nowMs;
+  renderPluginsActive();
+}
+
+void App::renderPluginsActive() {
+  // No battery badge here: this screen is a dense full-width grid and the
+  // corner badge visually collides with the tiles.
+  if (navMode_ == NavMode::Buttons) {
+    renderItemGrid("", pluginsActiveMenuItems_, pluginsActiveSelectedIndex_, 0, false);
+    return;
+  }
+  renderMenuAnyMode("", pluginsActiveMenuItems_, pluginsActiveSelectedIndex_);
+}
+
+void App::openPluginLibraryScreen() {
   pluginLibraryMenuItems_.clear();
   pluginLibraryMenuItems_.push_back(uiText(UiText::Back));
 
-  const auto& registry = pluginLibrary_.registry();
-  for (const auto& entry : registry) {
+  const auto& all = pluginLibrary_.all();
+  for (const auto& entry : all) {
     String label = entry.name;
-    if (pluginLibrary_.isInstalled(entry.id.c_str())) {
-      if (pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
-        label += " " + String(tr2(TrKey2::PluginUpdate));
-      } else {
-        label += " " + String(tr2(TrKey2::PluginInstalled));
-      }
-    } else {
-      label += " - " + String(tr2(TrKey2::PluginInstall));
-    }
+    label += entry.enabled ? polish(" [wlaczony]", " [enabled]")
+                            : polish(" [wylaczony]", " [disabled]");
     pluginLibraryMenuItems_.push_back(label);
   }
 
-  pluginLibrarySelectedIndex_ = registry.empty() ? 0 : 1;
+  pluginLibrarySelectedIndex_ = all.empty() ? 0 : 1;
   menuScreen_ = MenuScreen::PluginLibraryScreen;
   renderPluginLibraryScreen();
 }
@@ -7259,32 +7181,31 @@ void App::selectPluginLibraryItem(uint32_t nowMs) {
 
   // Back
   if (pluginLibrarySelectedIndex_ == 0) {
-    openPluginsList();
+    openPluginsHome();
     return;
   }
 
-  const auto& registry = pluginLibrary_.registry();
-  const size_t registryIdx = pluginLibrarySelectedIndex_ - 1;
-  if (registryIdx >= registry.size()) {
+  const auto& all = pluginLibrary_.all();
+  const size_t idx = pluginLibrarySelectedIndex_ - 1;
+  if (idx >= all.size()) {
     return;
   }
 
-  // Open detail screen instead of immediately downloading
-  openPluginDetail(registryIdx);
+  openPluginDetail(idx);
 }
 
 void App::renderPluginLibraryScreen() {
   renderMenuAnyMode("", pluginLibraryMenuItems_, pluginLibrarySelectedIndex_);
 }
 
-void App::openPluginDetail(size_t registryIndex) {
-  const auto& registry = pluginLibrary_.registry();
-  if (registryIndex >= registry.size()) {
+void App::openPluginDetail(size_t entryIndex) {
+  const auto& all = pluginLibrary_.all();
+  if (entryIndex >= all.size()) {
     return;
   }
 
-  pluginDetailIndex_ = registryIndex;
-  const auto& entry = registry[registryIndex];
+  pluginDetailIndex_ = entryIndex;
+  const auto& entry = all[entryIndex];
 
   pluginDetailMenuItems_.clear();
   pluginDetailMenuItems_.push_back(uiText(UiText::Back));
@@ -7315,20 +7236,18 @@ void App::openPluginDetail(size_t registryIndex) {
     pluginDetailMenuItems_.push_back(line2);
   }
 
-  if (pluginLibrary_.isInstalled(entry.id.c_str()) &&
-      pluginLibrary_.isUpdateAvailable(entry.id.c_str())) {
-    pluginDetailMenuItems_.push_back(polish("Aktualizuj", "Update"));
-  } else {
-    pluginDetailMenuItems_.push_back(polish("Zainstaluj", "Install"));
-  }
+  pluginDetailMenuItems_.push_back(entry.enabled ? polish("Wylacz", "Disable")
+                                                  : polish("Wlacz", "Enable"));
 
-  // Default selection to the last item (Install/Update button)
+  // Default selection to the last item (Enable/Disable button)
   pluginDetailSelectedIndex_ = pluginDetailMenuItems_.size() - 1;
   menuScreen_ = MenuScreen::PluginDetail;
   renderPluginDetail();
 }
 
 void App::selectPluginDetailItem(uint32_t nowMs) {
+  (void)nowMs;
+
   // Back
   if (pluginDetailSelectedIndex_ == 0) {
     menuScreen_ = MenuScreen::PluginLibraryScreen;
@@ -7336,60 +7255,30 @@ void App::selectPluginDetailItem(uint32_t nowMs) {
     return;
   }
 
-  const size_t installButtonIndex = pluginDetailMenuItems_.size() - 1;
+  const size_t toggleButtonIndex = pluginDetailMenuItems_.size() - 1;
 
-  // Description lines — non-selectable (everything between Back and Install button)
-  if (pluginDetailSelectedIndex_ < installButtonIndex) {
+  // Description lines — non-selectable (everything between Back and the toggle)
+  if (pluginDetailSelectedIndex_ < toggleButtonIndex) {
     return;
   }
 
-  // Install / Update (last item)
-  if (pluginDetailSelectedIndex_ == installButtonIndex) {
-    const auto& registry = pluginLibrary_.registry();
-    if (pluginDetailIndex_ >= registry.size()) {
+  // Włącz/Wyłącz (last item)
+  if (pluginDetailSelectedIndex_ == toggleButtonIndex) {
+    const auto& all = pluginLibrary_.all();
+    if (pluginDetailIndex_ >= all.size()) {
       return;
     }
-    const auto& entry = registry[pluginDetailIndex_];
-    const char* pluginId = entry.id.c_str();
+    const auto& entry = all[pluginDetailIndex_];
+    pluginLibrary_.setEnabled(entry.id.c_str(), !entry.enabled);
 
-    display_.renderStatus(uiText(UiText::Plugins),
-                          tr2(TrKey2::PluginDownloading),
-                          entry.name.c_str());
-
-    bool downloadOk = pluginLibrary_.downloadPlugin(pluginId);
-    if (downloadOk) {
-      pluginLibrary_.scanInstalled();
-      display_.renderStatus(uiText(UiText::Plugins),
-                            entry.name.c_str(),
-                            tr2(TrKey2::PluginInstalled));
-      delay(1200);
-    } else {
-      // Binary likely not yet available on GitHub (404) — show specific message
-      display_.renderStatus(uiText(UiText::Plugins),
-                            tr2(TrKey2::PluginNotYetAvailable),
-                            entry.name.c_str());
-      delay(2000);
-    }
-
-    // Return to library screen (refreshed)
-    openPluginLibraryScreen(nowMs);
+    // Refresh the detail screen in place — toggling is instant and
+    // reversible, no restart needed since the plugin was already built in.
+    openPluginDetail(pluginDetailIndex_);
   }
 }
 
 void App::renderPluginDetail() {
   renderItemGrid("", pluginDetailMenuItems_, pluginDetailSelectedIndex_);
-}
-
-void App::renderPluginsList() {
-  // No battery badge here: this screen is a dense grid (installed plugins +
-  // separator + library tile) and the corner badge visually collided with
-  // the tiles — the badge is genuinely useful on lighter screens (Main,
-  // Settings), not here.
-  if (navMode_ == NavMode::Buttons) {
-    renderItemGrid("", pluginsMenuItems_, pluginsSelectedIndex_, 0, false);
-    return;
-  }
-  renderMenuAnyMode("", pluginsMenuItems_, pluginsSelectedIndex_);
 }
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
@@ -9108,8 +8997,10 @@ void App::renderMenu() {
     renderSavePointsList();
   } else if (menuScreen_ == MenuScreen::SavePointDeleteConfirm) {
     renderItemGrid("", savePointDeleteConfirmMenuItems_, savePointDeleteConfirmSelectedIndex_);
-  } else if (menuScreen_ == MenuScreen::PluginsList) {
-    renderPluginsList();
+  } else if (menuScreen_ == MenuScreen::PluginsHome) {
+    renderPluginsHome();
+  } else if (menuScreen_ == MenuScreen::PluginsActive) {
+    renderPluginsActive();
   } else if (menuScreen_ == MenuScreen::PluginLibraryScreen) {
     renderPluginLibraryScreen();
   } else if (menuScreen_ == MenuScreen::PluginDetail) {

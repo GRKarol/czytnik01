@@ -2,87 +2,39 @@
 #pragma once
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <vector>
 
 /**
- * PluginLibrary — online plugin store that connects to GitHub to fetch a
- * registry of available plugins, download/install them to SD card, and
- * manage installed plugins.
- *
- * WiFi credentials (SSID/password) are passed by the caller — the library
- * does not read Preferences directly.
+ * PluginLibrary — local registry of built-in plugins with enable/disable
+ * state. Plugin code is always compiled into the firmware; there is no
+ * network install/download step anymore. Enabling a plugin just flips a
+ * persisted flag so it shows up on the Aktywne (active) screen — disabling
+ * it removes it from Aktywne without touching RAM or flash.
  */
 class PluginLibrary {
  public:
-    struct RegistryEntry {
+    struct Entry {
         String id;
         String name;
         String description;
-        String version;
-        String author;
-        uint32_t sdkVersion;
-        String binaryUrl;
-        String manifestUrl;
-        uint32_t sizeBytes;
-        String minFirmwareVersion;
+        bool enabled;
     };
-
-    struct InstalledPlugin {
-        String id;
-        String name;
-        String version;
-    };
-
-    enum class FetchResult : uint8_t {
-        Success,
-        WifiError,
-        HttpError,
-        ParseError,
-    };
-
-    using ProgressCallback = void (*)(void* context, int progressPercent);
 
     bool begin();
 
-    /// Set WiFi credentials (must be called before fetchRegistry/downloadPlugin)
-    void setWifiCredentials(const String& ssid, const String& password);
+    /// All built-in plugins, each annotated with its current enabled state.
+    const std::vector<Entry>& all() const { return entries_; }
 
-    /// Fetch the plugin registry from GitHub. Connects WiFi if not already connected.
-    FetchResult fetchRegistry();
+    /// Subset of all() where enabled == true, in registry order.
+    std::vector<Entry> enabledEntries() const;
 
-    /// Download and install a plugin by ID from the registry.
-    bool downloadPlugin(const char* pluginId, ProgressCallback cb = nullptr,
-                        void* context = nullptr);
-
-    /// Remove an installed plugin (deletes /plugins/{id}/ directory recursively).
-    bool removePlugin(const char* pluginId);
-
-    /// Scan /plugins/ directory for installed plugins with valid manifests.
-    void scanInstalled();
-
-    // Accessors
-    const std::vector<RegistryEntry>& registry() const { return registry_; }
-    const std::vector<InstalledPlugin>& installed() const { return installed_; }
-    bool isInstalled(const char* pluginId) const;
-    bool isUpdateAvailable(const char* pluginId) const;
+    bool isEnabled(const char* id) const;
+    void setEnabled(const char* id, bool enabled);
 
  private:
-    bool parseRegistry(const String& json);
-    bool downloadFile(const String& url, const String& destPath,
-                      size_t expectedSize, ProgressCallback cb, void* context);
-    void cleanupPartialDownload(const char* pluginId);
-    bool connectWifi();
-    void disconnectWifi();
-    String pluginManifestPath(const char* pluginId) const;
-    String pluginDirPath(const char* pluginId) const;
-    bool parseManifest(const String& path, InstalledPlugin& info);
-    int compareVersions(const String& a, const String& b) const;
-    bool ensurePluginDir(const char* pluginId);
-    void removeDirectoryRecursive(const String& path);
+    void refresh();
 
-    std::vector<RegistryEntry> registry_;
-    std::vector<InstalledPlugin> installed_;
-    String wifiSsid_;
-    String wifiPassword_;
-    bool wifiConnected_ = false;
+    Preferences prefs_;
+    std::vector<Entry> entries_;
 };

@@ -13,9 +13,10 @@
  */
 
 struct BuiltinPlugin {
-    const char* id;         // e.g. "focus-timer", "rss"
-    const char* name;       // human-readable name
-    PluginVTable vtable;    // function pointers to built-in code
+    const char* id;           // e.g. "focus-timer", "rss"
+    const char* name;         // human-readable name
+    const char* description;  // shown on the plugin detail screen
+    PluginVTable vtable;       // function pointers to built-in code
 };
 
 namespace BuiltinPlugins {

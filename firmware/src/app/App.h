@@ -111,7 +111,8 @@ class App {
     SavePointsList,
     SavePointDeleteConfirm,
     SavePointNameEntry,
-    PluginsList,
+    PluginsHome,
+    PluginsActive,
     PluginLibraryScreen,
     PluginDetail,
     RestartConfirm,
@@ -305,7 +306,6 @@ class App {
   bool updateConfirmCanOpen() const;
   bool blockNetworkActionForOtaCheck(const String &title, uint32_t nowMs);
   void runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, uint32_t nowMs);
-  void runRssFeedCheck(uint32_t nowMs);
   OtaUpdater::Config preferredOtaConfig();
   void scanWifiNetworks();
   void renderWifiNetworks();
@@ -445,14 +445,18 @@ class App {
   void deleteSavePoint(size_t index);
   void loadSavePoints();
   void persistSavePoints();
-  void openPluginsList();
-  void selectPluginsItem(uint32_t nowMs);
-  void autoSyncPlugins();
+  void openPluginsHome();
+  void selectPluginsHomeItem(uint32_t nowMs);
+  void renderPluginsHome();
 
-  void openPluginLibraryScreen(uint32_t nowMs);
+  void openPluginsActive();
+  void selectPluginsActiveItem(uint32_t nowMs);
+  void renderPluginsActive();
+
+  void openPluginLibraryScreen();
   void selectPluginLibraryItem(uint32_t nowMs);
   void renderPluginLibraryScreen();
-  void openPluginDetail(size_t registryIndex);
+  void openPluginDetail(size_t entryIndex);
   void selectPluginDetailItem(uint32_t nowMs);
   void renderPluginDetail();
   void openPresets();
@@ -634,7 +638,6 @@ class App {
   void renderBookDetails();
   void renderChapterPicker();
   void renderSavePointsList();
-  void renderPluginsList();
   void renderRestartConfirm();
   void renderSdCardRepairConfirm();
   void renderUpdateConfirm();
@@ -738,7 +741,6 @@ class App {
   uint32_t autoSyncStartedMs_ = 0;
   bool autoSyncActive_ = false;
   bool autoSyncClientConnected_ = false;
-  bool pluginSyncDone_ = false;
   uint32_t lastReaderTapMs_ = 0;
   uint32_t standbyComboStartedMs_ = 0;
   uint32_t standbyEnteredMs_ = 0;
@@ -878,14 +880,15 @@ class App {
   size_t bookDetailsBookIndex_ = 0;
   std::vector<String> bookDeleteConfirmMenuItems_;
   size_t bookDeleteConfirmSelectedIndex_ = 0;
-  std::vector<String> pluginsMenuItems_;
-  size_t pluginsSelectedIndex_ = 0;
+  std::vector<String> pluginsHomeMenuItems_;
+  size_t pluginsHomeSelectedIndex_ = 0;
+  std::vector<String> pluginsActiveMenuItems_;
+  size_t pluginsActiveSelectedIndex_ = 0;
   std::vector<String> pluginLibraryMenuItems_;
   size_t pluginLibrarySelectedIndex_ = 0;
   std::vector<String> pluginDetailMenuItems_;
   size_t pluginDetailSelectedIndex_ = 0;
   size_t pluginDetailIndex_ = 0;
-  MenuScreen wifiReturnScreen_ = MenuScreen::SettingsHome;
   std::vector<uint32_t> wordBonusBlockPrefixSumMs_;
   String timeEstimateBuildBookPath_;
   size_t timeEstimateBuildWordCount_ = 0;
