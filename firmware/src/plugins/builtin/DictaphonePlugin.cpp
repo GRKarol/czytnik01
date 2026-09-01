@@ -174,8 +174,16 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
         }
 
         case Screen::Playing: {
-            // Tap anywhere to stop
-            stopPlayback();
+            // Left edge = quieter, right edge = louder, middle = stop.
+            int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
+            const uint16_t edgeZone = static_cast<uint16_t>(width / 5);
+            if (x < edgeZone) {
+                adjustVolume(-10);
+            } else if (x > static_cast<uint16_t>(width - edgeZone)) {
+                adjustVolume(10);
+            } else {
+                stopPlayback();
+            }
             break;
         }
 
@@ -271,18 +279,21 @@ void DictaphoneCore::drawPlaying() {
     char totalBuf[16];
     uint32_t elapsed = 0;
     uint32_t total = 0;
+    uint8_t volume = 0;
 
     if (audio_) {
         if (audio_->playbackElapsedMs) elapsed = audio_->playbackElapsedMs();
         if (audio_->playbackTotalMs) total = audio_->playbackTotalMs();
+        if (audio_->getVolume) volume = audio_->getVolume();
     }
 
     formatTime(elapsed, timeBuf, sizeof(timeBuf));
 
-    char elapsedTotal[24];
+    char elapsedTotal[32];
     char totalStr[8];
     formatTime(total, totalStr, sizeof(totalStr));
-    snprintf(elapsedTotal, sizeof(elapsedTotal), "%s / %s", timeBuf, totalStr);
+    snprintf(elapsedTotal, sizeof(elapsedTotal), "%s / %s  Gl:%u%%",
+             timeBuf, totalStr, static_cast<unsigned>(volume));
 
     int progress = (total > 0) ? static_cast<int>((elapsed * 100UL) / total) : 0;
 
@@ -371,6 +382,15 @@ void DictaphoneCore::stopPlayback() {
     if (!audio_ || !audio_->stopPlayback) return;
     audio_->stopPlayback();
     goToScreen(Screen::Library);
+}
+
+void DictaphoneCore::adjustVolume(int delta) {
+    if (!audio_ || !audio_->getVolume || !audio_->setVolume) return;
+
+    int next = static_cast<int>(audio_->getVolume()) + delta;
+    if (next < 0) next = 0;
+    if (next > 100) next = 100;
+    audio_->setVolume(static_cast<uint8_t>(next));
 }
 
 // ─── File Management ────────────────────────────────────────────────────────

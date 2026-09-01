@@ -8,6 +8,7 @@
 
 #include "audio/AudioManager.h"
 #include "audio/AudioRecorder.h"
+#include "audio/AudioVolume.h"
 #include "board/BoardConfig.h"
 #include "display/DisplayManager.h"
 
@@ -266,6 +267,15 @@ static uint32_t bridgeAudioPlaybackTotalMs() {
     return sRecorder->playbackTotalMs();
 }
 
+static uint8_t bridgeAudioGetVolume() {
+    return AudioVolume::percent();
+}
+
+static void bridgeAudioSetVolume(uint8_t percent) {
+    AudioVolume::setPercent(percent);
+    if (sRecorder) sRecorder->applyVolume();
+}
+
 // ─── IMU Service Wrappers ───────────────────────────────────────────────────
 
 static bool bridgeImuReadAccelerometer(float* x, float* y, float* z) {
@@ -432,6 +442,8 @@ void DeviceServicesBridge::setup(const char* pluginId,
         audioService->isPlaying = bridgeAudioIsPlaying;
         audioService->playbackElapsedMs = bridgeAudioPlaybackElapsedMs;
         audioService->playbackTotalMs = bridgeAudioPlaybackTotalMs;
+        audioService->getVolume = bridgeAudioGetVolume;
+        audioService->setVolume = bridgeAudioSetVolume;
     }
 
     // Populate IMU service function pointers

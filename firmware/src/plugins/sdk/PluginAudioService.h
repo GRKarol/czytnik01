@@ -42,6 +42,14 @@ typedef struct PluginAudioService {
 
     /// Get total duration of currently playing file in milliseconds.
     uint32_t (*playbackTotalMs)(void);
+
+    // ─── Volume (persisted, shared by every playback path) ──────────────
+    /// Get current playback volume, 0-100.
+    uint8_t (*getVolume)(void);
+
+    /// Set playback volume, 0-100 (values above 100 are clamped). Takes
+    /// effect immediately if audio is currently playing.
+    void (*setVolume)(uint8_t percent);
 } PluginAudioService;
 
 #ifdef __cplusplus

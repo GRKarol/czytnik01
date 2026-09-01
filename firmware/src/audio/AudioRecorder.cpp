@@ -6,6 +6,7 @@
 #include <driver/i2s.h>
 #include <esp_log.h>
 
+#include "audio/AudioVolume.h"
 #include "board/BoardConfig.h"
 
 static const char* TAG = "AudioRecorder";
@@ -443,10 +444,21 @@ bool AudioRecorder::configureCodecForPlayback() {
     if (!readCodecRegister(kEs8311DacReg31, dacMute)) return false;
     dacMute &= 0x9F;  // unmute DAC
     if (!writeCodecRegister(kEs8311DacReg31, dacMute)) return false;
-    if (!writeCodecRegister(kEs8311DacReg32, 0xFF)) return false;  // max DAC volume
+    if (!writeCodecRegister(kEs8311DacReg32, AudioVolume::dacRegisterValue())) return false;
 
     ESP_LOGI(TAG, "Codec configured for playback");
     return true;
+}
+
+// ─── Volume ─────────────────────────────────────────────────────────────────
+
+void AudioRecorder::applyVolume() {
+    // Only meaningful while the DAC path is actually active; writing the
+    // register otherwise still succeeds but has nothing to affect until the
+    // next configureCodecForPlayback() call, which already reads the current
+    // AudioVolume value on its own.
+    if (!playing_) return;
+    writeCodecRegister(kEs8311DacReg32, AudioVolume::dacRegisterValue());
 }
 
 // ─── Audio Rail ─────────────────────────────────────────────────────────────

@@ -52,6 +52,10 @@ class AudioRecorder {
     uint32_t playbackElapsedMs() const;
     uint32_t playbackTotalMs() const;
 
+    // Re-pushes AudioVolume::dacRegisterValue() to the codec while playback
+    // is active, so a volume change takes effect immediately.
+    void applyVolume();
+
  private:
     static constexpr uint32_t kSampleRate = 16000;
     static constexpr uint32_t kBitsPerSample = 16;

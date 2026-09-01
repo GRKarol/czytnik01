@@ -6,6 +6,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "audio/AudioVolume.h"
 #include "board/BoardConfig.h"
 
 namespace {
@@ -48,7 +49,6 @@ constexpr uint8_t kEs8311GpReg45 = 0x45;
 constexpr uint8_t kEs8311ChipId1RegFD = 0xFD;
 constexpr uint8_t kEs8311ChipId2RegFE = 0xFE;
 
-constexpr uint8_t kEs8311DacVolumeMax = 0xFF;
 constexpr uint32_t kAudioStartupDelayMs = 15;
 constexpr uint32_t kBeepFrequencyHz = 1320;
 constexpr int16_t kBeepAmplitude = 12000;
@@ -270,7 +270,7 @@ bool AudioManager::startCodec() {
 
   dacMute &= 0x9F;
   return writeCodecRegister(kEs8311DacReg31, dacMute) &&
-         writeCodecRegister(kEs8311DacReg32, kEs8311DacVolumeMax);
+         writeCodecRegister(kEs8311DacReg32, AudioVolume::dacRegisterValue());
 }
 
 bool AudioManager::prepareForBeep() {
@@ -287,7 +287,7 @@ bool AudioManager::prepareForBeep() {
     dacMute &= 0x9F;
     writeCodecRegister(kEs8311DacReg31, dacMute);
   }
-  writeCodecRegister(kEs8311DacReg32, kEs8311DacVolumeMax);
+  writeCodecRegister(kEs8311DacReg32, AudioVolume::dacRegisterValue());
   return true;
 }
 
