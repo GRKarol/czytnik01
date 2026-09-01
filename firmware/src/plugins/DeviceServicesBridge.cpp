@@ -187,6 +187,10 @@ static void bridgeRenderDeletableList(const char* const* items, uint8_t itemCoun
         del.width = static_cast<uint16_t>(kDeletableListIconZoneWidth);
         del.height = static_cast<uint16_t>(rowHeight);
         del.icon = ui::IconId::Delete;
+        // The zone is a wide, short tap target (120px x row height) so it
+        // stays easy to hit, but the glyph itself should stay a normal
+        // small trash-can size, not balloon to fill that whole box.
+        del.iconMaxSize = 22;
         buttons.push_back(del);
     }
 
@@ -267,6 +271,26 @@ static uint32_t bridgeAudioPlaybackTotalMs() {
     return sRecorder->playbackTotalMs();
 }
 
+static void bridgeAudioPausePlayback() {
+    if (!sRecorder) return;
+    sRecorder->pausePlayback();
+}
+
+static void bridgeAudioResumePlayback() {
+    if (!sRecorder) return;
+    sRecorder->resumePlayback();
+}
+
+static bool bridgeAudioIsPaused() {
+    if (!sRecorder) return false;
+    return sRecorder->isPaused();
+}
+
+static void bridgeAudioSeekPlaybackBy(int32_t deltaMs) {
+    if (!sRecorder) return;
+    sRecorder->seekPlaybackBy(deltaMs);
+}
+
 static uint8_t bridgeAudioGetVolume() {
     return AudioVolume::percent();
 }
@@ -282,6 +306,7 @@ static bool bridgeImuReadAccelerometer(float* x, float* y, float* z) {
     if (!x || !y || !z) return false;
 
     // Direct I2C read from QMI8658 on Wire1 (same approach as FocusTimer)
+    BoardConfig::I2cBusLock lock;
     Wire1.beginTransmission(kImuAddress);
     Wire1.write(kImuAccelStartReg);
     if (Wire1.endTransmission(false) != 0) {
@@ -309,6 +334,7 @@ static bool bridgeImuReadAccelerometer(float* x, float* y, float* z) {
 
 static bool bridgeImuAvailable() {
     // Probe the IMU address on Wire1
+    BoardConfig::I2cBusLock lock;
     Wire1.beginTransmission(kImuAddress);
     return Wire1.endTransmission(true) == 0;
 }
@@ -442,6 +468,10 @@ void DeviceServicesBridge::setup(const char* pluginId,
         audioService->isPlaying = bridgeAudioIsPlaying;
         audioService->playbackElapsedMs = bridgeAudioPlaybackElapsedMs;
         audioService->playbackTotalMs = bridgeAudioPlaybackTotalMs;
+        audioService->pausePlayback = bridgeAudioPausePlayback;
+        audioService->resumePlayback = bridgeAudioResumePlayback;
+        audioService->isPaused = bridgeAudioIsPaused;
+        audioService->seekPlaybackBy = bridgeAudioSeekPlaybackBy;
         audioService->getVolume = bridgeAudioGetVolume;
         audioService->setVolume = bridgeAudioSetVolume;
     }

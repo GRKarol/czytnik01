@@ -43,6 +43,16 @@ typedef struct PluginAudioService {
     /// Get total duration of currently playing file in milliseconds.
     uint32_t (*playbackTotalMs)(void);
 
+    /// Pause/resume the current playback without tearing down the codec
+    /// session — resume is instant, no re-init pop. No-ops if not playing.
+    void (*pausePlayback)(void);
+    void (*resumePlayback)(void);
+    bool (*isPaused)(void);
+
+    /// Jump playback by deltaMs (negative = backward), clamped to
+    /// [0, playbackTotalMs()]. No-op if not playing.
+    void (*seekPlaybackBy)(int32_t deltaMs);
+
     // ─── Volume (persisted, shared by every playback path) ──────────────
     /// Get current playback volume, 0-100.
     uint8_t (*getVolume)(void);

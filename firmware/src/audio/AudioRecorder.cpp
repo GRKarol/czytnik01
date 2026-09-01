@@ -148,11 +148,14 @@ bool AudioRecorder::startPlayback(const char* absolutePath) {
 
     uint32_t totalSamples = hdr.dataSize / (hdr.bitsPerSample / 8) / hdr.numChannels;
     playbackTotalMs_ = (totalSamples * 1000UL) / hdr.sampleRate;
+    playbackBytesPerMs_ = (hdr.sampleRate * hdr.numChannels * (hdr.bitsPerSample / 8)) / 1000UL;
 
     checkFile.close();
 
     currentFilePath_ = absolutePath;
     stopRequested_ = false;
+    paused_ = false;
+    seekTargetMs_ = -1;
     playing_ = true;
     playbackStartMs_ = millis();
 
@@ -198,11 +201,55 @@ bool AudioRecorder::isPlaying() const {
 
 uint32_t AudioRecorder::playbackElapsedMs() const {
     if (!playing_) return 0;
+    // Frozen at the instant pause began — real time keeps moving while
+    // paused, but the playback position must not appear to.
+    if (paused_) return pauseBeganMs_ - playbackStartMs_;
     return millis() - playbackStartMs_;
 }
 
 uint32_t AudioRecorder::playbackTotalMs() const {
     return playbackTotalMs_;
+}
+
+void AudioRecorder::pausePlayback() {
+    if (!playing_ || paused_) return;
+    paused_ = true;
+    pauseBeganMs_ = millis();
+}
+
+void AudioRecorder::resumePlayback() {
+    if (!playing_ || !paused_) return;
+    // Shift the elapsed-time epoch forward by however long we were paused,
+    // so playbackElapsedMs() picks up exactly where it left off instead of
+    // jumping ahead by the pause duration.
+    playbackStartMs_ += millis() - pauseBeganMs_;
+    paused_ = false;
+}
+
+bool AudioRecorder::isPaused() const {
+    return paused_;
+}
+
+void AudioRecorder::seekPlaybackBy(int32_t deltaMs) {
+    if (!playing_) return;
+
+    int32_t current = static_cast<int32_t>(playbackElapsedMs());
+    int32_t total = static_cast<int32_t>(playbackTotalMs_);
+    int32_t target = current + deltaMs;
+    if (target < 0) target = 0;
+    if (target > total) target = total;
+
+    // Same epoch-shift trick as pause/resume: move playbackStartMs_ so
+    // playbackElapsedMs() reports the new position immediately, without
+    // waiting for the playback task to catch up on the actual file seek.
+    playbackStartMs_ = millis() - static_cast<uint32_t>(target);
+    if (paused_) {
+        // Keep the frozen-elapsed formula (pauseBeganMs_ - playbackStartMs_)
+        // consistent with the new epoch, otherwise it'd read back the time
+        // elapsed since the *original* pause instead of the seek target.
+        pauseBeganMs_ = millis();
+    }
+    seekTargetMs_ = target;
 }
 
 // ─── I2S Configuration ──────────────────────────────────────────────────────
@@ -464,6 +511,7 @@ void AudioRecorder::applyVolume() {
 // ─── Audio Rail ─────────────────────────────────────────────────────────────
 
 bool AudioRecorder::enableAudioRail() {
+    BoardConfig::I2cBusLock lock;
     uint8_t direction = 0xFF;
     uint8_t output = 0xFF;
 
@@ -497,6 +545,7 @@ bool AudioRecorder::enableAudioRail() {
 // ─── Codec Register Access ──────────────────────────────────────────────────
 
 bool AudioRecorder::readCodecRegister(uint8_t reg, uint8_t& value) {
+    BoardConfig::I2cBusLock lock;
     Wire1.beginTransmission(BoardConfig::ES8311_ADDRESS);
     Wire1.write(reg);
     if (Wire1.endTransmission(false) != 0) return false;
@@ -506,6 +555,7 @@ bool AudioRecorder::readCodecRegister(uint8_t reg, uint8_t& value) {
 }
 
 bool AudioRecorder::writeCodecRegister(uint8_t reg, uint8_t value) {
+    BoardConfig::I2cBusLock lock;
     Wire1.beginTransmission(BoardConfig::ES8311_ADDRESS);
     Wire1.write(reg);
     Wire1.write(value);
@@ -690,7 +740,28 @@ void AudioRecorder::playbackTaskLoop() {
     uint8_t monoBuffer[kPlaybackBufferSize / 2];
     int16_t stereoBuffer[kPlaybackBufferSize / 2];  // mono → stereo
 
-    while (!stopRequested_ && file.available()) {
+    while (!stopRequested_) {
+        if (paused_) {
+            // Don't read or write anything while paused — just idle. The
+            // DMA buffer already queued drains naturally (a few tens of ms
+            // of tail), which is preferable to zeroing it here and risking
+            // a pop.
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        int32_t seekTarget = seekTargetMs_;
+        if (seekTarget >= 0) {
+            seekTargetMs_ = -1;
+            uint32_t offset = sizeof(WavHeader) +
+                               static_cast<uint32_t>(seekTarget) * playbackBytesPerMs_;
+            if (offset > file.size()) offset = file.size();
+            file.seek(offset);
+            continue;
+        }
+
+        if (!file.available()) break;
+
         size_t monoBytes = file.read(monoBuffer, sizeof(monoBuffer));
         if (monoBytes == 0) break;
 

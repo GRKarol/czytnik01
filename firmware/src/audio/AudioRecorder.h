@@ -52,6 +52,18 @@ class AudioRecorder {
     uint32_t playbackElapsedMs() const;
     uint32_t playbackTotalMs() const;
 
+    // Pause holds the playback task idle (no file reads, no I2S writes)
+    // without tearing down the codec/I2S session, so resume is instant and
+    // glitch-free. playbackElapsedMs() freezes while paused.
+    void pausePlayback();
+    void resumePlayback();
+    bool isPaused() const;
+
+    // Jumps playback by deltaMs (negative = backward), clamped to
+    // [0, playbackTotalMs()]. Takes effect within one read buffer — no
+    // task restart, so no re-init pop.
+    void seekPlaybackBy(int32_t deltaMs);
+
     // Re-pushes AudioVolume::dacRegisterValue() to the codec while playback
     // is active, so a volume change takes effect immediately.
     void applyVolume();
@@ -88,6 +100,16 @@ class AudioRecorder {
     volatile uint32_t recordStartMs_ = 0;
     volatile uint32_t playbackStartMs_ = 0;
     volatile uint32_t playbackTotalMs_ = 0;
+
+    volatile bool paused_ = false;
+    volatile uint32_t pauseBeganMs_ = 0;
+    // Bytes of PCM data per millisecond of audio for the file currently
+    // playing — set from its WAV header in startPlayback(), used to turn a
+    // seek target (ms) into a file byte offset.
+    volatile uint32_t playbackBytesPerMs_ = 0;
+    // >=0 = pending seek target in ms, consumed by playbackTaskLoop(); -1 =
+    // no pending seek.
+    volatile int32_t seekTargetMs_ = -1;
 
     TaskHandle_t recordTask_ = nullptr;
     TaskHandle_t playbackTask_ = nullptr;

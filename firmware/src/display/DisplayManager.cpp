@@ -3570,8 +3570,11 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
     // Icon-only button (no label): the back-corner arrow and anything else
     // that reads better as a glyph than as text. Nothing else to draw.
     if (button.label.isEmpty() && button.icon != ui::IconId::None) {
-      const int iconSize =
+      int iconSize =
           std::min(static_cast<int>(button.width), static_cast<int>(button.height)) - 8;
+      if (button.iconMaxSize > 0) {
+        iconSize = std::min(iconSize, static_cast<int>(button.iconMaxSize));
+      }
       if (iconSize > 0) {
         const int iconX = static_cast<int>(button.x) + (static_cast<int>(button.width) - iconSize) / 2;
         const int iconY = static_cast<int>(button.y) + (static_cast<int>(button.height) - iconSize) / 2;

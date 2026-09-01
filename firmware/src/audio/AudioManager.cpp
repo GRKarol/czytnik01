@@ -101,6 +101,7 @@ bool AudioManager::beep() {
 bool AudioManager::available() const { return available_; }
 
 bool AudioManager::enableAudioRail() {
+  BoardConfig::I2cBusLock lock;
   uint8_t direction = 0xFF;
   uint8_t output = 0xFF;
   if (!readIoRegister(kIoConfigRegister, direction) || !readIoRegister(kIoOutputRegister, output)) {
@@ -327,6 +328,7 @@ bool AudioManager::writeBeepBuffer() {
 }
 
 bool AudioManager::readIoRegister(uint8_t reg, uint8_t &value) {
+  BoardConfig::I2cBusLock lock;
   Wire1.beginTransmission(BoardConfig::TCA9554_ADDRESS);
   Wire1.write(reg);
   if (Wire1.endTransmission(false) != 0) {
@@ -341,6 +343,7 @@ bool AudioManager::readIoRegister(uint8_t reg, uint8_t &value) {
 }
 
 bool AudioManager::writeIoRegister(uint8_t reg, uint8_t value) {
+  BoardConfig::I2cBusLock lock;
   Wire1.beginTransmission(BoardConfig::TCA9554_ADDRESS);
   Wire1.write(reg);
   Wire1.write(value);
@@ -348,6 +351,7 @@ bool AudioManager::writeIoRegister(uint8_t reg, uint8_t value) {
 }
 
 bool AudioManager::readCodecRegister(uint8_t reg, uint8_t &value) {
+  BoardConfig::I2cBusLock lock;
   Wire1.beginTransmission(BoardConfig::ES8311_ADDRESS);
   Wire1.write(reg);
   if (Wire1.endTransmission(false) != 0) {
@@ -362,6 +366,7 @@ bool AudioManager::readCodecRegister(uint8_t reg, uint8_t &value) {
 }
 
 bool AudioManager::writeCodecRegister(uint8_t reg, uint8_t value) {
+  BoardConfig::I2cBusLock lock;
   Wire1.beginTransmission(BoardConfig::ES8311_ADDRESS);
   Wire1.write(reg);
   Wire1.write(value);

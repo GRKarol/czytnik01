@@ -47,6 +47,8 @@ class DictaphoneCore {
     void startPlayback(uint8_t index);
     void stopPlayback();
     void adjustVolume(int delta);
+    void togglePausePlayback();
+    void seekPlayback(int32_t deltaMs);
 
     // Drawing helpers
     void drawMain();

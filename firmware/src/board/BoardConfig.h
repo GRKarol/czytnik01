@@ -63,4 +63,26 @@ void enablePwrButtonExt0Wakeup();
 bool readBatteryStatus(BatteryStatus &status);
 bool releaseBatteryPowerHold();
 
+// Serializes every Wire1 transaction (TCA9554 IO expander, ES8311 codec and
+// QMI8658 IMU all share this one bus). AudioRecorder's record/playback
+// tasks run pinned to core 0 while the rest of the app (battery polling,
+// IMU reads, AudioManager beeps) runs on core 1 — two real cores means
+// Wire1 calls from both can execute at literally the same instant. Besides
+// corrupting TwoWire's internal transaction state, that turns a
+// read-modify-write on the TCA9554 output register (audio-enable,
+// battery-ADC-gate and SYS_EN packed into one byte) into a lost update
+// that silently clears a bit another task just set — which is exactly
+// what was cutting the speaker mid-playback. Recursive so a function that
+// already holds the lock can safely call another locking function.
+class I2cBusLock {
+ public:
+  I2cBusLock();
+  ~I2cBusLock();
+  I2cBusLock(const I2cBusLock &) = delete;
+  I2cBusLock &operator=(const I2cBusLock &) = delete;
+
+ private:
+  bool acquired_ = false;
+};
+
 }  // namespace BoardConfig

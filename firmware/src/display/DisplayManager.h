@@ -95,6 +95,11 @@ class DisplayManager {
     const uint16_t *iconBitmap = nullptr;
     uint8_t iconW = 0;
     uint8_t iconH = 0;
+    // Icon-only buttons (label empty) otherwise scale the glyph to fill
+    // almost the whole tile (min(width,height)-8) — fine for a square back
+    // corner, comically oversized for a wide/short delete zone in a list
+    // row. 0 = no cap (existing auto-fit behavior).
+    uint8_t iconMaxSize = 0;
     ButtonKind kind = ButtonKind::Rect;
     // Kind::Toggle: `active` is the on/off value, drawn as a track+knob.
     // Kind::Cycle: cycleCount dots are drawn, cycleState (0-based) is lit —

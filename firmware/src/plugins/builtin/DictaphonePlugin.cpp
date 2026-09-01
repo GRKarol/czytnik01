@@ -9,6 +9,12 @@ namespace {
 // Menu items for library context menu (shown via touch actions)
 static constexpr uint8_t kLibraryVisibleRows = 5;
 
+// Left-edge tap width reserved as a "back to Main" zone on every row, so
+// the library is always escapable without deleting anything or hunting
+// for the boot button. Comfortably smaller than the right-edge delete
+// zone (120px) since it doesn't need to be the primary target.
+static constexpr uint16_t kLibraryBackZoneWidth = 64;
+
 // Singleton instance
 DictaphoneCore* s_instance = nullptr;
 
@@ -80,15 +86,12 @@ void DictaphoneCore::handleButton(const PluginButtonEvent* event) {
             break;
 
         case Screen::Library:
-            // Boot — cycle selection down
-            if (recordingCount_ > 0) {
-                librarySelected_ = (librarySelected_ + 1) % recordingCount_;
-                if (librarySelected_ >= libraryScrollTop_ + kLibraryVisibleRows) {
-                    libraryScrollTop_ = librarySelected_ - kLibraryVisibleRows + 1;
-                } else if (librarySelected_ < libraryScrollTop_) {
-                    libraryScrollTop_ = librarySelected_;
-                }
-            }
+            // Boot — back to the record screen. Direct row taps already
+            // cover selection, so there's nothing useful left for Boot to
+            // cycle — and without this, a non-empty library had no way
+            // back to Main short of deleting every recording (see the
+            // touch-based back zone in handleTouch for the primary path).
+            goToScreen(Screen::Main);
             break;
 
         case Screen::Playing:
@@ -142,6 +145,17 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
             int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
             int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
 
+            // Left edge = back to the record screen. Without this, a
+            // library with at least one recording had no way back to Main
+            // except deleting recordings until the list was empty (the
+            // only other exit) — tap-to-play and the right-edge delete
+            // zone covered the rest of each row, but nothing covered "I
+            // don't want to play or delete anything, just go back".
+            if (x < kLibraryBackZoneWidth) {
+                goToScreen(Screen::Main);
+                return;
+            }
+
             // Must match the row count drawLibrary() actually hands to
             // renderDeletableList() — that's how many rows are drawn on
             // screen, which can be fewer than kLibraryVisibleRows on the
@@ -174,15 +188,30 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
         }
 
         case Screen::Playing: {
-            // Left edge = quieter, right edge = louder, middle = stop.
+            // 3x2 zone grid (no dedicated render primitive for this many
+            // controls, so the split is invisible — documented for Karol
+            // instead of drawn):
+            //   top:    [<< -10s] [pauza/wznów] [+10s >>]
+            //   bottom: [gl. -]   [stop]         [gl. +]
             int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
-            const uint16_t edgeZone = static_cast<uint16_t>(width / 5);
-            if (x < edgeZone) {
-                adjustVolume(-10);
-            } else if (x > static_cast<uint16_t>(width - edgeZone)) {
-                adjustVolume(10);
+            int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
+            const int colWidth = width / 3;
+            uint8_t col = static_cast<uint8_t>(x / colWidth);
+            if (col > 2) col = 2;
+            bool topRow = y < static_cast<uint16_t>(height / 2);
+
+            if (topRow) {
+                switch (col) {
+                    case 0: seekPlayback(-10000); break;
+                    case 1: togglePausePlayback(); break;
+                    case 2: seekPlayback(10000); break;
+                }
             } else {
-                stopPlayback();
+                switch (col) {
+                    case 0: adjustVolume(-10); break;
+                    case 1: stopPlayback(); break;
+                    case 2: adjustVolume(10); break;
+                }
             }
             break;
         }
@@ -276,15 +305,16 @@ void DictaphoneCore::drawPlaying() {
     if (!display_->renderProgress) return;
 
     char timeBuf[8];
-    char totalBuf[16];
     uint32_t elapsed = 0;
     uint32_t total = 0;
     uint8_t volume = 0;
+    bool paused = false;
 
     if (audio_) {
         if (audio_->playbackElapsedMs) elapsed = audio_->playbackElapsedMs();
         if (audio_->playbackTotalMs) total = audio_->playbackTotalMs();
         if (audio_->getVolume) volume = audio_->getVolume();
+        if (audio_->isPaused) paused = audio_->isPaused();
     }
 
     formatTime(elapsed, timeBuf, sizeof(timeBuf));
@@ -300,7 +330,7 @@ void DictaphoneCore::drawPlaying() {
     const char* name = (playingIndex_ < recordingCount_)
         ? recordingNames_[playingIndex_] : "---";
 
-    display_->renderProgress("ODTWARZANIE", name, elapsedTotal, progress);
+    display_->renderProgress(paused ? "PAUZA" : "ODTWARZANIE", name, elapsedTotal, progress);
 }
 
 void DictaphoneCore::drawRename() {
@@ -391,6 +421,21 @@ void DictaphoneCore::adjustVolume(int delta) {
     if (next < 0) next = 0;
     if (next > 100) next = 100;
     audio_->setVolume(static_cast<uint8_t>(next));
+}
+
+void DictaphoneCore::togglePausePlayback() {
+    if (!audio_ || !audio_->isPaused || !audio_->pausePlayback || !audio_->resumePlayback) return;
+
+    if (audio_->isPaused()) {
+        audio_->resumePlayback();
+    } else {
+        audio_->pausePlayback();
+    }
+}
+
+void DictaphoneCore::seekPlayback(int32_t deltaMs) {
+    if (!audio_ || !audio_->seekPlaybackBy) return;
+    audio_->seekPlaybackBy(deltaMs);
 }
 
 // ─── File Management ────────────────────────────────────────────────────────

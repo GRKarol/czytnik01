@@ -5,6 +5,8 @@
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 namespace BoardConfig {
 
@@ -16,6 +18,17 @@ bool gBatteryPowerHoldEnabled = false;
 bool gBatteryAdcPathEnabled = false;
 constexpr float kBatteryDividerRatio = 3.0f;
 constexpr float kBatteryVoltageOffset = 0.0f;
+
+// Lazily created on first use — begin() runs single-threaded before any
+// other task exists, so there is no init race here despite the lazy check.
+SemaphoreHandle_t gI2cMutex = nullptr;
+
+SemaphoreHandle_t i2cMutex() {
+  if (!gI2cMutex) {
+    gI2cMutex = xSemaphoreCreateRecursiveMutex();
+  }
+  return gI2cMutex;
+}
 
 bool tca9554Read(uint8_t reg, uint8_t &value) {
   Wire1.beginTransmission(TCA9554_ADDRESS);
@@ -40,6 +53,7 @@ bool tca9554Write(uint8_t reg, uint8_t value) {
 }
 
 bool configureTca9554OutputPin(uint8_t pin, bool high) {
+  I2cBusLock lock;
   uint8_t output = 0;
   if (!tca9554Read(kTca9554OutputReg, output)) {
     return false;
@@ -290,6 +304,18 @@ bool releaseBatteryPowerHold() {
   gBatteryPowerHoldEnabled = false;
   Serial.println("[board] Battery power hold released");
   return true;
+}
+
+I2cBusLock::I2cBusLock() {
+  SemaphoreHandle_t mutex = i2cMutex();
+  acquired_ = mutex != nullptr &&
+              xSemaphoreTakeRecursive(mutex, pdMS_TO_TICKS(250)) == pdTRUE;
+}
+
+I2cBusLock::~I2cBusLock() {
+  if (acquired_) {
+    xSemaphoreGiveRecursive(i2cMutex());
+  }
 }
 
 }  // namespace BoardConfig
