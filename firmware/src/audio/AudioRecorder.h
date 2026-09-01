@@ -45,6 +45,12 @@ class AudioRecorder {
     bool isRecording() const;
     uint32_t recordingElapsedMs() const;
 
+    // Peak input level of the most recently captured buffer, 0-100 (percent
+    // of int16 full scale). For on-screen diagnosis of "is the mic actually
+    // picking anything up" without a serial cable — stays at 0 the whole
+    // recording if the ADC path is silent.
+    uint8_t recordingPeakLevel() const;
+
     // Playback
     bool startPlayback(const char* absolutePath);
     bool stopPlayback();
@@ -100,6 +106,7 @@ class AudioRecorder {
     volatile uint32_t recordStartMs_ = 0;
     volatile uint32_t playbackStartMs_ = 0;
     volatile uint32_t playbackTotalMs_ = 0;
+    volatile uint8_t recordingPeakLevel_ = 0;
 
     volatile bool paused_ = false;
     volatile uint32_t pauseBeganMs_ = 0;

@@ -275,7 +275,18 @@ void DictaphoneCore::drawRecording() {
     }
     formatTime(elapsed, timeBuf, sizeof(timeBuf));
 
-    display_->renderButtonPair(timeBuf, PLUGIN_ICON_STOP, true, "Biblioteka", PLUGIN_ICON_BOOK);
+    // Peak input level appended to the label — the only way to tell "mic
+    // is actually picking something up" from the device itself, without a
+    // serial cable. Stays at "Pzm:0%" the whole recording if the ADC path
+    // is silent.
+    uint8_t peak = 0;
+    if (audio_ && audio_->recordingPeakLevel) {
+        peak = audio_->recordingPeakLevel();
+    }
+    char label[24];
+    snprintf(label, sizeof(label), "%s Pzm:%u%%", timeBuf, static_cast<unsigned>(peak));
+
+    display_->renderButtonPair(label, PLUGIN_ICON_STOP, true, "Biblioteka", PLUGIN_ICON_BOOK);
 }
 
 void DictaphoneCore::drawLibrary() {

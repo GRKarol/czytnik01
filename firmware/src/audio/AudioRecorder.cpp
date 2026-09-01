@@ -3,6 +3,7 @@
 
 #include <SD_MMC.h>
 #include <Wire.h>
+#include <algorithm>
 #include <driver/i2s.h>
 #include <esp_log.h>
 
@@ -69,6 +70,7 @@ bool AudioRecorder::startRecording(const char* absolutePath) {
     stopRequested_ = false;
     recording_ = true;
     recordStartMs_ = millis();
+    recordingPeakLevel_ = 0;
 
     BaseType_t result = xTaskCreatePinnedToCore(
         recordTaskEntry, "rec", kRecordTaskStackSize, this, 1, &recordTask_, 0);
@@ -115,6 +117,10 @@ bool AudioRecorder::isRecording() const {
 uint32_t AudioRecorder::recordingElapsedMs() const {
     if (!recording_) return 0;
     return millis() - recordStartMs_;
+}
+
+uint8_t AudioRecorder::recordingPeakLevel() const {
+    return recordingPeakLevel_;
 }
 
 // ─── Playback ───────────────────────────────────────────────────────────────
@@ -363,7 +369,14 @@ bool AudioRecorder::configureCodecForRecording() {
     // ADC serial data format: 16-bit I2S
     if (!readCodecRegister(kEs8311SdPoutReg0A, reg)) return false;
     reg = static_cast<uint8_t>((reg & 0xE0) | 0x0C);  // 16-bit
-    reg |= (1U << 6);  // ADC output enable on SDOUT
+    // Bit 6 of this register is a mute for the ADC's SDOUT line, not an
+    // enable — configureCodecForPlayback() sets it to 1 to deliberately
+    // silence the mic path during playback-only sessions. Recording needs
+    // the opposite: clear it so SDOUT actually carries ADC samples instead
+    // of the codec's own internal mute pattern (which is what the mic was
+    // capturing — a constant, near-zero signal, hence peak level stuck at 0%
+    // regardless of what reached the microphone).
+    reg &= static_cast<uint8_t>(~(1U << 6));
     if (!writeCodecRegister(kEs8311SdPoutReg0A, reg)) return false;
 
     // System configuration — power up ADC
@@ -641,6 +654,9 @@ void AudioRecorder::recordTaskLoop() {
     uint8_t buffer[kRecordBufferSize];
     int16_t monoBuffer[kRecordBufferSize / 4];  // stereo → mono
     uint32_t totalDataBytes = 0;
+    uint32_t loopCount = 0;
+    esp_err_t lastReadErr = ESP_OK;
+    size_t zeroReadStreak = 0;
 
     while (!stopRequested_) {
         // Check max duration
@@ -651,17 +667,54 @@ void AudioRecorder::recordTaskLoop() {
 
         size_t bytesRead = 0;
         esp_err_t err = i2s_read(kI2sPort, buffer, kRecordBufferSize, &bytesRead, pdMS_TO_TICKS(100));
+        lastReadErr = err;
 
         if (err != ESP_OK || bytesRead == 0) {
+            zeroReadStreak++;
+            if (zeroReadStreak == 1 || zeroReadStreak % 50 == 0) {
+                ESP_LOGW(TAG, "i2s_read empty (err=%s, streak=%u)", esp_err_to_name(err),
+                         static_cast<unsigned>(zeroReadStreak));
+            }
             taskYIELD();
             continue;
         }
+        zeroReadStreak = 0;
 
-        // Convert stereo 16-bit to mono (take left channel only)
+        // Convert stereo 16-bit to mono. Average both channels rather than
+        // keeping only the left one — the ES8311 mono mic path duplicates
+        // its signal onto both slots on this board, but if it turns out to
+        // only be present on one slot, averaging still captures it (at half
+        // amplitude) instead of silently discarding it by picking the wrong
+        // slot.
         size_t stereoSamples = bytesRead / 4;  // 2 bytes * 2 channels per sample
         const int16_t* stereoData = reinterpret_cast<const int16_t*>(buffer);
+        int16_t peakSample = 0;
+        int16_t leftMin = 0, leftMax = 0, rightMin = 0, rightMax = 0;
         for (size_t i = 0; i < stereoSamples; i++) {
-            monoBuffer[i] = stereoData[i * 2];  // left channel
+            int32_t left = stereoData[i * 2];
+            int32_t right = stereoData[i * 2 + 1];
+            if (i == 0) {
+                leftMin = leftMax = static_cast<int16_t>(left);
+                rightMin = rightMax = static_cast<int16_t>(right);
+            } else {
+                leftMin = std::min(leftMin, static_cast<int16_t>(left));
+                leftMax = std::max(leftMax, static_cast<int16_t>(left));
+                rightMin = std::min(rightMin, static_cast<int16_t>(right));
+                rightMax = std::max(rightMax, static_cast<int16_t>(right));
+            }
+            int16_t mixed = static_cast<int16_t>((left + right) / 2);
+            monoBuffer[i] = mixed;
+            int16_t absMixed = static_cast<int16_t>(mixed < 0 ? -mixed : mixed);
+            if (absMixed > peakSample) peakSample = absMixed;
+        }
+        recordingPeakLevel_ = static_cast<uint8_t>((static_cast<uint32_t>(peakSample) * 100U) / 32767U);
+
+        loopCount++;
+        if (loopCount <= 3 || loopCount % 20 == 0) {
+            ESP_LOGI(TAG, "buf#%u bytesRead=%u L[min=%d max=%d] R[min=%d max=%d] first16=%02X %02X %02X %02X %02X %02X %02X %02X",
+                     static_cast<unsigned>(loopCount), static_cast<unsigned>(bytesRead),
+                     leftMin, leftMax, rightMin, rightMax,
+                     buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7]);
         }
 
         size_t monoBytes = stereoSamples * 2;

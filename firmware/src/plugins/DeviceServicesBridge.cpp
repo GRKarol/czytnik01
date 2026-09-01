@@ -244,6 +244,11 @@ static uint32_t bridgeAudioRecordingElapsedMs() {
     return sRecorder->recordingElapsedMs();
 }
 
+static uint8_t bridgeAudioRecordingPeakLevel() {
+    if (!sRecorder) return 0;
+    return sRecorder->recordingPeakLevel();
+}
+
 static bool bridgeAudioStartPlayback(const char* relativePath) {
     if (!sRecorder) return false;
     String fullPath = resolveSandboxedPath(relativePath);
@@ -463,6 +468,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
         audioService->stopRecording = bridgeAudioStopRecording;
         audioService->isRecording = bridgeAudioIsRecording;
         audioService->recordingElapsedMs = bridgeAudioRecordingElapsedMs;
+        audioService->recordingPeakLevel = bridgeAudioRecordingPeakLevel;
         audioService->startPlayback = bridgeAudioStartPlayback;
         audioService->stopPlayback = bridgeAudioStopPlayback;
         audioService->isPlaying = bridgeAudioIsPlaying;

@@ -27,6 +27,12 @@ typedef struct PluginAudioService {
     /// Get elapsed recording time in milliseconds.
     uint32_t (*recordingElapsedMs)(void);
 
+    /// Peak input level of the most recently captured audio buffer, 0-100.
+    /// Stays at 0 for the whole recording if the mic path is producing no
+    /// signal — the on-screen way to tell "nothing is being captured"
+    /// apart from "it's captured but not audible on playback".
+    uint8_t (*recordingPeakLevel)(void);
+
     // ─── Playback (WAV file → speaker) ──────────────────────────────────
     /// Start playing a WAV file (path relative to plugin sandbox).
     bool (*startPlayback)(const char* relativePath);
