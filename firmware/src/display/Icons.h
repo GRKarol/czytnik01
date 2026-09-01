@@ -22,6 +22,8 @@ enum class IconId : uint8_t {
   Delete,
   Reset,
   Check,
+  Record,
+  Stop,
 };
 
 }  // namespace ui

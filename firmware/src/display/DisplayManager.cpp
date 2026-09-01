@@ -3406,6 +3406,16 @@ void DisplayManager::drawIcon(ui::IconId id, int x, int y, int size, uint16_t co
       drawIconLine(x + s * 4 / 10, y + s * 8 / 10, x + s * 9 / 10, y + s * 2 / 10, color, 2);
       break;
     }
+    case ui::IconId::Record: {
+      // Solid dot — the universal "record" glyph.
+      drawFilledCircle(cx, cy, s * 4 / 10, color);
+      break;
+    }
+    case ui::IconId::Stop: {
+      // Solid square — what a record button turns into mid-recording.
+      fillVirtualRect(x + s * 2 / 10, y + s * 2 / 10, s * 6 / 10, s * 6 / 10, color);
+      break;
+    }
     default:
       break;
   }

@@ -345,51 +345,105 @@ bool AudioRecorder::configureCodecForRecording() {
 }
 
 bool AudioRecorder::configureCodecForPlayback() {
+    // This mirrors AudioManager's ES8311 init byte-for-byte (the only other
+    // DAC-output path in the firmware) instead of the previous paraphrased
+    // sequence here, which transmitted I2S data fine — recordings play back
+    // for their exact recorded length — but never actually powered on the
+    // codec's analog output driver, so the speaker stayed silent.
     uint8_t reg = 0;
 
-    // Reset codec
-    if (!writeCodecRegister(kEs8311ResetReg, 0x80)) return false;
-    delay(5);
-    if (!readCodecRegister(kEs8311ResetReg, reg)) return false;
-    if (!writeCodecRegister(kEs8311ResetReg, static_cast<uint8_t>(reg & 0xBF))) return false;
+    const bool opened =
+        writeCodecRegister(kEs8311GpioReg44, 0x08) &&
+        writeCodecRegister(kEs8311GpioReg44, 0x08) &&
+        writeCodecRegister(kEs8311ClkManagerReg01, 0x30) &&
+        writeCodecRegister(kEs8311ClkManagerReg02, 0x00) &&
+        writeCodecRegister(kEs8311ClkManagerReg03, 0x10) &&
+        writeCodecRegister(kEs8311AdcReg16, 0x24) &&
+        writeCodecRegister(kEs8311ClkManagerReg04, 0x10) &&
+        writeCodecRegister(kEs8311ClkManagerReg05, 0x00) &&
+        writeCodecRegister(kEs8311SystemReg0B, 0x00) &&
+        writeCodecRegister(kEs8311SystemReg0C, 0x00) &&
+        writeCodecRegister(kEs8311SystemReg10, 0x1F) &&
+        writeCodecRegister(kEs8311SystemReg11, 0x7F) &&
+        writeCodecRegister(kEs8311ResetReg, 0x80) &&
+        readCodecRegister(kEs8311ResetReg, reg) &&
+        writeCodecRegister(kEs8311ResetReg, static_cast<uint8_t>(reg & 0xBF)) &&
+        writeCodecRegister(kEs8311ClkManagerReg01, 0x3F) &&
+        readCodecRegister(kEs8311ClkManagerReg06, reg) &&
+        writeCodecRegister(kEs8311ClkManagerReg06, static_cast<uint8_t>(reg & ~0x20U)) &&
+        writeCodecRegister(kEs8311SystemReg13, 0x10) &&
+        writeCodecRegister(kEs8311AdcReg1B, 0x0A) &&
+        writeCodecRegister(kEs8311AdcReg1C, 0x6A) &&
+        writeCodecRegister(kEs8311GpioReg44, 0x58);
 
-    // Clock setup
-    if (!writeCodecRegister(kEs8311ClkManagerReg01, 0x3F)) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg02, 0x00)) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg03, 0x10)) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg04, 0x10)) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg05, 0x00)) return false;
-    if (!readCodecRegister(kEs8311ClkManagerReg06, reg)) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg06, static_cast<uint8_t>((reg & 0xE0) | 0x03))) return false;
-    if (!readCodecRegister(kEs8311ClkManagerReg07, reg)) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg07, static_cast<uint8_t>(reg & 0xC0))) return false;
-    if (!writeCodecRegister(kEs8311ClkManagerReg08, 0xFF)) return false;
+    if (!opened) {
+        ESP_LOGE(TAG, "Codec power-up sequence failed (playback)");
+        return false;
+    }
 
-    // DAC serial data format: 16-bit I2S
-    if (!readCodecRegister(kEs8311SdPinReg09, reg)) return false;
-    reg = static_cast<uint8_t>((reg & 0xE0) | 0x0C);
-    reg &= ~(1U << 6);  // DAC input enable on SDIN
-    if (!writeCodecRegister(kEs8311SdPinReg09, reg)) return false;
+    // Sample format — 16-bit I2S on both interfaces.
+    uint8_t dacIface = 0;
+    uint8_t adcIface = 0;
+    if (!readCodecRegister(kEs8311SdPinReg09, dacIface) ||
+        !readCodecRegister(kEs8311SdPoutReg0A, adcIface)) {
+        return false;
+    }
+    dacIface = static_cast<uint8_t>((dacIface & 0xE0U) | 0x0CU);
+    adcIface = static_cast<uint8_t>((adcIface & 0xE0U) | 0x0CU);
 
-    // System power up — DAC path
-    if (!writeCodecRegister(kEs8311SystemReg0B, 0x00)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg0C, 0x00)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg10, 0x1F)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg11, 0x7F)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg0D, 0x01)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg0E, 0x02)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg12, 0x00)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg13, 0x10)) return false;
-    if (!writeCodecRegister(kEs8311SystemReg14, 0x1A)) return false;
+    const bool formatOk =
+        writeCodecRegister(kEs8311SdPinReg09, dacIface) &&
+        writeCodecRegister(kEs8311SdPoutReg0A, adcIface) &&
+        readCodecRegister(kEs8311ClkManagerReg02, reg) &&
+        writeCodecRegister(kEs8311ClkManagerReg02, static_cast<uint8_t>(reg & 0x07U)) &&
+        writeCodecRegister(kEs8311ClkManagerReg05, 0x00) &&
+        readCodecRegister(kEs8311ClkManagerReg03, reg) &&
+        writeCodecRegister(kEs8311ClkManagerReg03, static_cast<uint8_t>((reg & 0x80U) | 0x10U)) &&
+        readCodecRegister(kEs8311ClkManagerReg04, reg) &&
+        writeCodecRegister(kEs8311ClkManagerReg04, static_cast<uint8_t>((reg & 0x80U) | 0x10U)) &&
+        readCodecRegister(kEs8311ClkManagerReg07, reg) &&
+        writeCodecRegister(kEs8311ClkManagerReg07, static_cast<uint8_t>(reg & 0xC0U)) &&
+        writeCodecRegister(kEs8311ClkManagerReg08, 0xFF) &&
+        readCodecRegister(kEs8311ClkManagerReg06, reg) &&
+        writeCodecRegister(kEs8311ClkManagerReg06, static_cast<uint8_t>((reg & 0xE0U) | 0x03U));
 
-    // DAC configuration
-    if (!writeCodecRegister(kEs8311DacReg31, 0x00)) return false;  // unmute DAC
-    if (!writeCodecRegister(kEs8311DacReg32, 0xF0)) return false;  // DAC volume
-    if (!writeCodecRegister(kEs8311DacReg37, 0x08)) return false;
+    if (!formatOk) {
+        ESP_LOGE(TAG, "Codec sample-format setup failed (playback)");
+        return false;
+    }
 
-    // GPIO
-    if (!writeCodecRegister(kEs8311GpioReg44, 0x58)) return false;
-    if (!writeCodecRegister(kEs8311GpReg45, 0x00)) return false;
+    // Start codec — DAC path active, ADC output disabled (playback-only).
+    if (!writeCodecRegister(kEs8311ResetReg, 0x80) ||
+        !writeCodecRegister(kEs8311ClkManagerReg01, 0x3F) ||
+        !readCodecRegister(kEs8311SdPinReg09, dacIface) ||
+        !readCodecRegister(kEs8311SdPoutReg0A, adcIface)) {
+        return false;
+    }
+    dacIface &= static_cast<uint8_t>(~(1U << 6));   // DAC input enabled on SDIN
+    adcIface |= static_cast<uint8_t>(1U << 6);       // ADC output disabled on SDOUT
+
+    const bool started =
+        writeCodecRegister(kEs8311SdPinReg09, dacIface) &&
+        writeCodecRegister(kEs8311SdPoutReg0A, adcIface) &&
+        writeCodecRegister(kEs8311AdcReg17, 0xBF) &&
+        writeCodecRegister(kEs8311SystemReg0E, 0x02) &&
+        writeCodecRegister(kEs8311SystemReg12, 0x00) &&
+        writeCodecRegister(kEs8311SystemReg14, 0x1A) &&
+        writeCodecRegister(kEs8311SystemReg0D, 0x01) &&
+        writeCodecRegister(kEs8311AdcReg15, 0x40) &&
+        writeCodecRegister(kEs8311DacReg37, 0x08) &&
+        writeCodecRegister(kEs8311GpReg45, 0x00);
+
+    if (!started) {
+        ESP_LOGE(TAG, "Codec start sequence failed (playback)");
+        return false;
+    }
+
+    uint8_t dacMute = 0;
+    if (!readCodecRegister(kEs8311DacReg31, dacMute)) return false;
+    dacMute &= 0x9F;  // unmute DAC
+    if (!writeCodecRegister(kEs8311DacReg31, dacMute)) return false;
+    if (!writeCodecRegister(kEs8311DacReg32, 0xFF)) return false;  // max DAC volume
 
     ESP_LOGI(TAG, "Codec configured for playback");
     return true;

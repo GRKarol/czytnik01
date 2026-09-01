@@ -116,9 +116,9 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
 
     switch (screen_) {
         case Screen::Main: {
-            // Top half = record, bottom half = library
-            int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
-            if (y < static_cast<uint16_t>(height / 2)) {
+            // Left half = record button, right half = library button.
+            int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
+            if (x < static_cast<uint16_t>(width / 2)) {
                 startRecording();
             } else {
                 goToScreen(Screen::Library);
@@ -141,8 +141,21 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
 
             int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
             int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
-            uint16_t rowHeight = static_cast<uint16_t>(height / kLibraryVisibleRows);
+
+            // Must match the row count drawLibrary() actually hands to
+            // renderDeletableList() — that's how many rows are drawn on
+            // screen, which can be fewer than kLibraryVisibleRows on the
+            // last (partial) page.
+            uint8_t visibleRows = static_cast<uint8_t>(recordingCount_ - libraryScrollTop_);
+            if (visibleRows > kLibraryVisibleRows) visibleRows = kLibraryVisibleRows;
+            if (visibleRows == 0) {
+                goToScreen(Screen::Main);
+                return;
+            }
+
+            uint16_t rowHeight = static_cast<uint16_t>(height / visibleRows);
             uint8_t tappedRow = static_cast<uint8_t>(y / rowHeight);
+            if (tappedRow >= visibleRows) tappedRow = visibleRows - 1;
             uint8_t tappedIndex = libraryScrollTop_ + tappedRow;
 
             // Right edge = delete
@@ -203,19 +216,20 @@ void DictaphoneCore::draw() {
 // ─── Screen Drawing ─────────────────────────────────────────────────────────
 
 void DictaphoneCore::drawMain() {
-    if (display_->renderStatus) {
-        char countBuf[32];
-        if (recordingCount_ > 0) {
-            snprintf(countBuf, sizeof(countBuf), "%d nagran | Dol: biblioteka", recordingCount_);
-        } else {
-            snprintf(countBuf, sizeof(countBuf), "Brak nagran | Dol: biblioteka");
-        }
-        display_->renderStatus("DYKTAFON", "Dotknij gory, aby nagrywac", countBuf);
+    if (!display_->renderButtonPair) return;
+
+    char rightLabel[32];
+    if (recordingCount_ > 0) {
+        snprintf(rightLabel, sizeof(rightLabel), "Biblioteka (%d)", recordingCount_);
+    } else {
+        snprintf(rightLabel, sizeof(rightLabel), "Biblioteka");
     }
+
+    display_->renderButtonPair("Nagraj", PLUGIN_ICON_RECORD, false, rightLabel, PLUGIN_ICON_BOOK);
 }
 
 void DictaphoneCore::drawRecording() {
-    if (!display_->renderProgress) return;
+    if (!display_->renderButtonPair) return;
 
     char timeBuf[8];
     uint32_t elapsed = 0;
@@ -224,15 +238,11 @@ void DictaphoneCore::drawRecording() {
     }
     formatTime(elapsed, timeBuf, sizeof(timeBuf));
 
-    // Progress as percentage of 30 min
-    int progress = static_cast<int>((elapsed * 100UL) / (30UL * 60UL * 1000UL));
-    if (progress > 100) progress = 100;
-
-    display_->renderProgress("NAGRYWANIE", timeBuf, "Dotknij, aby zatrzymac", progress);
+    display_->renderButtonPair(timeBuf, PLUGIN_ICON_STOP, true, "Biblioteka", PLUGIN_ICON_BOOK);
 }
 
 void DictaphoneCore::drawLibrary() {
-    if (!display_->renderMenu) return;
+    if (!display_->renderDeletableList) return;
 
     if (recordingCount_ == 0) {
         if (display_->renderStatus) {
@@ -241,7 +251,7 @@ void DictaphoneCore::drawLibrary() {
         return;
     }
 
-    // Build menu items from visible range
+    // Build the row list from the visible range
     const char* items[kLibraryVisibleRows];
     uint8_t visibleCount = 0;
 
@@ -251,7 +261,7 @@ void DictaphoneCore::drawLibrary() {
     }
 
     uint8_t selectedInView = librarySelected_ - libraryScrollTop_;
-    display_->renderMenu(items, visibleCount, selectedInView);
+    display_->renderDeletableList(items, visibleCount, selectedInView);
 }
 
 void DictaphoneCore::drawPlaying() {

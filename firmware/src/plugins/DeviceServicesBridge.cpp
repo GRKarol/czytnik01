@@ -110,6 +110,88 @@ static void bridgeSetDarkMode(bool dark) {
     sDisplay->setDarkMode(dark);
 }
 
+static ui::IconId mapPluginIcon(PluginIconId icon) {
+    switch (icon) {
+        case PLUGIN_ICON_RECORD: return ui::IconId::Record;
+        case PLUGIN_ICON_STOP:   return ui::IconId::Stop;
+        case PLUGIN_ICON_PLAY:   return ui::IconId::Play;
+        case PLUGIN_ICON_DELETE: return ui::IconId::Delete;
+        case PLUGIN_ICON_BOOK:   return ui::IconId::Book;
+        default:                 return ui::IconId::None;
+    }
+}
+
+static void bridgeRenderButtonPair(const char* leftLabel, PluginIconId leftIcon, bool leftActive,
+                                    const char* rightLabel, PluginIconId rightIcon) {
+    if (!sDisplay) return;
+
+    const int width = BoardConfig::DISPLAY_WIDTH;
+    const int height = BoardConfig::DISPLAY_HEIGHT;
+    const int halfWidth = width / 2;
+
+    std::vector<DisplayManager::Button> buttons;
+    buttons.reserve(2);
+
+    DisplayManager::Button left;
+    left.label = leftLabel ? leftLabel : "";
+    left.x = 0;
+    left.y = 0;
+    left.width = static_cast<uint16_t>(halfWidth);
+    left.height = static_cast<uint16_t>(height);
+    left.icon = mapPluginIcon(leftIcon);
+    left.active = leftActive;
+    buttons.push_back(left);
+
+    DisplayManager::Button right;
+    right.label = rightLabel ? rightLabel : "";
+    right.x = static_cast<uint16_t>(halfWidth);
+    right.y = 0;
+    right.width = static_cast<uint16_t>(width - halfWidth);
+    right.height = static_cast<uint16_t>(height);
+    right.icon = mapPluginIcon(rightIcon);
+    buttons.push_back(right);
+
+    sDisplay->renderButtonGrid("", buttons, 0, 1);
+}
+
+// Width of the trailing delete-icon zone in renderDeletableList rows — kept
+// in sync with the hit-test zone in DictaphonePlugin.cpp's touch handler,
+// since that's the only consumer today.
+static constexpr int kDeletableListIconZoneWidth = 120;
+
+static void bridgeRenderDeletableList(const char* const* items, uint8_t itemCount,
+                                       uint8_t selectedIndex) {
+    if (!sDisplay || !items || itemCount == 0) return;
+
+    const int width = BoardConfig::DISPLAY_WIDTH;
+    const int height = BoardConfig::DISPLAY_HEIGHT;
+    const int rowHeight = height / itemCount;
+
+    std::vector<DisplayManager::Button> buttons;
+    buttons.reserve(static_cast<size_t>(itemCount) * 2);
+
+    for (uint8_t i = 0; i < itemCount; ++i) {
+        DisplayManager::Button row;
+        row.label = items[i] ? items[i] : "";
+        row.x = 0;
+        row.y = static_cast<uint16_t>(i * rowHeight);
+        row.width = static_cast<uint16_t>(width - kDeletableListIconZoneWidth);
+        row.height = static_cast<uint16_t>(rowHeight);
+        row.active = (i == selectedIndex);
+        buttons.push_back(row);
+
+        DisplayManager::Button del;
+        del.x = static_cast<uint16_t>(width - kDeletableListIconZoneWidth);
+        del.y = row.y;
+        del.width = static_cast<uint16_t>(kDeletableListIconZoneWidth);
+        del.height = static_cast<uint16_t>(rowHeight);
+        del.icon = ui::IconId::Delete;
+        buttons.push_back(del);
+    }
+
+    sDisplay->renderButtonGrid("", buttons, 0, 1);
+}
+
 static int bridgeLogicalWidth() {
     // Return fixed display dimensions based on panel config
     // In landscape mode (default): 640 wide
@@ -333,6 +415,8 @@ void DeviceServicesBridge::setup(const char* pluginId,
         displayService->setDarkMode = bridgeSetDarkMode;
         displayService->logicalWidth = bridgeLogicalWidth;
         displayService->logicalHeight = bridgeLogicalHeight;
+        displayService->renderButtonPair = bridgeRenderButtonPair;
+        displayService->renderDeletableList = bridgeRenderDeletableList;
     }
 
     // Populate audio service function pointers
