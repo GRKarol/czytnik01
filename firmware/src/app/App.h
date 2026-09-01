@@ -600,6 +600,10 @@ class App {
   /// points/Settings/Plugins/Power off) an icon so the menu reads as an app
   /// grid, matched by label text like the Back icon above.
   void annotateMainMenuButton(DisplayManager::Button &button) const;
+  /// PluginDetail-only: turns the description row into a non-interactive
+  /// Label tile (plain text, no border, second line from
+  /// pluginDetailDescLine2_) instead of a plain Rect button.
+  void annotatePluginDetailButton(DisplayManager::Button &button, size_t canonicalIndex) const;
   /// Shows toastText for kGridToastVisibleMs on top of the current button
   /// grid — the uncut version of whatever a Toggle/Cycle button's tap just
   /// changed. Same shape as showLowBatteryWarning()/
@@ -889,6 +893,10 @@ class App {
   std::vector<String> pluginDetailMenuItems_;
   size_t pluginDetailSelectedIndex_ = 0;
   size_t pluginDetailIndex_ = 0;
+  // Second wrapped line of the description row, if it didn't fit on one
+  // line — empty when the whole description fit on pluginDetailMenuItems_'s
+  // single description entry. See annotatePluginDetailButton().
+  String pluginDetailDescLine2_;
   std::vector<uint32_t> wordBonusBlockPrefixSumMs_;
   String timeEstimateBuildBookPath_;
   size_t timeEstimateBuildWordCount_ = 0;

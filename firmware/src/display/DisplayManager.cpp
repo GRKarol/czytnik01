@@ -3502,6 +3502,31 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
       continue;
     }
 
+    if (button.kind == Button::ButtonKind::Label) {
+      // No border, no fill: this tile is prose, not a control. Both lines
+      // are centered and dimmed the same way a library subtitle is, so a
+      // description reads as "information" at a glance, never as "button
+      // I could press but nothing happens."
+      const int maxWidth = std::max(0, static_cast<int>(button.width) - 8);
+      const String line1 = fitTinyText(button.label, maxWidth, kTinyScale);
+      const bool hasLine2 = !button.sublabel.isEmpty();
+      const int lineH = kTinyGlyphHeight * kTinyScale;
+      const int totalH = hasLine2 ? lineH * 2 + 2 : lineH;
+      int drawY = static_cast<int>(button.y) +
+                  std::max(0, (static_cast<int>(button.height) - totalH) / 2);
+      const int line1W = measureTinyTextWidth(line1, kTinyScale);
+      const int line1X = static_cast<int>(button.x) + std::max(0, (maxWidth - line1W) / 2) + 4;
+      drawTinyTextAt(line1, line1X, drawY, dimColor(), kTinyScale);
+      if (hasLine2) {
+        drawY += lineH + 2;
+        const String line2 = fitTinyText(button.sublabel, maxWidth, kTinyScale);
+        const int line2W = measureTinyTextWidth(line2, kTinyScale);
+        const int line2X = static_cast<int>(button.x) + std::max(0, (maxWidth - line2W) / 2) + 4;
+        drawTinyTextAt(line2, line2X, drawY, dimColor(), kTinyScale);
+      }
+      continue;
+    }
+
     // Armed (tap-to-confirm) buttons get a full solid fill in the focus
     // color, not just a tinted border — it has to read as unmistakably
     // different from the merely-selected state at a glance, since a second

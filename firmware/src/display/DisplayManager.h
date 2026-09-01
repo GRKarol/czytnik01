@@ -70,6 +70,11 @@ class DisplayManager {
       // which reads the exact same rect back via sliderTrackRectFor() so the
       // knob's drawn position and the drag hit-test never drift apart.
       Slider = 4,
+      // Plain description text (e.g. a plugin's description in its detail
+      // screen) — no border/fill, never armed or tap-selectable, so it reads
+      // as prose instead of a button that does nothing when tapped. label is
+      // line 1, sublabel (optional) is line 2.
+      Label = 5,
     };
 
     String label;

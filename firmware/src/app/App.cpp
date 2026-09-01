@@ -3377,6 +3377,14 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
     spec.columns = 1;
     spec.rows = 3;
     spec.itemsPerPage = 3;
+  } else if (menuScreen_ == MenuScreen::PluginDetail) {
+    // Full-width description (Label tile, non-interactive) stacked over a
+    // full-width Enable/Disable button — exactly two tiles, always one
+    // page, so the description gets real width instead of being squeezed
+    // side-by-side with the toggle.
+    spec.columns = 1;
+    spec.rows = 2;
+    spec.itemsPerPage = 2;
   }
   const size_t itemsPerPage = std::max<size_t>(1, spec.itemsPerPage);
   size_t pageCount;
@@ -3460,6 +3468,8 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
       annotateSavePointsButton(button, canonicalIndex);
     } else if (menuScreen_ == MenuScreen::Main) {
       annotateMainMenuButton(button);
+    } else if (menuScreen_ == MenuScreen::PluginDetail) {
+      annotatePluginDetailButton(button, canonicalIndex);
     }
     currentGridButtons_.push_back(button);
     currentGridItemIndices_.push_back(canonicalIndex);
@@ -3719,6 +3729,16 @@ void App::annotateMainMenuButton(DisplayManager::Button &button) const {
   } else if (button.label == uiText(UiText::PowerOff)) {
     button.icon = ui::IconId::Power;
   }
+}
+
+void App::annotatePluginDetailButton(DisplayManager::Button &button, size_t canonicalIndex) const {
+  // canonicalIndex 0 is Back (pinned to the corner, never reaches here).
+  // 1 is always the description row — see openPluginDetail().
+  if (canonicalIndex != 1) {
+    return;
+  }
+  button.kind = DisplayManager::Button::ButtonKind::Label;
+  button.sublabel = pluginDetailDescLine2_;
 }
 
 namespace {
@@ -7210,9 +7230,14 @@ void App::openPluginDetail(size_t entryIndex) {
   pluginDetailMenuItems_.clear();
   pluginDetailMenuItems_.push_back(uiText(UiText::Back));
 
-  // Split description into lines of ~35 chars, breaking at word boundaries
+  // Description renders as a single non-interactive Label tile (see
+  // annotatePluginDetailButton()), so it's always exactly one menu entry
+  // here — line 2, if the text doesn't fit on one line, goes into
+  // pluginDetailDescLine2_ instead of becoming a second (falsely tappable)
+  // entry.
   String desc = entry.description.isEmpty() ? entry.name : entry.description;
   constexpr size_t kMaxLineChars = 35;
+  pluginDetailDescLine2_ = "";
 
   if (desc.length() <= kMaxLineChars) {
     pluginDetailMenuItems_.push_back(desc);
@@ -7233,7 +7258,7 @@ void App::openPluginDetail(size_t entryIndex) {
       line2 = line2.substring(0, kMaxLineChars - 3) + "...";
     }
     pluginDetailMenuItems_.push_back(line1);
-    pluginDetailMenuItems_.push_back(line2);
+    pluginDetailDescLine2_ = line2;
   }
 
   pluginDetailMenuItems_.push_back(entry.enabled ? polish("Wylacz", "Disable")
@@ -7257,7 +7282,9 @@ void App::selectPluginDetailItem(uint32_t nowMs) {
 
   const size_t toggleButtonIndex = pluginDetailMenuItems_.size() - 1;
 
-  // Description lines — non-selectable (everything between Back and the toggle)
+  // Description row — non-selectable Label tile (see
+  // annotatePluginDetailButton()); this guard is generic over how many
+  // entries sit between Back and the toggle, but today it's exactly one.
   if (pluginDetailSelectedIndex_ < toggleButtonIndex) {
     return;
   }
