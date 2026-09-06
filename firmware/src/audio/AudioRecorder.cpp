@@ -86,11 +86,53 @@ constexpr uint8_t kEs7210Mic12PowerReg4B = 0x4B;
 constexpr uint8_t kEs7210Mic34PowerReg4C = 0x4C;
 constexpr uint8_t kEs7210PowerDownReg06 = 0x06;
 
-// 30 dB gain, encoded the same way as the reference driver's
-// es7210_gain_value_t (raw enum value 10 = GAIN_30DB out of a 0-15 range —
+// 34.5 dB gain, encoded the same way as the reference driver's
+// es7210_gain_value_t (raw enum value 12 = GAIN_34_5DB out of a 0-15 range —
 // see es7210_reg.h's gain_value enum), OR'd with bit4 (0x10) to enable the
-// PGA for that mic channel.
-constexpr uint8_t kEs7210MicGainEnabled30db = 0x1A;
+// PGA for that mic channel. Matches Waveshare's own Arduino example for this
+// board (Examples/Arduino/08_Audio_Test/08_Audio_Test.ino), which requests
+// esp_codec_dev_set_in_gain(record, 35.0) right after open — their
+// es7210_open() default (codec->gain, applied inside mic_select()) is
+// overridden by that explicit call before recording ever starts, so 35 dB
+// (which get_db() buckets down to the nearest defined step, 34.5 dB) is the
+// gain the reference actually runs at, not whatever mic_select() set first.
+constexpr uint8_t kEs7210MicGainEnabled345db = 0x1C;
+
+// SDP_INTERFACE2_REG12: plain 2-slot framing. es7210_mic_select() writes
+// 0x02 here instead once three or more mics are selected; this board uses
+// two, so it stays at the plain value.
+constexpr uint8_t kEs7210SdpPlainFraming = 0x00;
+
+// The ES7210 does not survive this board's normal Wire1 speed. Measured, not
+// assumed: the round-2 diagnostic sweep wrote eight patterns to MIC1_GAIN at
+// 300/200/100/50 kHz and read each one back. At 300, 200 and 100 kHz the
+// readback is mangled in the same way every time (0xAA>0x00, 0xC1>0x01,
+// 0x20>0x00). At 50 kHz every pattern comes back exactly as written once the
+// register's own 5-bit width is accounted for (0xAA>0x0A, 0x55>0x15 — both
+// are the value ANDed with 0x1F), so the bus is clean there and the chip is
+// fine; only the timing above 50 kHz is not.
+//
+// This is what defeated the nine earlier attempts. MAINCLK_REG02 (0xC1) and
+// OSR_REG07 (0x20) set the ADC's clock divider, and at 300 kHz they landed as
+// 0x81 and 0x00 — a lost clock doubler (2x) and a lost OSR divider (8x). The
+// codec therefore produced one sample per 16 LRCK frames while the I2S side
+// clocked all 16, and the capture came out as short bursts of real audio
+// separated by 14 zero samples. That periodic gap is the buzz. No amount of
+// gain, mic pairing or slot format could fix it, because every one of those
+// registers was being written over the same corrupting bus.
+//
+// Every read-modify-write in the ES7210 path is affected twice over (a bad
+// read feeding a bad write), so the speed change wraps the register accessors
+// themselves rather than the config function, and restores the bus afterwards
+// for the touch controller, IMU, TCA9554 and ES8311 that share it.
+constexpr uint32_t kEs7210I2cHz = 50000;
+constexpr uint32_t kSharedBusI2cHz = 300000;  // BoardConfig::begin()'s Wire1 speed
+
+// Restores the shared bus speed however the enclosing transaction exits.
+struct Es7210BusSpeed {
+    Es7210BusSpeed() { Wire1.setClock(kEs7210I2cHz); }
+    ~Es7210BusSpeed() { Wire1.setClock(kSharedBusI2cHz); }
+};
 
 }  // namespace
 
@@ -303,29 +345,31 @@ void AudioRecorder::seekPlaybackBy(int32_t deltaMs) {
 // ─── I2S Configuration ──────────────────────────────────────────────────────
 
 bool AudioRecorder::configureI2sForRecording() {
-    // Slot width and frame format here must match how the ES7210 actually
-    // drives its output, not how the ES8311 (playback codec) expects to be
-    // fed — the two were wrongly assumed identical in every earlier attempt.
-    // Waveshare's own reference firmware for this exact board
-    // (waveshareteam/ESP32-S3-Touch-LCD-3.49, codec_board component) sets up
-    // its ES7210 RX channel with 32-bit MSB-justified slots
-    // (I2S_STD_MSB_SLOT_DEFAULT_CONFIG(32, STEREO) in their codec_init.c),
-    // while we were reading 16-bit Philips-standard slots — two independent
-    // mismatches (slot width AND the 1-BCLK launch-edge shift between MSB
-    // and Philips format) that would scramble every sample boundary. That
-    // matches the symptom exactly: a live but garbled/buzzing signal whose
-    // loudness tracked speech, rather than true silence.  MSB format here
-    // means the ES7210's 16 valid bits land at the top of each 32-bit slot
-    // (see the >>16 extraction in recordTaskLoop() below), not that the ADC
-    // itself runs at 32-bit resolution.
+    // Plain 2-channel 16-bit I2S, not TDM. This is the configuration the
+    // round-2 sweep's variant 4 used, and it is the only one that produced a
+    // continuous signal: 2044 of 2048 frames live, longest silent run 1
+    // sample, left channel a smooth waveform peaking at 2112. Every TDM
+    // variant, and every non-TDM variant running at the uncorrected bus
+    // speed, produced the 2-live-then-14-zero burst pattern instead.
+    //
+    // The TDM reasoning that used to sit here was sound in itself but rested
+    // on a false premise: the codec's own framing register never held the
+    // value we wrote, because the write went over a corrupting bus (see
+    // kEs7210I2cHz). With the bus fixed, the reference driver's non-TDM
+    // branch — 2 mics selected, SDP_INTERFACE2_REG12 = 0x00 — matches what
+    // the hardware actually does, so there is nothing to push into TDM.
+    //
+    // Left slot carries MIC1, right slot is dead (peak 2 across a full
+    // capture — MIC3 is not populated on this board), which recordTaskLoop()
+    // relies on when it takes the left slot alone instead of mixing.
     i2s_config_t config = {};
     config.mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_RX);
     config.sample_rate = kSampleRate;
-    config.bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT;
+    config.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
     config.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
-    config.communication_format = I2S_COMM_FORMAT_STAND_MSB;
+    config.communication_format = I2S_COMM_FORMAT_STAND_I2S;
     config.intr_alloc_flags = 0;
-    config.dma_buf_count = 4;
+    config.dma_buf_count = 8;
     config.dma_buf_len = 256;
     config.use_apll = false;
     config.tx_desc_auto_clear = false;
@@ -352,7 +396,7 @@ bool AudioRecorder::configureI2sForRecording() {
         return false;
     }
 
-    i2s_set_clk(kI2sPort, kSampleRate, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_STEREO);
+    i2s_set_clk(kI2sPort, kSampleRate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
     return true;
 }
 
@@ -431,7 +475,13 @@ bool AudioRecorder::configureCodecForRecording() {
     // the reference driver's TDM threshold (3 mics) exactly like MIC1+MIC2
     // did, so this is still a plain 2-channel handoff — no I2S protocol
     // change needed here, just which ES7210 gain/power registers get hit in
-    // selectEs7210Mics() below.
+    // selectEs7210Mics() below. The capture confirms it: with MIC1+MIC3
+    // selected the left slot carries a full-rate waveform and the right slot
+    // stays at peak 2, so MIC1 is the one populated input.
+    //
+    // Every write below now goes out at kEs7210I2cHz — before that change the
+    // two clock registers (OSR_REG07, MAINCLK_REG02) never actually held the
+    // values written here, which is what produced the burst-and-gap capture.
     if (!writeEs7210Register(kEs7210ResetReg00, 0xFF)) return false;
     if (!writeEs7210Register(kEs7210ResetReg00, 0x41)) return false;
     if (!writeEs7210Register(kEs7210ClockOffReg01, 0x3F)) return false;
@@ -452,17 +502,21 @@ bool AudioRecorder::configureCodecForRecording() {
     if (!writeEs7210Register(kEs7210OsrReg07, 0x20)) return false;
     if (!writeEs7210Register(kEs7210MainClkReg02, 0xC1)) return false;
 
-    // LRCK divider — set by the reference driver's es7210_config_sample(),
-    // looked up from a (MCLK, LRCK) coefficient table for the actual
-    // 16 kHz/256x-MCLK case we run (4.096 MHz), never written anywhere
-    // else. Without it the ADC's internal sample-rate divider stays at its
-    // power-on-reset value instead of matching the 16 kHz the I2S RX side
-    // expects, so every captured buffer is sampled at the wrong rate —
-    // this is what turned into buzzing/distortion on playback even though
-    // Pzm showed a plausible-looking (if quiet) live signal, since the
-    // mismatch garbles the stream rather than silencing it.
-    if (!writeEs7210Register(kEs7210LrckDivHReg04, 0x01)) return false;
-    if (!writeEs7210Register(kEs7210LrckDivLReg05, 0x00)) return false;
+    // No LRCK divider write here — pulled the actual reference driver
+    // (audio_codec_es7210_t from waveshareteam/ESP32-S3-Touch-LCD-3.49's
+    // esp_codec_dev/device/es7210/es7210.c) and found es7210_config_sample()
+    // — the only place that ever touches LRCK_DIVH_REG04/LRCK_DIVL_REG05 —
+    // returns immediately without writing anything when codec->master_mode
+    // is false. That board's codec_init.c never sets master_mode for the
+    // ES7210 (the ESP32 I2S peripheral is master, feeding BCLK/WS/MCLK to
+    // the codec — same as our configureI2sForRecording()), so master_mode
+    // is false there too: the real firmware never writes these two
+    // registers. A previous fix here wrote them anyway (0x01/0x00), which
+    // was never part of the working reference sequence and is the likely
+    // source of the buzzing/distortion that appeared once the mic signal
+    // path started carrying real signal (Pzm jumping from ~1-9% to ~100%).
+    // OSR_REG07 and MAINCLK_REG02 above stay — those two ARE written
+    // unconditionally by es7210_open() regardless of master/slave mode.
 
     if (!selectEs7210Mics()) return false;
 
@@ -490,34 +544,62 @@ bool AudioRecorder::configureCodecForRecording() {
     if (!writeEs7210Register(kEs7210Mic2PowerReg48, 0x08)) return false;
     if (!writeEs7210Register(kEs7210Mic3PowerReg49, 0x08)) return false;
     if (!writeEs7210Register(kEs7210Mic4PowerReg4A, 0x08)) return false;
-    if (!selectEs7210Mics()) return false;
+    if (!writeEs7210Register(kEs7210SdpInterface2Reg12, kEs7210SdpPlainFraming)) return false;
     if (!writeEs7210Register(kEs7210AnalogReg40, 0x43)) return false;
     if (!writeEs7210Register(kEs7210ResetReg00, 0x71)) return false;
     if (!writeEs7210Register(kEs7210ResetReg00, 0x41)) return false;
 
-    // Read back the registers that actually gate signal flow, so the next
-    // serial capture can tell "wrote correctly but MIC1/MIC3 aren't the
-    // populated pair" apart from "an I2C write silently didn't stick" —
-    // two previous fixes here turned out to be neither, and guessing a
-    // third time blind isn't worth another round trip without this.
-    uint8_t chk43 = 0, chk45 = 0, chk47 = 0, chk49 = 0, chk11 = 0, chk12 = 0;
+    // The two clock registers again, after the RESET_REG00 pair that ends
+    // es7210_start(). The reference driver leaves them alone here, but the
+    // diagnostic build wrote them last and read back 0xC1/0x20 intact, so
+    // this is the ordering the working capture was taken with. Cheap
+    // insurance against the reset sequence disturbing the divider.
+    if (!writeEs7210Register(kEs7210OsrReg07, 0x20)) return false;
+    if (!writeEs7210Register(kEs7210MainClkReg02, 0xC1)) return false;
+
+    // Read back the registers that actually gate signal flow. The clock pair
+    // is the important one now: gain and mic selection were never really in
+    // doubt, but 0x02/0x07 reading back as anything other than C1/20 means
+    // the bus is corrupting writes again and the recording will buzz.
+    uint8_t chk43 = 0, chk44 = 0, chk45 = 0, chk46 = 0, chk47 = 0, chk49 = 0, chk11 = 0, chk12 = 0;
+    uint8_t chk02 = 0, chk07 = 0;
     readEs7210Register(kEs7210Mic1GainReg43, chk43);
+    readEs7210Register(kEs7210Mic2GainReg44, chk44);
     readEs7210Register(kEs7210Mic3GainReg45, chk45);
+    readEs7210Register(kEs7210Mic4GainReg46, chk46);
     readEs7210Register(kEs7210Mic1PowerReg47, chk47);
     readEs7210Register(kEs7210Mic3PowerReg49, chk49);
     readEs7210Register(kEs7210SdpInterface1Reg11, chk11);
     readEs7210Register(kEs7210SdpInterface2Reg12, chk12);
-    ESP_LOGI(TAG, "ES7210 readback: gain1=%02X gain3=%02X pwr1=%02X pwr3=%02X sdp1=%02X sdp2=%02X "
-                  "(expect gain1/gain3=1A, pwr1/pwr3=08, sdp2=00)",
-             chk43, chk45, chk47, chk49, chk11, chk12);
+    readEs7210Register(kEs7210MainClkReg02, chk02);
+    readEs7210Register(kEs7210OsrReg07, chk07);
+    if (chk02 != 0xC1 || chk07 != 0x20) {
+        ESP_LOGE(TAG, "ES7210 clock registers did not stick (02=%02X 07=%02X) — "
+                      "recording will come out as bursts separated by silence",
+                 chk02, chk07);
+    }
+    ESP_LOGI(TAG, "ES7210 readback: gain1=%02X gain2=%02X gain3=%02X gain4=%02X pwr1=%02X pwr3=%02X "
+                  "sdp1=%02X sdp2=%02X clk02=%02X osr07=%02X (expect gain1/gain3=1C, "
+                  "pwr1/pwr3=08, sdp1=60, sdp2=00, clk02=C1, osr07=20)",
+             chk43, chk44, chk45, chk46, chk47, chk49, chk11, chk12, chk02, chk07);
 
     ESP_LOGI(TAG, "Codec configured for recording (ES7210)");
     return true;
 }
 
-// Mirrors es7210_mic_select() from the reference driver, hardcoded to
-// MIC1+MIC3 (the confirmed default pairing for this board — see
-// configureCodecForRecording()).
+// Mirrors es7210_mic_select() from the real Waveshare reference driver
+// (device/es7210/es7210.c, fetched from waveshareteam/ESP32-S3-Touch-LCD-3.49
+// and confirmed to run on this exact board), taking its non-TDM branch:
+// MIC1 + MIC3 selected, two mics, which is below the driver's own TDM
+// threshold of three and so leaves SDP_INTERFACE2_REG12 at plain framing.
+//
+// An earlier version here selected all four mics to force the codec into
+// 4-slot TDM and match a TDM receiver. That was chasing a framing mismatch
+// that did not exist — the capture never changed shape across TDM and
+// non-TDM alike, because the codec's sample rate was wrong underneath both
+// (see kEs7210I2cHz). With the clock right, two mics and plain framing is
+// what the reference driver does for this board and what the working
+// capture used.
 bool AudioRecorder::selectEs7210Mics() {
     for (uint8_t reg = kEs7210Mic1GainReg43; reg <= kEs7210Mic4GainReg46; reg++) {
         if (!updateEs7210RegisterBits(reg, 0x10, 0x00)) return false;
@@ -525,22 +607,24 @@ bool AudioRecorder::selectEs7210Mics() {
     if (!writeEs7210Register(kEs7210Mic12PowerReg4B, 0xFF)) return false;
     if (!writeEs7210Register(kEs7210Mic34PowerReg4C, 0xFF)) return false;
 
-    // MIC1
+    // MIC1 lives in the ADC12 clock domain (clock-off mask 0x0B, power
+    // register REG4B); only MIC1's own gain register gets the PGA enabled,
+    // since MIC2 is not selected.
     if (!updateEs7210RegisterBits(kEs7210ClockOffReg01, 0x0B, 0x00)) return false;
     if (!writeEs7210Register(kEs7210Mic12PowerReg4B, 0x00)) return false;
-    if (!updateEs7210RegisterBits(kEs7210Mic1GainReg43, 0x1F, kEs7210MicGainEnabled30db)) return false;
+    if (!updateEs7210RegisterBits(kEs7210Mic1GainReg43, 0x1F, kEs7210MicGainEnabled345db)) return false;
 
-    // MIC3 — clock-off mask 0x15 and MIC34_POWER_REG4C, not the MIC1/2
-    // pair's 0x0B/REG4B (mirrors the reference driver's separate MIC3
-    // branch in es7210_mic_select(), which uses different bits for the
-    // ADC34 domain than the ADC12 one MIC1 lives in).
+    // MIC3 lives in the ADC34 domain (mask 0x15, register REG4C). It reads
+    // as silence on this board — a full capture peaked at 2 against MIC1's
+    // 2112 — but the reference driver selects it, and an unpopulated input
+    // costs nothing beyond the right I2S slot it already occupies.
     if (!updateEs7210RegisterBits(kEs7210ClockOffReg01, 0x15, 0x00)) return false;
     if (!writeEs7210Register(kEs7210Mic34PowerReg4C, 0x00)) return false;
-    if (!updateEs7210RegisterBits(kEs7210Mic3GainReg45, 0x1F, kEs7210MicGainEnabled30db)) return false;
+    if (!updateEs7210RegisterBits(kEs7210Mic3GainReg45, 0x1F, kEs7210MicGainEnabled345db)) return false;
 
-    // 2 mics selected — stays below the reference driver's TDM threshold
-    // (3+), so this is plain 2-channel (non-TDM) I2S output.
-    return writeEs7210Register(kEs7210SdpInterface2Reg12, 0x00);
+    // Two mics selected — below es7210_is_tdm_mode()'s threshold, so plain
+    // 2-slot framing, matching configureI2sForRecording()'s stereo RX.
+    return writeEs7210Register(kEs7210SdpInterface2Reg12, kEs7210SdpPlainFraming);
 }
 
 bool AudioRecorder::configureCodecForPlayback() {
@@ -715,6 +799,7 @@ bool AudioRecorder::writeCodecRegister(uint8_t reg, uint8_t value) {
 
 bool AudioRecorder::readEs7210Register(uint8_t reg, uint8_t& value) {
     BoardConfig::I2cBusLock lock;
+    Es7210BusSpeed slowBus;
     Wire1.beginTransmission(BoardConfig::ES7210_ADDRESS);
     Wire1.write(reg);
     if (Wire1.endTransmission(false) != 0) return false;
@@ -725,6 +810,7 @@ bool AudioRecorder::readEs7210Register(uint8_t reg, uint8_t& value) {
 
 bool AudioRecorder::writeEs7210Register(uint8_t reg, uint8_t value) {
     BoardConfig::I2cBusLock lock;
+    Es7210BusSpeed slowBus;
     Wire1.beginTransmission(BoardConfig::ES7210_ADDRESS);
     Wire1.write(reg);
     Wire1.write(value);
@@ -773,6 +859,13 @@ void AudioRecorder::recordTaskEntry(void* param) {
 }
 
 void AudioRecorder::recordTaskLoop() {
+#if AUDIO_DIAG
+    // Diagnostic firmware: pressing Record runs the config sweep instead of
+    // recording. See AudioRecorderDiag.cpp.
+    runDiagnostics();
+    return;
+#endif
+
     // Hardware setup (runs on recording task's core, non-blocking for plugin task)
     if (!enableAudioRail()) {
         ESP_LOGE(TAG, "Cannot enable audio rail");
@@ -815,7 +908,8 @@ void AudioRecorder::recordTaskLoop() {
     writeWavHeader(file, kSampleRate, kBitsPerSample, kChannels);
 
     uint8_t buffer[kRecordBufferSize];
-    int16_t monoBuffer[kRecordBufferSize / 4];  // stereo → mono
+    // 2 channels x 2 bytes per frame, one mono sample out per frame.
+    int16_t monoBuffer[kRecordBufferSize / 4];
     uint32_t totalDataBytes = 0;
     uint32_t loopCount = 0;
     esp_err_t lastReadErr = ESP_OK;
@@ -843,34 +937,31 @@ void AudioRecorder::recordTaskLoop() {
         }
         zeroReadStreak = 0;
 
-        // Convert stereo 32-bit (MSB-justified, ES7210's 16 valid bits at the
-        // top of each slot — see configureI2sForRecording()) to mono 16-bit.
-        // The ES7210 puts MIC1 on the left slot and MIC3 on the right (see
-        // selectEs7210Mics()) — two distinct real microphones, not a
-        // duplicated single signal — so averaging both is a genuine 2-mic
-        // downmix, and still degrades gracefully (half amplitude, not
-        // silence) if it turns out only one of the two is actually
-        // populated on this board.
-        size_t stereoSamples = bytesRead / 8;  // 4 bytes * 2 channels per sample
-        const int32_t* stereoData = reinterpret_cast<const int32_t*>(buffer);
+        // Plain 2-channel 16-bit RX (see configureI2sForRecording()): left
+        // word is MIC1, right word is MIC3. Only MIC1 is populated on this
+        // board — a full capture put MIC3's peak at 2 against MIC1's 2112 —
+        // so the mono output takes the left word alone. Averaging the two,
+        // as this used to, would have halved every sample against a channel
+        // that carries nothing.
+        size_t frameCount = bytesRead / 4;  // 2 bytes * 2 channels per frame
+        const int16_t* frameData = reinterpret_cast<const int16_t*>(buffer);
         int16_t peakSample = 0;
         int16_t leftMin = 0, leftMax = 0, rightMin = 0, rightMax = 0;
-        for (size_t i = 0; i < stereoSamples; i++) {
-            int32_t left = stereoData[i * 2] >> 16;
-            int32_t right = stereoData[i * 2 + 1] >> 16;
+        for (size_t i = 0; i < frameCount; i++) {
+            int16_t left = frameData[i * 2 + 0];       // MIC1
+            int16_t right = frameData[i * 2 + 1];      // MIC3, unpopulated
             if (i == 0) {
-                leftMin = leftMax = static_cast<int16_t>(left);
-                rightMin = rightMax = static_cast<int16_t>(right);
+                leftMin = leftMax = left;
+                rightMin = rightMax = right;
             } else {
-                leftMin = std::min(leftMin, static_cast<int16_t>(left));
-                leftMax = std::max(leftMax, static_cast<int16_t>(left));
-                rightMin = std::min(rightMin, static_cast<int16_t>(right));
-                rightMax = std::max(rightMax, static_cast<int16_t>(right));
+                leftMin = std::min(leftMin, left);
+                leftMax = std::max(leftMax, left);
+                rightMin = std::min(rightMin, right);
+                rightMax = std::max(rightMax, right);
             }
-            int16_t mixed = static_cast<int16_t>((left + right) / 2);
-            monoBuffer[i] = mixed;
-            int16_t absMixed = static_cast<int16_t>(mixed < 0 ? -mixed : mixed);
-            if (absMixed > peakSample) peakSample = absMixed;
+            monoBuffer[i] = left;
+            int16_t absLeft = static_cast<int16_t>(left < 0 ? -left : left);
+            if (absLeft > peakSample) peakSample = absLeft;
         }
         recordingPeakLevel_ = static_cast<uint8_t>((static_cast<uint32_t>(peakSample) * 100U) / 32767U);
 
@@ -882,7 +973,7 @@ void AudioRecorder::recordTaskLoop() {
                      buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7]);
         }
 
-        size_t monoBytes = stereoSamples * 2;
+        size_t monoBytes = frameCount * 2;
         size_t written = file.write(reinterpret_cast<const uint8_t*>(monoBuffer), monoBytes);
         if (written != monoBytes) {
             ESP_LOGE(TAG, "SD write error during recording");

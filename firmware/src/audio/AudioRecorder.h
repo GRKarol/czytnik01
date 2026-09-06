@@ -104,6 +104,15 @@ class AudioRecorder {
     bool updateEs7210RegisterBits(uint8_t reg, uint8_t mask, uint8_t data);
     bool selectEs7210Mics();
 
+#if AUDIO_DIAG
+    // Diagnostic-only build (see AudioRecorderDiag.cpp): sweeps every
+    // candidate ES7210/I2S configuration in one run and dumps raw captures to
+    // SD instead of recording. Replaces the normal record path entirely.
+    void runDiagnostics();
+    bool configureEs7210(uint8_t reg02, uint8_t reg07, uint8_t micMask, uint8_t sdp12);
+    bool installDiagI2s(bool tdm4);
+#endif
+
     static void recordTaskEntry(void* param);
     void recordTaskLoop();
     static void playbackTaskEntry(void* param);
