@@ -15,6 +15,7 @@
 
 #include "app/Translations.h"
 #include "board/BoardConfig.h"
+#include "plugins/DeviceServicesBridge.h"
 
 #ifndef RSVP_USB_TRANSFER_ENABLED
 #define RSVP_USB_TRANSFER_ENABLED 0
@@ -784,6 +785,7 @@ void App::begin() {
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
+  DeviceServicesBridge::setLanguageIndex(static_cast<int>(uiLanguage_));
   readerMode_ = readerModeFromSetting(
       preferences_.getUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_)));
   handednessMode_ = handednessModeFromSetting(
@@ -1654,7 +1656,7 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
           pwrTapCount_ = 0;
           createSavePoint(nowMs);
           display_.renderStatus(uiText(UiText::SavePoints),
-                                polish("Punkt zapisu dodany", "Save point added"), "");
+                                tr3(TrKey3::SavePointAdded), "");
           delay(1500);
           setState(AppState::Paused, nowMs);
           return;
@@ -1790,6 +1792,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
           kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_)));
+  DeviceServicesBridge::setLanguageIndex(static_cast<int>(uiLanguage_));
   readerMode_ = readerModeFromSetting(
       preferences_.getUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_)));
   handednessMode_ = handednessModeFromSetting(
@@ -1974,6 +1977,7 @@ void App::cycleThemeMode(uint32_t nowMs) {
 void App::cycleUiLanguage(uint32_t nowMs) {
   uiLanguage_ = Localization::nextLanguage(uiLanguage_);
   preferences_.putUChar(kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_));
+  DeviceServicesBridge::setLanguageIndex(static_cast<int>(uiLanguage_));
   Serial.printf("[display] language=%s\n", uiLanguageLabel().c_str());
 
   if (state_ == AppState::Menu) {
@@ -2616,8 +2620,8 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           setState(AppState::Menu, nowMs);
           savePointQuickSaveFromReader_ = true;
           openTextEntry(TextEntryPurpose::SavePointName,
-                        polish("Nazwij zakladke", "Name bookmark"),
-                        polish("Wpisz nazwe:", "Enter name:"),
+                        tr3(TrKey3::NameBookmark),
+                        tr3(TrKey3::EnterNamePrompt),
                         "", defaultName, "", false, 30,
                         MenuScreen::SavePointsList);
           return;
@@ -2717,8 +2721,8 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       setState(AppState::Menu, nowMs);
       savePointQuickSaveFromReader_ = true;
       openTextEntry(TextEntryPurpose::SavePointName,
-                    polish("Nazwij zakladke", "Name bookmark"),
-                    polish("Wpisz nazwe:", "Enter name:"),
+                    tr3(TrKey3::NameBookmark),
+                    tr3(TrKey3::EnterNamePrompt),
                     "", defaultName, "", false, 30,
                     MenuScreen::SavePointsList);
       return;
@@ -4857,7 +4861,7 @@ void App::commitTextEntry(uint32_t nowMs) {
         Serial.printf("[save-point] created: %s word=%u\n", sp.name.c_str(),
                       static_cast<unsigned int>(sp.wordIndex));
         display_.renderStatus(uiText(UiText::SavePoints),
-                              polish("Zakladka dodana", "Bookmark added"), name);
+                              tr3(TrKey3::BookmarkAdded), name);
         delay(1200);
       }
       flushStaleTouch();
@@ -4989,16 +4993,15 @@ void App::rebuildSettingsMenuItems() {
   if (menuScreen_ == MenuScreen::SettingsHome) {
     // Nowy układ: 6 pozycji zawsze widocznych, dev-only na końcu.
     settingsMenuItems_.push_back(uiText(UiText::Back));
-    settingsMenuItems_.push_back(polish("Czytanie", "Reading"));   // 1 = Reading settings
+    settingsMenuItems_.push_back(tr3(TrKey3::ReadingSettings));   // 1 = Reading settings
     settingsMenuItems_.push_back(uiText(UiText::Display));         // 2 = Display
     settingsMenuItems_.push_back(uiText(UiText::TypographyTune));  // 3 = Typography (always)
     settingsMenuItems_.push_back(tr(TrKey::Connectivity));         // 4
-    settingsMenuItems_.push_back(polish("Tryb zaawansowany: ",     // 5 = przełącznik
-                                        "Advanced mode: ") +
+    settingsMenuItems_.push_back(String(tr3(TrKey3::AdvancedModeColon)) +  // 5 = przełącznik
                                  onOffLabel(devModeEnabled()));
     settingsMenuItems_.push_back(tr(TrKey::AboutHelp));            // 6
     if (devModeEnabled()) {
-      settingsMenuItems_.push_back(polish("Presety", "Presets"));  // 7 dev
+      settingsMenuItems_.push_back(tr3(TrKey3::PresetsLabel));  // 7 dev
       settingsMenuItems_.push_back(tr(TrKey::WifiAdvanced));       // 8 dev
       settingsMenuItems_.push_back(firmwareUpdateMenuLabel());     // 9 dev
     }
@@ -5032,7 +5035,7 @@ void App::rebuildSettingsMenuItems() {
                                  otaUpdater_.currentVersion());
     settingsMenuItems_.push_back(tr(TrKey::BrandLabel));
     settingsMenuItems_.push_back(tr2(TrKey2::SdCardCheck));
-    settingsMenuItems_.push_back(polish("Samouczek", "Tutorial"));
+    settingsMenuItems_.push_back(tr3(TrKey3::TutorialLabel));
     if (devModeEnabled()) {
       settingsMenuItems_.push_back(tr(TrKey::DevModeOn));
     }
@@ -5053,19 +5056,19 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Night));
   } else if (menuScreen_ == MenuScreen::WelcomeHighlightColor) {
     // First-run wizard — krok 3/5. Kolor podświetlenia litery.
-    settingsMenuItems_.push_back(polish("Czerwony", "Red"));
-    settingsMenuItems_.push_back(polish("Niebieski", "Blue"));
-    settingsMenuItems_.push_back(polish("Zielony", "Green"));
-    settingsMenuItems_.push_back(polish("Zolty", "Yellow"));
-    settingsMenuItems_.push_back(polish("Pomaranczowy", "Orange"));
-    settingsMenuItems_.push_back(polish("Fioletowy", "Purple"));
+    settingsMenuItems_.push_back(tr3(TrKey3::ColorRed));
+    settingsMenuItems_.push_back(tr3(TrKey3::ColorBlue));
+    settingsMenuItems_.push_back(tr3(TrKey3::ColorGreen));
+    settingsMenuItems_.push_back(tr3(TrKey3::ColorYellow));
+    settingsMenuItems_.push_back(tr3(TrKey3::ColorOrange));
+    settingsMenuItems_.push_back(tr3(TrKey3::ColorPurple));
   } else if (menuScreen_ == MenuScreen::WelcomePacing) {
     // First-run wizard — krok 4/5. Spowolnienie po kropkach/długich słowach.
-    settingsMenuItems_.push_back(polish("Brak (0 ms)", "None (0 ms)"));
-    settingsMenuItems_.push_back(polish("Lekkie (100 ms)", "Light (100 ms)"));
-    settingsMenuItems_.push_back(polish("Srednie (200 ms)", "Medium (200 ms)"));
-    settingsMenuItems_.push_back(polish("Mocne (300 ms)", "Strong (300 ms)"));
-    settingsMenuItems_.push_back(polish("Bardzo mocne (400 ms)", "Very strong (400 ms)"));
+    settingsMenuItems_.push_back(tr3(TrKey3::PacingNone));
+    settingsMenuItems_.push_back(tr3(TrKey3::PacingLight));
+    settingsMenuItems_.push_back(tr3(TrKey3::PacingMedium));
+    settingsMenuItems_.push_back(tr3(TrKey3::PacingStrong));
+    settingsMenuItems_.push_back(tr3(TrKey3::PacingVeryStrong));
   } else if (menuScreen_ == MenuScreen::WelcomeConnect) {
     // First-run wizard — krok 5/5. Połączenie z telefonem.
     // Więcej pozycji żeby scroll nie przeskakiwał od razu na "Pomiń".
@@ -5081,7 +5084,7 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Brightness) + ": " +
                                  String(currentBrightnessPercent()) + "%");
     settingsMenuItems_.push_back(String(tr(TrKey::ReaderHand)) + handednessLabel());
-    settingsMenuItems_.push_back(polish("Przycisk zapisu: ", "Save btn: ") +
+    settingsMenuItems_.push_back(String(tr3(TrKey3::SaveBtnColon)) +
                                  onOffLabel(savePointButtonVisible_));
     settingsMenuItems_.push_back(String(tr(TrKey::FooterLabel)) +
                                  footerMetricModeLabel());
@@ -5096,10 +5099,10 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(String(tr(TrKey::ReadingPercent)) +
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
-    settingsMenuItems_.push_back(polish("Kolor litery: ", "Focus color: ") + focusColorLabel());
-    settingsMenuItems_.push_back(polish("Pomoc (?): ", "Help (?): ") +
+    settingsMenuItems_.push_back(String(tr3(TrKey3::FocusColorColon)) + focusColorLabel());
+    settingsMenuItems_.push_back(String(tr3(TrKey3::HelpQColon)) +
                                  onOffLabel(showHelpHints_));
-    settingsMenuItems_.push_back(polish("Nawigacja: ", "Navigation: ") + navModeLabel());
+    settingsMenuItems_.push_back(String(tr3(TrKey3::NavigationColon)) + navModeLabel());
   } else if (menuScreen_ == MenuScreen::ScreensaverSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::ScreensaverStyle)) +
@@ -5264,17 +5267,16 @@ void App::dismissHelpPopup(uint32_t nowMs) {
   renderSettings();
 }
 
-const char *App::polish(const char *pl, const char *en) const {
-  // DEPRECATED — use tr(TrKey) instead. Kept temporarily for any stragglers.
-  return uiLanguage_ == UiLanguage::Polish ? pl : en;
-}
-
 const char *App::tr(TrKey key) const {
   return Translations::tr(uiLanguage_, key);
 }
 
 const char *App::tr2(TrKey2 key) const {
   return Translations2::tr2(uiLanguage_, key);
+}
+
+const char *App::tr3(TrKey3 key) const {
+  return Translations3::tr3(uiLanguage_, key);
 }
 
 // ─── SettingsConnectivity ────────────────────────────────────────────────────
@@ -5369,7 +5371,7 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
       }
       rebuildSettingsMenuItems();
       if (justUnlocked) {
-        showGridToast(polish("Tryb zaawansowany: ", "Advanced mode: ") + onOffLabel(true), nowMs);
+        showGridToast(String(tr3(TrKey3::AdvancedModeColon)) + onOffLabel(true), nowMs);
       }
       renderSettings();
       return;
@@ -5385,7 +5387,7 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
       if (devModeEnabled()) {
         setDevModeEnabled(false);
         rebuildSettingsMenuItems();
-        showGridToast(polish("Tryb zaawansowany: ", "Advanced mode: ") + onOffLabel(false), nowMs);
+        showGridToast(String(tr3(TrKey3::AdvancedModeColon)) + onOffLabel(false), nowMs);
         renderSettings();
         return;
       }
@@ -5443,10 +5445,9 @@ void App::renderWelcomeInstallApp() {
   ensureInstallAppQr();
   // Tytuł idzie dużym krojem serif, który się nie zawija — stąd krótki.
   // Zdanie właściwe leci w linijce pod nim (mała czcionka, ~37 znaków).
-  const char *title = polish("Zeskanuj kod", "Scan the code");
-  const char *line1 = polish("Zainstaluj aplikacje", "Install the app");
-  const char *hint = polish("Dotknij ekranu, by przejsc dalej",
-                            "Tap the screen to continue");
+  const char *title = tr3(TrKey3::ScanCode);
+  const char *line1 = tr3(TrKey3::InstallApp);
+  const char *hint = tr3(TrKey3::TapContinue);
   if (g_installAppQrSize > 0) {
     display_.renderStatusWithQr(title, line1, g_installAppQrData, g_installAppQrSize, hint);
   } else {
@@ -5473,6 +5474,7 @@ void App::selectWelcomeLanguageItem(uint32_t /*nowMs*/) {
     // Tak jak cycleUiLanguage: najpierw member field, potem pref.
     uiLanguage_ = Localization::sanitizeLanguage(kLangByIndex[settingsSelectedIndex_]);
     preferences_.putUChar(kPrefUiLanguage, static_cast<uint8_t>(uiLanguage_));
+    DeviceServicesBridge::setLanguageIndex(static_cast<int>(uiLanguage_));
     Serial.printf("[welcome] language=%s (idx=%u → enum=%u)\n",
                   uiLanguageLabel().c_str(),
                   static_cast<unsigned>(settingsSelectedIndex_),
@@ -5629,32 +5631,27 @@ void App::renderTutorialStep() {
   switch (menuScreen_) {
     case MenuScreen::TutorialStep1:
       title = "RSVP";
-      desc = polish("Slowa jedno po drugim. Litera ORP kieruje wzrok.",
-                    "Words one at a time. ORP letter guides your eye.");
+      desc = tr3(TrKey3::TutorialRsvpDesc);
       step = 1;
       break;
     case MenuScreen::TutorialStep2:
-      title = polish("Tempo", "Speed");
-      desc = polish("Przytrzymaj + gora/dol: zmiana predkosci.",
-                    "Hold + up/down: change speed.");
+      title = tr3(TrKey3::SpeedLabel);
+      desc = tr3(TrKey3::TutorialSpeedDesc);
       step = 2;
       break;
     case MenuScreen::TutorialStep3:
-      title = polish("Pauza", "Pause");
-      desc = polish("Dotknij ekranu by pauzowac/wznowic.",
-                    "Tap screen to pause/resume.");
+      title = tr3(TrKey3::PauseLabel);
+      desc = tr3(TrKey3::TutorialPauseDesc);
       step = 3;
       break;
     case MenuScreen::TutorialStep4:
       title = "Menu";
-      desc = polish("Przycisk z boku otwiera menu.",
-                    "Side button opens the menu.");
+      desc = tr3(TrKey3::TutorialMenuDesc);
       step = 4;
       break;
     case MenuScreen::TutorialStep5:
-      title = polish("Pomoc ?", "Help ?");
-      desc = polish("W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis.",
-                    "In Display/Pacing settings: side button shows info.");
+      title = tr3(TrKey3::HelpQLabel);
+      desc = tr3(TrKey3::TutorialHelpDesc);
       step = 5;
       break;
     default:
@@ -5809,7 +5806,7 @@ bool App::otaChannelEnabled() {
 }
 
 String App::otaChannelLabel() {
-  return otaChannelEnabled() ? polish("Testowy", "Staging") : polish("Produkcyjny", "Production");
+  return otaChannelEnabled() ? tr3(TrKey3::ChannelStaging) : tr3(TrKey3::ChannelProduction);
 }
 
 void App::maybeAutoCheckForUpdates(uint32_t nowMs) {
@@ -6289,13 +6286,13 @@ String App::focusHighlightLabel() const {
 
 String App::focusColorLabel() const {
   switch (display_.focusColorIndex()) {
-    case 0: return polish("Czerwony", "Red");
-    case 1: return polish("Niebieski", "Blue");
-    case 2: return polish("Zielony", "Green");
-    case 3: return polish("Zolty", "Yellow");
-    case 4: return polish("Pomaranczowy", "Orange");
-    case 5: return polish("Fioletowy", "Purple");
-    default: return polish("Czerwony", "Red");
+    case 0: return tr3(TrKey3::ColorRed);
+    case 1: return tr3(TrKey3::ColorBlue);
+    case 2: return tr3(TrKey3::ColorGreen);
+    case 3: return tr3(TrKey3::ColorYellow);
+    case 4: return tr3(TrKey3::ColorOrange);
+    case 5: return tr3(TrKey3::ColorPurple);
+    default: return tr3(TrKey3::ColorRed);
   }
 }
 
@@ -6403,7 +6400,7 @@ String App::navModeLabel() const {
     case NavMode::DPad:
       return "D-Pad";
     case NavMode::Buttons:
-      return polish("Przyciski", "Buttons");
+      return tr3(TrKey3::ButtonsLabel);
     case NavMode::Swipe:
     default:
       return "Swipe";
@@ -6664,11 +6661,11 @@ void App::openBookDetails(size_t bookIndex, uint32_t nowMs) {
 
   bookDetailsMenuItems_.push_back(title + (author.isEmpty() ? "" : " - " + author));
   bookDetailsMenuItems_.push_back(String(static_cast<unsigned int>(percent)) + "% " +
-                                  polish("ukonczone", "complete"));
-  bookDetailsMenuItems_.push_back(polish("Czytaj od miejsca", "Read from place"));
+                                  tr3(TrKey3::PercentComplete));
+  bookDetailsMenuItems_.push_back(tr3(TrKey3::ReadFromPlace));
   bookDetailsMenuItems_.push_back(uiText(UiText::Chapters));
   bookDetailsMenuItems_.push_back(uiText(UiText::RestartBook));
-  bookDetailsMenuItems_.push_back(polish("Usun ksiazke", "Delete book"));
+  bookDetailsMenuItems_.push_back(tr3(TrKey3::DeleteBookLabel));
 
   bookDetailsSelectedIndex_ = 3;  // "Czytaj od miejsca"
   menuScreen_ = MenuScreen::BookDetails;
@@ -6687,7 +6684,7 @@ void App::selectBookDetailsItem(uint32_t nowMs) {
     case 3: {  // Czytaj od miejsca
       saveReadingPosition(true);
       if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
-        display_.renderStatus(polish("Blad", "Error"),
+        display_.renderStatus(tr3(TrKey3::ErrorLabel),
                               storage_.bookDisplayName(bookDetailsBookIndex_), "");
         delay(1400);
         renderBookDetails();
@@ -6702,7 +6699,7 @@ void App::selectBookDetailsItem(uint32_t nowMs) {
       // Load the book so we have chapter markers available
       saveReadingPosition(true);
       if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
-        display_.renderStatus(polish("Blad", "Error"),
+        display_.renderStatus(tr3(TrKey3::ErrorLabel),
                               storage_.bookDisplayName(bookDetailsBookIndex_), "");
         delay(1400);
         renderBookDetails();
@@ -6714,7 +6711,7 @@ void App::selectBookDetailsItem(uint32_t nowMs) {
     case 5:  // Restart
       saveReadingPosition(true);
       if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
-        display_.renderStatus(polish("Blad", "Error"),
+        display_.renderStatus(tr3(TrKey3::ErrorLabel),
                               storage_.bookDisplayName(bookDetailsBookIndex_), "");
         delay(1400);
         renderBookDetails();
@@ -6742,9 +6739,9 @@ void App::openBookDeleteConfirm(uint32_t nowMs) {
   bookDeleteConfirmMenuItems_.push_back(uiText(UiText::Back));
 
   const String title = storage_.bookDisplayName(bookDetailsBookIndex_);
-  bookDeleteConfirmMenuItems_.push_back(polish("Usunac: ", "Delete: ") + title);
-  bookDeleteConfirmMenuItems_.push_back(polish("Nie, wroc", "No, go back"));
-  bookDeleteConfirmMenuItems_.push_back(polish("Tak, usun", "Yes, delete"));
+  bookDeleteConfirmMenuItems_.push_back(String(tr3(TrKey3::DeleteConfirmColon)) + title);
+  bookDeleteConfirmMenuItems_.push_back(tr3(TrKey3::NoGoBack));
+  bookDeleteConfirmMenuItems_.push_back(tr3(TrKey3::YesDelete));
 
   bookDeleteConfirmSelectedIndex_ = 2;  // default to "No"
   menuScreen_ = MenuScreen::BookDeleteConfirm;
@@ -6806,10 +6803,10 @@ void App::executeDeleteBook(uint32_t nowMs) {
   const bool deleted = storage_.deleteBook(bookDetailsBookIndex_);
 
   if (deleted) {
-    display_.renderStatus(polish("Usunieto", "Deleted"), bookTitle, "");
+    display_.renderStatus(tr3(TrKey3::DeletedLabel), bookTitle, "");
   } else {
-    display_.renderStatus(polish("Blad", "Error"),
-                          polish("Nie mozna usunac", "Cannot delete"), bookTitle);
+    display_.renderStatus(tr3(TrKey3::ErrorLabel),
+                          tr3(TrKey3::CannotDelete), bookTitle);
   }
   delay(1400);
   flushStaleTouch();
@@ -6913,7 +6910,7 @@ void App::openSavePointsList() {
   loadSavePoints();
   savePointMenuItems_.clear();
   savePointMenuItems_.push_back(uiText(UiText::Back));
-  savePointMenuItems_.push_back(polish("+ Dodaj punkt zapisu", "+ Add save point"));
+  savePointMenuItems_.push_back(tr3(TrKey3::AddSavePoint));
 
   for (size_t i = 0; i < savePoints_.size(); ++i) {
     const auto &sp = savePoints_[i];
@@ -6924,7 +6921,7 @@ void App::openSavePointsList() {
     // tap, but this button only opens the confirm screen below — the actual
     // delete already gets its own Tak/Nie step there (same convention as
     // "Usun ksiazke" opening BookDeleteConfirm).
-    savePointMenuItems_.push_back(polish("Usun ", "Delete ") + label);
+    savePointMenuItems_.push_back(String(tr3(TrKey3::DeleteSpace)) + label);
   }
 
   savePointSelectedIndex_ = savePoints_.empty() ? 1 : 2;
@@ -6945,7 +6942,7 @@ void App::selectSavePointItem(uint32_t nowMs) {
     // Add save point — open name entry
     if (!usingStorageBook_ || currentBookPath_.isEmpty()) {
       display_.renderStatus(uiText(UiText::SavePoints),
-                            polish("Najpierw otworz ksiazke", "Open a book first"), "");
+                            tr3(TrKey3::OpenBookFirst), "");
       delay(1400);
       renderSavePointsList();
       return;
@@ -6954,8 +6951,8 @@ void App::selectSavePointItem(uint32_t nowMs) {
     const String defaultName = savePointDefaultName();
     savePointQuickSaveFromReader_ = false;
     openTextEntry(TextEntryPurpose::SavePointName,
-                  polish("Nazwij zakladke", "Name bookmark"),
-                  polish("Wpisz nazwe:", "Enter name:"),
+                  tr3(TrKey3::NameBookmark),
+                  tr3(TrKey3::EnterNamePrompt),
                   "", defaultName, "", false, 30,
                   MenuScreen::SavePointsList);
     return;
@@ -6981,16 +6978,16 @@ void App::selectSavePointItem(uint32_t nowMs) {
 
   const int bookIdx = findBookIndexByPath(sp.bookPath);
   if (bookIdx < 0) {
-    display_.renderStatus(polish("Blad", "Error"),
-                          polish("Ksiazka nie znaleziona", "Book not found"), sp.bookTitle);
+    display_.renderStatus(tr3(TrKey3::ErrorLabel),
+                          tr3(TrKey3::BookNotFound), sp.bookTitle);
     delay(1400);
     renderSavePointsList();
     return;
   }
 
   if (!loadBookAtIndex(static_cast<size_t>(bookIdx), nowMs, true, true, true, true)) {
-    display_.renderStatus(polish("Blad", "Error"),
-                          polish("Nie mozna otworzyc", "Cannot open"), sp.bookTitle);
+    display_.renderStatus(tr3(TrKey3::ErrorLabel),
+                          tr3(TrKey3::CannotOpen), sp.bookTitle);
     delay(1400);
     renderSavePointsList();
     return;
@@ -7019,9 +7016,9 @@ void App::openSavePointDeleteConfirm(size_t index, uint32_t nowMs) {
 
   savePointDeleteConfirmMenuItems_.clear();
   savePointDeleteConfirmMenuItems_.push_back(uiText(UiText::Back));
-  savePointDeleteConfirmMenuItems_.push_back(polish("Usunac: ", "Delete: ") + label);
-  savePointDeleteConfirmMenuItems_.push_back(polish("Nie, wroc", "No, go back"));
-  savePointDeleteConfirmMenuItems_.push_back(polish("Tak, usun", "Yes, delete"));
+  savePointDeleteConfirmMenuItems_.push_back(String(tr3(TrKey3::DeleteConfirmColon)) + label);
+  savePointDeleteConfirmMenuItems_.push_back(tr3(TrKey3::NoGoBack));
+  savePointDeleteConfirmMenuItems_.push_back(tr3(TrKey3::YesDelete));
 
   savePointDeleteConfirmSelectedIndex_ = 2;  // default to "No"
   menuScreen_ = MenuScreen::SavePointDeleteConfirm;
@@ -7049,7 +7046,7 @@ void App::executeDeleteSavePoint(uint32_t nowMs) {
   (void)nowMs;
   deleteSavePoint(savePointDeleteTargetIndex_);
   display_.renderStatus(uiText(UiText::SavePoints),
-                        polish("Usunieto", "Deleted"), "");
+                        tr3(TrKey3::DeletedLabel), "");
   delay(800);
   // The finger that tapped "Tak, usun" may still be resting on the screen
   // when this fires; flush any stale touch before rebuilding the (now
@@ -7073,7 +7070,7 @@ void App::executeDeleteSavePoint(uint32_t nowMs) {
 void App::openPluginsHome() {
   pluginsHomeMenuItems_.clear();
   pluginsHomeMenuItems_.push_back(uiText(UiText::Back));
-  pluginsHomeMenuItems_.push_back(polish("Aktywne", "Active"));
+  pluginsHomeMenuItems_.push_back(tr3(TrKey3::ActivePlugins));
   pluginsHomeMenuItems_.push_back(tr2(TrKey2::PluginLibrary));
 
   pluginsHomeSelectedIndex_ = 1;
@@ -7117,7 +7114,7 @@ void App::openPluginsActive() {
     // Info-only tile, same non-selectable treatment as a "---" separator —
     // an empty grid with just a Back icon reads as broken, not "empty".
     pluginsActiveMenuItems_.push_back(
-        polish("Brak aktywnych pluginow", "No active plugins"));
+        tr3(TrKey3::NoActivePlugins));
   } else {
     for (const auto& entry : enabled) {
       pluginsActiveMenuItems_.push_back(entry.name);
@@ -7186,8 +7183,8 @@ void App::openPluginLibraryScreen() {
   const auto& all = pluginLibrary_.all();
   for (const auto& entry : all) {
     String label = entry.name;
-    label += entry.enabled ? polish(" [wlaczony]", " [enabled]")
-                            : polish(" [wylaczony]", " [disabled]");
+    label += entry.enabled ? tr3(TrKey3::PluginEnabledTag)
+                            : tr3(TrKey3::PluginDisabledTag);
     pluginLibraryMenuItems_.push_back(label);
   }
 
@@ -7261,8 +7258,8 @@ void App::openPluginDetail(size_t entryIndex) {
     pluginDetailDescLine2_ = line2;
   }
 
-  pluginDetailMenuItems_.push_back(entry.enabled ? polish("Wylacz", "Disable")
-                                                  : polish("Wlacz", "Enable"));
+  pluginDetailMenuItems_.push_back(entry.enabled ? tr3(TrKey3::DisablePlugin)
+                                                  : tr3(TrKey3::EnablePlugin));
 
   // Default selection to the last item (Enable/Disable button)
   pluginDetailSelectedIndex_ = pluginDetailMenuItems_.size() - 1;
@@ -7325,9 +7322,9 @@ void App::openPresets() {
 
   // [1] Save Current / Limit reached
   if (presets.size() < PresetManager::kMaxPresets) {
-    settingsMenuItems_.push_back(polish("+ Zapisz obecne", "+ Save Current"));
+    settingsMenuItems_.push_back(tr3(TrKey3::SaveCurrentPreset));
   } else {
-    settingsMenuItems_.push_back(polish("(Limit 10 osiagniety)", "(Limit 10 reached)"));
+    settingsMenuItems_.push_back(tr3(TrKey3::PresetLimitReachedParen));
   }
 
   // [2..] Preset names
@@ -7351,7 +7348,7 @@ void App::selectPresetsItem(uint32_t nowMs) {
     // Save Current
     if (presetFilenames_.size() < PresetManager::kMaxPresets) {
       openTextEntry(TextEntryPurpose::PresetName,
-                    polish("Nazwa presetu", "Preset Name"),
+                    tr3(TrKey3::PresetNameLabel),
                     "", "", "", "", false,
                     PresetManager::kMaxPresetNameLength,
                     MenuScreen::Presets);
@@ -7373,8 +7370,8 @@ void App::executeSavePreset(uint32_t nowMs) {
   textEntryButtons_.clear();
 
   if (validatedName.isEmpty()) {
-    display_.renderStatus(polish("Presety", "Presets"),
-                          polish("Nieprawidlowa nazwa", "Invalid name"), "");
+    display_.renderStatus(tr3(TrKey3::PresetsLabel),
+                          tr3(TrKey3::InvalidName), "");
     delay(1000);
     openPresets();
     return;
@@ -7384,18 +7381,18 @@ void App::executeSavePreset(uint32_t nowMs) {
 
   switch (result) {
     case PresetManager::SaveResult::Ok:
-      display_.renderStatus(polish("Presety", "Presets"),
-                            polish("Zapisano", "Saved"), validatedName);
+      display_.renderStatus(tr3(TrKey3::PresetsLabel),
+                            tr3(TrKey3::SavedLabel), validatedName);
       delay(1000);
       break;
     case PresetManager::SaveResult::LimitReached:
-      display_.renderStatus(polish("Presety", "Presets"),
-                            polish("Limit osiagniety", "Limit reached"), "");
+      display_.renderStatus(tr3(TrKey3::PresetsLabel),
+                            tr3(TrKey3::LimitReachedShort), "");
       delay(1000);
       break;
     default:
-      display_.renderStatus(polish("Presety", "Presets"),
-                            polish("Blad karty SD", "SD card error"), "");
+      display_.renderStatus(tr3(TrKey3::PresetsLabel),
+                            tr3(TrKey3::SdCardErrorLabel), "");
       delay(1000);
       break;
   }
@@ -7410,13 +7407,13 @@ void App::executeRestorePreset(size_t index, uint32_t nowMs) {
   if (result == PresetManager::RestoreResult::Ok) {
     reloadRuntimePreferences(nowMs, true);
     const String &presetName = settingsMenuItems_[index + 2];
-    display_.renderStatus(polish("Preset", "Preset"),
-                          polish("Wczytano", "Loaded"), presetName);
+    display_.renderStatus("Preset",
+                          tr3(TrKey3::LoadedLabel), presetName);
     delay(1200);
     openPresets();
   } else {
-    display_.renderStatus(polish("Blad", "Error"),
-                          polish("Blad wczytywania presetu", "Error loading preset"), "");
+    display_.renderStatus(tr3(TrKey3::ErrorLabel),
+                          tr3(TrKey3::PresetLoadError), "");
     delay(1400);
     openPresets();
   }
@@ -7433,8 +7430,8 @@ void App::confirmDeletePreset(size_t index, uint32_t nowMs) {
   settingsMenuItems_.clear();
   settingsMenuItems_.reserve(3);
   settingsMenuItems_.push_back(uiText(UiText::Back));
-  settingsMenuItems_.push_back(polish("Zastosuj: ", "Apply: ") + presetName);
-  settingsMenuItems_.push_back(polish("Usun: ", "Delete: ") + presetName);
+  settingsMenuItems_.push_back(String(tr3(TrKey3::ApplyColon)) + presetName);
+  settingsMenuItems_.push_back(String(tr3(TrKey3::DeletePresetColon)) + presetName);
 
   presetsSelectedIndex_ = 0;
   renderItemGrid("", settingsMenuItems_, presetsSelectedIndex_);
@@ -7448,13 +7445,13 @@ void App::executeDeletePreset(uint32_t nowMs) {
 
   switch (result) {
     case PresetManager::DeleteResult::Ok:
-      display_.renderStatus(polish("Presety", "Presets"),
-                            polish("Usunieto", "Deleted"), "");
+      display_.renderStatus(tr3(TrKey3::PresetsLabel),
+                            tr3(TrKey3::DeletedLabel), "");
       delay(800);
       break;
     default:
-      display_.renderStatus(polish("Presety", "Presets"),
-                            polish("Blad usuwania", "Delete failed"), "");
+      display_.renderStatus(tr3(TrKey3::PresetsLabel),
+                            tr3(TrKey3::PresetDeleteFailed), "");
       delay(1000);
       break;
   }
@@ -7589,11 +7586,11 @@ void App::updateCompanionSync(uint32_t nowMs) {
   if (nowMs - lastCompanionSyncRenderMs_ >= 1000) {
     lastCompanionSyncRenderMs_ = nowMs;
     if (companionSync_.hasQrCode()) {
-      display_.renderStatusWithQr(polish("< Wroc | Wi-Fi", "< Back | Wi-Fi"),
+      display_.renderStatusWithQr(tr3(TrKey3::BackWifiHeader),
                                   companionSync_.statusLine1(),
                                   companionSync_.qrCodeData(), companionSync_.qrCodeSize());
     } else {
-      display_.renderStatus(polish("< Wroc | Sync", "< Back | Sync"),
+      display_.renderStatus(tr3(TrKey3::BackSyncHeader),
                             companionSync_.statusLine1(), companionSync_.statusLine2());
     }
   }
@@ -7693,9 +7690,9 @@ void App::enterUsbTransfer(uint32_t nowMs) {
   const uint64_t sizeMb = usbTransfer_.cardSizeBytes() / (1024ULL * 1024ULL);
   Serial.printf("[app] USB transfer active (%llu MB). Eject from computer when finished.\n",
                 sizeMb);
-  display_.renderStatus(polish("USB | Tap = wroc", "USB | Tap = back"),
-                        polish("Podlacz kabel USB", "Connect USB cable"),
-                        polish("SD widoczna na telefonie/PC", "SD visible on phone/PC"));
+  display_.renderStatus(tr3(TrKey3::UsbBackHint),
+                        tr3(TrKey3::ConnectUsbCable),
+                        tr3(TrKey3::SdVisibleOnPhone));
 }
 
 void App::updateUsbTransfer(uint32_t nowMs) {

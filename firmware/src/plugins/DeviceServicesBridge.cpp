@@ -12,6 +12,8 @@
 #include "audio/AudioVolume.h"
 #include "board/BoardConfig.h"
 #include "display/DisplayManager.h"
+#include "app/Localization.h"
+#include "app/Translations.h"
 
 static const char* TAG = "DeviceServicesBridge";
 
@@ -21,6 +23,11 @@ static DisplayManager* sDisplay = nullptr;
 static AudioManager* sAudio = nullptr;
 static AudioRecorder* sRecorder = nullptr;
 static String sStorageRoot;  // e.g. "/plugins/focus-timer/"
+
+// Set by App via DeviceServicesBridge::setLanguageIndex() whenever the UI
+// language changes. Lives outside setup()/teardown() so it survives plugin
+// load/unload cycles and is already correct the first time a plugin runs.
+static int sLanguageIndex = 0;
 
 // IMU register constants (QMI8658 on Wire1)
 namespace {
@@ -239,9 +246,15 @@ static constexpr uint16_t kPlayingSliderY = 68;
 static constexpr uint16_t kPlayingSliderW = 632;
 static constexpr uint16_t kPlayingSliderH = 104;
 
+static int bridgeLanguageIndex() {
+    return static_cast<int>(sLanguageIndex);
+}
+
 static void bridgeRenderPlaybackControls(const char* title, bool paused, uint8_t volumePercent,
                                           uint32_t elapsedSec, uint32_t totalSec) {
     if (!sDisplay) return;
+
+    const UiLanguage lang = Localization::sanitizeLanguage(static_cast<uint8_t>(sLanguageIndex));
 
     std::vector<DisplayManager::Button> buttons;
     buttons.reserve(5);
@@ -261,15 +274,18 @@ static void bridgeRenderPlaybackControls(const char* title, bool paused, uint8_t
     // it already does (DictaphoneCore::stopPlayback() halts audio and
     // navigates to Screen::Library in one call), but the old "Stop" label
     // read as a transport control that would leave you on this same screen.
-    addSquare("Biblioteka", ui::IconId::Back, 0);
-    addSquare("Gl -", ui::IconId::None, 1);
-    addSquare(paused ? "Wznow" : "Pauza", paused ? ui::IconId::Play : ui::IconId::None, 2);
-    addSquare("Gl +", ui::IconId::None, 3);
+    addSquare(Localization::text(lang, UiText::Library), ui::IconId::Back, 0);
+    addSquare(Translations3::tr3(lang, TrKey3::VolumeDown), ui::IconId::None, 1);
+    addSquare(paused ? Localization::text(lang, UiText::Resume)
+                     : Translations3::tr3(lang, TrKey3::PauseLabel),
+              paused ? ui::IconId::Play : ui::IconId::None, 2);
+    addSquare(Translations3::tr3(lang, TrKey3::VolumeUp), ui::IconId::None, 3);
 
     DisplayManager::Button slider;
     slider.kind = DisplayManager::Button::ButtonKind::Slider;
-    char label[24];
-    snprintf(label, sizeof(label), "Pozycja  Gl:%u%%", static_cast<unsigned>(volumePercent));
+    char label[32];
+    snprintf(label, sizeof(label), "%s  %s:%u%%", Translations3::tr3(lang, TrKey3::PositionLabel),
+             Translations3::tr3(lang, TrKey3::VolumeAbbrev), static_cast<unsigned>(volumePercent));
     slider.label = label;
     slider.x = kPlayingSliderX;
     slider.y = kPlayingSliderY;
@@ -547,6 +563,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
         displayService->renderButtonPair = bridgeRenderButtonPair;
         displayService->renderDeletableList = bridgeRenderDeletableList;
         displayService->renderPlaybackControls = bridgeRenderPlaybackControls;
+        displayService->languageIndex = bridgeLanguageIndex;
     }
 
     // Populate audio service function pointers
@@ -602,4 +619,8 @@ void DeviceServicesBridge::teardown() {
     sStorageRoot = "";
 
     ESP_LOGI(TAG, "Device services bridge torn down");
+}
+
+void DeviceServicesBridge::setLanguageIndex(int index) {
+    sLanguageIndex = index;
 }

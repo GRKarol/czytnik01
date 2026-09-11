@@ -50,4 +50,10 @@ void setup(const char* pluginId,
 /// Release bridge resources and null-out static pointers.
 void teardown();
 
+/// Current UI language, as an index into the app's UiLanguage enum
+/// (0=English, 1=Spanish, 2=French, 3=German, 4=Romanian, 5=Polish).
+/// Call whenever App changes the language, independent of setup()/teardown()
+/// so a plugin loaded later always reads the current value.
+void setLanguageIndex(int index);
+
 }  // namespace DeviceServicesBridge

@@ -57,6 +57,12 @@ typedef struct PluginDisplayService {
     /// match the same geometry the bridge draws with.
     void (*renderPlaybackControls)(const char* title, bool paused, uint8_t volumePercent,
                                    uint32_t elapsedSec, uint32_t totalSec);
+
+    /// Current UI language, as an index into the app's UiLanguage enum
+    /// (0=English, 1=Spanish, 2=French, 3=German, 4=Romanian, 5=Polish).
+    /// Plugins that show their own text (not routed through the display
+    /// bridge's built-in labels) call this to pick the right string.
+    int (*languageIndex)(void);
 } PluginDisplayService;
 
 #ifdef __cplusplus

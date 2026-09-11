@@ -1263,3 +1263,799 @@ inline const char *tr2(UiLanguage lang, TrKey2 key) {
 }
 
 }  // namespace Translations2
+
+
+// ─── Extended keys (Phase 3) — last batch of polish()-helper strings ───────
+
+enum class TrKey3 : uint8_t {
+  SavePointAdded,
+  NameBookmark,
+  EnterNamePrompt,
+  BookmarkAdded,
+  ReadingSettings,
+  AdvancedModeColon,
+  PresetsLabel,
+  TutorialLabel,
+  ColorRed,
+  ColorBlue,
+  ColorGreen,
+  ColorYellow,
+  ColorOrange,
+  ColorPurple,
+  PacingNone,
+  PacingLight,
+  PacingMedium,
+  PacingStrong,
+  PacingVeryStrong,
+  SaveBtnColon,
+  FocusColorColon,
+  HelpQColon,
+  NavigationColon,
+  ScanCode,
+  InstallApp,
+  TapContinue,
+  TutorialRsvpDesc,
+  SpeedLabel,
+  TutorialSpeedDesc,
+  PauseLabel,
+  TutorialPauseDesc,
+  TutorialMenuDesc,
+  HelpQLabel,
+  TutorialHelpDesc,
+  ChannelStaging,
+  ChannelProduction,
+  ButtonsLabel,
+  PercentComplete,
+  ReadFromPlace,
+  DeleteBookLabel,
+  ErrorLabel,
+  DeleteConfirmColon,
+  NoGoBack,
+  YesDelete,
+  DeletedLabel,
+  CannotDelete,
+  AddSavePoint,
+  DeleteSpace,
+  OpenBookFirst,
+  BookNotFound,
+  CannotOpen,
+  ActivePlugins,
+  NoActivePlugins,
+  PluginEnabledTag,
+  PluginDisabledTag,
+  DisablePlugin,
+  EnablePlugin,
+  SaveCurrentPreset,
+  PresetLimitReachedParen,
+  PresetNameLabel,
+  InvalidName,
+  SavedLabel,
+  LimitReachedShort,
+  SdCardErrorLabel,
+  LoadedLabel,
+  PresetLoadError,
+  ApplyColon,
+  DeletePresetColon,
+  PresetDeleteFailed,
+  BackWifiHeader,
+  BackSyncHeader,
+  UsbBackHint,
+  ConnectUsbCable,
+  SdVisibleOnPhone,
+  VolumeDown,
+  VolumeUp,
+  PositionLabel,
+  VolumeAbbrev,
+};
+
+namespace Translations3 {
+
+inline const char *tr3(UiLanguage lang, TrKey3 key) {
+  switch (key) {
+    case TrKey3::SavePointAdded:
+      switch (lang) {
+        case UiLanguage::Polish: return "Punkt zapisu dodany";
+        case UiLanguage::Spanish: return "Punto guardado agregado";
+        case UiLanguage::French: return "Point de sauvegarde ajoute";
+        case UiLanguage::German: return "Lesezeichen hinzugefuegt";
+        case UiLanguage::Romanian: return "Punct salvat adaugat";
+        default: return "Save point added";
+      }
+    case TrKey3::NameBookmark:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nazwij zakladke";
+        case UiLanguage::Spanish: return "Nombra el marcador";
+        case UiLanguage::French: return "Nommer le signet";
+        case UiLanguage::German: return "Lesezeichen benennen";
+        case UiLanguage::Romanian: return "Numeste marcaj";
+        default: return "Name bookmark";
+      }
+    case TrKey3::EnterNamePrompt:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wpisz nazwe:";
+        case UiLanguage::Spanish: return "Escribe nombre:";
+        case UiLanguage::French: return "Entrez le nom :";
+        case UiLanguage::German: return "Namen eingeben:";
+        case UiLanguage::Romanian: return "Introdu numele:";
+        default: return "Enter name:";
+      }
+    case TrKey3::BookmarkAdded:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zakladka dodana";
+        case UiLanguage::Spanish: return "Marcador agregado";
+        case UiLanguage::French: return "Signet ajoute";
+        case UiLanguage::German: return "Lesezeichen hinzugefuegt";
+        case UiLanguage::Romanian: return "Marcaj adaugat";
+        default: return "Bookmark added";
+      }
+    case TrKey3::ReadingSettings:
+      switch (lang) {
+        case UiLanguage::Polish: return "Czytanie";
+        case UiLanguage::Spanish: return "Lectura";
+        case UiLanguage::French: return "Lecture";
+        case UiLanguage::German: return "Lesen";
+        case UiLanguage::Romanian: return "Citire";
+        default: return "Reading";
+      }
+    case TrKey3::AdvancedModeColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Tryb zaawansowany: ";
+        case UiLanguage::Spanish: return "Modo avanzado: ";
+        case UiLanguage::French: return "Mode avance : ";
+        case UiLanguage::German: return "Erweiterter Modus: ";
+        case UiLanguage::Romanian: return "Mod avansat: ";
+        default: return "Advanced mode: ";
+      }
+    case TrKey3::PresetsLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Presety";
+        case UiLanguage::Spanish: return "Preajustes";
+        case UiLanguage::French: return "Prereglages";
+        case UiLanguage::German: return "Voreinstellungen";
+        case UiLanguage::Romanian: return "Presetari";
+        default: return "Presets";
+      }
+    case TrKey3::TutorialLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Samouczek";
+        case UiLanguage::Spanish: return "Tutorial";
+        case UiLanguage::French: return "Tutoriel";
+        case UiLanguage::German: return "Anleitung";
+        case UiLanguage::Romanian: return "Tutorial";
+        default: return "Tutorial";
+      }
+    case TrKey3::ColorRed:
+      switch (lang) {
+        case UiLanguage::Polish: return "Czerwony";
+        case UiLanguage::Spanish: return "Rojo";
+        case UiLanguage::French: return "Rouge";
+        case UiLanguage::German: return "Rot";
+        case UiLanguage::Romanian: return "Rosu";
+        default: return "Red";
+      }
+    case TrKey3::ColorBlue:
+      switch (lang) {
+        case UiLanguage::Polish: return "Niebieski";
+        case UiLanguage::Spanish: return "Azul";
+        case UiLanguage::French: return "Bleu";
+        case UiLanguage::German: return "Blau";
+        case UiLanguage::Romanian: return "Albastru";
+        default: return "Blue";
+      }
+    case TrKey3::ColorGreen:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zielony";
+        case UiLanguage::Spanish: return "Verde";
+        case UiLanguage::French: return "Vert";
+        case UiLanguage::German: return "Gruen";
+        case UiLanguage::Romanian: return "Verde";
+        default: return "Green";
+      }
+    case TrKey3::ColorYellow:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zolty";
+        case UiLanguage::Spanish: return "Amarillo";
+        case UiLanguage::French: return "Jaune";
+        case UiLanguage::German: return "Gelb";
+        case UiLanguage::Romanian: return "Galben";
+        default: return "Yellow";
+      }
+    case TrKey3::ColorOrange:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pomaranczowy";
+        case UiLanguage::Spanish: return "Naranja";
+        case UiLanguage::French: return "Orange";
+        case UiLanguage::German: return "Orange";
+        case UiLanguage::Romanian: return "Portocaliu";
+        default: return "Orange";
+      }
+    case TrKey3::ColorPurple:
+      switch (lang) {
+        case UiLanguage::Polish: return "Fioletowy";
+        case UiLanguage::Spanish: return "Morado";
+        case UiLanguage::French: return "Violet";
+        case UiLanguage::German: return "Violett";
+        case UiLanguage::Romanian: return "Violet";
+        default: return "Purple";
+      }
+    case TrKey3::PacingNone:
+      switch (lang) {
+        case UiLanguage::Polish: return "Brak (0 ms)";
+        case UiLanguage::Spanish: return "Ninguno (0 ms)";
+        case UiLanguage::French: return "Aucun (0 ms)";
+        case UiLanguage::German: return "Keine (0 ms)";
+        case UiLanguage::Romanian: return "Fara (0 ms)";
+        default: return "None (0 ms)";
+      }
+    case TrKey3::PacingLight:
+      switch (lang) {
+        case UiLanguage::Polish: return "Lekkie (100 ms)";
+        case UiLanguage::Spanish: return "Ligero (100 ms)";
+        case UiLanguage::French: return "Leger (100 ms)";
+        case UiLanguage::German: return "Leicht (100 ms)";
+        case UiLanguage::Romanian: return "Usor (100 ms)";
+        default: return "Light (100 ms)";
+      }
+    case TrKey3::PacingMedium:
+      switch (lang) {
+        case UiLanguage::Polish: return "Srednie (200 ms)";
+        case UiLanguage::Spanish: return "Medio (200 ms)";
+        case UiLanguage::French: return "Moyen (200 ms)";
+        case UiLanguage::German: return "Mittel (200 ms)";
+        case UiLanguage::Romanian: return "Mediu (200 ms)";
+        default: return "Medium (200 ms)";
+      }
+    case TrKey3::PacingStrong:
+      switch (lang) {
+        case UiLanguage::Polish: return "Mocne (300 ms)";
+        case UiLanguage::Spanish: return "Fuerte (300 ms)";
+        case UiLanguage::French: return "Fort (300 ms)";
+        case UiLanguage::German: return "Stark (300 ms)";
+        case UiLanguage::Romanian: return "Puternic (300 ms)";
+        default: return "Strong (300 ms)";
+      }
+    case TrKey3::PacingVeryStrong:
+      switch (lang) {
+        case UiLanguage::Polish: return "Bardzo mocne (400 ms)";
+        case UiLanguage::Spanish: return "Muy fuerte (400 ms)";
+        case UiLanguage::French: return "Tres fort (400 ms)";
+        case UiLanguage::German: return "Sehr stark (400 ms)";
+        case UiLanguage::Romanian: return "Foarte puternic (400 ms)";
+        default: return "Very strong (400 ms)";
+      }
+    case TrKey3::SaveBtnColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Przycisk zapisu: ";
+        case UiLanguage::Spanish: return "Boton guardar: ";
+        case UiLanguage::French: return "Bouton sauveg. : ";
+        case UiLanguage::German: return "Speicherbtn.: ";
+        case UiLanguage::Romanian: return "Buton salvare: ";
+        default: return "Save btn: ";
+      }
+    case TrKey3::FocusColorColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Kolor litery: ";
+        case UiLanguage::Spanish: return "Color letra: ";
+        case UiLanguage::French: return "Couleur lettre : ";
+        case UiLanguage::German: return "Buchstabenfarbe: ";
+        case UiLanguage::Romanian: return "Culoare litera: ";
+        default: return "Focus color: ";
+      }
+    case TrKey3::HelpQColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pomoc (?): ";
+        case UiLanguage::Spanish: return "Ayuda (?): ";
+        case UiLanguage::French: return "Aide (?) : ";
+        case UiLanguage::German: return "Hilfe (?): ";
+        case UiLanguage::Romanian: return "Ajutor (?): ";
+        default: return "Help (?): ";
+      }
+    case TrKey3::NavigationColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nawigacja: ";
+        case UiLanguage::Spanish: return "Navegacion: ";
+        case UiLanguage::French: return "Navigation : ";
+        case UiLanguage::German: return "Navigation: ";
+        case UiLanguage::Romanian: return "Navigare: ";
+        default: return "Navigation: ";
+      }
+    case TrKey3::ScanCode:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zeskanuj kod";
+        case UiLanguage::Spanish: return "Escanea el codigo";
+        case UiLanguage::French: return "Scannez le code";
+        case UiLanguage::German: return "Code scannen";
+        case UiLanguage::Romanian: return "Scaneaza codul";
+        default: return "Scan the code";
+      }
+    case TrKey3::InstallApp:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zainstaluj aplikacje";
+        case UiLanguage::Spanish: return "Instala la app";
+        case UiLanguage::French: return "Installez l'app";
+        case UiLanguage::German: return "App installieren";
+        case UiLanguage::Romanian: return "Instaleaza aplicatia";
+        default: return "Install the app";
+      }
+    case TrKey3::TapContinue:
+      switch (lang) {
+        case UiLanguage::Polish: return "Dotknij ekranu, by przejsc dalej";
+        case UiLanguage::Spanish: return "Toca la pantalla para continuar";
+        case UiLanguage::French: return "Touchez l'ecran pour continuer";
+        case UiLanguage::German: return "Bildschirm beruehren zum Fortfahren";
+        case UiLanguage::Romanian: return "Atinge ecranul pentru a continua";
+        default: return "Tap the screen to continue";
+      }
+    case TrKey3::TutorialRsvpDesc:
+      switch (lang) {
+        case UiLanguage::Polish: return "Slowa jedno po drugim. Litera ORP kieruje wzrok.";
+        case UiLanguage::Spanish: return "Palabras una por una. La letra ORP guia tu vista.";
+        case UiLanguage::French: return "Mots un par un. La lettre ORP guide votre regard.";
+        case UiLanguage::German: return "Woerter eins nach dem anderen. Der ORP-Buchstabe fuehrt den Blick.";
+        case UiLanguage::Romanian: return "Cuvinte unul cate unul. Litera ORP iti ghideaza privirea.";
+        default: return "Words one at a time. ORP letter guides your eye.";
+      }
+    case TrKey3::SpeedLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Tempo";
+        case UiLanguage::Spanish: return "Velocidad";
+        case UiLanguage::French: return "Vitesse";
+        case UiLanguage::German: return "Tempo";
+        case UiLanguage::Romanian: return "Viteza";
+        default: return "Speed";
+      }
+    case TrKey3::TutorialSpeedDesc:
+      switch (lang) {
+        case UiLanguage::Polish: return "Przytrzymaj + gora/dol: zmiana predkosci.";
+        case UiLanguage::Spanish: return "Manten + arriba/abajo: cambia velocidad.";
+        case UiLanguage::French: return "Maintenir + haut/bas : change la vitesse.";
+        case UiLanguage::German: return "Halten + hoch/runter: Tempo aendern.";
+        case UiLanguage::Romanian: return "Tine apasat + sus/jos: schimba viteza.";
+        default: return "Hold + up/down: change speed.";
+      }
+    case TrKey3::PauseLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pauza";
+        case UiLanguage::Spanish: return "Pausa";
+        case UiLanguage::French: return "Pause";
+        case UiLanguage::German: return "Pause";
+        case UiLanguage::Romanian: return "Pauza";
+        default: return "Pause";
+      }
+    case TrKey3::TutorialPauseDesc:
+      switch (lang) {
+        case UiLanguage::Polish: return "Dotknij ekranu by pauzowac/wznowic.";
+        case UiLanguage::Spanish: return "Toca la pantalla para pausar/reanudar.";
+        case UiLanguage::French: return "Touchez l'ecran pour pause/reprise.";
+        case UiLanguage::German: return "Bildschirm beruehren zum Pausieren/Fortsetzen.";
+        case UiLanguage::Romanian: return "Atinge ecranul pentru pauza/reluare.";
+        default: return "Tap screen to pause/resume.";
+      }
+    case TrKey3::TutorialMenuDesc:
+      switch (lang) {
+        case UiLanguage::Polish: return "Przycisk z boku otwiera menu.";
+        case UiLanguage::Spanish: return "El boton lateral abre el menu.";
+        case UiLanguage::French: return "Le bouton lateral ouvre le menu.";
+        case UiLanguage::German: return "Seitentaste oeffnet das Menue.";
+        case UiLanguage::Romanian: return "Butonul lateral deschide meniul.";
+        default: return "Side button opens the menu.";
+      }
+    case TrKey3::HelpQLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pomoc ?";
+        case UiLanguage::Spanish: return "Ayuda ?";
+        case UiLanguage::French: return "Aide ?";
+        case UiLanguage::German: return "Hilfe ?";
+        case UiLanguage::Romanian: return "Ajutor ?";
+        default: return "Help ?";
+      }
+    case TrKey3::TutorialHelpDesc:
+      switch (lang) {
+        case UiLanguage::Polish: return "W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis.";
+        case UiLanguage::Spanish: return "En Pantalla/Ritmo: el boton lateral muestra info.";
+        case UiLanguage::French: return "Dans Affichage/Rythme : le bouton lateral affiche des infos.";
+        case UiLanguage::German: return "In Anzeige/Tempo: Seitentaste zeigt Infos.";
+        case UiLanguage::Romanian: return "In Afisaj/Ritm: butonul lateral arata info.";
+        default: return "In Display/Pacing settings: side button shows info.";
+      }
+    case TrKey3::ChannelStaging:
+      switch (lang) {
+        case UiLanguage::Polish: return "Testowy";
+        case UiLanguage::Spanish: return "Pruebas";
+        case UiLanguage::French: return "Test";
+        case UiLanguage::German: return "Testkanal";
+        case UiLanguage::Romanian: return "Testare";
+        default: return "Staging";
+      }
+    case TrKey3::ChannelProduction:
+      switch (lang) {
+        case UiLanguage::Polish: return "Produkcyjny";
+        case UiLanguage::Spanish: return "Produccion";
+        case UiLanguage::French: return "Production";
+        case UiLanguage::German: return "Produktion";
+        case UiLanguage::Romanian: return "Productie";
+        default: return "Production";
+      }
+    case TrKey3::ButtonsLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Przyciski";
+        case UiLanguage::Spanish: return "Botones";
+        case UiLanguage::French: return "Boutons";
+        case UiLanguage::German: return "Tasten";
+        case UiLanguage::Romanian: return "Butoane";
+        default: return "Buttons";
+      }
+    case TrKey3::PercentComplete:
+      switch (lang) {
+        case UiLanguage::Polish: return "ukonczone";
+        case UiLanguage::Spanish: return "completado";
+        case UiLanguage::French: return "termine";
+        case UiLanguage::German: return "abgeschlossen";
+        case UiLanguage::Romanian: return "finalizat";
+        default: return "complete";
+      }
+    case TrKey3::ReadFromPlace:
+      switch (lang) {
+        case UiLanguage::Polish: return "Czytaj od miejsca";
+        case UiLanguage::Spanish: return "Leer desde el punto";
+        case UiLanguage::French: return "Lire depuis l'endroit";
+        case UiLanguage::German: return "Weiterlesen ab Stelle";
+        case UiLanguage::Romanian: return "Citeste de la loc";
+        default: return "Read from place";
+      }
+    case TrKey3::DeleteBookLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usun ksiazke";
+        case UiLanguage::Spanish: return "Eliminar libro";
+        case UiLanguage::French: return "Supprimer le livre";
+        case UiLanguage::German: return "Buch loeschen";
+        case UiLanguage::Romanian: return "Sterge cartea";
+        default: return "Delete book";
+      }
+    case TrKey3::ErrorLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Blad";
+        case UiLanguage::Spanish: return "Error";
+        case UiLanguage::French: return "Erreur";
+        case UiLanguage::German: return "Fehler";
+        case UiLanguage::Romanian: return "Eroare";
+        default: return "Error";
+      }
+    case TrKey3::DeleteConfirmColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usunac: ";
+        case UiLanguage::Spanish: return "Eliminar: ";
+        case UiLanguage::French: return "Supprimer : ";
+        case UiLanguage::German: return "Loeschen: ";
+        case UiLanguage::Romanian: return "Sterge: ";
+        default: return "Delete: ";
+      }
+    case TrKey3::NoGoBack:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nie, wroc";
+        case UiLanguage::Spanish: return "No, volver";
+        case UiLanguage::French: return "Non, retour";
+        case UiLanguage::German: return "Nein, zurueck";
+        case UiLanguage::Romanian: return "Nu, inapoi";
+        default: return "No, go back";
+      }
+    case TrKey3::YesDelete:
+      switch (lang) {
+        case UiLanguage::Polish: return "Tak, usun";
+        case UiLanguage::Spanish: return "Si, eliminar";
+        case UiLanguage::French: return "Oui, supprimer";
+        case UiLanguage::German: return "Ja, loeschen";
+        case UiLanguage::Romanian: return "Da, sterge";
+        default: return "Yes, delete";
+      }
+    case TrKey3::DeletedLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usunieto";
+        case UiLanguage::Spanish: return "Eliminado";
+        case UiLanguage::French: return "Supprime";
+        case UiLanguage::German: return "Geloescht";
+        case UiLanguage::Romanian: return "Sters";
+        default: return "Deleted";
+      }
+    case TrKey3::CannotDelete:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nie mozna usunac";
+        case UiLanguage::Spanish: return "No se puede eliminar";
+        case UiLanguage::French: return "Impossible de supprimer";
+        case UiLanguage::German: return "Loeschen nicht moeglich";
+        case UiLanguage::Romanian: return "Nu se poate sterge";
+        default: return "Cannot delete";
+      }
+    case TrKey3::AddSavePoint:
+      switch (lang) {
+        case UiLanguage::Polish: return "+ Dodaj punkt zapisu";
+        case UiLanguage::Spanish: return "+ Agregar punto";
+        case UiLanguage::French: return "+ Ajouter un point";
+        case UiLanguage::German: return "+ Speicherpunkt hinzu.";
+        case UiLanguage::Romanian: return "+ Adauga punct";
+        default: return "+ Add save point";
+      }
+    case TrKey3::DeleteSpace:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usun ";
+        case UiLanguage::Spanish: return "Eliminar ";
+        case UiLanguage::French: return "Supprimer ";
+        case UiLanguage::German: return "Loeschen ";
+        case UiLanguage::Romanian: return "Sterge ";
+        default: return "Delete ";
+      }
+    case TrKey3::OpenBookFirst:
+      switch (lang) {
+        case UiLanguage::Polish: return "Najpierw otworz ksiazke";
+        case UiLanguage::Spanish: return "Primero abre un libro";
+        case UiLanguage::French: return "Ouvrez d'abord un livre";
+        case UiLanguage::German: return "Zuerst ein Buch oeffnen";
+        case UiLanguage::Romanian: return "Deschide mai intai o carte";
+        default: return "Open a book first";
+      }
+    case TrKey3::BookNotFound:
+      switch (lang) {
+        case UiLanguage::Polish: return "Ksiazka nie znaleziona";
+        case UiLanguage::Spanish: return "Libro no encontrado";
+        case UiLanguage::French: return "Livre introuvable";
+        case UiLanguage::German: return "Buch nicht gefunden";
+        case UiLanguage::Romanian: return "Cartea nu a fost gasita";
+        default: return "Book not found";
+      }
+    case TrKey3::CannotOpen:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nie mozna otworzyc";
+        case UiLanguage::Spanish: return "No se puede abrir";
+        case UiLanguage::French: return "Impossible d'ouvrir";
+        case UiLanguage::German: return "Oeffnen nicht moeglich";
+        case UiLanguage::Romanian: return "Nu se poate deschide";
+        default: return "Cannot open";
+      }
+    case TrKey3::ActivePlugins:
+      switch (lang) {
+        case UiLanguage::Polish: return "Aktywne";
+        case UiLanguage::Spanish: return "Activos";
+        case UiLanguage::French: return "Actifs";
+        case UiLanguage::German: return "Aktiv";
+        case UiLanguage::Romanian: return "Active";
+        default: return "Active";
+      }
+    case TrKey3::NoActivePlugins:
+      switch (lang) {
+        case UiLanguage::Polish: return "Brak aktywnych pluginow";
+        case UiLanguage::Spanish: return "Sin plugins activos";
+        case UiLanguage::French: return "Aucun plugin actif";
+        case UiLanguage::German: return "Keine aktiven Plugins";
+        case UiLanguage::Romanian: return "Niciun plugin activ";
+        default: return "No active plugins";
+      }
+    case TrKey3::PluginEnabledTag:
+      switch (lang) {
+        case UiLanguage::Polish: return " [wlaczony]";
+        case UiLanguage::Spanish: return " [activado]";
+        case UiLanguage::French: return " [active]";
+        case UiLanguage::German: return " [aktiviert]";
+        case UiLanguage::Romanian: return " [activat]";
+        default: return " [enabled]";
+      }
+    case TrKey3::PluginDisabledTag:
+      switch (lang) {
+        case UiLanguage::Polish: return " [wylaczony]";
+        case UiLanguage::Spanish: return " [desactivado]";
+        case UiLanguage::French: return " [desactive]";
+        case UiLanguage::German: return " [deaktiviert]";
+        case UiLanguage::Romanian: return " [dezactivat]";
+        default: return " [disabled]";
+      }
+    case TrKey3::DisablePlugin:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wylacz";
+        case UiLanguage::Spanish: return "Desactivar";
+        case UiLanguage::French: return "Desactiver";
+        case UiLanguage::German: return "Deaktivieren";
+        case UiLanguage::Romanian: return "Dezactiveaza";
+        default: return "Disable";
+      }
+    case TrKey3::EnablePlugin:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wlacz";
+        case UiLanguage::Spanish: return "Activar";
+        case UiLanguage::French: return "Activer";
+        case UiLanguage::German: return "Aktivieren";
+        case UiLanguage::Romanian: return "Activeaza";
+        default: return "Enable";
+      }
+    case TrKey3::SaveCurrentPreset:
+      switch (lang) {
+        case UiLanguage::Polish: return "+ Zapisz obecne";
+        case UiLanguage::Spanish: return "+ Guardar actual";
+        case UiLanguage::French: return "+ Enregistrer actuel";
+        case UiLanguage::German: return "+ Aktuelles speichern";
+        case UiLanguage::Romanian: return "+ Salveaza actualul";
+        default: return "+ Save Current";
+      }
+    case TrKey3::PresetLimitReachedParen:
+      switch (lang) {
+        case UiLanguage::Polish: return "(Limit 10 osiagniety)";
+        case UiLanguage::Spanish: return "(Limite de 10 alcanzado)";
+        case UiLanguage::French: return "(Limite de 10 atteinte)";
+        case UiLanguage::German: return "(Limit von 10 erreicht)";
+        case UiLanguage::Romanian: return "(Limita de 10 atinsa)";
+        default: return "(Limit 10 reached)";
+      }
+    case TrKey3::PresetNameLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nazwa presetu";
+        case UiLanguage::Spanish: return "Nombre del preajuste";
+        case UiLanguage::French: return "Nom du preregl.";
+        case UiLanguage::German: return "Preset-Name";
+        case UiLanguage::Romanian: return "Nume preset";
+        default: return "Preset Name";
+      }
+    case TrKey3::InvalidName:
+      switch (lang) {
+        case UiLanguage::Polish: return "Nieprawidlowa nazwa";
+        case UiLanguage::Spanish: return "Nombre invalido";
+        case UiLanguage::French: return "Nom invalide";
+        case UiLanguage::German: return "Ungueltiger Name";
+        case UiLanguage::Romanian: return "Nume invalid";
+        default: return "Invalid name";
+      }
+    case TrKey3::SavedLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zapisano";
+        case UiLanguage::Spanish: return "Guardado";
+        case UiLanguage::French: return "Enregistre";
+        case UiLanguage::German: return "Gespeichert";
+        case UiLanguage::Romanian: return "Salvat";
+        default: return "Saved";
+      }
+    case TrKey3::LimitReachedShort:
+      switch (lang) {
+        case UiLanguage::Polish: return "Limit osiagniety";
+        case UiLanguage::Spanish: return "Limite alcanzado";
+        case UiLanguage::French: return "Limite atteinte";
+        case UiLanguage::German: return "Limit erreicht";
+        case UiLanguage::Romanian: return "Limita atinsa";
+        default: return "Limit reached";
+      }
+    case TrKey3::SdCardErrorLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Blad karty SD";
+        case UiLanguage::Spanish: return "Error de tarjeta SD";
+        case UiLanguage::French: return "Erreur carte SD";
+        case UiLanguage::German: return "SD-Kartenfehler";
+        case UiLanguage::Romanian: return "Eroare card SD";
+        default: return "SD card error";
+      }
+    case TrKey3::LoadedLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Wczytano";
+        case UiLanguage::Spanish: return "Cargado";
+        case UiLanguage::French: return "Charge";
+        case UiLanguage::German: return "Geladen";
+        case UiLanguage::Romanian: return "Incarcat";
+        default: return "Loaded";
+      }
+    case TrKey3::PresetLoadError:
+      switch (lang) {
+        case UiLanguage::Polish: return "Blad wczytywania presetu";
+        case UiLanguage::Spanish: return "Error al cargar el preajuste";
+        case UiLanguage::French: return "Erreur de chargement du preregl.";
+        case UiLanguage::German: return "Fehler beim Laden des Presets";
+        case UiLanguage::Romanian: return "Eroare la incarcarea presetului";
+        default: return "Error loading preset";
+      }
+    case TrKey3::ApplyColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Zastosuj: ";
+        case UiLanguage::Spanish: return "Aplicar: ";
+        case UiLanguage::French: return "Appliquer : ";
+        case UiLanguage::German: return "Anwenden: ";
+        case UiLanguage::Romanian: return "Aplica: ";
+        default: return "Apply: ";
+      }
+    case TrKey3::DeletePresetColon:
+      switch (lang) {
+        case UiLanguage::Polish: return "Usun: ";
+        case UiLanguage::Spanish: return "Eliminar: ";
+        case UiLanguage::French: return "Supprimer : ";
+        case UiLanguage::German: return "Loeschen: ";
+        case UiLanguage::Romanian: return "Sterge: ";
+        default: return "Delete: ";
+      }
+    case TrKey3::PresetDeleteFailed:
+      switch (lang) {
+        case UiLanguage::Polish: return "Blad usuwania";
+        case UiLanguage::Spanish: return "Error al eliminar";
+        case UiLanguage::French: return "Echec de la suppression";
+        case UiLanguage::German: return "Loeschen fehlgeschlagen";
+        case UiLanguage::Romanian: return "Stergere esuata";
+        default: return "Delete failed";
+      }
+    case TrKey3::BackWifiHeader:
+      switch (lang) {
+        case UiLanguage::Polish: return "< Wroc | Wi-Fi";
+        case UiLanguage::Spanish: return "< Volver | Wi-Fi";
+        case UiLanguage::French: return "< Retour | Wi-Fi";
+        case UiLanguage::German: return "< Zurueck | Wi-Fi";
+        case UiLanguage::Romanian: return "< Inapoi | Wi-Fi";
+        default: return "< Back | Wi-Fi";
+      }
+    case TrKey3::BackSyncHeader:
+      switch (lang) {
+        case UiLanguage::Polish: return "< Wroc | Sync";
+        case UiLanguage::Spanish: return "< Volver | Sync";
+        case UiLanguage::French: return "< Retour | Sync";
+        case UiLanguage::German: return "< Zurueck | Sync";
+        case UiLanguage::Romanian: return "< Inapoi | Sync";
+        default: return "< Back | Sync";
+      }
+    case TrKey3::UsbBackHint:
+      switch (lang) {
+        case UiLanguage::Polish: return "USB | Tap = wroc";
+        case UiLanguage::Spanish: return "USB | Toca = volver";
+        case UiLanguage::French: return "USB | Touchez = retour";
+        case UiLanguage::German: return "USB | Tippen = zurueck";
+        case UiLanguage::Romanian: return "USB | Atinge = inapoi";
+        default: return "USB | Tap = back";
+      }
+    case TrKey3::ConnectUsbCable:
+      switch (lang) {
+        case UiLanguage::Polish: return "Podlacz kabel USB";
+        case UiLanguage::Spanish: return "Conecta el cable USB";
+        case UiLanguage::French: return "Branchez le cable USB";
+        case UiLanguage::German: return "USB-Kabel anschliessen";
+        case UiLanguage::Romanian: return "Conecteaza cablul USB";
+        default: return "Connect USB cable";
+      }
+    case TrKey3::SdVisibleOnPhone:
+      switch (lang) {
+        case UiLanguage::Polish: return "SD widoczna na telefonie/PC";
+        case UiLanguage::Spanish: return "SD visible en telefono/PC";
+        case UiLanguage::French: return "SD visible sur telephone/PC";
+        case UiLanguage::German: return "SD sichtbar auf Handy/PC";
+        case UiLanguage::Romanian: return "SD vizibil pe telefon/PC";
+        default: return "SD visible on phone/PC";
+      }
+    case TrKey3::VolumeDown:
+      switch (lang) {
+        case UiLanguage::Polish: return "Gl -";
+        case UiLanguage::Spanish: return "Vol -";
+        case UiLanguage::French: return "Vol -";
+        case UiLanguage::German: return "Lst -";
+        case UiLanguage::Romanian: return "Vol -";
+        default: return "Vol -";
+      }
+    case TrKey3::VolumeUp:
+      switch (lang) {
+        case UiLanguage::Polish: return "Gl +";
+        case UiLanguage::Spanish: return "Vol +";
+        case UiLanguage::French: return "Vol +";
+        case UiLanguage::German: return "Lst +";
+        case UiLanguage::Romanian: return "Vol +";
+        default: return "Vol +";
+      }
+    case TrKey3::PositionLabel:
+      switch (lang) {
+        case UiLanguage::Polish: return "Pozycja";
+        case UiLanguage::Spanish: return "Posicion";
+        case UiLanguage::French: return "Position";
+        case UiLanguage::German: return "Position";
+        case UiLanguage::Romanian: return "Pozitie";
+        default: return "Position";
+      }
+    case TrKey3::VolumeAbbrev:
+      switch (lang) {
+        case UiLanguage::Polish: return "Gl";
+        case UiLanguage::Spanish: return "Vol";
+        case UiLanguage::French: return "Vol";
+        case UiLanguage::German: return "Lst";
+        case UiLanguage::Romanian: return "Vol";
+        default: return "Vol";
+      }
+  }
+  return "";
+}
+
+}  // namespace Translations3
