@@ -2,19 +2,23 @@
 #include "plugins/BuiltinPlugins.h"
 #include "plugins/builtin/PlaceholderPlugins.h"
 #include "plugins/builtin/DictaphonePlugin.h"
+#include "plugins/builtin/FocusTimerPlugin.h"
 
 #include <string.h>
 
-// Dictaphone is the first real plugin rebuilt on top of the Aktywne/
-// Biblioteka redesign — records via the ES8311 mic to SD as WAV, plays
-// recordings back. The rest are still placeholder entries so the screens
-// can be reviewed with real enable/disable state before more real plugins
-// exist.
+// Dictaphone and Focus Timer are real plugins rebuilt on top of the
+// Aktywne/Biblioteka redesign. The rest are still placeholder entries so
+// the screens can be reviewed with real enable/disable state before more
+// real plugins exist.
 static const BuiltinPlugin kBuiltinPlugins[] = {
     {"dictaphone", "Dyktafon",
      "Nagrywa dzwiek z mikrofonu na karte SD. Odtwarzaj i zarzadzaj "
      "nagraniami w bibliotece.",
      DictaphonePlugin::vtable()},
+    {"focus-timer", "Klepsydra",
+     "Sesje skupienia sterowane odwracaniem urzadzenia — postaw na "
+     "krotszym boku, by zaczac, poloz plasko, by zapauzowac.",
+     FocusTimerPlugin::vtable()},
     {"night-reading", "Tryb nocnego czytania",
      "Automatycznie przyciemnia ekran i wlacza cieplejszy odcien po zachodzie slonca.",
      PlaceholderPlugins::nightReading()},

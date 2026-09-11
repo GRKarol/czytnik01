@@ -5,5 +5,5 @@
   "author": "GRKarol",
   "sdk_version": 1,
   "description": "Reading session timer with orientation-based input",
-  "permissions": ["imu", "audio", "display", "orientation"]
+  "permissions": ["imu", "audio", "display", "storage"]
 }
