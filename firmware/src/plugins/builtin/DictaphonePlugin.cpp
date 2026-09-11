@@ -142,6 +142,15 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
         return;
     }
 
+    // Remember where this touch started so the Library screen can tell a
+    // vertical swipe (scroll) from a tap (play/delete/back) once it ends —
+    // see the Screen::Library case below.
+    if (event->phase == 0) {
+        touchStartX_ = event->x;
+        touchStartY_ = event->y;
+        return;
+    }
+
     // Only handle touch end (tap)
     if (event->phase != 2) return;
 
@@ -182,6 +191,32 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
 
             int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
             int width = display_ && display_->logicalWidth ? display_->logicalWidth() : 640;
+
+            // A vertical swipe scrolls the list a page at a time instead of
+            // being read as a tap on whatever row/zone it happened to land
+            // on — without this, the library had no way to reach recordings
+            // past the first kLibraryVisibleRows (5): libraryScrollTop_ was
+            // set at construction and never touched again, so a 6th
+            // recording was simply unreachable.
+            {
+                int deltaX = static_cast<int>(x) - static_cast<int>(touchStartX_);
+                int deltaY = static_cast<int>(y) - static_cast<int>(touchStartY_);
+                int absDeltaX = deltaX < 0 ? -deltaX : deltaX;
+                int absDeltaY = deltaY < 0 ? -deltaY : deltaY;
+                constexpr int kLibrarySwipeThresholdPx = 30;
+
+                if (absDeltaY >= kLibrarySwipeThresholdPx && absDeltaY > absDeltaX) {
+                    if (recordingCount_ > kLibraryVisibleRows) {
+                        int maxScrollTop = recordingCount_ - kLibraryVisibleRows;
+                        int next = static_cast<int>(libraryScrollTop_) +
+                                   (deltaY < 0 ? kLibraryVisibleRows : -kLibraryVisibleRows);
+                        if (next < 0) next = 0;
+                        if (next > maxScrollTop) next = maxScrollTop;
+                        libraryScrollTop_ = static_cast<uint8_t>(next);
+                    }
+                    return;
+                }
+            }
 
             // Left edge = back to the record screen. Without this, a
             // library with at least one recording had no way back to Main
@@ -235,6 +270,15 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
                 scanRecordings();
                 if (librarySelected_ >= recordingCount_ && recordingCount_ > 0) {
                     librarySelected_ = recordingCount_ - 1;
+                }
+                // A delete can shrink the list below the current scroll
+                // position (e.g. deleting the last item on the last page) —
+                // without this, the library would render empty rows past
+                // the new end instead of snapping back to show what's left.
+                if (recordingCount_ <= kLibraryVisibleRows) {
+                    libraryScrollTop_ = 0;
+                } else if (libraryScrollTop_ > recordingCount_ - kLibraryVisibleRows) {
+                    libraryScrollTop_ = static_cast<uint8_t>(recordingCount_ - kLibraryVisibleRows);
                 }
                 goToScreen(Screen::Library);
             }
@@ -390,7 +434,14 @@ void DictaphoneCore::drawLibrary() {
         visibleCount++;
     }
 
-    uint8_t selectedInView = librarySelected_ - libraryScrollTop_;
+    // librarySelected_ can be outside the currently scrolled-to page (e.g.
+    // right after a swipe, before anything on the new page is tapped) — the
+    // subtraction below would otherwise wrap to a huge uint8_t and highlight
+    // nothing sensible.
+    uint8_t selectedInView = (librarySelected_ >= libraryScrollTop_ &&
+                               librarySelected_ - libraryScrollTop_ < visibleCount)
+                                  ? static_cast<uint8_t>(librarySelected_ - libraryScrollTop_)
+                                  : 0xFF;
     display_->renderDeletableList(items, visibleCount, selectedInView);
 }
 
@@ -633,6 +684,30 @@ void DictaphoneCore::goToScreen(Screen screen) {
     screen_ = screen;
 }
 
+void DictaphoneCore::shutdown() {
+    // The underlying AudioRecorder is a persistent singleton owned by the
+    // firmware, not by this plugin instance — it outlives every plugin
+    // enter/exit. Its startRecording()/startPlayback() both refuse to run
+    // while recording_/playing_ is already true, and the only thing that
+    // ever clears those flags is stopRecording()/stopPlayback() finishing.
+    // If this plugin gets torn down (power-button exit, or a screen switch
+    // mid-recording) without calling either one first, the record/playback
+    // FreeRTOS task keeps running orphaned in the background — nothing else
+    // is left to stop it — and every future recording attempt in this
+    // plugin fails immediately with "BLAD: Nagrywanie nie powiodlo sie"
+    // until the device is power-cycled, because that stuck state lives in
+    // RAM the plugin reload never touches. Stop whatever's actually still
+    // running, independent of what screen_ this instance thinks it's on.
+    if (!audio_) return;
+
+    if (audio_->isRecording && audio_->stopRecording && audio_->isRecording()) {
+        audio_->stopRecording();
+    }
+    if (audio_->isPlaying && audio_->stopPlayback && audio_->isPlaying()) {
+        audio_->stopPlayback();
+    }
+}
+
 void DictaphoneCore::formatTime(uint32_t ms, char* buf, size_t bufSize) {
     uint32_t totalSec = ms / 1000;
     uint32_t minutes = totalSec / 60;
@@ -676,6 +751,7 @@ static PluginResult dictaphoneInit(PluginContext* ctx) {
 
 static void dictaphoneDestroy() {
     if (s_instance) {
+        s_instance->shutdown();
         delete s_instance;
         s_instance = nullptr;
     }

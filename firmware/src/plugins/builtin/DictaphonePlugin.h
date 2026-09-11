@@ -32,6 +32,13 @@ class DictaphoneCore {
     void handleTouch(const PluginTouchEvent* event);
     void draw();
 
+    // Called right before this instance is destroyed (plugin unload — the
+    // power button's global "exit plugin" doesn't know or care what screen
+    // we're on). Stops any recording/playback still in flight so the
+    // AudioRecorder isn't left running orphaned. See the .cpp for why that
+    // otherwise breaks the mic until a full power cycle.
+    void shutdown();
+
  private:
     // Touch handling for the Playing screen — split out because it, alone,
     // needs to react to every touch phase (drag) instead of just the
@@ -83,6 +90,13 @@ class DictaphoneCore {
     // Library navigation
     uint8_t librarySelected_ = 0;
     uint8_t libraryScrollTop_ = 0;
+
+    // Start position of the touch currently down, captured on phase==0 so
+    // the Library screen can tell a vertical swipe (scroll the list) from a
+    // tap (play/delete/back) at release time. See handleTouch()'s
+    // Screen::Library case.
+    uint16_t touchStartX_ = 0;
+    uint16_t touchStartY_ = 0;
 
     // Currently playing index
     uint8_t playingIndex_ = 0;
