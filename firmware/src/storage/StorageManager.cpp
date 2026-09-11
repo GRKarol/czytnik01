@@ -2945,6 +2945,73 @@ bool StorageManager::deleteBook(size_t index) {
   return ok;
 }
 
+String StorageManager::epubCacheRsvpPath(const String &epubPath) const {
+  return rsvpCachePathForEpub(epubPath);
+}
+
+bool StorageManager::bookExistsAtPath(const String &path) const {
+  for (const String &existing : bookPaths_) {
+    if (existing == path || rsvpCachePathForEpub(existing) == path) {
+      return true;
+    }
+  }
+  return false;
+}
+
+namespace {
+constexpr const char *kSavePointTrashPath = "/config/savepoint_trash.txt";
+}  // namespace
+
+std::vector<String> StorageManager::readSavePointTrashLines() {
+  std::vector<String> lines;
+  File file = SD_MMC.open(kSavePointTrashPath);
+  if (!file || file.isDirectory()) {
+    if (file) {
+      file.close();
+    }
+    return lines;
+  }
+
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (!line.isEmpty()) {
+      lines.push_back(line);
+    }
+  }
+  file.close();
+  return lines;
+}
+
+bool StorageManager::writeSavePointTrashLines(const std::vector<String> &lines) {
+  SD_MMC.remove(kSavePointTrashPath);
+  if (lines.empty()) {
+    return true;
+  }
+
+  File file = SD_MMC.open(kSavePointTrashPath, FILE_WRITE);
+  if (!file) {
+    Serial.println("[storage] savepoint trash: write open failed");
+    return false;
+  }
+
+  for (const String &line : lines) {
+    file.println(line);
+  }
+  file.close();
+  return true;
+}
+
+bool StorageManager::appendSavePointTrashLines(const std::vector<String> &lines) {
+  if (lines.empty()) {
+    return true;
+  }
+
+  std::vector<String> existing = readSavePointTrashLines();
+  existing.insert(existing.end(), lines.begin(), lines.end());
+  return writeSavePointTrashLines(existing);
+}
+
 void StorageManager::refreshBookPaths(bool includeMetadata) {
   if (!mounted_) {
     clearBookCache();

@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <algorithm>
 
 namespace {
 
@@ -54,6 +55,8 @@ enum class DictStr : uint8_t {
     NoRecordings,
     TapToGoBack,
     Rename,
+    Save,
+    Backspace,
     Cancel,
     Delete,
     ErrorTitle,
@@ -118,6 +121,24 @@ const char* dictText(DictStr key, int lang) {
                 case 4: return "Redenumeste";
                 case 5: return "Zmien nazwe";
                 default: return "Rename";
+            }
+        case DictStr::Save:
+            switch (lang) {
+                case 1: return "Guardar";
+                case 2: return "Enregistrer";
+                case 3: return "Speichern";
+                case 4: return "Salveaza";
+                case 5: return "Zapisz";
+                default: return "Save";
+            }
+        case DictStr::Backspace:
+            switch (lang) {
+                case 1: return "<- Borrar";
+                case 2: return "<- Effacer";
+                case 3: return "<- Loeschen";
+                case 4: return "<- Sterge";
+                case 5: return "<- Usun znak";
+                default: return "<- Backspace";
             }
         case DictStr::Cancel:
             switch (lang) {
@@ -362,6 +383,28 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
                     }
                     return;
                 }
+
+                // A horizontal swipe on a row opens Rename for that
+                // recording — the row-tap zone already means play, and the
+                // right/left edges mean delete/back, so there was no gesture
+                // left for rename until now. Uses the row under where the
+                // swipe *started*, matching how a real finger drag reads.
+                if (absDeltaX >= kLibrarySwipeThresholdPx && absDeltaX > absDeltaY &&
+                    touchStartX_ >= kLibraryBackZoneWidth &&
+                    touchStartX_ <= static_cast<uint16_t>(width - 120)) {
+                    uint8_t swipeVisibleRows = static_cast<uint8_t>(recordingCount_ - libraryScrollTop_);
+                    if (swipeVisibleRows > kLibraryVisibleRows) swipeVisibleRows = kLibraryVisibleRows;
+                    if (swipeVisibleRows > 0) {
+                        uint16_t swipeRowHeight = static_cast<uint16_t>(height / swipeVisibleRows);
+                        uint8_t swipeRow = static_cast<uint8_t>(touchStartY_ / swipeRowHeight);
+                        if (swipeRow >= swipeVisibleRows) swipeRow = swipeVisibleRows - 1;
+                        uint8_t swipeIndex = libraryScrollTop_ + swipeRow;
+                        if (swipeIndex < recordingCount_) {
+                            openRename(swipeIndex);
+                        }
+                    }
+                    return;
+                }
             }
 
             // Left edge = back to the record screen. Without this, a
@@ -430,6 +473,10 @@ void DictaphoneCore::handleTouch(const PluginTouchEvent* event) {
             }
             break;
         }
+
+        case Screen::Rename:
+            handleRenameTouch(event);
+            break;
 
         default:
             break;
@@ -600,7 +647,15 @@ void DictaphoneCore::drawLibrary() {
                                librarySelected_ - libraryScrollTop_ < visibleCount)
                                   ? static_cast<uint8_t>(librarySelected_ - libraryScrollTop_)
                                   : 0xFF;
-    display_->renderDeletableList(items, visibleCount, selectedInView);
+
+    // Page dots showing where the current view sits in the whole library —
+    // one page per kLibraryVisibleRows-sized chunk, matching how the
+    // vertical swipe above scrolls (a full page of rows at a time).
+    const uint8_t pageCount = static_cast<uint8_t>(
+        (recordingCount_ + kLibraryVisibleRows - 1) / kLibraryVisibleRows);
+    const uint8_t currentPage = static_cast<uint8_t>(libraryScrollTop_ / kLibraryVisibleRows);
+
+    display_->renderDeletableList(items, visibleCount, selectedInView, currentPage, pageCount);
 }
 
 void DictaphoneCore::drawPlaying() {
@@ -632,11 +687,127 @@ void DictaphoneCore::drawPlaying() {
     display_->renderPlaybackControls(title, paused, volume, elapsed / 1000, total / 1000);
 }
 
+namespace {
+// Character set offered by the Rename screen's key list, in the order it's
+// drawn after the three action rows (Save/Backspace/Cancel) — see
+// DictaphoneCore::drawRename().
+constexpr char kRenameKeyChars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-";
+constexpr size_t kRenameKeyCharCount = sizeof(kRenameKeyChars) - 1;  // drop the '\0'
+constexpr uint8_t kRenameActionRowCount = 3;  // Save, Backspace, Cancel
+}  // namespace
+
 void DictaphoneCore::drawRename() {
-    if (display_->renderStatus) {
-        const int lang = display_->languageIndex ? display_->languageIndex() : 0;
-        display_->renderStatus(dictText(DictStr::Rename, lang), renameBuffer_, "");
+    if (!display_->renderMenu) return;
+
+    const int lang = display_->languageIndex ? display_->languageIndex() : 0;
+
+    char saveLabel[kDictMaxFilenameLen + 8];
+    snprintf(saveLabel, sizeof(saveLabel), "%s: %s", dictText(DictStr::Save, lang), renameBuffer_);
+
+    const char* items[kRenameActionRowCount + kRenameKeyCharCount];
+    items[0] = saveLabel;
+    items[1] = dictText(DictStr::Backspace, lang);
+    items[2] = dictText(DictStr::Cancel, lang);
+
+    char keyLabels[kRenameKeyCharCount][2];
+    for (size_t i = 0; i < kRenameKeyCharCount; ++i) {
+        keyLabels[i][0] = kRenameKeyChars[i];
+        keyLabels[i][1] = '\0';
+        items[kRenameActionRowCount + i] = keyLabels[i];
     }
+
+    display_->renderMenu(items, static_cast<uint8_t>(kRenameActionRowCount + kRenameKeyCharCount),
+                         renameKeySelected_);
+}
+
+void DictaphoneCore::openRename(uint8_t index) {
+    if (index >= recordingCount_) return;
+
+    renameIndex_ = index;
+    // Editing starts from the name without its extension — appendRenameChar
+    // et al. only ever add letters/digits/space/underscore, and the
+    // extension is re-added on save (see renameRecording()).
+    strncpy(renameBuffer_, recordingNames_[index], kDictMaxFilenameLen - 1);
+    renameBuffer_[kDictMaxFilenameLen - 1] = '\0';
+    char* dot = strrchr(renameBuffer_, '.');
+    if (dot) *dot = '\0';
+
+    renameKeySelected_ = kRenameActionRowCount;  // land on the first letter key
+    goToScreen(Screen::Rename);
+}
+
+void DictaphoneCore::appendRenameChar(char c) {
+    size_t len = strlen(renameBuffer_);
+    // Leave room for a 4-char extension (".wav") plus the null terminator —
+    // renameRecording() re-appends the extension on save.
+    if (len + 1 >= kDictMaxFilenameLen - 5) return;
+    renameBuffer_[len] = c;
+    renameBuffer_[len + 1] = '\0';
+}
+
+void DictaphoneCore::handleRenameTouch(const PluginTouchEvent* event) {
+    const uint16_t x = event->x;
+    const uint16_t y = event->y;
+
+    int height = display_ && display_->logicalHeight ? display_->logicalHeight() : 172;
+
+    constexpr uint8_t kTotalKeys = kRenameActionRowCount + kRenameKeyCharCount;
+    constexpr int kRowHeight = 22;  // DisplayManager::kCompactMenuRowHeight
+    const uint8_t visibleCount = static_cast<uint8_t>(
+        std::min(static_cast<int>(kTotalKeys), std::max(1, height / kRowHeight)));
+
+    // Same swipe-vs-tap split as the Library screen: a vertical drag pages
+    // the key list, anything else is read as a tap on whichever row is
+    // under the finger.
+    int deltaY = static_cast<int>(y) - static_cast<int>(touchStartY_);
+    int absDeltaY = deltaY < 0 ? -deltaY : deltaY;
+    constexpr int kRenameSwipeThresholdPx = 30;
+
+    if (absDeltaY >= kRenameSwipeThresholdPx) {
+        int next = static_cast<int>(renameKeySelected_) + (deltaY < 0 ? visibleCount : -visibleCount);
+        if (next < 0) next = 0;
+        if (next >= static_cast<int>(kTotalKeys)) next = kTotalKeys - 1;
+        renameKeySelected_ = static_cast<uint8_t>(next);
+        return;
+    }
+
+    // Mirrors App::hitTestMenuListRow()'s exact centered-window math, since
+    // this is drawn by the very same DisplayManager::renderMenu().
+    size_t firstVisible = 0;
+    if (renameKeySelected_ >= visibleCount / 2) {
+        firstVisible = renameKeySelected_ - visibleCount / 2;
+    }
+    if (firstVisible + visibleCount > kTotalKeys) {
+        firstVisible = kTotalKeys - visibleCount;
+    }
+    const int totalHeight = kRowHeight * static_cast<int>(visibleCount);
+    const int startY = std::max(0, (height - totalHeight) / 2);
+    if (static_cast<int>(y) < startY || static_cast<int>(y) >= startY + totalHeight) {
+        return;
+    }
+    const size_t tappedRow = static_cast<size_t>((static_cast<int>(y) - startY) / kRowHeight);
+    const size_t tappedIndex = firstVisible + tappedRow;
+    if (tappedIndex >= kTotalKeys) return;
+
+    renameKeySelected_ = static_cast<uint8_t>(tappedIndex);
+
+    if (tappedIndex == 0) {
+        // Save
+        if (renameBuffer_[0] != '\0') {
+            renameRecording(renameIndex_, renameBuffer_);
+        }
+        goToScreen(Screen::Library);
+    } else if (tappedIndex == 1) {
+        // Backspace
+        size_t len = strlen(renameBuffer_);
+        if (len > 0) renameBuffer_[len - 1] = '\0';
+    } else if (tappedIndex == 2) {
+        // Cancel
+        goToScreen(Screen::Library);
+    } else {
+        appendRenameChar(kRenameKeyChars[tappedIndex - kRenameActionRowCount]);
+    }
+    (void)x;
 }
 
 void DictaphoneCore::drawConfirmDelete() {
@@ -712,6 +883,14 @@ void DictaphoneCore::startPlayback(uint8_t index) {
 
     if (audio_->startPlayback(path)) {
         playingIndex_ = index;
+        // Land on the Playing screen already paused, at whatever volume was
+        // last set — without this, playback started at full/last volume the
+        // instant a library row was tapped, with no chance to turn it down
+        // first. The volume +/- buttons here work while paused, so the user
+        // sets a safe level and taps play themselves.
+        if (audio_->pausePlayback) {
+            audio_->pausePlayback();
+        }
         goToScreen(Screen::Playing);
     }
 }
@@ -835,13 +1014,34 @@ bool DictaphoneCore::deleteRecording(uint8_t index) {
 }
 
 bool DictaphoneCore::renameRecording(uint8_t index, const char* newName) {
-    // PluginStorageService doesn't support rename directly, so we'd need
-    // read → write → delete. For now, rename is UI-only (rename in index).
-    if (index >= recordingCount_ || !newName) return false;
+    if (index >= recordingCount_ || !newName || newName[0] == '\0') return false;
+    if (!storage_ || !storage_->renameFile) return false;
 
-    // Just update the display name in index (file stays the same on SD)
-    // This is a simplification — true file rename would need additional API
-    strncpy(recordingNames_[index], newName, kDictMaxFilenameLen - 1);
+    // recordingNames_ doubles as the actual filename on SD (see
+    // startPlayback()/deleteRecording()) — renaming only the index entry
+    // without renaming the real file would desync the two, and the next
+    // playback attempt would fail with "file not found". Append the
+    // extension back on (openRename() stripped it for editing) unless the
+    // user already typed one of their own.
+    char finalName[kDictMaxFilenameLen];
+    bool hasExtension = strrchr(newName, '.') != nullptr;
+    if (hasExtension) {
+        strncpy(finalName, newName, kDictMaxFilenameLen - 1);
+        finalName[kDictMaxFilenameLen - 1] = '\0';
+    } else {
+        snprintf(finalName, sizeof(finalName), "%s.wav", newName);
+    }
+
+    if (strcmp(finalName, recordingNames_[index]) == 0) return true;  // no change
+
+    char fromPath[kDictMaxFilenameLen + 16];
+    char toPath[kDictMaxFilenameLen + 16];
+    snprintf(fromPath, sizeof(fromPath), "recordings/%s", recordingNames_[index]);
+    snprintf(toPath, sizeof(toPath), "recordings/%s", finalName);
+
+    if (!storage_->renameFile(fromPath, toPath)) return false;
+
+    strncpy(recordingNames_[index], finalName, kDictMaxFilenameLen - 1);
     recordingNames_[index][kDictMaxFilenameLen - 1] = '\0';
     saveIndex();
     return true;

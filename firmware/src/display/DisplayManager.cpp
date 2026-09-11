@@ -400,8 +400,15 @@ constexpr TinyGlyph kTinyGlyphs[] = {
 };
 
 ReaderGlyph serifGlyphForByte(uint8_t value) {
+  // The embedded serif bitmap only covers ASCII 32-126 — unlike the
+  // OpenDyslexic/AtkinsonHyperlegible cases below, this used to fall
+  // straight to a literal '?' for every accented byte (Polish ą/ę/ś/ć/...
+  // included), which is what showed up as a wrong/garbled character in
+  // book titles and any other UI text drawn in the default typeface.
+  // Transliterate to the closest plain-ASCII letter instead, same as the
+  // other typefaces already do.
   if (value < kEmbeddedSerifFirstChar || value > kEmbeddedSerifLastChar) {
-    value = static_cast<uint8_t>('?');
+    value = LatinText::fallbackAsciiByte(value);
   }
   const EmbeddedSerifGlyph &glyph = kEmbeddedSerifGlyphs[value - kEmbeddedSerifFirstChar];
   return {kEmbeddedSerifBitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, glyph.xAdvance,
@@ -410,7 +417,7 @@ ReaderGlyph serifGlyphForByte(uint8_t value) {
 
 ReaderGlyph serif70GlyphForByte(uint8_t value) {
   if (value < kEmbeddedSerif70FirstChar || value > kEmbeddedSerif70LastChar) {
-    value = static_cast<uint8_t>('?');
+    value = LatinText::fallbackAsciiByte(value);
   }
   const EmbeddedSerif70Glyph &glyph = kEmbeddedSerif70Glyphs[value - kEmbeddedSerif70FirstChar];
   return {kEmbeddedSerif70Bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width,
@@ -1544,6 +1551,55 @@ void DisplayManager::fillVirtualRect(int x, int y, int width, int height, uint16
   }
 }
 
+void DisplayManager::fillVirtualCircle(int cx, int cy, int radius, uint16_t color) {
+  if (radius <= 0) return;
+  const uint16_t panel = panelColor(color);
+  const int rSq = radius * radius;
+  const int yStart = std::max(0, cy - radius);
+  const int yEnd = std::min(kVirtualBufferHeight - 1, cy + radius);
+  for (int y = yStart; y <= yEnd; ++y) {
+    const int dy = y - cy;
+    const int xStart = std::max(0, cx - radius);
+    const int xEnd = std::min(kVirtualBufferWidth - 1, cx + radius);
+    for (int x = xStart; x <= xEnd; ++x) {
+      const int dx = x - cx;
+      if (dx * dx + dy * dy > rSq) continue;
+      virtualFrame_[y * kVirtualBufferWidth + x] = panel;
+    }
+  }
+}
+
+void DisplayManager::drawTypographyDial(int cx, int cy, int radius, float valueRatio,
+                                        const String &valueText, const String &label,
+                                        bool active) {
+  valueRatio = std::max(0.0f, std::min(1.0f, valueRatio));
+
+  constexpr int kTickCount = 20;
+  const int litTicks = std::max(1, static_cast<int>(std::lround(valueRatio * kTickCount)));
+  const uint16_t litColor = focusColor();
+  const uint16_t unlitColor = dimColor();
+  for (int i = 0; i < kTickCount; ++i) {
+    const float angle = (static_cast<float>(i) / static_cast<float>(kTickCount)) * 2.0f * PI -
+                        (PI / 2.0f);
+    const int tx = cx + static_cast<int>(std::lround(cosf(angle) * radius));
+    const int ty = cy + static_cast<int>(std::lround(sinf(angle) * radius));
+    fillVirtualRect(tx - 1, ty - 1, 2, 2, i < litTicks ? litColor : unlitColor);
+  }
+
+  // Center disc — brighter/tinted when this is the dial currently being
+  // adjusted, so the active one reads clearly among the other three.
+  const uint16_t discColor = active ? blendOverBackground(focusColor(), 48) : backgroundColor();
+  fillVirtualCircle(cx, cy, std::max(2, radius - 8), discColor);
+
+  const int valueY = cy - (kTinyGlyphHeight * kTinyScale) / 2;
+  drawTinyTextCentered(valueText, valueY, active ? focusColor() : wordColor(), kTinyScale,
+                       radius * 2, cx - radius);
+
+  const int labelY = cy + radius + 3;
+  drawTinyTextCentered(label, labelY, active ? focusColor() : dimColor(), kTinyScale, radius * 2,
+                       cx - radius);
+}
+
 void DisplayManager::drawSerifTextAt(const String &text, int x, int y, uint16_t color,
                                      int divisor) {
   divisor = std::max(1, divisor);
@@ -2431,11 +2487,12 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
 void DisplayManager::renderTypographyPreview(const String &beforeText, const String &word,
                                              const String &afterText, uint8_t fontSizeLevel,
                                              const String &title, const String &line1,
-                                             const String &line2) {
+                                             const String &line2, int selectedDial) {
   const TypographyConfig config = activeTypographyConfig();
   const String renderKey =
       "typography_preview|" + beforeText + "|" + word + "|" + afterText + "|s:" +
-      String(fontSizeLevel) + "|" + title + "|" + line1 + "|" + line2 + "|t:" +
+      String(fontSizeLevel) + "|" + title + "|" + line1 + "|" + line2 + "|sd:" +
+      String(selectedDial) + "|t:" +
       String(static_cast<unsigned int>(config.typeface)) +
       "|h:" + String(config.focusHighlight ? 1 : 0) +
       "|tr:" +
@@ -2462,8 +2519,57 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
   const int maxLabelWidth = virtualWidth - 24;
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
-  drawTinyTextCentered(fitTinyText(title, maxLabelWidth, kTinyScale), titleY, wordColor(),
+
+  // Top bar: "< Back" / title / "Reset >" — three-segment layout matching
+  // the reference design instead of a single centered title, with Back and
+  // Reset dimmed unless they're the currently-selected tuning item (see
+  // App::applyMenuTouchGesture()'s TypographyTuning corner-tap and
+  // App::typographyTuningSelectedIndex_).
+  const uint16_t backColor = selectedDial == -2 ? focusColor() : dimColor();
+  const uint16_t resetColor = selectedDial == -3 ? focusColor() : dimColor();
+  drawTinyTextAt("< Back", 6, titleY, backColor, kTinyScale);
+  const String resetLabel = "Reset >";
+  drawTinyTextAt(resetLabel, virtualWidth - measureTinyTextWidth(resetLabel, kTinyScale) - 6,
+                titleY, resetColor, kTinyScale);
+  drawTinyTextCentered(fitTinyText(title, maxLabelWidth - 160, kTinyScale), titleY, wordColor(),
                        kTinyScale);
+
+  // Four clock-face dials (Tracking/Anchor/Width/Gap) clustered on the
+  // right edge — always all visible, unlike line1 below which only ever
+  // showed whichever one setting was currently selected. The word preview
+  // to their left still uses the full virtualWidth for its anchor-guide
+  // math (unchanged) so it stays a true preview of real reading layout;
+  // the dial cluster simply sits on top of that same canvas.
+  {
+    constexpr int kDialRadius = 22;
+    const int dialAreaX0 = virtualWidth - 172;
+    const int col0X = dialAreaX0 + 42;
+    const int col1X = dialAreaX0 + 130;
+    const int row0Y = 50;
+    const int row1Y = 120;
+
+    constexpr float kTrackingMin = -2.0f, kTrackingMax = 3.0f;
+    constexpr float kWidthMin = 12.0f, kWidthMax = 30.0f;
+    constexpr float kGapMin = 2.0f, kGapMax = 8.0f;
+    auto ratio = [](float value, float lo, float hi) {
+      if (hi <= lo) return 0.0f;
+      return std::max(0.0f, std::min(1.0f, (value - lo) / (hi - lo)));
+    };
+
+    drawTypographyDial(col0X, row0Y,
+                       kDialRadius, ratio(config.trackingPx, kTrackingMin, kTrackingMax),
+                       String(static_cast<int>(config.trackingPx)), "Tracking", selectedDial == 0);
+    drawTypographyDial(col1X, row0Y, kDialRadius, config.anchorPercent / 100.0f,
+                       String(static_cast<unsigned int>(config.anchorPercent)), "Anchor",
+                       selectedDial == 1);
+    drawTypographyDial(col0X, row1Y,
+                       kDialRadius, ratio(config.guideHalfWidth, kWidthMin, kWidthMax),
+                       String(static_cast<unsigned int>(config.guideHalfWidth)), "Width",
+                       selectedDial == 2);
+    drawTypographyDial(col1X, row1Y, kDialRadius, ratio(config.guideGap, kGapMin, kGapMax),
+                       String(static_cast<unsigned int>(config.guideGap)), "Gap",
+                       selectedDial == 3);
+  }
 
   if (fontSizeLevel == 1) {
     const int textHeight = mediumGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));

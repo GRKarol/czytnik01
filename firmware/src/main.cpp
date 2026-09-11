@@ -52,7 +52,19 @@ void setup() {
   // Skip long serial wait — no need to block boot for 2s.
   delay(20);
 
-  if (!pwrButtonHeld) {
+  // A software restart (ESP.restart(), e.g. after installing an OTA update
+  // or the PWR-button double-tap restart) re-runs this whole function with
+  // nobody physically touching PWR, which used to look identical to "cable
+  // plugged in just to charge" below and drop the reader straight back into
+  // deep sleep with the power hold released — the update would say
+  // "restarting" and then the device would just turn off and stay off. Only
+  // a genuine cold boot (fresh power-on, no prior running session) should
+  // ever second-guess a missing PWR press this way; a SW reset means we were
+  // already in a legitimate powered-on session a moment ago and explicitly
+  // asked to come back.
+  const bool genuineColdBoot = esp_reset_reason() == ESP_RST_POWERON;
+
+  if (!pwrButtonHeld && genuineColdBoot) {
     // Booted without PWR being pressed - normally this means the USB cable
     // was plugged in just to charge, so the reader drops straight back into
     // the same deep-sleep "off" state a normal power-off uses (see below).

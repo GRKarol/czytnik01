@@ -439,6 +439,8 @@ class App {
   void deleteSavePoint(size_t index);
   void loadSavePoints();
   void persistSavePoints();
+  void archiveSavePointsForDeletedBook(const String &bookPath);
+  void restoreArchivedSavePointsForReturnedBooks();
   void openPluginsHome();
   void selectPluginsHomeItem(uint32_t nowMs);
   void renderPluginsHome();
@@ -623,6 +625,20 @@ class App {
   /// any button chrome. Returns true (gesture always consumed in Swipe
   /// mode, matching the "ignore taps that hit nothing" DPad behavior).
   bool handleSwipeListGesture(const TouchEvent &event, int deltaX, int deltaY, uint32_t nowMs);
+  /// True for a screen reached through another non-Main screen (e.g.
+  /// SettingsDisplay, hanging off SettingsHome) rather than directly off
+  /// Main. Fitts's-law rationale: the deeper into a menu a user is, the
+  /// more likely their next tap is "go back", so those screens get a
+  /// larger invisible back-tap zone (see backCornerHitZone()) without the
+  /// visible Back button itself growing — modeled on how iOS widens its
+  /// back-swipe/back-button hit area on nested navigation stacks.
+  bool isDeepMenuScreen() const;
+  /// Size of the invisible top-left "go back" hit zone for the current
+  /// screen — bigger on deep screens (see isDeepMenuScreen()), the normal
+  /// size everywhere else. Used both by the Swipe/D-Pad corner-tap check
+  /// in applyMenuTouchGesture() and, as extra margin around the Back
+  /// button's own (unchanged) visible rect, by handleGridTap().
+  void backCornerHitZone(uint16_t &outW, uint16_t &outH) const;
 
   void renderMenu();
   void renderMainMenu();
@@ -805,6 +821,13 @@ class App {
   size_t gridItemsPerPage_ = 1;
   size_t gridPageCount_ = 1;
   size_t gridPage_ = 0;
+  // Timestamp of the last page-changing swipe — see
+  // kGridPageChangeInputBlackoutMs in App.cpp. A finger that's still
+  // settling right after a page-turn swipe can register a stray tap on
+  // whatever button ended up under it; taps are ignored for a short window
+  // after paging so that doesn't fire an unintended action. 0 means "no
+  // page change yet".
+  uint32_t lastGridPageChangeAtMs_ = 0;
   // SavePointsList overrides the grid to one full-width row per savepoint
   // (name row + its Delete row) instead of the usual multi-column tile
   // grid — long "42.3% Book Title" names were unreadable packed 4-up, and
@@ -837,6 +860,13 @@ class App {
   int lastFiredGridItemIndex_ = -1;
   uint32_t lastFiredGridAtMs_ = 0;
   MenuScreen lastFiredGridScreen_ = MenuScreen::Main;
+  // General commit-action cooldown — see kMenuActionDebounceMs in App.cpp.
+  // 0 means "no action fired yet" so the very first selectMenuItem() call
+  // after boot is never swallowed.
+  uint32_t lastMenuActionAtMs_ = 0;
+  // Contact-bounce guard for the virtual D-Pad panel — see
+  // kDPadTapDebounceMs in App.cpp. Same 0-means-unset convention.
+  uint32_t lastDPadTapAtMs_ = 0;
   // Same press-flash idea, but for the on-screen keyboard (see
   // handleTextEntryTap()/firePendingTextEntryFlash()) — every key tap
   // highlights briefly before the character/action actually lands, so
@@ -965,6 +995,11 @@ class App {
   bool storageReady_ = false;
   bool pendingBootBookLoad_ = false;
   bool pendingBootBookLegacyFallback_ = false;
+  // While true, renderStorageStatus() no-ops — used to keep the boot splash
+  // on screen through the deferred book load instead of it being replaced
+  // by "Ładowanie książki"/progress screens. See updateState()'s Booting
+  // branch and loadPendingBootBook().
+  bool suppressBootStorageStatusRender_ = false;
   bool batteryPresent_ = false;
   bool batterySampleInitialized_ = false;
   bool batteryRuntimeEstimateReady_ = false;

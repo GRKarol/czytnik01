@@ -53,6 +53,24 @@ class StorageManager {
   DiagnosticResult diagnoseSdCard();
   bool repairSdCardFolders();
   bool deleteBook(size_t index);
+  // True if `path` is a current library entry, OR is the .rsvp cache
+  // sibling of one (an EPUB's save points are keyed by its converted cache
+  // path — see epubCacheRsvpPath() — so a returned .epub source needs to
+  // match against that, not its own source path).
+  bool bookExistsAtPath(const String &path) const;
+  // For an EPUB source path, the on-device cache/reading path is the
+  // sibling ".rsvp" file — save points are keyed by whichever path was
+  // actually open for reading, so callers matching against a library entry
+  // need both candidates. A no-op sibling swap for non-EPUB paths.
+  String epubCacheRsvpPath(const String &epubPath) const;
+
+  // Hidden SD-side archive for save points whose book was deleted from the
+  // library — never surfaced in any menu. If the same book path reappears
+  // later (re-added to the library), the caller restores matching entries
+  // out of this list; otherwise they just stay here, invisible.
+  std::vector<String> readSavePointTrashLines();
+  bool writeSavePointTrashLines(const std::vector<String> &lines);
+  bool appendSavePointTrashLines(const std::vector<String> &lines);
 
  private:
   bool ensureIndexedBook(const String &path, BookMetadata &metadata, bool rsvpFormat,

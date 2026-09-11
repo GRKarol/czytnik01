@@ -34,6 +34,10 @@ namespace {
 constexpr uint8_t kImuAddress = 0x6B;
 constexpr uint8_t kImuAccelStartReg = 0x35;
 constexpr float kAccelScale = 4.0f / 32768.0f;
+constexpr uint8_t kImuRegCtrl1 = 0x02;
+constexpr uint8_t kImuRegCtrl2 = 0x03;
+constexpr uint8_t kImuRegCtrl7 = 0x08;
+bool sImuInitialized = false;
 }  // namespace
 
 // ─── Path Validation (sandbox enforcement) ──────────────────────────────────
@@ -176,7 +180,8 @@ static constexpr int kDeletableListIconZoneWidth = 120;
 static constexpr int kDeletableListBackZoneWidth = 64;
 
 static void bridgeRenderDeletableList(const char* const* items, uint8_t itemCount,
-                                       uint8_t selectedIndex) {
+                                       uint8_t selectedIndex, uint8_t currentPage,
+                                       uint8_t pageCount) {
     if (!sDisplay || !items || itemCount == 0) return;
 
     const int width = BoardConfig::DISPLAY_WIDTH;
@@ -227,7 +232,11 @@ static void bridgeRenderDeletableList(const char* const* items, uint8_t itemCoun
     back.height = 26;
     buttons.push_back(back);
 
-    sDisplay->renderButtonGrid("", buttons, 0, 1);
+    // Left-edge dot column, same as SavePointsList's one-page-per-bookmark
+    // screen — proven to coexist with full-height rows without the dots
+    // landing on row text (they sit at x=3..6, well clear of where labels
+    // start drawing).
+    sDisplay->renderButtonGrid("", buttons, currentPage, pageCount, "", true, true);
 }
 
 // ─── Dictaphone Playback Controls ───────────────────────────────────────────
@@ -411,11 +420,40 @@ static void bridgeAudioSetVolume(uint8_t percent) {
 
 // ─── IMU Service Wrappers ───────────────────────────────────────────────────
 
+static bool imuWriteRegister(uint8_t reg, uint8_t value) {
+    Wire1.beginTransmission(kImuAddress);
+    Wire1.write(reg);
+    Wire1.write(value);
+    return Wire1.endTransmission() == 0;
+}
+
+// The QMI8658 powers up with sensor sampling disabled — CTRL7's aEN bit is
+// 0 by default, so the accelerometer data registers just return stale/zero
+// bytes until something enables it. Nothing in this firmware ever did,
+// which is why FocusTimerPlugin's orientation classifier always saw
+// Orientation::Unknown no matter how the device was actually held (every
+// axis read near 0, well under the classifier's thresholds). Runs once,
+// lazily, the first time a caller actually wants a reading — enables the
+// accelerometer at +-4g (matching kAccelScale below) and a normal output
+// rate; the gyroscope stays off since nothing here uses it.
+static void ensureImuInitialized() {
+    if (sImuInitialized) return;
+
+    Wire1.beginTransmission(kImuAddress);
+    if (Wire1.endTransmission(true) != 0) return;  // not present yet — retry next call
+
+    imuWriteRegister(kImuRegCtrl1, 0x40);  // address auto-increment
+    imuWriteRegister(kImuRegCtrl2, 0x13);  // accel: +-4g range, ~470 Hz ODR
+    imuWriteRegister(kImuRegCtrl7, 0x01);  // enable accelerometer only
+    sImuInitialized = true;
+}
+
 static bool bridgeImuReadAccelerometer(float* x, float* y, float* z) {
     if (!x || !y || !z) return false;
 
     // Direct I2C read from QMI8658 on Wire1 (same approach as FocusTimer)
     BoardConfig::I2cBusLock lock;
+    ensureImuInitialized();
     Wire1.beginTransmission(kImuAddress);
     Wire1.write(kImuAccelStartReg);
     if (Wire1.endTransmission(false) != 0) {
@@ -525,6 +563,15 @@ static bool bridgeStorageDeleteFile(const char* relativePath) {
     return SD_MMC.remove(fullPath);
 }
 
+static bool bridgeStorageRenameFile(const char* fromRelativePath, const char* toRelativePath) {
+    String fromPath = resolveSandboxedPath(fromRelativePath);
+    String toPath = resolveSandboxedPath(toRelativePath);
+    if (fromPath.isEmpty() || toPath.isEmpty()) return false;
+    if (SD_MMC.exists(toPath)) return false;
+
+    return SD_MMC.rename(fromPath, toPath);
+}
+
 static bool bridgeStorageMkdir(const char* relativePath) {
     String fullPath = resolveSandboxedPath(relativePath);
     if (fullPath.isEmpty()) return false;
@@ -600,6 +647,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
         storageService->readFile = bridgeStorageReadFile;
         storageService->writeFile = bridgeStorageWriteFile;
         storageService->deleteFile = bridgeStorageDeleteFile;
+        storageService->renameFile = bridgeStorageRenameFile;
         storageService->mkdir = bridgeStorageMkdir;
     }
 

@@ -44,9 +44,13 @@ typedef struct PluginDisplayService {
     /// docked to its right edge (e.g. a recordings library). `selectedIndex`
     /// highlights that row. Tap hit-testing for the delete zone is the
     /// caller's job — see logicalWidth() and match the same right-edge
-    /// width the bridge uses to draw it.
+    /// width the bridge uses to draw it. `currentPage`/`pageCount` draw a
+    /// small dot-column page indicator along the right edge when the list
+    /// spans more than one page (pageCount <= 1 draws nothing) — pass 0/1
+    /// if the caller doesn't paginate.
     void (*renderDeletableList)(const char* const* items, uint8_t itemCount,
-                                uint8_t selectedIndex);
+                                uint8_t selectedIndex, uint8_t currentPage,
+                                uint8_t pageCount);
 
     /// Real, tappable playback controls (e.g. a dictaphone's playing
     /// screen): a row of square buttons — Stop, volume down, pause/resume,

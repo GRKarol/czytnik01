@@ -130,8 +130,13 @@ void axs15231bInit() {
 void axs15231bSetBacklight(bool on) { setBacklight(on); }
 
 void axs15231bSetBrightnessPercent(uint8_t percent) {
-  if (percent == 0) {
-    percent = 1;
+  // Below this the backlight driver's active-low PWM reads as fully off on
+  // this panel — clamp here too, not just in the app-level presets, so any
+  // caller (companion sync API included) can't dim the screen past the
+  // point of it looking powered-down.
+  constexpr uint8_t kMinVisiblePercent = 15;
+  if (percent < kMinVisiblePercent) {
+    percent = kMinVisiblePercent;
   } else if (percent > 100) {
     percent = 100;
   }

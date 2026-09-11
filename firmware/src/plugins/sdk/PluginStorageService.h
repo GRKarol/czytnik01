@@ -15,6 +15,7 @@ typedef struct PluginStorageService {
     bool (*writeFile)(const char* relativePath, const uint8_t* data, uint32_t len);
     bool (*deleteFile)(const char* relativePath);
     bool (*mkdir)(const char* relativePath);
+    bool (*renameFile)(const char* fromRelativePath, const char* toRelativePath);
 } PluginStorageService;
 
 #ifdef __cplusplus

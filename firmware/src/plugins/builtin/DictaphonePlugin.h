@@ -53,6 +53,13 @@ class DictaphoneCore {
     bool renameRecording(uint8_t index, const char* newName);
     void saveIndex();
 
+    // Rename screen (character-by-character picker over renderMenu(), the
+    // plugin SDK's only scrollable-list primitive — see handleRenameTouch()
+    // for why the hit-test mirrors App::hitTestMenuListRow()'s layout math).
+    void openRename(uint8_t index);
+    void handleRenameTouch(const PluginTouchEvent* event);
+    void appendRenameChar(char c);
+
     // Navigation
     void goToScreen(Screen screen);
     void startRecording();
@@ -111,6 +118,10 @@ class DictaphoneCore {
     uint8_t renameIndex_ = 0;
     char renameBuffer_[kDictMaxFilenameLen] = {};
     uint8_t renameCursorPos_ = 0;
+    // Scroll/selection position in the Rename screen's key list (Save/
+    // Backspace/Cancel + A-Z/0-9/space/underscore) — same role as
+    // librarySelected_ for the Library screen.
+    uint8_t renameKeySelected_ = 0;
 
     // Delete confirmation
     uint8_t deleteIndex_ = 0;

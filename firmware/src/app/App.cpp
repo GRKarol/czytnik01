@@ -56,6 +56,27 @@ constexpr uint32_t kPressFlashMs = 140;
 // (capacitive-touch contact bounce reads as two quick taps from one
 // physical touch).
 constexpr uint32_t kGridTapDebounceMs = 200;
+// General cooldown after any menu action that commits/changes screen (see
+// App::selectMenuItem()) — swallows a second commit that lands right after
+// the first (fat-finger double tap, or capacitive-touch contact bounce that
+// slipped past the per-button guard above because the second bounce landed
+// on a *different* button once the screen had already changed underneath
+// it, which read as one tap skipping two screens ahead).
+constexpr uint32_t kMenuActionDebounceMs = 500;
+// Contact-bounce guard for the on-screen virtual D-Pad panel (DPad nav
+// mode): one physical tap on the up/down/left/right/OK zones occasionally
+// reads back as two quick touch End events, which without this guard moved
+// the selection (or committed it) twice for a single press.
+constexpr uint32_t kDPadTapDebounceMs = 200;
+// Swipe nav mode: a tap-to-confirm gesture must release within this long of
+// touch-down, or it's treated as a long hold instead of a tap — see the
+// comment above its use in applyMenuTouchGesture().
+constexpr uint32_t kSwipeTapMaxHoldMs = 500;
+// Button-grid nav mode: after a page-changing horizontal (or vertical, for
+// SavePointsList) swipe, ignore taps for this long — a finger still
+// settling right after the swipe ends can land on whatever button is now
+// under it on the new page and fire it by accident.
+constexpr uint32_t kGridPageChangeInputBlackoutMs = 500;
 // How long the grid toast (full text of a Toggle/Cycle button's new value,
 // see App::showGridToast()) stays on screen before the grid redraws without
 // it — same shape as the low-battery overlay's timed restore.
@@ -102,8 +123,11 @@ constexpr uint16_t kStandbyLifeCellPixels = 2;
 constexpr uint16_t kStandbyLifeColumns = BoardConfig::DISPLAY_WIDTH / kStandbyLifeCellPixels;
 constexpr uint16_t kStandbyLifeRows = BoardConfig::DISPLAY_HEIGHT / kStandbyLifeCellPixels;
 constexpr uint32_t kChapterTransitionMs = 1400;
-constexpr uint8_t kBrightnessLevels[] = {40, 55, 70, 85, 100};
-constexpr uint8_t kNightBrightnessLevels[] = {35, 40, 45, 50, 55};
+// Floor raised from the old 40/35 — at that duty the backlight read as
+// fully off on the panel, so there was no visible way to tell the reader
+// was even powered on at the darkest setting.
+constexpr uint8_t kBrightnessLevels[] = {55, 65, 78, 90, 100};
+constexpr uint8_t kNightBrightnessLevels[] = {45, 52, 58, 65, 72};
 constexpr size_t kBrightnessLevelCount = sizeof(kBrightnessLevels) / sizeof(kBrightnessLevels[0]);
 
 namespace {
@@ -1349,6 +1373,11 @@ void App::updateState(uint32_t nowMs) {
       setState(AppState::Menu, nowMs);
       return;
     }
+
+    // Do the deferred SD/index book load now, still under the boot splash,
+    // instead of switching to Paused first and showing a separate
+    // "Ładowanie książki" screen while it runs — see loadPendingBootBook().
+    loadPendingBootBook(nowMs);
 
     setState((touchPlayHeld_ || playLocked_ || pauseAtSentenceEndRequested_) ? AppState::Playing
                                                                               : AppState::Paused,
@@ -2938,7 +2967,10 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   // everywhere else); vertical swipe still cycles the preview sample word.
   if (menuScreen_ == MenuScreen::TypographyTuning) {
     if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
-      if (event.x < 80 && event.y < 35) {
+      uint16_t backZoneW = 0;
+      uint16_t backZoneH = 0;
+      backCornerHitZone(backZoneW, backZoneH);
+      if (event.x < backZoneW && event.y < backZoneH) {
         typographyTuningSelectedIndex_ = TypographyTuningBack;
       }
       selectMenuItem(nowMs);
@@ -2977,6 +3009,14 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
     constexpr uint16_t kDPadPanelStartX = 520;  // 640 - 120
     if (event.x >= kDPadPanelStartX) {
+      if (lastDPadTapAtMs_ != 0 && nowMs - lastDPadTapAtMs_ < kDPadTapDebounceMs) {
+        // Swallow a second End event from the same physical tap (contact
+        // bounce) — without this, one press on the up/down zone could move
+        // the selection twice. See kDPadTapDebounceMs.
+        return;
+      }
+      lastDPadTapAtMs_ = nowMs;
+
       // Determine which D-Pad button was tapped based on position
       // Buttons are large zones dividing the panel into quadrants + center
       const int padCenterX = kDPadPanelStartX + 60;  // center of 120px panel
@@ -3050,28 +3090,11 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       }
 
       if (itemCount > 0) {
-        const int rowHeight = 22;  // kCompactMenuRowHeight
-        const size_t visibleCount =
-            std::min(itemCount, static_cast<size_t>(std::max(1, 172 / rowHeight)));
-        size_t firstVisible = 0;
-        if (*selectedIndex >= visibleCount / 2) {
-          firstVisible = *selectedIndex - visibleCount / 2;
-        }
-        if (firstVisible + visibleCount > itemCount) {
-          firstVisible = itemCount - visibleCount;
-        }
-        const int totalHeight = rowHeight * static_cast<int>(visibleCount);
-        const int startY = std::max(0, (172 - totalHeight) / 2);
-        const int tapY = static_cast<int>(event.y);
-
-        if (tapY >= startY && tapY < startY + totalHeight) {
-          const size_t tappedRow = static_cast<size_t>((tapY - startY) / rowHeight);
-          const size_t tappedIndex = firstVisible + tappedRow;
-          if (tappedIndex < itemCount) {
-            *selectedIndex = tappedIndex;
-            selectMenuItem(nowMs);
-            return;
-          }
+        size_t tappedIndex = 0;
+        if (hitTestMenuListRow(event.x, event.y, itemCount, *selectedIndex, tappedIndex)) {
+          *selectedIndex = tappedIndex;
+          selectMenuItem(nowMs);
+          return;
         }
       }
     }
@@ -3103,9 +3126,27 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
+  // A tap that confirms the currently selected item fires on *any* contact
+  // that releases close to where it started, regardless of how long the
+  // finger sat there — unlike Buttons mode, which looks up the button under
+  // the finger, Swipe mode confirms whatever's already highlighted. Cheap
+  // capacitive touch drifts a few px over a long, motionless hold, so a
+  // held finger could still read back as "release within tap slop" well
+  // after it stopped being a deliberate tap, silently changing/committing
+  // whatever setting happened to be selected. Require the whole gesture to
+  // finish within a normal tap's duration; a long hold that ends up
+  // drifting into tap-slop range is ignored instead of confirming.
+  if (nowMs - pausedTouch_.startMs > kSwipeTapMaxHoldMs) {
+    return;
+  }
+
   if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
-    // Top-left corner tap = Back button on any menu screen
-    if (event.x < 80 && event.y < 35 && menuScreen_ != MenuScreen::Main) {
+    // Top-left corner tap = Back button on any menu screen — zone is wider
+    // on deep screens, see backCornerHitZone().
+    uint16_t backZoneW = 0;
+    uint16_t backZoneH = 0;
+    backCornerHitZone(backZoneW, backZoneH);
+    if (event.x < backZoneW && event.y < backZoneH && menuScreen_ != MenuScreen::Main) {
       // Simulate selecting "Back" (index 0) for list-based screens
       if (isSettingsListScreen() || menuScreen_ == MenuScreen::BookPicker ||
           menuScreen_ == MenuScreen::BookDetails || menuScreen_ == MenuScreen::BookDeleteConfirm ||
@@ -3152,8 +3193,112 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       renderMainMenu();
       return;
     }
-    selectMenuItem(nowMs);
+    // Hit-test the tap against the row actually drawn under the finger
+    // (see handleSwipeListGesture()) instead of blindly confirming
+    // whatever moveMenuSelection() last scrolled the cursor to — a tap on
+    // the right side of the screen now selects what's there, matching
+    // Buttons mode's direct-hit behavior.
+    handleSwipeListGesture(event, deltaX, deltaY, nowMs);
   }
+}
+
+bool App::isDeepMenuScreen() const {
+  switch (menuScreen_) {
+    case MenuScreen::SettingsDisplay:
+    case MenuScreen::SettingsPacing:
+    case MenuScreen::SettingsConnectivity:
+    case MenuScreen::SettingsAbout:
+    case MenuScreen::ScreensaverSettings:
+    case MenuScreen::WifiSettings:
+    case MenuScreen::WifiNetworks:
+    case MenuScreen::TextEntry:
+    case MenuScreen::TypographyTuning:
+    case MenuScreen::BookDetails:
+    case MenuScreen::BookDeleteConfirm:
+    case MenuScreen::ChapterPicker:
+    case MenuScreen::SavePointDeleteConfirm:
+    case MenuScreen::SavePointNameEntry:
+    case MenuScreen::PluginsActive:
+    case MenuScreen::PluginLibraryScreen:
+    case MenuScreen::PluginDetail:
+    case MenuScreen::Presets:
+    case MenuScreen::PresetsDeleteConfirm:
+    case MenuScreen::PacingDelayEditor:
+    case MenuScreen::WpmEditor:
+      return true;
+    default:
+      // Main, and everything one hop off it (SettingsHome, BookPicker,
+      // SavePointsList, PluginsHome, the Welcome/Tutorial onboarding flow,
+      // RestartConfirm/SdCardRepairConfirm/UpdateConfirm) — back is either
+      // unavailable or a less likely next tap than on a nested screen.
+      return false;
+  }
+}
+
+void App::backCornerHitZone(uint16_t &outW, uint16_t &outH) const {
+  if (isDeepMenuScreen()) {
+    outW = 130;
+    outH = 60;
+  } else {
+    outW = 80;
+    outH = 35;
+  }
+}
+
+bool App::hitTestMenuListRow(uint16_t tapX, uint16_t tapY, size_t itemCount, size_t selectedIndex,
+                              size_t &outIndex) const {
+  (void)tapX;  // Whole row width is tappable — no side column reserved.
+  if (itemCount == 0) {
+    return false;
+  }
+
+  // Mirrors DisplayManager::renderMenuScroll()/renderMenuWithDPad()'s exact
+  // layout (same row height, same vertical centering/scroll-window formula)
+  // so a tap lands on the row the user is actually looking at.
+  constexpr int kRowHeight = 22;  // DisplayManager::kCompactMenuRowHeight
+  const int virtualHeight = BoardConfig::DISPLAY_HEIGHT;
+  const size_t visibleCount =
+      std::min(itemCount, static_cast<size_t>(std::max(1, virtualHeight / kRowHeight)));
+  size_t firstVisible = 0;
+  if (selectedIndex >= visibleCount / 2) {
+    firstVisible = selectedIndex - visibleCount / 2;
+  }
+  if (firstVisible + visibleCount > itemCount) {
+    firstVisible = itemCount - visibleCount;
+  }
+  const int totalHeight = kRowHeight * static_cast<int>(visibleCount);
+  const int startY = std::max(0, (virtualHeight - totalHeight) / 2);
+  const int y = static_cast<int>(tapY);
+
+  if (y < startY || y >= startY + totalHeight) {
+    return false;
+  }
+
+  const size_t tappedRow = static_cast<size_t>((y - startY) / kRowHeight);
+  const size_t tappedIndex = firstVisible + tappedRow;
+  if (tappedIndex >= itemCount) {
+    return false;
+  }
+
+  outIndex = tappedIndex;
+  return true;
+}
+
+bool App::handleSwipeListGesture(const TouchEvent &event, int deltaX, int deltaY,
+                                  uint32_t nowMs) {
+  (void)deltaX;
+  (void)deltaY;
+  size_t itemCount = 0;
+  size_t *selectedIndex = currentMenuSelectedIndexPtr(itemCount);
+
+  size_t tappedIndex = 0;
+  if (!hitTestMenuListRow(event.x, event.y, itemCount, *selectedIndex, tappedIndex)) {
+    return false;
+  }
+
+  *selectedIndex = tappedIndex;
+  selectMenuItem(nowMs);
+  return true;
 }
 
 size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
@@ -3570,9 +3715,21 @@ void App::renderMenuAnyMode(const String &title, const std::vector<String> &item
                             size_t selectedIndex, size_t headerRows) {
   if (navMode_ == NavMode::DPad) {
     applyReaderUiOrientation();
+    // renderItemGrid() is the only place that clears these — without this,
+    // stale Button rects from whatever grid screen was open last stick
+    // around and handleGridTap() (which runs before the DPad-specific tap
+    // handling below it) can hit-test a tap on this list screen against
+    // them, firing an action that belongs to a completely different,
+    // previously-visited screen.
+    currentGridButtons_.clear();
+    currentGridItemIndices_.clear();
     display_.renderMenuWithDPad(items, selectedIndex);
   } else if (navMode_ == NavMode::Swipe) {
     applyReaderUiOrientation();
+    // Same stale-rect hazard as the DPad branch above, but for Swipe mode's
+    // handleGridTap() pass.
+    currentGridButtons_.clear();
+    currentGridItemIndices_.clear();
     display_.renderMenuScroll(items, selectedIndex);
   } else {
     renderItemGrid(title, items, selectedIndex, headerRows);
@@ -3595,6 +3752,8 @@ void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem
   }
 
   applyReaderUiOrientation();
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
   if (navMode_ == NavMode::DPad) {
     display_.renderMenuWithDPad(titles, selectedIndex);
   } else {
@@ -3764,6 +3923,13 @@ bool isDestructiveGridLabel(const String &label) {
 }  // namespace
 
 bool App::handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs) {
+  if (lastGridPageChangeAtMs_ != 0 &&
+      nowMs - lastGridPageChangeAtMs_ < kGridPageChangeInputBlackoutMs) {
+    // See kGridPageChangeInputBlackoutMs — swallow taps that land right
+    // after a page-turn swipe instead of hitting whatever button the
+    // finger settled on.
+    return true;
+  }
   for (size_t i = 0; i < currentGridButtons_.size(); ++i) {
     const DisplayManager::Button &button = currentGridButtons_[i];
     if (button.width <= 2 || button.height <= 2) {
@@ -3772,8 +3938,25 @@ bool App::handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs) {
     if (button.kind == DisplayManager::Button::ButtonKind::Separator) {
       continue;
     }
-    if (x < button.x || x >= button.x + button.width || y < button.y ||
-        y >= button.y + button.height) {
+
+    // Back keeps its small visible rect (see applyBackButtonCornerLayout())
+    // but hit-tests against a wider zone on deep screens — see
+    // isDeepMenuScreen(). Height growth is capped well below kAreaY=32 (the
+    // first grid tile's top edge) so a wider Back zone still can't steal a
+    // tap meant for that tile.
+    uint16_t hitX = button.x;
+    uint16_t hitY = button.y;
+    uint16_t hitW = button.width;
+    uint16_t hitH = button.height;
+    if (button.icon == ui::IconId::Back) {
+      uint16_t zoneW = 0;
+      uint16_t zoneH = 0;
+      backCornerHitZone(zoneW, zoneH);
+      hitW = std::max(hitW, zoneW);
+      hitH = std::max(hitH, std::min(zoneH, static_cast<uint16_t>(30)));
+    }
+
+    if (x < hitX || x >= hitX + hitW || y < hitY || y >= hitY + hitH) {
       continue;
     }
 
@@ -3838,7 +4021,6 @@ bool App::handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs) {
 }
 
 bool App::handleGridPageSwipe(int deltaX, int deltaY, uint32_t nowMs) {
-  (void)nowMs;
   // Uses gridPageCount_/gridItemsPerPage_/gridHasBack_/gridHeaderRows_,
   // cached by the renderItemGrid*() call that last drew the screen — NOT
   // recomputed from the raw item count here, which used to include the
@@ -3874,6 +4056,9 @@ bool App::handleGridPageSwipe(int deltaX, int deltaY, uint32_t nowMs) {
   } else {
     page = (page > 0) ? page - 1 : 0;
   }
+  if (page != gridPage_) {
+    lastGridPageChangeAtMs_ = nowMs;
+  }
   const size_t newTileSelected = menuScreen_ == MenuScreen::SavePointsList
                                       ? savePointsTileStartForPage(page)
                                       : page * gridItemsPerPage_;
@@ -3883,6 +4068,13 @@ bool App::handleGridPageSwipe(int deltaX, int deltaY, uint32_t nowMs) {
 }
 
 void App::selectMenuItem(uint32_t nowMs) {
+  if (lastMenuActionAtMs_ != 0 && nowMs - lastMenuActionAtMs_ < kMenuActionDebounceMs) {
+    // Swallow a commit that lands right after the previous one — see
+    // kMenuActionDebounceMs.
+    return;
+  }
+  lastMenuActionAtMs_ = nowMs;
+
   if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
     // Cały ekran = jeden przycisk "dalej". Bez tego wejścia potwierdzenie
     // z D-Pada/przycisku wpadłoby w switch menu głównego i wyrzuciło
@@ -6493,6 +6685,7 @@ String App::typographyTuningValueLabel() const {
 
 void App::openBookPicker(bool articlesOnly) {
   storage_.refreshBooks();
+  restoreArchivedSavePointsForReturnedBooks();
   bookMenuItems_.clear();
   bookPickerBookIndices_.clear();
   bookMenuItems_.push_back({uiText(UiText::Back), ""});
@@ -6784,6 +6977,11 @@ void App::executeDeleteBook(uint32_t nowMs) {
     preferences_.remove(recentKey.c_str());
   }
 
+  // Explicit save points (bookmarks) are a separate feature from reading
+  // position above — move any pointing at this book into the hidden SD
+  // trash instead of leaving them stuck in the visible list.
+  archiveSavePointsForDeletedBook(bookPath);
+
   // If we're deleting the currently loaded book, close it FIRST so the file
   // handle is released before we attempt to remove the file from SD.
   // Note: for EPUBs, currentBookPath_ points to the converted .rsvp while
@@ -6868,6 +7066,118 @@ void App::persistSavePoints() {
     preferences_.remove((prefix + "word").c_str());
     preferences_.remove((prefix + "pct").c_str());
   }
+}
+
+namespace {
+String sanitizeSavePointTrashField(String value) {
+  value.replace("|", " ");
+  value.replace("\n", " ");
+  value.replace("\r", " ");
+  return value;
+}
+}  // namespace
+
+// A deleted book's explicit save points (bookmarks) used to stay in the
+// visible Punkty zapisu list forever, pointing at a book that no longer
+// exists. Karol chose "hidden SD trash" over a visible Archive screen: move
+// them out of the normal list into a plain-text file nobody sees, and bring
+// them back automatically if a book with the same path ever reappears in
+// the library (restoreArchivedSavePointsForReturnedBooks()) — otherwise they
+// just stay there, invisibly, instead of being destroyed outright.
+void App::archiveSavePointsForDeletedBook(const String &bookPath) {
+  loadSavePoints();
+
+  // Save points store whatever path was actually open for reading, which
+  // for an EPUB is the converted .rsvp cache, not the .epub source path
+  // passed in here (see the deletingCurrent comment a few lines below) —
+  // match either.
+  const String epubCachePath = storage_.epubCacheRsvpPath(bookPath);
+
+  std::vector<SavePoint> remaining;
+  std::vector<String> trashLines;
+  remaining.reserve(savePoints_.size());
+  for (const SavePoint &sp : savePoints_) {
+    if (sp.bookPath != bookPath && sp.bookPath != epubCachePath) {
+      remaining.push_back(sp);
+      continue;
+    }
+
+    String line = sanitizeSavePointTrashField(sp.bookPath);
+    line += "|";
+    line += sanitizeSavePointTrashField(sp.name);
+    line += "|";
+    line += sanitizeSavePointTrashField(sp.bookTitle);
+    line += "|";
+    line += String(static_cast<unsigned int>(sp.wordIndex));
+    line += "|";
+    line += String(static_cast<unsigned int>(sp.chapterIndex));
+    line += "|";
+    line += String(static_cast<unsigned int>(sp.progressPercent));
+    trashLines.push_back(line);
+  }
+
+  if (trashLines.empty()) {
+    return;
+  }
+
+  storage_.appendSavePointTrashLines(trashLines);
+  savePoints_ = remaining;
+  persistSavePoints();
+  Serial.printf("[save-point] archived %u entr%s for deleted book %s\n",
+                static_cast<unsigned int>(trashLines.size()), trashLines.size() == 1 ? "y" : "ies",
+                bookPath.c_str());
+}
+
+void App::restoreArchivedSavePointsForReturnedBooks() {
+  std::vector<String> trashLines = storage_.readSavePointTrashLines();
+  if (trashLines.empty()) {
+    return;
+  }
+
+  loadSavePoints();
+
+  std::vector<String> stillTrashed;
+  std::vector<SavePoint> restored;
+  for (const String &line : trashLines) {
+    int firstBar = line.indexOf('|');
+    int secondBar = firstBar >= 0 ? line.indexOf('|', firstBar + 1) : -1;
+    int thirdBar = secondBar >= 0 ? line.indexOf('|', secondBar + 1) : -1;
+    int fourthBar = thirdBar >= 0 ? line.indexOf('|', thirdBar + 1) : -1;
+    int fifthBar = fourthBar >= 0 ? line.indexOf('|', fourthBar + 1) : -1;
+    if (fifthBar < 0) {
+      continue;  // malformed line, drop it rather than looping on it forever
+    }
+
+    const String bookPath = line.substring(0, firstBar);
+    if (!storage_.bookExistsAtPath(bookPath)) {
+      stillTrashed.push_back(line);
+      continue;
+    }
+
+    SavePoint sp;
+    sp.bookPath = bookPath;
+    sp.name = line.substring(firstBar + 1, secondBar);
+    sp.bookTitle = line.substring(secondBar + 1, thirdBar);
+    sp.wordIndex = static_cast<size_t>(line.substring(thirdBar + 1, fourthBar).toInt());
+    sp.chapterIndex = static_cast<size_t>(line.substring(fourthBar + 1, fifthBar).toInt());
+    sp.progressPercent = static_cast<uint8_t>(line.substring(fifthBar + 1).toInt());
+    restored.push_back(sp);
+  }
+
+  if (restored.empty()) {
+    return;
+  }
+
+  for (const SavePoint &sp : restored) {
+    savePoints_.push_back(sp);
+    if (savePoints_.size() > kMaxSavePoints) {
+      savePoints_.erase(savePoints_.begin());
+    }
+  }
+  persistSavePoints();
+  storage_.writeSavePointTrashLines(stillTrashed);
+  Serial.printf("[save-point] restored %u entr%s for books back in the library\n",
+                static_cast<unsigned int>(restored.size()), restored.size() == 1 ? "y" : "ies");
 }
 
 void App::createSavePoint(uint32_t nowMs) {
@@ -7604,6 +7914,7 @@ void App::exitCompanionSync(uint32_t nowMs) {
   preferences_.begin(kPrefsNamespace, false);
   reloadRuntimePreferences(nowMs, false);
   storage_.refreshBooks();
+  restoreArchivedSavePointsForReturnedBooks();
   menuScreen_ = MenuScreen::Main;
   setState(AppState::Paused, nowMs);
 }
@@ -8744,37 +9055,60 @@ bool App::prepareBootBookLoad() {
 }
 
 void App::loadPendingBootBook(uint32_t nowMs) {
-  if (!pendingBootBookLoad_ || state_ != AppState::Paused) {
+  if (!pendingBootBookLoad_) {
+    return;
+  }
+
+  // Called from two places: updateState()'s Booting branch (while the boot
+  // splash is still on screen, right before it hands off to the reader) and
+  // the fallback check every frame thereafter for the rare case a caller
+  // reaches Paused some other way first. Only the Booting case can hide the
+  // load behind the splash — by the time we're already in Paused, something
+  // has to be on screen, so the placeholder is unavoidable there.
+  const bool bootTimeLoad = state_ == AppState::Booting;
+  if (!bootTimeLoad && state_ != AppState::Paused) {
     return;
   }
 
   pendingBootBookLoad_ = false;
-  display_.renderStatus(tr(TrKey::LoadingBook), currentBookTitle_,
-                        tr(TrKey::PleaseWait));
+  if (bootTimeLoad) {
+    suppressBootStorageStatusRender_ = true;
+  } else {
+    display_.renderStatus(tr(TrKey::LoadingBook), currentBookTitle_,
+                          tr(TrKey::PleaseWait));
+  }
+
   const uint32_t startedMs = millis();
   const bool allowIndexBuild = pendingBootBookLegacyFallback_;
   const bool loaded = loadBookAtIndex(pendingBootBookIndex_, nowMs,
                                       pendingBootBookLegacyFallback_, allowIndexBuild, false,
                                       false);
+  suppressBootStorageStatusRender_ = false;
   const uint32_t elapsedMs = millis() - startedMs;
   Serial.printf("[app] deferred book load %s in %lu ms\n", loaded ? "ok" : "failed",
                 static_cast<unsigned long>(elapsedMs));
 
   if (loaded) {
     usingStorageBook_ = true;
-    renderActiveReader(millis());
-    return;
+  } else {
+    usingStorageBook_ = false;
+    chapterMarkers_.clear();
+    paragraphStarts_.clear();
+    currentBookPath_ = "";
+    currentBookTitle_ = "Demo";
+    reader_.begin(millis());
+    invalidateContextPreviewWindow();
+    Serial.println("[app] using built-in demo text");
   }
 
-  usingStorageBook_ = false;
-  chapterMarkers_.clear();
-  paragraphStarts_.clear();
-  currentBookPath_ = "";
-  currentBookTitle_ = "Demo";
-  reader_.begin(millis());
-  invalidateContextPreviewWindow();
-  Serial.println("[app] using built-in demo text");
-  renderActiveReader(millis());
+  // At boot, the caller (updateState()) still has to run setState(Paused/
+  // Playing) right after this returns — that call renders the real reader
+  // screen once, so the splash is replaced exactly once and never by a
+  // placeholder. Outside of boot, this function is the end of the line, so
+  // it has to render itself.
+  if (!bootTimeLoad) {
+    renderActiveReader(millis());
+  }
 }
 
 void App::saveReadingPosition(bool force) {
@@ -9157,10 +9491,27 @@ void App::renderTypographyTuning() {
     line2 = uiText(UiText::TapToReset);
   }
 
+  // Maps the currently-selected tuning item to which dial/corner the
+  // preview screen should highlight — see
+  // DisplayManager::renderTypographyPreview()'s selectedDial param.
+  // -1 = none of the four dials or the two corner actions (FontSize,
+  // Typeface, PhantomWords, FocusHighlight still get their feedback via
+  // line1/line2 above, same as before).
+  int selectedDial = -1;
+  switch (typographyTuningSelectedIndex_) {
+    case TypographyTuningBack: selectedDial = -2; break;
+    case TypographyTuningTracking: selectedDial = 0; break;
+    case TypographyTuningAnchor: selectedDial = 1; break;
+    case TypographyTuningGuideWidth: selectedDial = 2; break;
+    case TypographyTuningGuideGap: selectedDial = 3; break;
+    case TypographyTuningReset: selectedDial = -3; break;
+    default: break;
+  }
+
   display_.renderTypographyPreview(beforeText,
                                    kTypographyPreviewWords[index],
                                    afterText,
-                                   readerFontSizeIndex_, title, line1, line2);
+                                   readerFontSizeIndex_, title, line1, line2, selectedDial);
 }
 
 void App::renderBookPicker() {
@@ -10093,6 +10444,9 @@ void App::renderWpmFeedback(uint32_t nowMs) {
 
 void App::renderStorageStatus(const char *title, const char *line1, const char *line2,
                               int progressPercent) {
+  if (suppressBootStorageStatusRender_) {
+    return;
+  }
   applyReaderUiOrientation();
   display_.renderProgress(title == nullptr ? "SD" : title, line1 == nullptr ? "" : line1,
                           line2 == nullptr ? "" : line2, progressPercent);
