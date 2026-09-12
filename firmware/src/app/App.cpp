@@ -1139,7 +1139,11 @@ void App::update(uint32_t nowMs) {
   pollOtaCheckResult(nowMs);
   updateState(nowMs);
   loadPendingBootBook(nowMs);
-  maybeOpenUpdateConfirm(nowMs);
+  // Deliberately not auto-opening UpdateConfirm here: an update found mid-read
+  // used to yank the user out of Playing/Paused into a blocking Update/Skip
+  // screen. pollOtaCheckResult() already surfaces it as a ">> Update vX.Y.Z"
+  // row at the top of the main menu (see selectMenuItem()'s otaUpdatePromptPending_
+  // handling) — informing without interrupting whatever the user is doing.
 
   updateReader(nowMs);
   handleTouch(nowMs);
@@ -9491,27 +9495,10 @@ void App::renderTypographyTuning() {
     line2 = uiText(UiText::TapToReset);
   }
 
-  // Maps the currently-selected tuning item to which dial/corner the
-  // preview screen should highlight — see
-  // DisplayManager::renderTypographyPreview()'s selectedDial param.
-  // -1 = none of the four dials or the two corner actions (FontSize,
-  // Typeface, PhantomWords, FocusHighlight still get their feedback via
-  // line1/line2 above, same as before).
-  int selectedDial = -1;
-  switch (typographyTuningSelectedIndex_) {
-    case TypographyTuningBack: selectedDial = -2; break;
-    case TypographyTuningTracking: selectedDial = 0; break;
-    case TypographyTuningAnchor: selectedDial = 1; break;
-    case TypographyTuningGuideWidth: selectedDial = 2; break;
-    case TypographyTuningGuideGap: selectedDial = 3; break;
-    case TypographyTuningReset: selectedDial = -3; break;
-    default: break;
-  }
-
   display_.renderTypographyPreview(beforeText,
                                    kTypographyPreviewWords[index],
                                    afterText,
-                                   readerFontSizeIndex_, title, line1, line2, selectedDial);
+                                   readerFontSizeIndex_, title, line1, line2);
 }
 
 void App::renderBookPicker() {

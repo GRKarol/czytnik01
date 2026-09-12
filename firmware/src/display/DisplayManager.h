@@ -163,8 +163,7 @@ class DisplayManager {
                                     ReaderChrome chrome = ReaderChrome());
   void renderTypographyPreview(const String &beforeText, const String &word, const String &afterText,
                                uint8_t fontSizeLevel, const String &title,
-                               const String &line1 = "", const String &line2 = "",
-                               int selectedDial = -1);
+                               const String &line1 = "", const String &line2 = "");
   void renderScrollView(const std::vector<ContextWord> &words, uint32_t contentToken,
                         size_t windowStartIndex, size_t currentWordIndex,
                         uint16_t scrollProgressPermille = 0, const String &chapterLabel = "",
@@ -249,14 +248,6 @@ class DisplayManager {
   void drawSerifGlyphScaledPercent(int x, int y, char c, uint16_t color, uint8_t scalePercent,
                                    ReaderTypeface typeface);
   void fillVirtualRect(int x, int y, int width, int height, uint16_t color);
-  void fillVirtualCircle(int cx, int cy, int radius, uint16_t color);
-  // One of the TypographyTuning screen's four small clock-face gauges
-  // (Tracking/Anchor/Width/Gap) — a ring of tick dots around (cx,cy) with
-  // `valueRatio` (0..1) of them lit, a filled center disc, and the numeric
-  // value plus label drawn inside/below it. `active` is the dial matching
-  // the currently-selected tuning item (see App::typographyTuningSelectedIndex_).
-  void drawTypographyDial(int cx, int cy, int radius, float valueRatio, const String &valueText,
-                          const String &label, bool active);
   void drawSerifTextAt(const String &text, int x, int y, uint16_t color, int divisor);
   void drawSerif70TextAt(const String &text, int x, int y, uint16_t color);
   void drawSerifTextScaledAt(const String &text, int x, int y, uint16_t color,
