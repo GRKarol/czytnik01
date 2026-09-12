@@ -4,6 +4,13 @@
 #include <Arduino.h>
 #include <SD_MMC.h>
 #include <Wire.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_heap_caps.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -321,6 +328,11 @@ static int bridgeLogicalHeight() {
     return BoardConfig::DISPLAY_HEIGHT;
 }
 
+static int bridgeRenderArticleReader(const char* title, const char* body, int scrollLine) {
+    if (!sDisplay) return 0;
+    return sDisplay->renderArticleReader(title ? title : "", body ? body : "", scrollLine);
+}
+
 // ─── Audio Service Wrappers ─────────────────────────────────────────────────
 
 static bool bridgeAudioBeep() {
@@ -579,6 +591,242 @@ static bool bridgeStorageMkdir(const char* relativePath) {
     return SD_MMC.mkdir(fullPath);
 }
 
+// ─── Network Service Wrappers ───────────────────────────────────────────────
+//
+// A plugin (RssPlugin) runs its own FreeRTOS task under PluginLoader's 8s
+// watchdog (kDefaultWatchdogTimeoutMs), which is fed from that same task's
+// update()/draw() calls at ~30fps — a synchronous HTTPClient::GET() on a
+// slow feed can easily exceed that. So the actual WiFi connect + HTTP GET
+// runs on its own task here, entirely decoupled from the plugin task; the
+// plugin only ever polls bridgeNetworkFetchStatus() from its own update().
+//
+// Same NVS namespace/keys App.cpp's WiFi settings screen already uses
+// (kPrefsNamespace="rsvp", kPrefWifiSsid="wifi_ssid", kPrefWifiPass=
+// "wifi_pass") — Preferences supports multiple independent read handles on
+// the same namespace, so this doesn't need App to hand anything over.
+namespace {
+
+constexpr const char* kWifiPrefsNamespace = "rsvp";
+constexpr const char* kWifiPrefSsidKey = "wifi_ssid";
+constexpr const char* kWifiPrefPassKey = "wifi_pass";
+constexpr uint32_t kNetworkWifiConnectTimeoutMs = 15000;
+constexpr uint32_t kNetworkFetchTimeoutMs = 15000;
+constexpr size_t kNetworkMaxFetchBytes = 98304;  // 96KB — plenty for an RSS/Atom feed body
+constexpr uint32_t kNetworkTaskStackSize = 8192;
+constexpr UBaseType_t kNetworkTaskPriority = 1;
+
+volatile PluginNetworkStatus sNetworkStatus = PLUGIN_NETWORK_IDLE;
+volatile bool sNetworkCancelRequested = false;
+TaskHandle_t sNetworkTaskHandle = nullptr;
+char* sNetworkResultBody = nullptr;
+uint32_t sNetworkResultLength = 0;
+char sNetworkErrorMessage[96] = "";
+
+bool loadSavedWifiCredentials(String& ssid, String& password) {
+    Preferences prefs;
+    if (!prefs.begin(kWifiPrefsNamespace, /*readOnly=*/true)) return false;
+    ssid = prefs.getString(kWifiPrefSsidKey, "");
+    password = prefs.getString(kWifiPrefPassKey, "");
+    prefs.end();
+    return !ssid.isEmpty();
+}
+
+void freeNetworkResultBuffer() {
+    if (sNetworkResultBody) {
+        free(sNetworkResultBody);
+        sNetworkResultBody = nullptr;
+    }
+    sNetworkResultLength = 0;
+}
+
+void networkFetchTaskFn(void* param) {
+    char* url = static_cast<char*>(param);
+
+    freeNetworkResultBuffer();
+    sNetworkErrorMessage[0] = '\0';
+    sNetworkStatus = PLUGIN_NETWORK_CONNECTING;
+
+    if (WiFi.status() != WL_CONNECTED) {
+        String ssid, password;
+        if (!loadSavedWifiCredentials(ssid, password)) {
+            snprintf(sNetworkErrorMessage, sizeof(sNetworkErrorMessage), "No saved WiFi network");
+            sNetworkStatus = PLUGIN_NETWORK_ERROR;
+            free(url);
+            sNetworkTaskHandle = nullptr;
+            vTaskDelete(nullptr);
+            return;
+        }
+
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(ssid.c_str(), password.c_str());
+        const uint32_t startMs = millis();
+        while (WiFi.status() != WL_CONNECTED &&
+               millis() - startMs < kNetworkWifiConnectTimeoutMs) {
+            if (sNetworkCancelRequested) {
+                sNetworkStatus = PLUGIN_NETWORK_IDLE;
+                free(url);
+                sNetworkTaskHandle = nullptr;
+                vTaskDelete(nullptr);
+                return;
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+
+        if (WiFi.status() != WL_CONNECTED) {
+            snprintf(sNetworkErrorMessage, sizeof(sNetworkErrorMessage), "WiFi connect failed");
+            sNetworkStatus = PLUGIN_NETWORK_ERROR;
+            free(url);
+            sNetworkTaskHandle = nullptr;
+            vTaskDelete(nullptr);
+            return;
+        }
+    }
+
+    if (sNetworkCancelRequested) {
+        sNetworkStatus = PLUGIN_NETWORK_IDLE;
+        free(url);
+        sNetworkTaskHandle = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    sNetworkStatus = PLUGIN_NETWORK_FETCHING;
+
+    const bool isHttps = strncmp(url, "https://", 8) == 0;
+    WiFiClientSecure secureClient;
+    WiFiClient plainClient;
+    if (isHttps) {
+        secureClient.setInsecure();
+        secureClient.setHandshakeTimeout(15);
+    }
+
+    HTTPClient http;
+    http.setTimeout(kNetworkFetchTimeoutMs);
+    http.setUserAgent("czytnik01-rss/1.0");
+    const bool began = isHttps ? http.begin(secureClient, url) : http.begin(plainClient, url);
+    if (!began) {
+        snprintf(sNetworkErrorMessage, sizeof(sNetworkErrorMessage), "Invalid feed URL");
+        sNetworkStatus = PLUGIN_NETWORK_ERROR;
+        free(url);
+        sNetworkTaskHandle = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+    free(url);
+    url = nullptr;
+
+    const int statusCode = http.GET();
+    if (statusCode != HTTP_CODE_OK) {
+        snprintf(sNetworkErrorMessage, sizeof(sNetworkErrorMessage), "HTTP %d", statusCode);
+        http.end();
+        sNetworkStatus = PLUGIN_NETWORK_ERROR;
+        sNetworkTaskHandle = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    char* buffer = static_cast<char*>(heap_caps_malloc(kNetworkMaxFetchBytes + 1, MALLOC_CAP_SPIRAM));
+    if (!buffer) {
+        buffer = static_cast<char*>(malloc(kNetworkMaxFetchBytes + 1));
+    }
+    if (!buffer) {
+        snprintf(sNetworkErrorMessage, sizeof(sNetworkErrorMessage), "Out of memory");
+        http.end();
+        sNetworkStatus = PLUGIN_NETWORK_ERROR;
+        sNetworkTaskHandle = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    WiFiClient* stream = http.getStreamPtr();
+    size_t written = 0;
+    uint32_t lastDataMs = millis();
+    while (http.connected() && written < kNetworkMaxFetchBytes) {
+        if (sNetworkCancelRequested) {
+            free(buffer);
+            http.end();
+            sNetworkStatus = PLUGIN_NETWORK_IDLE;
+            sNetworkTaskHandle = nullptr;
+            vTaskDelete(nullptr);
+            return;
+        }
+        const size_t available = stream->available();
+        if (available == 0) {
+            if (millis() - lastDataMs > kNetworkFetchTimeoutMs) break;
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+        size_t toRead = available;
+        if (toRead > kNetworkMaxFetchBytes - written) toRead = kNetworkMaxFetchBytes - written;
+        const int readNow = stream->readBytes(buffer + written, toRead);
+        if (readNow > 0) {
+            written += static_cast<size_t>(readNow);
+            lastDataMs = millis();
+        }
+    }
+    buffer[written] = '\0';
+    http.end();
+
+    sNetworkResultBody = buffer;
+    sNetworkResultLength = static_cast<uint32_t>(written);
+    sNetworkStatus = PLUGIN_NETWORK_DONE;
+    sNetworkTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+}  // namespace
+
+static bool bridgeNetworkHasSavedNetwork() {
+    String ssid, password;
+    return loadSavedWifiCredentials(ssid, password);
+}
+
+static bool bridgeNetworkStartFetch(const char* url) {
+    if (!url || url[0] == '\0') return false;
+    if (sNetworkTaskHandle != nullptr) return false;  // already busy
+
+    char* urlCopy = strdup(url);
+    if (!urlCopy) return false;
+
+    sNetworkCancelRequested = false;
+    sNetworkStatus = PLUGIN_NETWORK_CONNECTING;
+
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        networkFetchTaskFn, "rss-fetch", kNetworkTaskStackSize, urlCopy, kNetworkTaskPriority,
+        &sNetworkTaskHandle, 0);
+    if (created != pdPASS) {
+        free(urlCopy);
+        sNetworkStatus = PLUGIN_NETWORK_IDLE;
+        sNetworkTaskHandle = nullptr;
+        return false;
+    }
+    return true;
+}
+
+static PluginNetworkStatus bridgeNetworkFetchStatus() {
+    return sNetworkStatus;
+}
+
+static const char* bridgeNetworkFetchResultBody() {
+    return sNetworkResultBody ? sNetworkResultBody : "";
+}
+
+static uint32_t bridgeNetworkFetchResultLength() {
+    return sNetworkResultLength;
+}
+
+static const char* bridgeNetworkFetchErrorMessage() {
+    return sNetworkErrorMessage;
+}
+
+static void bridgeNetworkCancelFetch() {
+    sNetworkCancelRequested = true;
+    if (sNetworkTaskHandle == nullptr) {
+        sNetworkStatus = PLUGIN_NETWORK_IDLE;
+        freeNetworkResultBuffer();
+    }
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 void DeviceServicesBridge::setup(const char* pluginId,
@@ -590,7 +838,8 @@ void DeviceServicesBridge::setup(const char* pluginId,
                                   PluginAudioService* audioService,
                                   PluginImuService* imuService,
                                   PluginStorageService* storageService,
-                                  PluginOrientationService* orientationService) {
+                                  PluginOrientationService* orientationService,
+                                  PluginNetworkService* networkService) {
     // Store manager pointers for static wrappers
     sDisplay = display;
     sAudio = audio;
@@ -611,6 +860,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
         displayService->renderDeletableList = bridgeRenderDeletableList;
         displayService->renderPlaybackControls = bridgeRenderPlaybackControls;
         displayService->languageIndex = bridgeLanguageIndex;
+        displayService->renderArticleReader = bridgeRenderArticleReader;
     }
 
     // Populate audio service function pointers
@@ -657,6 +907,17 @@ void DeviceServicesBridge::setup(const char* pluginId,
         orientationService->setUiOrientation = bridgeSetUiOrientation;
     }
 
+    // Populate network service function pointers
+    if (networkService) {
+        networkService->hasSavedNetwork = bridgeNetworkHasSavedNetwork;
+        networkService->startFetch = bridgeNetworkStartFetch;
+        networkService->fetchStatus = bridgeNetworkFetchStatus;
+        networkService->fetchResultBody = bridgeNetworkFetchResultBody;
+        networkService->fetchResultLength = bridgeNetworkFetchResultLength;
+        networkService->fetchErrorMessage = bridgeNetworkFetchErrorMessage;
+        networkService->cancelFetch = bridgeNetworkCancelFetch;
+    }
+
     ESP_LOGI(TAG, "Device services bridge set up for plugin '%s'", pluginId ? pluginId : "");
 }
 
@@ -665,6 +926,13 @@ void DeviceServicesBridge::teardown() {
     sAudio = nullptr;
     sRecorder = nullptr;
     sStorageRoot = "";
+
+    // A plugin unload doesn't wait for an in-flight fetch task to finish on
+    // its own — cancel it so it doesn't keep running (and touching sDisplay-
+    // adjacent statics) after the plugin that started it is gone. Mirrors
+    // DictaphoneCore::shutdown() stopping an orphaned AudioRecorder for the
+    // same reason.
+    bridgeNetworkCancelFetch();
 
     ESP_LOGI(TAG, "Device services bridge torn down");
 }

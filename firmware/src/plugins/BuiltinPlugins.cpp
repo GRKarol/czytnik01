@@ -3,10 +3,11 @@
 #include "plugins/builtin/PlaceholderPlugins.h"
 #include "plugins/builtin/DictaphonePlugin.h"
 #include "plugins/builtin/FocusTimerPlugin.h"
+#include "plugins/builtin/RssPlugin.h"
 
 #include <string.h>
 
-// Dictaphone and Focus Timer are real plugins rebuilt on top of the
+// Dictaphone, Focus Timer and RSS are real plugins rebuilt on top of the
 // Aktywne/Biblioteka redesign. The rest are still placeholder entries so
 // the screens can be reviewed with real enable/disable state before more
 // real plugins exist.
@@ -19,6 +20,10 @@ static const BuiltinPlugin kBuiltinPlugins[] = {
      "Sesje skupienia sterowane odwracaniem urzadzenia — postaw na "
      "krotszym boku, by zaczac, poloz plasko, by zapauzowac.",
      FocusTimerPlugin::vtable()},
+    {"rss", "RSS",
+     "Dodaj adresy kanalow RSS/Atom, pobierz je przez WiFi i czytaj "
+     "artykuly na urzadzeniu.",
+     RssPlugin::vtable()},
     {"night-reading", "Tryb nocnego czytania",
      "Automatycznie przyciemnia ekran i wlacza cieplejszy odcien po zachodzie slonca.",
      PlaceholderPlugins::nightReading()},

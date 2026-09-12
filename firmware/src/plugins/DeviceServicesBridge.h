@@ -6,6 +6,7 @@
 #include "plugins/sdk/PluginImuService.h"
 #include "plugins/sdk/PluginStorageService.h"
 #include "plugins/sdk/PluginOrientationService.h"
+#include "plugins/sdk/PluginNetworkService.h"
 
 class DisplayManager;
 class AudioManager;
@@ -36,6 +37,7 @@ namespace DeviceServicesBridge {
 /// @param imuService      Struct to populate with IMU function pointers
 /// @param storageService  Struct to populate with storage function pointers
 /// @param orientationService Struct to populate with orientation function pointers
+/// @param networkService  Struct to populate with network (WiFi/HTTP) function pointers
 void setup(const char* pluginId,
            const char* storageRoot,
            DisplayManager* display,
@@ -45,7 +47,8 @@ void setup(const char* pluginId,
            PluginAudioService* audioService,
            PluginImuService* imuService,
            PluginStorageService* storageService,
-           PluginOrientationService* orientationService);
+           PluginOrientationService* orientationService,
+           PluginNetworkService* networkService);
 
 /// Release bridge resources and null-out static pointers.
 void teardown();

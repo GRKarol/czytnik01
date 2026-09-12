@@ -17,6 +17,7 @@ typedef struct PluginAudioService PluginAudioService;
 typedef struct PluginImuService PluginImuService;
 typedef struct PluginStorageService PluginStorageService;
 typedef struct PluginOrientationService PluginOrientationService;
+typedef struct PluginNetworkService PluginNetworkService;
 
 // Result codes
 typedef enum {
@@ -55,6 +56,7 @@ typedef struct {
     PluginImuService* imu;
     PluginStorageService* storage;
     PluginOrientationService* orientation;
+    PluginNetworkService* network;
     uint32_t firmwareVersion;
 } PluginContext;
 

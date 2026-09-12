@@ -67,6 +67,15 @@ typedef struct PluginDisplayService {
     /// Plugins that show their own text (not routed through the display
     /// bridge's built-in labels) call this to pick the right string.
     int (*languageIndex)(void);
+
+    /// Scrollable reader for a long block of plain text (e.g. an RSS
+    /// article body): `title` is drawn as a header line, `body` is word-
+    /// wrapped to the display width and rendered starting at `scrollLine`
+    /// (0 = top). Returns the total number of wrapped lines the body
+    /// occupies, so the caller can clamp scrollLine without duplicating
+    /// the wrap math — pass 0 and read the return value once to find out
+    /// how far it can scroll.
+    int (*renderArticleReader)(const char* title, const char* body, int scrollLine);
 } PluginDisplayService;
 
 #ifdef __cplusplus

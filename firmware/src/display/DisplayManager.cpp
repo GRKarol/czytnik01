@@ -4528,3 +4528,145 @@ void DisplayManager::renderFocusTimerScreen(const String &mode, const String &ge
   drawBatteryBadge(virtualWidth, virtualHeight);
   flushScaledFrame(1, virtualWidth, virtualHeight);
 }
+
+int DisplayManager::renderArticleReader(const String &title, const String &body, int scrollLine) {
+  const int virtualWidth = kDisplayWidth;
+  const int virtualHeight = kDisplayHeight;
+  constexpr int kMarginX = 8;
+  constexpr int kScrollbarWidth = 6;
+  constexpr int kContentTop = 24;
+  constexpr int kBodyScale = kTinyScale;
+  const int lineHeight = (kTinyGlyphHeight * kBodyScale) + 4;
+  const int maxTextWidth = virtualWidth - (kMarginX * 2) - kScrollbarWidth;
+
+  // Wrapping is comparatively expensive (String concatenation per word) and
+  // this is called every draw() tick even while the scroll position hasn't
+  // moved — cache it on the raw title+body so scrolling only redraws, it
+  // doesn't re-wrap. Same wrap algorithm as renderFocusTimerScreen's
+  // wrapTinyLines(), just without the hard center-alignment it does for a
+  // short instruction line.
+  const String sourceKey = title + "\x1f" + body;
+  if (sourceKey != articleReaderSourceCache_) {
+    articleReaderSourceCache_ = sourceKey;
+    std::vector<String> &lines = articleReaderLinesCache_;
+    lines.clear();
+
+    auto fits = [&](const String &candidate) {
+      return measureTinyTextWidth(candidate, kBodyScale) <= maxTextWidth;
+    };
+
+    auto appendBrokenWord = [&](const String &word, String &currentLine) {
+      String segment;
+      for (size_t i = 0; i < word.length(); ++i) {
+        const String candidate = segment + word[i];
+        if (!segment.isEmpty() && !fits(candidate)) {
+          if (!currentLine.isEmpty()) {
+            lines.push_back(currentLine);
+            currentLine = "";
+          }
+          lines.push_back(segment);
+          segment = String(word[i]);
+        } else {
+          segment = candidate;
+        }
+      }
+      if (!segment.isEmpty()) {
+        currentLine = segment;
+      }
+    };
+
+    String currentLine;
+    size_t index = 0;
+    while (index < body.length()) {
+      while (index < body.length() && body[index] == ' ') {
+        ++index;
+      }
+      if (index >= body.length()) {
+        break;
+      }
+
+      if (body[index] == '\n') {
+        lines.push_back(currentLine);
+        currentLine = "";
+        ++index;
+        continue;
+      }
+
+      const size_t start = index;
+      while (index < body.length() && body[index] != ' ' && body[index] != '\n') {
+        ++index;
+      }
+      const String word = body.substring(start, index);
+      if (currentLine.isEmpty()) {
+        if (fits(word)) {
+          currentLine = word;
+        } else {
+          appendBrokenWord(word, currentLine);
+        }
+        continue;
+      }
+
+      const String candidate = currentLine + " " + word;
+      if (fits(candidate)) {
+        currentLine = candidate;
+      } else {
+        lines.push_back(currentLine);
+        currentLine = "";
+        if (fits(word)) {
+          currentLine = word;
+        } else {
+          appendBrokenWord(word, currentLine);
+        }
+      }
+    }
+    if (!currentLine.isEmpty()) {
+      lines.push_back(currentLine);
+    }
+  }
+
+  const std::vector<String> &lines = articleReaderLinesCache_;
+  const int totalLines = static_cast<int>(lines.size());
+  const int visibleLines = std::max(1, (virtualHeight - kContentTop) / lineHeight);
+  const int maxScroll = std::max(0, totalLines - visibleLines);
+  int clampedScroll = std::max(0, std::min(scrollLine, maxScroll));
+
+  String renderKey = "article|";
+  renderKey += sourceKey;
+  renderKey += "|s:";
+  renderKey += String(clampedScroll);
+  renderKey += "|b:";
+  renderKey += batteryLabel_;
+  renderKey += "|d:";
+  renderKey += String(darkMode_ ? 1 : 0);
+
+  if (!initialized_ || renderKey == lastRenderKey_) {
+    return totalLines;
+  }
+  lastRenderKey_ = renderKey;
+
+  clearVirtualBuffer(virtualWidth, virtualHeight);
+  drawIcon(ui::IconId::Back, 4, 4, 16, dimColor());
+  drawTinyTextAt(fitTinyText(title, virtualWidth - 24 - kScrollbarWidth - kMarginX, kTinyScale), 24, 4,
+                wordColor(), kTinyScale);
+
+  int y = kContentTop;
+  for (int i = 0; i < visibleLines && (clampedScroll + i) < totalLines; ++i) {
+    const String &line = lines[clampedScroll + i];
+    if (!line.isEmpty()) {
+      drawTinyTextAt(line, kMarginX, y, dimColor(), kBodyScale);
+    }
+    y += lineHeight;
+  }
+
+  if (totalLines > visibleLines) {
+    const int trackX = virtualWidth - kScrollbarWidth;
+    const int trackH = virtualHeight - kContentTop;
+    const int thumbH = std::max(8, trackH * visibleLines / totalLines);
+    const int thumbY = kContentTop + ((trackH - thumbH) * clampedScroll) / std::max(1, maxScroll);
+    fillVirtualRect(trackX, thumbY, kScrollbarWidth, thumbH, focusColor());
+  }
+
+  drawBatteryBadge(virtualWidth, virtualHeight);
+  flushScaledFrame(1, virtualWidth, virtualHeight);
+  return totalLines;
+}

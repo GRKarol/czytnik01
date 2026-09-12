@@ -1,0 +1,9 @@
+{
+  "id": "rss",
+  "name": "RSS",
+  "version": "1.0.0",
+  "author": "GRKarol",
+  "sdk_version": 1,
+  "description": "Add RSS/Atom feed URLs, fetch them over WiFi, and read articles on the device",
+  "permissions": ["network", "display", "storage"]
+}

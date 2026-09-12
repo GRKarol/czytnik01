@@ -288,13 +288,15 @@ void PluginLoader::setupDeviceServices(const char* pluginId) {
         &audioService_,
         &imuService_,
         &storageService_,
-        &orientationService_);
+        &orientationService_,
+        &networkService_);
 
     context_.display = &displayService_;
     context_.audio = &audioService_;
     context_.imu = &imuService_;
     context_.storage = &storageService_;
     context_.orientation = &orientationService_;
+    context_.network = &networkService_;
     context_.firmwareVersion = 1;
 }
 

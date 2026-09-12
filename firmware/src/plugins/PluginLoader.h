@@ -13,6 +13,7 @@
 #include "plugins/sdk/PluginImuService.h"
 #include "plugins/sdk/PluginStorageService.h"
 #include "plugins/sdk/PluginOrientationService.h"
+#include "plugins/sdk/PluginNetworkService.h"
 
 class DisplayManager;
 class AudioManager;
@@ -132,6 +133,7 @@ class PluginLoader {
     PluginImuService imuService_ = {};
     PluginStorageService storageService_ = {};
     PluginOrientationService orientationService_ = {};
+    PluginNetworkService networkService_ = {};
 
     // FreeRTOS task
     TaskHandle_t pluginTask_ = nullptr;

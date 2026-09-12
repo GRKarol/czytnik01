@@ -207,6 +207,13 @@ class DisplayManager {
                               const String &instruction, const String &footer = "",
                               int progressPercent = -1, bool breakAccent = false);
 
+  // Word-wraps `body` to the display width and draws the page starting at
+  // `scrollLine` (0 = top), with `title` as a header line and a scroll
+  // indicator on the right edge. Returns the total wrapped line count so a
+  // caller (e.g. a plugin) can clamp scrollLine without redoing the wrap
+  // math itself — see PluginDisplayService::renderArticleReader.
+  int renderArticleReader(const String &title, const String &body, int scrollLine);
+
  private:
   bool initPanel();
   bool allocateBuffers();
@@ -308,6 +315,13 @@ class DisplayManager {
   bool tickerPlaybackFrameActive_ = false;
   String lastRenderKey_;
   String batteryLabel_;
+  // Word-wrap is comparatively expensive (String concatenation in a loop)
+  // and renderArticleReader() must return the fresh total-line count on
+  // every call (even when lastRenderKey_ skips the redraw), so the wrap
+  // itself is cached separately keyed on the raw title+body, not on the
+  // scroll position.
+  String articleReaderSourceCache_;
+  std::vector<String> articleReaderLinesCache_;
   uint8_t scrollFontSize_ = 4;
   uint8_t scrollLineSpacing_ = 1;
   uint8_t scrollMargin_ = 1;
