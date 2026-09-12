@@ -2534,15 +2534,19 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
   drawTinyTextCentered(fitTinyText(title, maxLabelWidth - 160, kTinyScale), titleY, wordColor(),
                        kTinyScale);
 
+  // Dial cluster claims the right 172px of the canvas — the word preview
+  // below must be laid out within what's left (previewWidth), not the full
+  // virtualWidth, or long words/phantom neighbors draw straight through the
+  // dials (this used to happen: anchor/current-word math ignored the dial
+  // column entirely).
+  const int dialAreaX0 = virtualWidth - 172;
+  const int previewWidth = dialAreaX0 - 16;
+
   // Four clock-face dials (Tracking/Anchor/Width/Gap) clustered on the
   // right edge — always all visible, unlike line1 below which only ever
-  // showed whichever one setting was currently selected. The word preview
-  // to their left still uses the full virtualWidth for its anchor-guide
-  // math (unchanged) so it stays a true preview of real reading layout;
-  // the dial cluster simply sits on top of that same canvas.
+  // showed whichever one setting was currently selected.
   {
     constexpr int kDialRadius = 22;
-    const int dialAreaX0 = virtualWidth - 172;
     const int col0X = dialAreaX0 + 42;
     const int col1X = dialAreaX0 + 130;
     const int row0Y = 50;
@@ -2576,8 +2580,8 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
     int textY = (textTop + textBottom - textHeight) / 2;
     textY = std::max(textTop, std::min(textY, textBottom - textHeight));
     const int focusIndex = findFocusLetterIndex(word);
-    const int currentX = rsvpStartX70(word, focusIndex, virtualWidth, false);
-    const int anchorX = (virtualWidth * currentAnchorPercent()) / 100;
+    const int currentX = rsvpStartX70(word, focusIndex, previewWidth, false);
+    const int anchorX = (previewWidth * currentAnchorPercent()) / 100;
     const TextLayoutMetrics currentLayout = serif70WordLayout(word, focusIndex);
     const uint16_t phantomColor = blendOverBackground(wordColor(), kPhantomAlphaMedium);
 
@@ -2586,14 +2590,18 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
       const TextLayoutMetrics beforeLayout = serif70WordLayout(beforeText, -1);
       const int beforeX =
           currentX + currentLayout.minX - kPhantomCurrentGapMedium - beforeLayout.maxX;
-      drawSerif70TextAt(beforeText, beforeX, textY, phantomColor);
+      if (beforeX + beforeLayout.minX >= 4) {
+        drawSerif70TextAt(beforeText, beforeX, textY, phantomColor);
+      }
     }
     drawRsvp70WordAt(word, currentX, textY, focusIndex);
     if (!afterText.isEmpty()) {
       const TextLayoutMetrics afterLayout = serif70WordLayout(afterText, -1);
       const int afterX =
           currentX + currentLayout.maxX + kPhantomCurrentGapMedium - afterLayout.minX;
-      drawSerif70TextAt(afterText, afterX, textY, phantomColor);
+      if (afterX + afterLayout.maxX <= previewWidth - 4) {
+        drawSerif70TextAt(afterText, afterX, textY, phantomColor);
+      }
     }
   } else {
     const ReaderTextStyle style = readerTextStyle(fontSizeLevel);
@@ -2603,8 +2611,8 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
     textY = std::max(textTop, std::min(textY, textBottom - textHeight));
     const int focusIndex = findFocusLetterIndex(word);
     const int currentX =
-        rsvpStartXScaledPercent(word, focusIndex, virtualWidth, style.scalePercent, false);
-    const int anchorX = (virtualWidth * currentAnchorPercent()) / 100;
+        rsvpStartXScaledPercent(word, focusIndex, previewWidth, style.scalePercent, false);
+    const int anchorX = (previewWidth * currentAnchorPercent()) / 100;
     const TextLayoutMetrics currentLayout =
         serifWordLayoutScaledPercent(word, focusIndex, style.scalePercent);
     const uint16_t phantomColor = blendOverBackground(wordColor(), style.alpha);
@@ -2614,14 +2622,18 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
       const TextLayoutMetrics beforeLayout =
           serifWordLayoutScaledPercent(beforeText, -1, style.scalePercent);
       const int beforeX = currentX + currentLayout.minX - style.currentGap - beforeLayout.maxX;
-      drawSerifTextScaledAt(beforeText, beforeX, textY, phantomColor, style.scalePercent);
+      if (beforeX + beforeLayout.minX >= 4) {
+        drawSerifTextScaledAt(beforeText, beforeX, textY, phantomColor, style.scalePercent);
+      }
     }
     drawRsvpWordScaledPercentAt(word, currentX, textY, focusIndex, style.scalePercent);
     if (!afterText.isEmpty()) {
       const TextLayoutMetrics afterLayout =
           serifWordLayoutScaledPercent(afterText, -1, style.scalePercent);
       const int afterX = currentX + currentLayout.maxX + style.currentGap - afterLayout.minX;
-      drawSerifTextScaledAt(afterText, afterX, textY, phantomColor, style.scalePercent);
+      if (afterX + afterLayout.maxX <= previewWidth - 4) {
+        drawSerifTextScaledAt(afterText, afterX, textY, phantomColor, style.scalePercent);
+      }
     }
   }
 
@@ -2633,7 +2645,9 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
     drawTinyTextCentered(fitTinyText(line2, maxLabelWidth, kTinyScale), line2Y, dimColor(),
                          kTinyScale);
   }
-  drawBatteryBadge();
+  // No battery badge here — "Reset >" already owns the top-right corner
+  // since the dial redesign, and the two used to render on top of each
+  // other.
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
