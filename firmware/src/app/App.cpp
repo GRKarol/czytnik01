@@ -3945,9 +3945,14 @@ bool App::handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs) {
 
     // Back keeps its small visible rect (see applyBackButtonCornerLayout())
     // but hit-tests against a wider zone on deep screens — see
-    // isDeepMenuScreen(). Height growth is capped well below kAreaY=32 (the
-    // first grid tile's top edge) so a wider Back zone still can't steal a
-    // tap meant for that tile.
+    // isDeepMenuScreen(). On deep screens the zone is allowed to bleed a
+    // little past kAreaY=32 (the first grid tile's top edge) on purpose:
+    // Back is pushed into currentGridButtons_ before every other tile (see
+    // applyBackButtonCornerLayout()), so this loop always reaches it first —
+    // a tap landing in that small overlap resolves to Back no matter which
+    // tile is actually drawn underneath it. Shallow screens keep the old
+    // behaviour (capped below kAreaY) since Back is a much less likely tap
+    // there.
     uint16_t hitX = button.x;
     uint16_t hitY = button.y;
     uint16_t hitW = button.width;
@@ -3956,8 +3961,12 @@ bool App::handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs) {
       uint16_t zoneW = 0;
       uint16_t zoneH = 0;
       backCornerHitZone(zoneW, zoneH);
+      constexpr uint16_t kDeepBackZoneBleedPx = 15;
+      const uint16_t hitHCap = isDeepMenuScreen()
+                                   ? static_cast<uint16_t>(32 + kDeepBackZoneBleedPx)
+                                   : static_cast<uint16_t>(30);
       hitW = std::max(hitW, zoneW);
-      hitH = std::max(hitH, std::min(zoneH, static_cast<uint16_t>(30)));
+      hitH = std::max(hitH, std::min(zoneH, hitHCap));
     }
 
     if (x < hitX || x >= hitX + hitW || y < hitY || y >= hitY + hitH) {
