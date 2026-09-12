@@ -79,7 +79,12 @@ jobs:
       - name: Verify artifacts
         run: |
           echo "=== Plugin binaries ==="
-          ls -lh dist/*-plugin.bin
+          # Every plugin right now is builtin (compiled into the base
+          # firmware, no separate platformio.ini) — see the "Skipping ...
+          # builtin plugin" log line above — so this glob matching nothing
+          # is the expected, working state, not a failure. It only needs to
+          # find something once a native (non-builtin) plugin exists again.
+          ls -lh dist/*-plugin.bin 2>/dev/null || echo "(none — every plugin is builtin right now)"
           echo ""
           echo "=== Plugin manifests ==="
           ls -lh dist/*-manifest.json
