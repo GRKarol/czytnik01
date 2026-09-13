@@ -389,24 +389,15 @@ void FocusTimerCore::startSession() {
 }
 
 void FocusTimerCore::loadPreset() {
-    if (!storage_ || !storage_->readFile) return;
-    char buf[16] = {};
-    int read = storage_->readFile("config.txt", reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1);
-    if (read <= 0) return;
-    buf[read] = '\0';
-    unsigned int value = 0;
-    if (sscanf(buf, "preset=%u", &value) == 1 && value < kPresetCount) {
-        presetIndex_ = static_cast<uint8_t>(value);
-    }
+    if (!storage_ || !storage_->loadInt) return;
+    int32_t value = 0;
+    storage_->loadInt("config.txt", "preset", &value, 0, kPresetCount - 1, 0);
+    presetIndex_ = static_cast<uint8_t>(value);
 }
 
 void FocusTimerCore::savePreset() {
-    if (!storage_ || !storage_->writeFile) return;
-    char buf[16];
-    int len = snprintf(buf, sizeof(buf), "preset=%u\n", presetIndex_);
-    if (len > 0) {
-        storage_->writeFile("config.txt", reinterpret_cast<const uint8_t*>(buf), static_cast<uint32_t>(len));
-    }
+    if (!storage_ || !storage_->saveInt) return;
+    storage_->saveInt("config.txt", "preset", presetIndex_);
 }
 
 void FocusTimerCore::update(uint32_t nowMs) {

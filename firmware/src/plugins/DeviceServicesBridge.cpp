@@ -21,6 +21,7 @@
 #include "display/DisplayManager.h"
 #include "app/Localization.h"
 #include "app/Translations.h"
+#include "plugins/sdk/SettingsStore.h"
 
 static const char* TAG = "DeviceServicesBridge";
 
@@ -591,6 +592,16 @@ static bool bridgeStorageMkdir(const char* relativePath) {
     return SD_MMC.mkdir(fullPath);
 }
 
+static bool bridgeStorageLoadInt(const char* relativePath, const char* key, int32_t* out,
+                                  int32_t min, int32_t max, int32_t def) {
+    if (!out) return false;
+    return settingsstore::loadInt(bridgeStorageReadFile, relativePath, key, *out, min, max, def);
+}
+
+static bool bridgeStorageSaveInt(const char* relativePath, const char* key, int32_t value) {
+    return settingsstore::saveInt(bridgeStorageReadFile, bridgeStorageWriteFile, relativePath, key, value);
+}
+
 // ─── Network Service Wrappers ───────────────────────────────────────────────
 //
 // A plugin (RssPlugin) runs its own FreeRTOS task under PluginLoader's 8s
@@ -899,6 +910,8 @@ void DeviceServicesBridge::setup(const char* pluginId,
         storageService->deleteFile = bridgeStorageDeleteFile;
         storageService->renameFile = bridgeStorageRenameFile;
         storageService->mkdir = bridgeStorageMkdir;
+        storageService->loadInt = bridgeStorageLoadInt;
+        storageService->saveInt = bridgeStorageSaveInt;
     }
 
     // Populate orientation service function pointers
