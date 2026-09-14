@@ -256,6 +256,7 @@ class App {
   void applyDisplayPreferences(uint32_t nowMs, bool rerender = true);
   void applyHandednessSettings(uint32_t nowMs, bool rerender = true);
   void applyTypographySettings(uint32_t nowMs, bool rerender = true);
+  void loadTypographyConfigFromPreferences();
   uint8_t currentBrightnessPercent() const;
   bool updateBatteryStatus(uint32_t nowMs, bool force = false);
   void handleBatteryProtection(uint32_t nowMs);

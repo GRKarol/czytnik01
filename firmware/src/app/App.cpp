@@ -899,23 +899,7 @@ void App::begin() {
   pacingPunctuationDelayMs_ =
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
   accurateTimeEstimateEnabled_ = true;
-  typographyConfig_ = defaultTypographyConfig();
-  typographyConfig_.typeface = readerTypefaceFromSetting(
-      preferences_.getUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface)));
-  typographyConfig_.focusHighlight =
-      preferences_.getBool(kPrefTypographyFocusHighlight, typographyConfig_.focusHighlight);
-  typographyConfig_.trackingPx = static_cast<int8_t>(clampIntSetting(
-      preferences_.getChar(kPrefTypographyTracking, typographyConfig_.trackingPx),
-      kTypographyTrackingMin, kTypographyTrackingMax));
-  typographyConfig_.anchorPercent = static_cast<uint8_t>(clampIntSetting(
-      preferences_.getUChar(kPrefTypographyAnchor, typographyConfig_.anchorPercent),
-      kTypographyAnchorMin, kTypographyAnchorMax));
-  typographyConfig_.guideHalfWidth = static_cast<uint8_t>(clampIntSetting(
-      preferences_.getUChar(kPrefTypographyGuideWidth, typographyConfig_.guideHalfWidth),
-      kTypographyGuideWidthMin, kTypographyGuideWidthMax));
-  typographyConfig_.guideGap = static_cast<uint8_t>(clampIntSetting(
-      preferences_.getUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap),
-      kTypographyGuideGapMin, kTypographyGuideGapMax));
+  loadTypographyConfigFromPreferences();
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
   display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
@@ -1921,6 +1905,22 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
   accurateTimeEstimateEnabled_ = true;
 
+  loadTypographyConfigFromPreferences();
+  darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
+  nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
+  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
+
+  reader_.setWpm(preferences_.getUShort(kPrefWpm, reader_.wpm()));
+  applyReaderUiOrientation();
+  applyDisplayPreferences(nowMs, false);
+  applyTypographySettings(nowMs, false);
+  applyPacingSettings();
+  if (rerender) {
+    renderActiveReader(nowMs);
+  }
+}
+
+void App::loadTypographyConfigFromPreferences() {
   typographyConfig_ = defaultTypographyConfig();
   typographyConfig_.typeface = readerTypefaceFromSetting(
       preferences_.getUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface)));
@@ -1938,18 +1938,6 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   typographyConfig_.guideGap = static_cast<uint8_t>(clampIntSetting(
       preferences_.getUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap),
       kTypographyGuideGapMin, kTypographyGuideGapMax));
-  darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
-  nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
-  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
-
-  reader_.setWpm(preferences_.getUShort(kPrefWpm, reader_.wpm()));
-  applyReaderUiOrientation();
-  applyDisplayPreferences(nowMs, false);
-  applyTypographySettings(nowMs, false);
-  applyPacingSettings();
-  if (rerender) {
-    renderActiveReader(nowMs);
-  }
 }
 
 void App::applyTypographySettings(uint32_t nowMs, bool rerender) {
