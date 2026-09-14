@@ -1,0 +1,202 @@
+key;pl;en;es;fr;de;ro
+TrKey.LoadingBook;Wczytywanie ksiazki;Loading book;Cargando libro;Chargement du livre;Buch laden;Se incarca cartea
+TrKey.PreparingSD;Przygotowuje SD;Preparing SD;Preparando SD;Preparation SD;SD vorbereiten;Pregatire SD
+TrKey.EjectWhenDone;Wysun po skonczeniu;Eject when done;Expulsar al terminar;Ejecter une fois fini;Auswerfen wenn fertig;Scoate cand e gata
+TrKey.LowBattery;NISKA BATERIA;LOW BATTERY;BATERIA BAJA;BATTERIE FAIBLE;AKKU SCHWACH;BATERIE SLABA
+TrKey.PoweringOff;Wylaczam;Powering off;Apagando;Extinction;Ausschalten;Se opreste
+TrKey.ChargeSoon; naladuj wkrotce; charge soon; cargue pronto; rechargez bientot; bald laden; incarcati curand
+TrKey.Remaining;% zostalo;% remaining;% restante;% restant;% verbleibend;% ramas
+TrKey.Connectivity;Polaczenia;Connectivity;Conectividad;Connectivite;Verbindungen;Conectivitate
+TrKey.AboutHelp;Informacje;About / Help;Informacion;Informations;Info / Hilfe;Informatii
+TrKey.WifiAdvanced;Wi-Fi (zaaw.);Wi-Fi (advanced);Wi-Fi (avanzado);Wi-Fi (avance);Wi-Fi (erweitert);Wi-Fi (avansat)
+TrKey.PhoneSync;Sync z tel.: ;Phone sync: ;Sync movil: ;Sync tel.: ;Handy-Sync: ;Sync telefon: 
+TrKey.TurnOnToSeeWifi;    (wlacz aby zobaczyc kod Wi-Fi);    (turn on to see Wi-Fi code);    (active para ver codigo Wi-Fi);    (activer pour voir code Wi-Fi);    (einschalten fuer Wi-Fi-Code);    (porniti pt. cod Wi-Fi)
+TrKey.HomeWifi;Wi-Fi domowe: ;Home Wi-Fi: ;Wi-Fi hogar: ;Wi-Fi maison: ;Heim-Wi-Fi: ;Wi-Fi acasa: 
+TrKey.NotSet;Brak;Not set;Sin config.;Non defini;Nicht gesetzt;Nesetat
+TrKey.Connected;POLACZONY;CONNECTED;CONECTADO;CONNECTE;VERBUNDEN;CONECTAT
+TrKey.Version;Wersja: ;Version: ;Version: ;Version : ;Version: ;Versiune: 
+TrKey.BrandLabel;Marka: Flower (Czytnik01);Brand: Flower (Czytnik01);Marca: Flower (Czytnik01);Marque: Flower (Czytnik01);Marke: Flower (Czytnik01);Marca: Flower (Czytnik01)
+TrKey.PhoneAppLabel;Aplikacja: grkarol.github.io/czytnik01/app;Phone app: grkarol.github.io/czytnik01/app;App movil: grkarol.github.io/czytnik01/app;App tel.: grkarol.github.io/czytnik01/app;Handy-App: grkarol.github.io/czytnik01/app;Aplicatie: grkarol.github.io/czytnik01/app
+TrKey.DevModeOn;Tryb dev: WL (wylacz);Developer mode: ON (turn off);Modo dev: ON (desactivar);Mode dev: ON (desactiver);Dev-Modus: AN (ausschalten);Mod dev: ON (dezactiveaza)
+TrKey.ReaderHand;Dlon: ;Reader hand: ;Mano: ;Main: ;Hand: ;Mana: 
+TrKey.FooterLabel;Stopka: ;Footer label: ;Pie: ;Pied: ;Fusszeile: ;Subsol: 
+TrKey.BatteryLabel;Bateria: ;Battery label: ;Bateria: ;Batterie: ;Akku: ;Baterie: 
+TrKey.Screensaver;Wygaszacz: ;Screensaver: ;Salvapant.: ;Ecran veille: ;Bildschirmsch.: ;Screensaver: 
+TrKey.ReadingBattery;Bateria w czyt.: ;Reading battery: ;Bateria en lect.: ;Batterie en lect.: ;Akku beim Lesen: ;Baterie in citire: 
+TrKey.ReadingChapter;Rozdz. w czyt.: ;Reading chapter: ;Cap. en lect.: ;Chap. en lect.: ;Kapitel beim Lesen: ;Capitol in citire: 
+TrKey.ReadingPercent;Procent w czyt.: ;Reading percent: ;Porcent. en lect.: ;Pourcent. en lect.: ;Prozent beim Lesen: ;Procent in citire: 
+TrKey.PauseBehaviour;Pauza: ;Pause behaviour: ;Pausa: ;Pause: ;Pause: ;Pauza: 
+TrKey.BaseSpeed;Tempo: ;Base speed: ;Velocidad: ;Vitesse: ;Tempo: ;Viteza: 
+TrKey.Network;Siec: ;Network: ;Red: ;Reseau: ;Netzwerk: ;Retea: 
+TrKey.ChooseNetwork;Wybierz siec;Choose network;Elegir red;Choisir reseau;Netzwerk waehlen;Alege retea
+TrKey.ForgetNetwork;Zapomnij siec;Forget network;Olvidar red;Oublier reseau;Netzwerk vergessen;Uita reteaua
+TrKey.FirmwareUpdate;Aktualizacja firmware;Firmware update;Actualizar firmware;Mise a jour firmware;Firmware-Update;Actualizare firmware
+TrKey.Instant;Natychm.;Instant;Instantaneo;Instantane;Sofort;Instant
+TrKey.Sentence;Zdanie;Sentence;Oracion;Phrase;Satz;Propozitie
+TrKey.LeftHand;Lewa;Left;Izquierda;Gauche;Links;Stanga
+TrKey.RightHand;Prawa;Right;Derecha;Droite;Rechts;Dreapta
+TrKey.ChapterTime;Czas rozdz.;Chapter time;Tiempo cap.;Temps chap.;Kapitelzeit;Timp capitol
+TrKey.BookTime;Czas ksiazki;Book time;Tiempo libro;Temps livre;Buchzeit;Timp carte
+TrKey.PercentRead;Procent;Percent read;Porcentaje;Pourcentage;Prozent;Procent
+TrKey.TimeRemaining;Czas pracy;Time remaining;Tiempo restante;Temps restant;Restzeit;Timp ramas
+TrKey.Voltage;Napiecie;Voltage;Voltaje;Tension;Spannung;Tensiune
+TrKey.Percentage;Procent;Percentage;Porcentaje;Pourcentage;Prozent;Procent
+TrKey.Maze;Labirynt;Maze;Laberinto;Labyrinthe;Labyrinth;Labirint
+TrKey.ScreenOff;Wylacz;Screen off;Apagar pant.;Ecran eteint;Bildschirm aus;Ecran oprit
+TrKey.Life;Zycie;Life;Vida;Vie;Leben;Viata
+TrKey.StartingWifi;Wlaczam Wi-Fi;Starting Wi-Fi;Iniciando Wi-Fi;Demarrage Wi-Fi;Wi-Fi starten;Pornire Wi-Fi
+TrKey.CouldNotStart;Nie udalo sie;Could not start;No se pudo iniciar;Echec demarrage;Start fehlgeschlagen;Nu s-a putut porni
+TrKey.Returning;Wracam;Returning;Volviendo;Retour;Zurueck;Revenire
+TrKey.Stopping;Zatrzymuje;Stopping;Deteniendo;Arret;Stoppen;Se opreste
+TrKey.PleaseWait;Czekaj;Please wait;Espere;Patientez;Bitte warten;Asteptati
+TrKey.WifiNotSet;Brak Wi-Fi;Wi-Fi not set;Wi-Fi no config.;Wi-Fi non defini;Wi-Fi nicht gesetzt;Wi-Fi nesetat
+TrKey.SettingsWifi;Ustawienia -> Wi-Fi;Settings -> Wi-Fi;Ajustes -> Wi-Fi;Reglages -> Wi-Fi;Optionen -> Wi-Fi;Setari -> Wi-Fi
+TrKey.Restarting;Restartuje;Restarting;Reiniciando;Redemarrage;Neustart;Repornire
+TrKey.Yes;Tak;On;Si;Oui;Ja;Da
+TrKey.No;Nie;Off;No;Non;Nein;Nu
+TrKey.ScreensaverTimeout;Czas wygaszacza: ;Timeout: ;Tiempo: ;Delai: ;Wartezeit: ;Timp: 
+TrKey.ScreensaverAutoOff;Auto-wylacz: ;Auto power-off: ;Auto-apagar: ;Auto-eteindre: ;Auto-aus: ;Auto-oprire: 
+TrKey.ScreensaverSleepGuard;Ochrona snu: ;Sleep guard: ;Protec. sueno: ;Protec. sommeil: ;Schlafschutz: ;Protectie somn: 
+TrKey.ScreensaverStyle;Styl: ;Style: ;Estilo: ;Style: ;Stil: ;Stil: 
+TrKey.ScreensaverPreview;>> Podglad <<;>> Preview <<;>> Vista previa <<;>> Apercu <<;>> Vorschau <<;>> Previz. <<
+TrKey.Stars;Gwiazdy;Stars;Estrellas;Etoiles;Sterne;Stele
+TrKey.MatrixRain;Matrix;Matrix;Matrix;Matrix;Matrix;Matrix
+TrKey.ScreensaverHint;Nacisnij przycisk by wybudzic;Press button to wake;Pulsa un boton para despertar;Appuyez pour reveiller;Taste drucken zum Aufwecken;Apasa un buton pt. trezire
+TrKey.Minutes1;1 min;1 min;1 min;1 min;1 Min;1 min
+TrKey.Minutes2;2 min;2 min;2 min;2 min;2 Min;2 min
+TrKey.Minutes3;3 min;3 min;3 min;3 min;3 Min;3 min
+TrKey.Minutes5;5 min;5 min;5 min;5 min;5 Min;5 min
+TrKey.Minutes10;10 min;10 min;10 min;10 min;10 Min;10 min
+TrKey.Minutes15;15 min;15 min;15 min;15 min;15 Min;15 min
+TrKey.Minutes20;20 min;20 min;20 min;20 min;20 Min;20 min
+TrKey.Minutes30;30 min;30 min;30 min;30 min;30 Min;30 min
+TrKey.Never;Nigdy;Never;Nunca;Jamais;Nie;Niciodata
+TrKey2.Books;Ksiazki;Books;Libros;Livres;Buecher;Carti
+TrKey2.Articles;Artykuly;Articles;Articulos;Articles;Artikel;Articole
+TrKey2.FocusTimer;Klepsydra;Focus Timer;Temporizador;Minuteur;Fokus-Timer;Cronometru
+TrKey2.SdCardCheck;Sprawdz karte SD;SD card check;Verificar SD;Verifier carte SD;SD-Karte pruefen;Verificare card SD
+TrKey2.RssFeeds;Kanaly RSS;RSS feeds;Fuentes RSS;Flux RSS;RSS-Feeds;Fluxuri RSS
+TrKey2.CompanionSync;Sync z telefonem;Companion sync;Sync con movil;Sync telephone;Handy-Sync;Sync telefon
+TrKey2.RepairFolders;Naprawic foldery?;Repair folders?;Reparar carpetas?;Reparer dossiers?;Ordner reparieren?;Repara foldere?
+TrKey2.NotNow;Nie teraz;Not now;Ahora no;Pas maintenant;Nicht jetzt;Nu acum
+TrKey2.CreateFolders;Utworz foldery;Create folders;Crear carpetas;Creer dossiers;Ordner erstellen;Creeaza foldere
+TrKey2.UpdateAvailable;Dostepna aktualizacja;Update available;Actualizacion disponible;Mise a jour disponible;Update verfuegbar;Actualizare disponibila
+TrKey2.SkipForNow;Pomin;Skip for now;Omitir;Ignorer;Ueberspringen;Sari peste
+TrKey2.Update;Aktualizuj;Update;Actualizar;Mettre a jour;Aktualisieren;Actualizeaza
+TrKey2.CredentialsCleared;Dane usuniete;Credentials cleared;Credenciales borradas;Identifiants effaces;Zugangsdaten geloescht;Credentiale sterse
+TrKey2.NoNetworksFound;Brak sieci;No networks found;Sin redes;Aucun reseau;Keine Netzwerke;Nicio retea gasita
+TrKey2.NetworkSaved;Siec zapisana;Network saved;Red guardada;Reseau enregistre;Netzwerk gespeichert;Retea salvata
+TrKey2.PasswordRequired;Wymagane haslo;Password required;Contrasena requerida;Mot de passe requis;Passwort erforderlich;Parola necesara
+TrKey2.ResetToDefault;Przywrocono domyslne;Reset to default;Restablecido;Reinitialise;Zurueckgesetzt;Resetat la implicit
+TrKey2.OwnerSaved;Zapisano;Owner saved;Guardado;Enregistre;Gespeichert;Salvat
+TrKey2.CheckingFeeds;Sprawdzam kanaly;Checking feeds;Verificando fuentes;Verification flux;Feeds pruefen;Verificare fluxuri
+TrKey2.Starting;Uruchamiam;Starting;Iniciando;Demarrage;Starten;Pornire
+TrKey2.FoldersMissing;Brak folderow;Folders missing;Faltan carpetas;Dossiers manquants;Ordner fehlen;Foldere lipsa
+TrKey2.ConfirmRepair;Potwierdz naprawe;Confirm repair;Confirmar reparacion;Confirmer reparation;Reparatur bestaetigen;Confirma repararea
+TrKey2.RepairingFolders;Naprawiam foldery;Repairing folders;Reparando carpetas;Reparation dossiers;Ordner reparieren;Reparare foldere
+TrKey2.FolderRepairFailed;Naprawa nieudana;Folder repair failed;Reparacion fallida;Reparation echouee;Reparatur fehlgeschlagen;Reparare esuata
+TrKey2.FormatFat32;Sformatuj FAT32 MBR;Format FAT32 MBR;Formatear FAT32 MBR;Formater FAT32 MBR;FAT32 MBR formatieren;Formateaza FAT32 MBR
+TrKey2.FoldersRepaired;Foldery naprawione;Folders repaired;Carpetas reparadas;Dossiers repares;Ordner repariert;Foldere reparate
+TrKey2.CheckingCard;Sprawdzam karte;Checking card;Verificando tarjeta;Verification carte;Karte pruefen;Verificare card
+TrKey2.SdNotReady;SD niegotowa;SD not ready;SD no lista;SD non prete;SD nicht bereit;SD nu e gata
+TrKey2.CopyBooksNow;Kopiuj ksiazki;Copy books now;Copie libros ahora;Copiez livres;Buecher kopieren;Copiati cartile
+TrKey2.EjectThenHoldPwr;Wysun i przytrzymaj PWR;Eject then hold PWR;Expulsar, mantener PWR;Ejecter puis maintenir PWR;Auswerfen, PWR halten;Scoate si tine PWR
+TrKey2.RemountingSd;Ponowne montowanie SD;Remounting SD;Remontando SD;Remontage SD;SD neu einbinden;Remontare SD
+TrKey2.ReleasePwr;Pusc PWR;Release PWR;Suelte PWR;Relacher PWR;PWR loslassen;Elibereaza PWR
+TrKey2.HoldPwrToStart;Przytrzymaj PWR aby wlaczyc;Hold PWR to start;Mantenga PWR para iniciar;Maintenir PWR pour demarrer;PWR halten zum Starten;Tine PWR pt. pornire
+TrKey2.PluginLibrary;Biblioteka funkcji;Function library;Biblioteca de funciones;Bibliotheque de fonctions;Funktionsbibliothek;Biblioteca de functii
+TrKey2.PluginInstalled;[zainstalowany];[installed];[instalado];[installe];[installiert];[instalat]
+TrKey2.PluginInstall;Zainstaluj: ;Install: ;Instalar: ;Installer: ;Installieren: ;Instaleaza: 
+TrKey2.PluginRemove;Usun: ;Remove: ;Quitar: ;Retirer: ;Entfernen: ;Elimina: 
+TrKey2.PluginBuiltIn;Wbudowany;Built-in;Integrado;Integre;Eingebaut;Integrat
+TrKey2.PluginCannotRemove;Nie mozna usunac;Cannot remove;No se puede quitar;Impossible de retirer;Kann nicht entfernt werden;Nu se poate elimina
+TrKey2.PluginInstalling;Instalowanie...;Installing...;Instalando...;Installation...;Installiere...;Se instaleaza...
+TrKey2.PluginRemoving;Usuwanie...;Removing...;Quitando...;Retrait...;Entferne...;Se elimina...
+TrKey2.PluginRestartRequired;Restart za chwile...;Restarting...;Reiniciando...;Redemarrage...;Neustart...;Repornire...
+TrKey2.PluginNoWifi;Wymagane Wi-Fi;Wi-Fi required;Wi-Fi requerido;Wi-Fi requis;Wi-Fi erforderlich;Wi-Fi necesar
+TrKey2.PluginFetchFailed;Blad pobierania;Download failed;Error de descarga;Erreur de telechargement;Download fehlgeschlagen;Eroare descarcare
+TrKey2.PluginInstallFailed;Instalacja nieudana;Install failed;Instalacion fallida;Echec installation;Installation fehlgeschlagen;Instalare esuata
+TrKey2.PluginRemoveFailed;Usuwanie nieudane;Remove failed;Error al quitar;Echec du retrait;Entfernen fehlgeschlagen;Eliminare esuata
+TrKey2.PluginLaunch;Uruchom;Launch;Ejecutar;Lancer;Starten;Lanseaza
+TrKey2.PluginDownloading;Pobieranie...;Downloading...;Descargando...;Telechargement...;Herunterladen...;Descarca...
+TrKey2.PluginFetchingRegistry;Pobieranie listy...;Fetching list...;Obteniendo lista...;Chargement liste...;Liste laden...;Incarcare lista...
+TrKey2.PluginUpdate;[aktualizacja];[update];[actualizar];[mise a jour];[aktualisieren];[actualizare]
+TrKey2.PluginNotYetAvailable;Wkrotce dostepny;Coming soon;Disponible pronto;Bientot disponible;Bald verfuegbar;Disponibil curand
+TrKey3.SavePointAdded;Punkt zapisu dodany;Save point added;Punto guardado agregado;Point de sauvegarde ajoute;Lesezeichen hinzugefuegt;Punct salvat adaugat
+TrKey3.NameBookmark;Nazwij zakladke;Name bookmark;Nombra el marcador;Nommer le signet;Lesezeichen benennen;Numeste marcaj
+TrKey3.EnterNamePrompt;Wpisz nazwe:;Enter name:;Escribe nombre:;Entrez le nom :;Namen eingeben:;Introdu numele:
+TrKey3.BookmarkAdded;Zakladka dodana;Bookmark added;Marcador agregado;Signet ajoute;Lesezeichen hinzugefuegt;Marcaj adaugat
+TrKey3.ReadingSettings;Czytanie;Reading;Lectura;Lecture;Lesen;Citire
+TrKey3.AdvancedModeColon;Tryb zaawansowany: ;Advanced mode: ;Modo avanzado: ;Mode avance : ;Erweiterter Modus: ;Mod avansat: 
+TrKey3.PresetsLabel;Presety;Presets;Preajustes;Prereglages;Voreinstellungen;Presetari
+TrKey3.TutorialLabel;Samouczek;Tutorial;Tutorial;Tutoriel;Anleitung;Tutorial
+TrKey3.ColorRed;Czerwony;Red;Rojo;Rouge;Rot;Rosu
+TrKey3.ColorBlue;Niebieski;Blue;Azul;Bleu;Blau;Albastru
+TrKey3.ColorGreen;Zielony;Green;Verde;Vert;Gruen;Verde
+TrKey3.ColorYellow;Zolty;Yellow;Amarillo;Jaune;Gelb;Galben
+TrKey3.ColorOrange;Pomaranczowy;Orange;Naranja;Orange;Orange;Portocaliu
+TrKey3.ColorPurple;Fioletowy;Purple;Morado;Violet;Violett;Violet
+TrKey3.PacingNone;Brak (0 ms);None (0 ms);Ninguno (0 ms);Aucun (0 ms);Keine (0 ms);Fara (0 ms)
+TrKey3.PacingLight;Lekkie (100 ms);Light (100 ms);Ligero (100 ms);Leger (100 ms);Leicht (100 ms);Usor (100 ms)
+TrKey3.PacingMedium;Srednie (200 ms);Medium (200 ms);Medio (200 ms);Moyen (200 ms);Mittel (200 ms);Mediu (200 ms)
+TrKey3.PacingStrong;Mocne (300 ms);Strong (300 ms);Fuerte (300 ms);Fort (300 ms);Stark (300 ms);Puternic (300 ms)
+TrKey3.PacingVeryStrong;Bardzo mocne (400 ms);Very strong (400 ms);Muy fuerte (400 ms);Tres fort (400 ms);Sehr stark (400 ms);Foarte puternic (400 ms)
+TrKey3.SaveBtnColon;Przycisk zapisu: ;Save btn: ;Boton guardar: ;Bouton sauveg. : ;Speicherbtn.: ;Buton salvare: 
+TrKey3.FocusColorColon;Kolor litery: ;Focus color: ;Color letra: ;Couleur lettre : ;Buchstabenfarbe: ;Culoare litera: 
+TrKey3.HelpQColon;Pomoc (?): ;Help (?): ;Ayuda (?): ;Aide (?) : ;Hilfe (?): ;Ajutor (?): 
+TrKey3.NavigationColon;Nawigacja: ;Navigation: ;Navegacion: ;Navigation : ;Navigation: ;Navigare: 
+TrKey3.ScanCode;Zeskanuj kod;Scan the code;Escanea el codigo;Scannez le code;Code scannen;Scaneaza codul
+TrKey3.InstallApp;Zainstaluj aplikacje;Install the app;Instala la app;Installez l'app;App installieren;Instaleaza aplicatia
+TrKey3.TapContinue;Dotknij ekranu, by przejsc dalej;Tap the screen to continue;Toca la pantalla para continuar;Touchez l'ecran pour continuer;Bildschirm beruehren zum Fortfahren;Atinge ecranul pentru a continua
+TrKey3.TutorialRsvpDesc;Slowa jedno po drugim. Litera ORP kieruje wzrok.;Words one at a time. ORP letter guides your eye.;Palabras una por una. La letra ORP guia tu vista.;Mots un par un. La lettre ORP guide votre regard.;Woerter eins nach dem anderen. Der ORP-Buchstabe fuehrt den Blick.;Cuvinte unul cate unul. Litera ORP iti ghideaza privirea.
+TrKey3.SpeedLabel;Tempo;Speed;Velocidad;Vitesse;Tempo;Viteza
+TrKey3.TutorialSpeedDesc;Przytrzymaj + gora/dol: zmiana predkosci.;Hold + up/down: change speed.;Manten + arriba/abajo: cambia velocidad.;Maintenir + haut/bas : change la vitesse.;Halten + hoch/runter: Tempo aendern.;Tine apasat + sus/jos: schimba viteza.
+TrKey3.PauseLabel;Pauza;Pause;Pausa;Pause;Pause;Pauza
+TrKey3.TutorialPauseDesc;Dotknij ekranu by pauzowac/wznowic.;Tap screen to pause/resume.;Toca la pantalla para pausar/reanudar.;Touchez l'ecran pour pause/reprise.;Bildschirm beruehren zum Pausieren/Fortsetzen.;Atinge ecranul pentru pauza/reluare.
+TrKey3.TutorialMenuDesc;Przycisk z boku otwiera menu.;Side button opens the menu.;El boton lateral abre el menu.;Le bouton lateral ouvre le menu.;Seitentaste oeffnet das Menue.;Butonul lateral deschide meniul.
+TrKey3.HelpQLabel;Pomoc ?;Help ?;Ayuda ?;Aide ?;Hilfe ?;Ajutor ?
+TrKey3.TutorialHelpDesc;W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis.;In Display/Pacing settings: side button shows info.;En Pantalla/Ritmo: el boton lateral muestra info.;Dans Affichage/Rythme : le bouton lateral affiche des infos.;In Anzeige/Tempo: Seitentaste zeigt Infos.;In Afisaj/Ritm: butonul lateral arata info.
+TrKey3.ChannelStaging;Testowy;Staging;Pruebas;Test;Testkanal;Testare
+TrKey3.ChannelProduction;Produkcyjny;Production;Produccion;Production;Produktion;Productie
+TrKey3.ButtonsLabel;Przyciski;Buttons;Botones;Boutons;Tasten;Butoane
+TrKey3.PercentComplete;ukonczone;complete;completado;termine;abgeschlossen;finalizat
+TrKey3.ReadFromPlace;Czytaj od miejsca;Read from place;Leer desde el punto;Lire depuis l'endroit;Weiterlesen ab Stelle;Citeste de la loc
+TrKey3.DeleteBookLabel;Usun ksiazke;Delete book;Eliminar libro;Supprimer le livre;Buch loeschen;Sterge cartea
+TrKey3.ErrorLabel;Blad;Error;Error;Erreur;Fehler;Eroare
+TrKey3.DeleteConfirmColon;Usunac: ;Delete: ;Eliminar: ;Supprimer : ;Loeschen: ;Sterge: 
+TrKey3.NoGoBack;Nie, wroc;No, go back;No, volver;Non, retour;Nein, zurueck;Nu, inapoi
+TrKey3.YesDelete;Tak, usun;Yes, delete;Si, eliminar;Oui, supprimer;Ja, loeschen;Da, sterge
+TrKey3.DeletedLabel;Usunieto;Deleted;Eliminado;Supprime;Geloescht;Sters
+TrKey3.CannotDelete;Nie mozna usunac;Cannot delete;No se puede eliminar;Impossible de supprimer;Loeschen nicht moeglich;Nu se poate sterge
+TrKey3.AddSavePoint;+ Dodaj punkt zapisu;+ Add save point;+ Agregar punto;+ Ajouter un point;+ Speicherpunkt hinzu.;+ Adauga punct
+TrKey3.DeleteSpace;Usun ;Delete ;Eliminar ;Supprimer ;Loeschen ;Sterge 
+TrKey3.OpenBookFirst;Najpierw otworz ksiazke;Open a book first;Primero abre un libro;Ouvrez d'abord un livre;Zuerst ein Buch oeffnen;Deschide mai intai o carte
+TrKey3.BookNotFound;Ksiazka nie znaleziona;Book not found;Libro no encontrado;Livre introuvable;Buch nicht gefunden;Cartea nu a fost gasita
+TrKey3.CannotOpen;Nie mozna otworzyc;Cannot open;No se puede abrir;Impossible d'ouvrir;Oeffnen nicht moeglich;Nu se poate deschide
+TrKey3.ActivePlugins;Aktywne;Active;Activos;Actifs;Aktiv;Active
+TrKey3.NoActivePlugins;Brak aktywnych pluginow;No active plugins;Sin plugins activos;Aucun plugin actif;Keine aktiven Plugins;Niciun plugin activ
+TrKey3.PluginEnabledTag; [wlaczony]; [enabled]; [activado]; [active]; [aktiviert]; [activat]
+TrKey3.PluginDisabledTag; [wylaczony]; [disabled]; [desactivado]; [desactive]; [deaktiviert]; [dezactivat]
+TrKey3.DisablePlugin;Wylacz;Disable;Desactivar;Desactiver;Deaktivieren;Dezactiveaza
+TrKey3.EnablePlugin;Wlacz;Enable;Activar;Activer;Aktivieren;Activeaza
+TrKey3.SaveCurrentPreset;+ Zapisz obecne;+ Save Current;+ Guardar actual;+ Enregistrer actuel;+ Aktuelles speichern;+ Salveaza actualul
+TrKey3.PresetLimitReachedParen;(Limit 10 osiagniety);(Limit 10 reached);(Limite de 10 alcanzado);(Limite de 10 atteinte);(Limit von 10 erreicht);(Limita de 10 atinsa)
+TrKey3.PresetNameLabel;Nazwa presetu;Preset Name;Nombre del preajuste;Nom du preregl.;Preset-Name;Nume preset
+TrKey3.InvalidName;Nieprawidlowa nazwa;Invalid name;Nombre invalido;Nom invalide;Ungueltiger Name;Nume invalid
+TrKey3.SavedLabel;Zapisano;Saved;Guardado;Enregistre;Gespeichert;Salvat
+TrKey3.LimitReachedShort;Limit osiagniety;Limit reached;Limite alcanzado;Limite atteinte;Limit erreicht;Limita atinsa
+TrKey3.SdCardErrorLabel;Blad karty SD;SD card error;Error de tarjeta SD;Erreur carte SD;SD-Kartenfehler;Eroare card SD
+TrKey3.LoadedLabel;Wczytano;Loaded;Cargado;Charge;Geladen;Incarcat
+TrKey3.PresetLoadError;Blad wczytywania presetu;Error loading preset;Error al cargar el preajuste;Erreur de chargement du preregl.;Fehler beim Laden des Presets;Eroare la incarcarea presetului
+TrKey3.ApplyColon;Zastosuj: ;Apply: ;Aplicar: ;Appliquer : ;Anwenden: ;Aplica: 
+TrKey3.DeletePresetColon;Usun: ;Delete: ;Eliminar: ;Supprimer : ;Loeschen: ;Sterge: 
+TrKey3.PresetDeleteFailed;Blad usuwania;Delete failed;Error al eliminar;Echec de la suppression;Loeschen fehlgeschlagen;Stergere esuata
+TrKey3.BackWifiHeader;< Wroc | Wi-Fi;< Back | Wi-Fi;< Volver | Wi-Fi;< Retour | Wi-Fi;< Zurueck | Wi-Fi;< Inapoi | Wi-Fi
+TrKey3.BackSyncHeader;< Wroc | Sync;< Back | Sync;< Volver | Sync;< Retour | Sync;< Zurueck | Sync;< Inapoi | Sync
+TrKey3.UsbBackHint;USB | Tap = wroc;USB | Tap = back;USB | Toca = volver;USB | Touchez = retour;USB | Tippen = zurueck;USB | Atinge = inapoi
+TrKey3.ConnectUsbCable;Podlacz kabel USB;Connect USB cable;Conecta el cable USB;Branchez le cable USB;USB-Kabel anschliessen;Conecteaza cablul USB
+TrKey3.SdVisibleOnPhone;SD widoczna na telefonie/PC;SD visible on phone/PC;SD visible en telefono/PC;SD visible sur telephone/PC;SD sichtbar auf Handy/PC;SD vizibil pe telefon/PC
+TrKey3.VolumeDown;Gl -;Vol -;Vol -;Vol -;Lst -;Vol -
+TrKey3.VolumeUp;Gl +;Vol +;Vol +;Vol +;Lst +;Vol +
+TrKey3.PositionLabel;Pozycja;Position;Posicion;Position;Position;Pozitie
+TrKey3.VolumeAbbrev;Gl;Vol;Vol;Vol;Lst;Vol

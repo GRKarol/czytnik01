@@ -13,12 +13,17 @@ Stan obecny (sprawdzony w kodzie, nie z pamięci):
   tylko `readFile`/`writeFile`/`fileExists`/`mkdir`, żadnej walidacji zakresów,
   żadnego wspólnego formatu). Nowy `FocusTimerPlugin` i `DictaphonePlugin`
   robią to każdy inaczej.
-- Tłumaczenia: trzy równoległe systemy.
+- Tłumaczenia: cztery równoległe systemy (poprawka: pierwszy audyt pominął
+  `TrKey3` i `UiText`, znalezione dopiero przy realnym refaktorze).
   1. `polish(pl, en)` w `App.cpp` — ~105 miejsc, tylko PL/EN, reszta języków
      dostaje angielski.
-  2. `TrKey`/`TrKey2` w `firmware/src/app/Translations.h` — switch-case na
-     6 języków, ale każda nowa/zmieniona linijka to zmiana w C++ i rebuild.
-  3. `DictStr`/`dictText()` w `DictaphonePlugin.cpp` — własna, osobna kopia
+  2. `TrKey`/`TrKey2`/`TrKey3` w `firmware/src/app/Translations.h` —
+     switch-case na 6 języków (201 kluczy razem), każda nowa/zmieniona
+     linijka to była zmiana w C++ i rebuild. **Zmigrowane na CSV+codegen
+     2026-09-14** (patrz niżej).
+  3. `UiText` w `firmware/src/app/Localization.h` — ten sam wzorzec switch-case,
+     osobny od `Translations.h`, jeszcze nietknięty.
+  4. `DictStr`/`dictText()` w `DictaphonePlugin.cpp` — własna, osobna kopia
      tego samego wzorca, bo plugin nie może włączyć `app/Localization.h`
      (musi być odseparowany od kodu appki).
 
@@ -123,11 +128,22 @@ Co robimy:
 
 ## Kolejność w praktyce
 
-1. Etap 1 (SettingsStore) na FocusTimerPlugin — osobny tag na staging, test
+1. ✅ Etap 1 (SettingsStore) na FocusTimerPlugin — osobny tag na staging, test
    fizyczny.
-2. Etap 1 rozszerzony na ekran typografii (Tracking/Anchor/Width/Gap).
-3. Etap 2 (tabela tłumaczeń) — najpierw sam mechanizm + `TrKey`/`TrKey2`,
-   osobny tag, test fizyczny.
-4. Etap 2 — przepisanie 105 miejsc `polish()` na `tr()` z nowymi kluczami.
-5. Etap 2 — `DictaphonePlugin` przechodzi na wspólną tabelę, `DictStr`
+2. ✅ Etap 1 rozszerzony na ekran typografii (Tracking/Anchor/Width/Gap).
+3. ✅ Etap 2, mechanizm — `tools/translations.csv` (201 wierszy, wyciągnięte
+   mechanicznie ze starego `Translations.h`, nie przepisane ręcznie) +
+   `tools/gen_translations.py` (generuje `firmware/src/app/generated/
+   TranslationsData.h`, waliduje 1:1 pokrycie CSV<->enum). `TrKey`/`TrKey2`/
+   `TrKey3` zostają jako ręcznie pisane enumy (źródło prawdy co do listy
+   kluczy i kolejności), ale ich `tr()`/`tr2()`/`tr3()` teraz tylko indeksują
+   wygenerowaną tabelę zamiast 1800-liniowego switcha. Zweryfikowane dwoma
+   niezależnymi parserami offline (brak kompilatora C++ w tym środowisku) —
+   wszystkie 201 kluczy x 6 języków identyczne przed/po. Build (`pio run`)
+   przechodzi czysto. Do zrobienia: test fizyczny na sprzęcie przed kolejnym
+   krokiem.
+4. Etap 2 — `UiText` w `Localization.h` tym samym mechanizmem (odkryte przy
+   realizacji punktu 3, nie było w pierwotnym audycie).
+5. Etap 2 — przepisanie 105 miejsc `polish()` na `tr()` z nowymi kluczami.
+6. Etap 2 — `DictaphonePlugin` przechodzi na wspólną tabelę, `DictStr`
    usunięty.
