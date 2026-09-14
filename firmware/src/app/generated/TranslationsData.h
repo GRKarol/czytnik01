@@ -225,4 +225,71 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
   return kTable[keyIndex][langIndex];
 }
 
+inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
+  static const char *const kTable[61][6] = {
+      {"Resume", "Reanudar", "Reprendre", "Weiter", "Continua", "Wznow"},  // Resume
+      {"Chapters", "Capitulos", "Chapitres", "Kapitel", "Capitole", "Rozdzialy"},  // Chapters
+      {"Library", "Biblioteca", "Bibliotheque", "Bibliothek", "Biblioteca", "Biblioteka"},  // Library
+      {"Settings", "Ajustes", "Reglages", "Optionen", "Setari", "Ustawienia"},  // Settings
+      {"USB transfer", "USB", "USB", "USB", "USB", "USB"},  // UsbTransfer
+      {"Power off", "Apagar", "Eteindre", "Ausschalten", "Oprire", "Wylacz"},  // PowerOff
+      {"Read", "Leer", "Lire", "Lesen", "Citeste", "Czytaj"},  // Read
+      {"Save points", "Puntos guardados", "Points de sauveg.", "Lesezeichen", "Puncte salvate", "Punkty zapisu"},  // SavePoints
+      {"Plugins", "Plugins", "Plugins", "Plugins", "Pluginuri", "Pluginy"},  // Plugins
+      {"Back", "Atras", "Retour", "Zuruck", "Inapoi", "Wroc"},  // Back
+      {"Display", "Pantalla", "Affichage", "Anzeige", "Afisaj", "Ekran"},  // Display
+      {"Typography tune", "Tipografia", "Typographie", "Typografie", "Tipografie", "Typografia"},  // TypographyTune
+      {"Word pacing", "Ritmo lectura", "Rythme mots", "Lesetempo", "Ritm cuvinte", "Tempo slow"},  // WordPacing
+      {"Theme", "Tema", "Theme", "Thema", "Tema", "Motyw"},  // Theme
+      {"Brightness", "Brillo", "Luminosite", "Helligkeit", "Luminoz.", "Jasnosc"},  // Brightness
+      {"Language", "Idioma", "Langue", "Sprache", "Limba", "Jezyk"},  // Language
+      {"Reading mode", "Modo lectura", "Mode lecture", "Lesemodus", "Mod citire", "Tryb czyt."},  // ReadingMode
+      {"Long words", "Palabras largas", "Mots longs", "Lange Worter", "Cuvinte lungi", "Dlugie slowa"},  // LongWords
+      {"Complexity", "Complejidad", "Complexite", "Komplexitat", "Complexitate", "Zlozonosc"},  // Complexity
+      {"Punctuation", "Puntuacion", "Ponctuation", "Zeichen", "Punctuatie", "Interpunk."},  // Punctuation
+      {"Reset pacing", "Restablecer ritmo", "Reinit. rythme", "Tempo zuruck", "Reset ritm", "Reset tempa"},  // ResetPacing
+      {"Night", "Noche", "Nuit", "Nacht", "Noapte", "Noc"},  // Night
+      {"Dark", "Oscuro", "Sombre", "Dunkel", "Inchis", "Ciemny"},  // Dark
+      {"Light", "Claro", "Clair", "Hell", "Deschis", "Jasny"},  // Light
+      {"On", "Si", "Oui", "Ein", "Pornit", "Tak"},  // On
+      {"Off", "No", "Non", "Aus", "Oprit", "Nie"},  // Off
+      {"Font size", "Tamano", "Taille", "Schriftgrad", "Marime", "Rozmiar"},  // FontSize
+      {"Typeface", "Fuente", "Police", "Schriftart", "Font", "Kroj"},  // Typeface
+      {"Phantom words", "Palabras fantasma", "Mots fantomes", "Phantomworter", "Cuvinte fantoma", "Slowa widma"},  // PhantomWords
+      {"Red highlight", "Rojo", "Accent rouge", "Rotfokus", "Accent rosu", "Czerwony"},  // RedHighlight
+      {"Tracking", "Espaciado", "Espacement", "Laufweite", "Spatiere", "Odstepy"},  // Tracking
+      {"Anchor", "Ancla", "Ancre", "Anker", "Ancora", "Kotwica"},  // Anchor
+      {"Guide width", "Ancho guia", "Largeur guide", "Guidebreite", "Latime ghid", "Szer. guide"},  // GuideWidth
+      {"Guide gap", "Hueco guia", "Ecart guide", "Guidespalt", "Spatiu ghid", "Przerwa guide"},  // GuideGap
+      {"Reset", "Restablecer", "Reinit.", "Zurucksetzen", "Resetare", "Reset"},  // Reset
+      {"Typography", "Tipografia", "Typographie", "Typografie", "Tipografie", "Typografia"},  // Typography
+      {"tap to exit", "toca salir", "toucher sortie", "tippen zum Ende", "atinge iesire", "dotknij wyjscie"},  // TapToExit
+      {"tap to reset", "toca reiniciar", "toucher reinit.", "tippen zum Reset", "atinge reset", "dotknij reset"},  // TapToReset
+      {"Tap change  L/R sample", "Toca cambiar L/R muestra", "Touchez change  G/D echant.", "Tippen aendern  L/R Probe", "Atinge schimba  S/D proba", "Dotknij zmien  L/R probka"},  // TapChangeSample
+      {"Tap exit  L/R sample", "Toca salir L/R muestra", "Touchez sortie  G/D echant.", "Tippen zuruck  L/R Probe", "Atinge iesi  S/D proba", "Dotknij wyjdz  L/R probka"},  // TapExitSample
+      {"Tap toggle  L/R sample", "Toca alternar L/R muestra", "Touchez option  G/D echant.", "Tippen schalten  L/R Probe", "Atinge comuta  S/D proba", "Dotknij przel.  L/R probka"},  // TapToggleSample
+      {"Tap cycle  L/R sample", "Toca ciclo L/R muestra", "Touchez cycle  G/D echant.", "Tippen wechseln  L/R Probe", "Atinge ciclu  S/D proba", "Dotknij cykl  L/R probka"},  // TapCycleSample
+      {"Current book", "Libro actual", "Livre actuel", "Aktuelles Buch", "Cartea curenta", "Biezaca ksiazka"},  // CurrentBook
+      {"Start", "Inicio", "Debut", "Start", "Inceput", "Start"},  // Start
+      {"Start of book", "Inicio del libro", "Debut du livre", "Buchanfang", "Inceputul cartii", "Poczatek ksiazki"},  // StartOfBook
+      {"Restart book", "Reiniciar libro", "Relancer livre", "Buch neu", "Reporneste cartea", "Restart ksiazki"},  // RestartBook
+      {"Are you sure?", "Seguro?", "Confirmer ?", "Sicher?", "Sigur?", "Na pewno?"},  // AreYouSure
+      {"No, keep place", "No, conservar", "Non, garder", "Nein, merken", "Nu, pastreaza", "Nie, zostaw"},  // NoKeepPlace
+      {"Yes, restart", "Si, reiniciar", "Oui, relancer", "Ja, neu", "Da, reporneste", "Tak, restart"},  // YesRestart
+      {"No samples", "Sin muestras", "Aucun exemple", "Keine Proben", "Fara probe", "Brak probek"},  // NoSamples
+      {"Large", "Grande", "Grand", "Gross", "Mare", "Duzy"},  // Large
+      {"Medium", "Mediano", "Moyen", "Mittel", "Mediu", "Sredni"},  // Medium
+      {"Small", "Pequeno", "Petit", "Klein", "Mic", "Maly"},  // Small
+      {"Standard", "Estandar", "Standard", "Standard", "Standard", "Standard"},  // Standard
+      {"RSVP", "RSVP", "RSVP", "RSVP", "RSVP", "RSVP"},  // RsvpMode
+      {"Page scroll", "Scroll pagina", "Defilement page", "Seiten-Scroll", "Derulare pagina", "Scroll strony"},  // ScrollMode
+      {"Time estimate", "Tiempo restante", "Temps restant", "Restzeit", "Timp ramas", "Pozostaly czas"},  // TimeEstimate
+      {"Accurate", "Preciso", "Precis", "Genau", "Exact", "Dokladny"},  // TimeEstimateAccurate
+      {"Fast", "Rapido", "Rapide", "Schnell", "Rapid", "Szybki"},  // TimeEstimateFast
+      {"Line spacing", "Interlineado", "Interligne", "Zeilenabst.", "Spatiere", "Interlinia"},  // ScrollLineSpacing
+      {"Margins", "Margenes", "Marges", "Raender", "Margini", "Marginesy"},  // ScrollMargins
+  };
+  return kTable[keyIndex][langIndex];
+}
+
 }  // namespace TranslationsData

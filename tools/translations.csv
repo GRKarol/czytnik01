@@ -200,3 +200,64 @@ TrKey3.VolumeDown;Gl -;Vol -;Vol -;Vol -;Lst -;Vol -
 TrKey3.VolumeUp;Gl +;Vol +;Vol +;Vol +;Lst +;Vol +
 TrKey3.PositionLabel;Pozycja;Position;Posicion;Position;Position;Pozitie
 TrKey3.VolumeAbbrev;Gl;Vol;Vol;Vol;Lst;Vol
+UiText.Resume;Wznow;Resume;Reanudar;Reprendre;Weiter;Continua
+UiText.Chapters;Rozdzialy;Chapters;Capitulos;Chapitres;Kapitel;Capitole
+UiText.Library;Biblioteka;Library;Biblioteca;Bibliotheque;Bibliothek;Biblioteca
+UiText.Settings;Ustawienia;Settings;Ajustes;Reglages;Optionen;Setari
+UiText.UsbTransfer;USB;USB transfer;USB;USB;USB;USB
+UiText.PowerOff;Wylacz;Power off;Apagar;Eteindre;Ausschalten;Oprire
+UiText.Read;Czytaj;Read;Leer;Lire;Lesen;Citeste
+UiText.SavePoints;Punkty zapisu;Save points;Puntos guardados;Points de sauveg.;Lesezeichen;Puncte salvate
+UiText.Plugins;Pluginy;Plugins;Plugins;Plugins;Plugins;Pluginuri
+UiText.Back;Wroc;Back;Atras;Retour;Zuruck;Inapoi
+UiText.Display;Ekran;Display;Pantalla;Affichage;Anzeige;Afisaj
+UiText.TypographyTune;Typografia;Typography tune;Tipografia;Typographie;Typografie;Tipografie
+UiText.WordPacing;Tempo slow;Word pacing;Ritmo lectura;Rythme mots;Lesetempo;Ritm cuvinte
+UiText.Theme;Motyw;Theme;Tema;Theme;Thema;Tema
+UiText.Brightness;Jasnosc;Brightness;Brillo;Luminosite;Helligkeit;Luminoz.
+UiText.Language;Jezyk;Language;Idioma;Langue;Sprache;Limba
+UiText.ReadingMode;Tryb czyt.;Reading mode;Modo lectura;Mode lecture;Lesemodus;Mod citire
+UiText.LongWords;Dlugie slowa;Long words;Palabras largas;Mots longs;Lange Worter;Cuvinte lungi
+UiText.Complexity;Zlozonosc;Complexity;Complejidad;Complexite;Komplexitat;Complexitate
+UiText.Punctuation;Interpunk.;Punctuation;Puntuacion;Ponctuation;Zeichen;Punctuatie
+UiText.ResetPacing;Reset tempa;Reset pacing;Restablecer ritmo;Reinit. rythme;Tempo zuruck;Reset ritm
+UiText.Night;Noc;Night;Noche;Nuit;Nacht;Noapte
+UiText.Dark;Ciemny;Dark;Oscuro;Sombre;Dunkel;Inchis
+UiText.Light;Jasny;Light;Claro;Clair;Hell;Deschis
+UiText.On;Tak;On;Si;Oui;Ein;Pornit
+UiText.Off;Nie;Off;No;Non;Aus;Oprit
+UiText.FontSize;Rozmiar;Font size;Tamano;Taille;Schriftgrad;Marime
+UiText.Typeface;Kroj;Typeface;Fuente;Police;Schriftart;Font
+UiText.PhantomWords;Slowa widma;Phantom words;Palabras fantasma;Mots fantomes;Phantomworter;Cuvinte fantoma
+UiText.RedHighlight;Czerwony;Red highlight;Rojo;Accent rouge;Rotfokus;Accent rosu
+UiText.Tracking;Odstepy;Tracking;Espaciado;Espacement;Laufweite;Spatiere
+UiText.Anchor;Kotwica;Anchor;Ancla;Ancre;Anker;Ancora
+UiText.GuideWidth;Szer. guide;Guide width;Ancho guia;Largeur guide;Guidebreite;Latime ghid
+UiText.GuideGap;Przerwa guide;Guide gap;Hueco guia;Ecart guide;Guidespalt;Spatiu ghid
+UiText.Reset;Reset;Reset;Restablecer;Reinit.;Zurucksetzen;Resetare
+UiText.Typography;Typografia;Typography;Tipografia;Typographie;Typografie;Tipografie
+UiText.TapToExit;dotknij wyjscie;tap to exit;toca salir;toucher sortie;tippen zum Ende;atinge iesire
+UiText.TapToReset;dotknij reset;tap to reset;toca reiniciar;toucher reinit.;tippen zum Reset;atinge reset
+UiText.TapChangeSample;Dotknij zmien  L/R probka;Tap change  L/R sample;Toca cambiar L/R muestra;Touchez change  G/D echant.;Tippen aendern  L/R Probe;Atinge schimba  S/D proba
+UiText.TapExitSample;Dotknij wyjdz  L/R probka;Tap exit  L/R sample;Toca salir L/R muestra;Touchez sortie  G/D echant.;Tippen zuruck  L/R Probe;Atinge iesi  S/D proba
+UiText.TapToggleSample;Dotknij przel.  L/R probka;Tap toggle  L/R sample;Toca alternar L/R muestra;Touchez option  G/D echant.;Tippen schalten  L/R Probe;Atinge comuta  S/D proba
+UiText.TapCycleSample;Dotknij cykl  L/R probka;Tap cycle  L/R sample;Toca ciclo L/R muestra;Touchez cycle  G/D echant.;Tippen wechseln  L/R Probe;Atinge ciclu  S/D proba
+UiText.CurrentBook;Biezaca ksiazka;Current book;Libro actual;Livre actuel;Aktuelles Buch;Cartea curenta
+UiText.Start;Start;Start;Inicio;Debut;Start;Inceput
+UiText.StartOfBook;Poczatek ksiazki;Start of book;Inicio del libro;Debut du livre;Buchanfang;Inceputul cartii
+UiText.RestartBook;Restart ksiazki;Restart book;Reiniciar libro;Relancer livre;Buch neu;Reporneste cartea
+UiText.AreYouSure;Na pewno?;Are you sure?;Seguro?;Confirmer ?;Sicher?;Sigur?
+UiText.NoKeepPlace;Nie, zostaw;No, keep place;No, conservar;Non, garder;Nein, merken;Nu, pastreaza
+UiText.YesRestart;Tak, restart;Yes, restart;Si, reiniciar;Oui, relancer;Ja, neu;Da, reporneste
+UiText.NoSamples;Brak probek;No samples;Sin muestras;Aucun exemple;Keine Proben;Fara probe
+UiText.Large;Duzy;Large;Grande;Grand;Gross;Mare
+UiText.Medium;Sredni;Medium;Mediano;Moyen;Mittel;Mediu
+UiText.Small;Maly;Small;Pequeno;Petit;Klein;Mic
+UiText.Standard;Standard;Standard;Estandar;Standard;Standard;Standard
+UiText.RsvpMode;RSVP;RSVP;RSVP;RSVP;RSVP;RSVP
+UiText.ScrollMode;Scroll strony;Page scroll;Scroll pagina;Defilement page;Seiten-Scroll;Derulare pagina
+UiText.TimeEstimate;Pozostaly czas;Time estimate;Tiempo restante;Temps restant;Restzeit;Timp ramas
+UiText.TimeEstimateAccurate;Dokladny;Accurate;Preciso;Precis;Genau;Exact
+UiText.TimeEstimateFast;Szybki;Fast;Rapido;Rapide;Schnell;Rapid
+UiText.ScrollLineSpacing;Interlinia;Line spacing;Interlineado;Interligne;Zeilenabst.;Spatiere
+UiText.ScrollMargins;Marginesy;Margins;Margenes;Marges;Raender;Margini

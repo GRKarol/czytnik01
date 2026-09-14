@@ -142,8 +142,17 @@ Co robimy:
    wszystkie 201 kluczy x 6 języków identyczne przed/po. Build (`pio run`)
    przechodzi czysto. Do zrobienia: test fizyczny na sprzęcie przed kolejnym
    krokiem.
-4. Etap 2 — `UiText` w `Localization.h` tym samym mechanizmem (odkryte przy
-   realizacji punktu 3, nie było w pierwotnym audycie).
+4. ✅ Etap 2 — `UiText` w `Localization.h` tym samym mechanizmem (odkryte przy
+   realizacji punktu 3, nie było w pierwotnym audycie). 61 kluczy x 6 języków
+   wyciągnięte mechanicznie z zagnieżdżonego switch/switch w `text()`
+   (skrypt-parser, nie ręczne przepisywanie), dopisane do `tools/
+   translations.csv`, `tools/gen_translations.py` rozszerzony o czwartą
+   tabelę (`uiTextLookup`, źródło enumu: `Localization.h` zamiast
+   `Translations.h`). `UiText` enum zostaje ręcznie pisany jak reszta.
+   `Localization::text()` teraz tylko indeksuje wygenerowaną tabelę — sam
+   1800+-liniowy switch (761 linii samej funkcji `text()`) zniknął z pliku
+   (876 linii -> 119). Build (`pio run`) przechodzi czysto. Do zrobienia:
+   test fizyczny na sprzęcie przed kolejnym krokiem.
 5. Etap 2 — przepisanie 105 miejsc `polish()` na `tr()` z nowymi kluczami.
 6. Etap 2 — `DictaphonePlugin` przechodzi na wspólną tabelę, `DictStr`
    usunięty.

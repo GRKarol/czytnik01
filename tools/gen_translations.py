@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TRANSLATIONS_H = ROOT / "firmware/src/app/Translations.h"
+LOCALIZATION_H = ROOT / "firmware/src/app/Localization.h"
 CSV_PATH = ROOT / "tools/translations.csv"
 OUT_PATH = ROOT / "firmware/src/app/generated/TranslationsData.h"
 
@@ -27,16 +28,17 @@ OUT_PATH = ROOT / "firmware/src/app/generated/TranslationsData.h"
 CSV_LANG_COLUMNS = ["en", "es", "fr", "de", "ro", "pl"]
 
 TABLES = [
-    ("TrKey", "trKeyLookup"),
-    ("TrKey2", "trKey2Lookup"),
-    ("TrKey3", "trKey3Lookup"),
+    (TRANSLATIONS_H, "TrKey", "trKeyLookup"),
+    (TRANSLATIONS_H, "TrKey2", "trKey2Lookup"),
+    (TRANSLATIONS_H, "TrKey3", "trKey3Lookup"),
+    (LOCALIZATION_H, "UiText", "uiTextLookup"),
 ]
 
 
-def parse_enum_order(enum_name: str, text: str) -> list[str]:
+def parse_enum_order(enum_name: str, text: str, source_path: Path) -> list[str]:
     m = re.search(r"enum class " + enum_name + r" : uint8_t \{(.*?)\};", text, re.DOTALL)
     if not m:
-        sys.exit(f"ERROR: could not find enum class {enum_name} in {TRANSLATIONS_H}")
+        sys.exit(f"ERROR: could not find enum class {enum_name} in {source_path}")
     keys = []
     for line in m.group(1).splitlines():
         line = line.split("//", 1)[0].strip()
@@ -51,7 +53,10 @@ def escape_cpp(s: str) -> str:
 
 
 def main() -> None:
-    header_text = TRANSLATIONS_H.read_text(encoding="utf-8")
+    header_texts = {
+        path: path.read_text(encoding="utf-8")
+        for path in {source_path for source_path, _, _ in TABLES}
+    }
 
     with CSV_PATH.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f, delimiter=";"))
@@ -75,8 +80,8 @@ def main() -> None:
 
     used_keys = set()
 
-    for enum_name, lookup_fn in TABLES:
-        enum_keys = parse_enum_order(enum_name, header_text)
+    for source_path, enum_name, lookup_fn in TABLES:
+        enum_keys = parse_enum_order(enum_name, header_texts[source_path], source_path)
         rows_for_table = []
         for key_name in enum_keys:
             csv_key = f"{enum_name}.{key_name}"
@@ -106,7 +111,10 @@ def main() -> None:
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text("\n".join(out), encoding="utf-8", newline="\n")
-    total_keys = sum(len(parse_enum_order(n, header_text)) for n, _ in TABLES)
+    total_keys = sum(
+        len(parse_enum_order(enum_name, header_texts[source_path], source_path))
+        for source_path, enum_name, _ in TABLES
+    )
     print(f"wrote {OUT_PATH} ({total_keys} keys x 6 languages)")
 
 
