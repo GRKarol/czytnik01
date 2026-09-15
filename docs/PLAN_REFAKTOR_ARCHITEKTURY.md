@@ -153,6 +153,25 @@ Co robimy:
    1800+-liniowy switch (761 linii samej funkcji `text()`) zniknął z pliku
    (876 linii -> 119). Build (`pio run`) przechodzi czysto. Do zrobienia:
    test fizyczny na sprzęcie przed kolejnym krokiem.
-5. Etap 2 — przepisanie 105 miejsc `polish()` na `tr()` z nowymi kluczami.
-6. Etap 2 — `DictaphonePlugin` przechodzi na wspólną tabelę, `DictStr`
-   usunięty.
+5. ✅ Etap 2 — okazało się już zrobione wcześniej (poza tym planem): audyt z
+   nagłówka dokumentu był nieaktualny. Komentarz w `Translations.h`
+   ("previously only Polish/English via the polish() helper") i historia
+   gita (`bd6bded feat(i18n): full 6-language support across App.cpp and
+   dictaphone plugin`, potem rozszerzenia Faz 2/3) pokazują, że `polish()`
+   zniknął z `App.cpp` na długo przed tą gałęzią — 327 wywołań `tr()`/
+   `tr2()`/`tr3()` w `App.cpp`, zero `polish(`. Nic do zrobienia.
+6. ✅ Etap 2 — `DictaphonePlugin` przechodzi na wspólną tabelę. Zamiast osobnej
+   kopii przełącznika (15 kluczy x 6 języków w `DictaphonePlugin.cpp`),
+   dodano `PluginDisplayService::pluginTr(uint16_t key, int lang)` (nowy
+   wskaźnik funkcji w SDK, wzorem `languageIndex()`) — bridge
+   (`DeviceServicesBridge.cpp`) implementuje go jako odczyt z tej samej
+   wygenerowanej tabeli co `tr()`/`tr2()`/`tr3()` (rozszerzony
+   `tools/gen_translations.py` o piąte źródło: enum `DictStr` czytany
+   bezpośrednio z `DictaphonePlugin.cpp`, bez przenoszenia go do nagłówka).
+   15 wierszy `DictStr.*` dopisane do `tools/translations.csv`,
+   zweryfikowane bajt-w-bajt ze starym przełącznikiem. `dictText()` w
+   pluginie to teraz jednolinijkowy wrapper na `display_->pluginTr(...)` —
+   plugin nadal nie włącza żadnego nagłówka z `app/`. Build (`pio run`)
+   przechodzi czysto (Flash 42.5%, RAM 27.4%, identycznie jak przed tą
+   zmianą). Do zrobienia: test fizyczny na sprzęcie (menu dyktafonu we
+   wszystkich 6 językach) przed uznaniem całego planu za zamknięty.

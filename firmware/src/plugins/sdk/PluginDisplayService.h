@@ -68,6 +68,14 @@ typedef struct PluginDisplayService {
     /// bridge's built-in labels) call this to pick the right string.
     int (*languageIndex)(void);
 
+    /// Looks up a plugin-owned localized string (e.g. DictaphonePlugin's
+    /// `DictStr` enum, cast to `key`) in the same 6-language table the app's
+    /// own tr()/tr2()/tr3() use, indexed by `lang` (see languageIndex()
+    /// above). This is how a plugin gets its strings from the shared
+    /// tools/translations.csv-generated table without including any app
+    /// header -- the bridge implements the lookup on its behalf.
+    const char* (*pluginTr)(uint16_t key, int lang);
+
     /// Scrollable reader for a long block of plain text (e.g. an RSS
     /// article body): `title` is drawn as a header line, `body` is word-
     /// wrapped to the display width and rendered starting at `scrollLine`

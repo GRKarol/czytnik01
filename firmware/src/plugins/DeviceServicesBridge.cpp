@@ -267,6 +267,10 @@ static int bridgeLanguageIndex() {
     return static_cast<int>(sLanguageIndex);
 }
 
+static const char* bridgePluginTr(uint16_t key, int lang) {
+    return TranslationsData::dictStrLookup(static_cast<uint8_t>(key), static_cast<uint8_t>(lang));
+}
+
 static void bridgeRenderPlaybackControls(const char* title, bool paused, uint8_t volumePercent,
                                           uint32_t elapsedSec, uint32_t totalSec) {
     if (!sDisplay) return;
@@ -871,6 +875,7 @@ void DeviceServicesBridge::setup(const char* pluginId,
         displayService->renderDeletableList = bridgeRenderDeletableList;
         displayService->renderPlaybackControls = bridgeRenderPlaybackControls;
         displayService->languageIndex = bridgeLanguageIndex;
+        displayService->pluginTr = bridgePluginTr;
         displayService->renderArticleReader = bridgeRenderArticleReader;
     }
 

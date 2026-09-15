@@ -261,3 +261,18 @@ UiText.TimeEstimateAccurate;Dokladny;Accurate;Preciso;Precis;Genau;Exact
 UiText.TimeEstimateFast;Szybki;Fast;Rapido;Rapide;Schnell;Rapid
 UiText.ScrollLineSpacing;Interlinia;Line spacing;Interlineado;Interligne;Zeilenabst.;Spatiere
 UiText.ScrollMargins;Marginesy;Margins;Margenes;Marges;Raender;Margini
+DictStr.Record;Nagraj;Record;Grabar;Enregistrer;Aufnehmen;Inregistreaza
+DictStr.Library;Biblioteka;Library;Biblioteca;Bibliotheque;Bibliothek;Biblioteca
+DictStr.LibraryTitle;BIBLIOTEKA;LIBRARY;BIBLIOTECA;BIBLIOTHEQUE;BIBLIOTHEK;BIBLIOTECA
+DictStr.NoRecordings;Brak nagran;No recordings;Sin grabaciones;Aucun enregistrement;Keine Aufnahmen;Nicio inregistrare
+DictStr.TapToGoBack;Dotknij, aby wrocic;Tap to go back;Toca para volver;Touchez pour revenir;Tippen zum Zurueckgehen;Atinge pentru a reveni
+DictStr.Rename;Zmien nazwe;Rename;Renombrar;Renommer;Umbenennen;Redenumeste
+DictStr.Save;Zapisz;Save;Guardar;Enregistrer;Speichern;Salveaza
+DictStr.Backspace;<- Usun znak;<- Backspace;<- Borrar;<- Effacer;<- Loeschen;<- Sterge
+DictStr.Cancel;Anuluj;Cancel;Cancelar;Annuler;Abbrechen;Anuleaza
+DictStr.Delete;Usun;Delete;Eliminar;Supprimer;Loeschen;Sterge
+DictStr.ErrorTitle;BLAD;ERROR;ERROR;ERREUR;FEHLER;EROARE
+DictStr.MicUnavailable;Mikrofon niedostepny;Mic unavailable;Microfono no disponible;Micro indisponible;Mikrofon nicht verfuegbar;Microfon indisponibil
+DictStr.RecordingFailed;Nagrywanie nie powiodlo sie;Recording failed;Grabacion fallida;Enregistrement echoue;Aufnahme fehlgeschlagen;Inregistrare esuata
+DictStr.TryAgain;Sprobuj ponownie;Try again;Intentalo de nuevo;Reessayez;Erneut versuchen;Incearca din nou
+DictStr.PeakAbbrev;Pzm;Lvl;Niv;Niv;Peg;Niv

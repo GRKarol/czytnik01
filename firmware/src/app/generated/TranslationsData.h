@@ -292,4 +292,25 @@ inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
   return kTable[keyIndex][langIndex];
 }
 
+inline const char *dictStrLookup(uint8_t keyIndex, uint8_t langIndex) {
+  static const char *const kTable[15][6] = {
+      {"Record", "Grabar", "Enregistrer", "Aufnehmen", "Inregistreaza", "Nagraj"},  // Record
+      {"Library", "Biblioteca", "Bibliotheque", "Bibliothek", "Biblioteca", "Biblioteka"},  // Library
+      {"LIBRARY", "BIBLIOTECA", "BIBLIOTHEQUE", "BIBLIOTHEK", "BIBLIOTECA", "BIBLIOTEKA"},  // LibraryTitle
+      {"No recordings", "Sin grabaciones", "Aucun enregistrement", "Keine Aufnahmen", "Nicio inregistrare", "Brak nagran"},  // NoRecordings
+      {"Tap to go back", "Toca para volver", "Touchez pour revenir", "Tippen zum Zurueckgehen", "Atinge pentru a reveni", "Dotknij, aby wrocic"},  // TapToGoBack
+      {"Rename", "Renombrar", "Renommer", "Umbenennen", "Redenumeste", "Zmien nazwe"},  // Rename
+      {"Save", "Guardar", "Enregistrer", "Speichern", "Salveaza", "Zapisz"},  // Save
+      {"<- Backspace", "<- Borrar", "<- Effacer", "<- Loeschen", "<- Sterge", "<- Usun znak"},  // Backspace
+      {"Cancel", "Cancelar", "Annuler", "Abbrechen", "Anuleaza", "Anuluj"},  // Cancel
+      {"Delete", "Eliminar", "Supprimer", "Loeschen", "Sterge", "Usun"},  // Delete
+      {"ERROR", "ERROR", "ERREUR", "FEHLER", "EROARE", "BLAD"},  // ErrorTitle
+      {"Mic unavailable", "Microfono no disponible", "Micro indisponible", "Mikrofon nicht verfuegbar", "Microfon indisponibil", "Mikrofon niedostepny"},  // MicUnavailable
+      {"Recording failed", "Grabacion fallida", "Enregistrement echoue", "Aufnahme fehlgeschlagen", "Inregistrare esuata", "Nagrywanie nie powiodlo sie"},  // RecordingFailed
+      {"Try again", "Intentalo de nuevo", "Reessayez", "Erneut versuchen", "Incearca din nou", "Sprobuj ponownie"},  // TryAgain
+      {"Lvl", "Niv", "Niv", "Peg", "Niv", "Pzm"},  // PeakAbbrev
+  };
+  return kTable[keyIndex][langIndex];
+}
+
 }  // namespace TranslationsData

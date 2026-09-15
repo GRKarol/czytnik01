@@ -19,12 +19,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TRANSLATIONS_H = ROOT / "firmware/src/app/Translations.h"
 LOCALIZATION_H = ROOT / "firmware/src/app/Localization.h"
+DICTAPHONE_PLUGIN_CPP = ROOT / "firmware/src/plugins/builtin/DictaphonePlugin.cpp"
 CSV_PATH = ROOT / "tools/translations.csv"
 OUT_PATH = ROOT / "firmware/src/app/generated/TranslationsData.h"
 
 # Column order in the CSV vs. array row order, which must match the
 # UiLanguage enum in Localization.h (English=0, Spanish=1, French=2,
-# German=3, Romanian=4, Polish=5).
+# German=3, Romanian=4, Polish=5). DictaphonePlugin.cpp's own DictStr enum
+# uses the same 6-language ordering (see its comment) despite living outside
+# the app -- the generated table for it goes in the same output file/
+# namespace since DeviceServicesBridge.cpp (which reads it on the plugin's
+# behalf via the PluginDisplayService::pluginTr function pointer) already
+# includes app/Translations.h.
 CSV_LANG_COLUMNS = ["en", "es", "fr", "de", "ro", "pl"]
 
 TABLES = [
@@ -32,6 +38,7 @@ TABLES = [
     (TRANSLATIONS_H, "TrKey2", "trKey2Lookup"),
     (TRANSLATIONS_H, "TrKey3", "trKey3Lookup"),
     (LOCALIZATION_H, "UiText", "uiTextLookup"),
+    (DICTAPHONE_PLUGIN_CPP, "DictStr", "dictStrLookup"),
 ]
 
 

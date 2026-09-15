@@ -46,8 +46,12 @@ DictaphoneCore* s_instance = nullptr;
 // The plugin can't include app/Localization.h (it's built to stay decoupled
 // from the app's own headers — see PluginDisplayService::languageIndex(),
 // which is how it learns the current language without that dependency), so
-// this is its own small copy of the same 6-language ordering (0=English,
-// 1=Spanish, 2=French, 3=German, 4=Romanian, 5=Polish).
+// this enum is its own small copy of the same 6-language key ordering
+// (0=English, 1=Spanish, 2=French, 3=German, 4=Romanian, 5=Polish). The
+// actual strings live in tools/translations.csv (as DictStr.* rows) and are
+// looked up through PluginDisplayService::pluginTr() -- the bridge resolves
+// `key` against the same generated table the app's tr()/tr2()/tr3() use, so
+// there is only one place to edit a translation.
 enum class DictStr : uint8_t {
     Record,
     Library,
@@ -66,145 +70,8 @@ enum class DictStr : uint8_t {
     PeakAbbrev,
 };
 
-const char* dictText(DictStr key, int lang) {
-    switch (key) {
-        case DictStr::Record:
-            switch (lang) {
-                case 1: return "Grabar";
-                case 2: return "Enregistrer";
-                case 3: return "Aufnehmen";
-                case 4: return "Inregistreaza";
-                case 5: return "Nagraj";
-                default: return "Record";
-            }
-        case DictStr::Library:
-            switch (lang) {
-                case 1: return "Biblioteca";
-                case 2: return "Bibliotheque";
-                case 3: return "Bibliothek";
-                case 4: return "Biblioteca";
-                case 5: return "Biblioteka";
-                default: return "Library";
-            }
-        case DictStr::LibraryTitle:
-            switch (lang) {
-                case 1: return "BIBLIOTECA";
-                case 2: return "BIBLIOTHEQUE";
-                case 3: return "BIBLIOTHEK";
-                case 4: return "BIBLIOTECA";
-                case 5: return "BIBLIOTEKA";
-                default: return "LIBRARY";
-            }
-        case DictStr::NoRecordings:
-            switch (lang) {
-                case 1: return "Sin grabaciones";
-                case 2: return "Aucun enregistrement";
-                case 3: return "Keine Aufnahmen";
-                case 4: return "Nicio inregistrare";
-                case 5: return "Brak nagran";
-                default: return "No recordings";
-            }
-        case DictStr::TapToGoBack:
-            switch (lang) {
-                case 1: return "Toca para volver";
-                case 2: return "Touchez pour revenir";
-                case 3: return "Tippen zum Zurueckgehen";
-                case 4: return "Atinge pentru a reveni";
-                case 5: return "Dotknij, aby wrocic";
-                default: return "Tap to go back";
-            }
-        case DictStr::Rename:
-            switch (lang) {
-                case 1: return "Renombrar";
-                case 2: return "Renommer";
-                case 3: return "Umbenennen";
-                case 4: return "Redenumeste";
-                case 5: return "Zmien nazwe";
-                default: return "Rename";
-            }
-        case DictStr::Save:
-            switch (lang) {
-                case 1: return "Guardar";
-                case 2: return "Enregistrer";
-                case 3: return "Speichern";
-                case 4: return "Salveaza";
-                case 5: return "Zapisz";
-                default: return "Save";
-            }
-        case DictStr::Backspace:
-            switch (lang) {
-                case 1: return "<- Borrar";
-                case 2: return "<- Effacer";
-                case 3: return "<- Loeschen";
-                case 4: return "<- Sterge";
-                case 5: return "<- Usun znak";
-                default: return "<- Backspace";
-            }
-        case DictStr::Cancel:
-            switch (lang) {
-                case 1: return "Cancelar";
-                case 2: return "Annuler";
-                case 3: return "Abbrechen";
-                case 4: return "Anuleaza";
-                case 5: return "Anuluj";
-                default: return "Cancel";
-            }
-        case DictStr::Delete:
-            switch (lang) {
-                case 1: return "Eliminar";
-                case 2: return "Supprimer";
-                case 3: return "Loeschen";
-                case 4: return "Sterge";
-                case 5: return "Usun";
-                default: return "Delete";
-            }
-        case DictStr::ErrorTitle:
-            switch (lang) {
-                case 1: return "ERROR";
-                case 2: return "ERREUR";
-                case 3: return "FEHLER";
-                case 4: return "EROARE";
-                case 5: return "BLAD";
-                default: return "ERROR";
-            }
-        case DictStr::MicUnavailable:
-            switch (lang) {
-                case 1: return "Microfono no disponible";
-                case 2: return "Micro indisponible";
-                case 3: return "Mikrofon nicht verfuegbar";
-                case 4: return "Microfon indisponibil";
-                case 5: return "Mikrofon niedostepny";
-                default: return "Mic unavailable";
-            }
-        case DictStr::RecordingFailed:
-            switch (lang) {
-                case 1: return "Grabacion fallida";
-                case 2: return "Enregistrement echoue";
-                case 3: return "Aufnahme fehlgeschlagen";
-                case 4: return "Inregistrare esuata";
-                case 5: return "Nagrywanie nie powiodlo sie";
-                default: return "Recording failed";
-            }
-        case DictStr::TryAgain:
-            switch (lang) {
-                case 1: return "Intentalo de nuevo";
-                case 2: return "Reessayez";
-                case 3: return "Erneut versuchen";
-                case 4: return "Incearca din nou";
-                case 5: return "Sprobuj ponownie";
-                default: return "Try again";
-            }
-        case DictStr::PeakAbbrev:
-            switch (lang) {
-                case 1: return "Niv";
-                case 2: return "Niv";
-                case 3: return "Peg";
-                case 4: return "Niv";
-                case 5: return "Pzm";
-                default: return "Lvl";
-            }
-    }
-    return "";
+const char* dictText(PluginDisplayService* display, DictStr key, int lang) {
+    return display->pluginTr(static_cast<uint16_t>(key), lang);
 }
 
 }  // namespace
@@ -575,7 +442,7 @@ void DictaphoneCore::drawMain() {
     if (!display_->renderButtonPair) return;
 
     const int lang = display_->languageIndex ? display_->languageIndex() : 0;
-    const char* libraryWord = dictText(DictStr::Library, lang);
+    const char* libraryWord = dictText(display_, DictStr::Library, lang);
 
     char rightLabel[32];
     if (recordingCount_ > 0) {
@@ -584,7 +451,7 @@ void DictaphoneCore::drawMain() {
         snprintf(rightLabel, sizeof(rightLabel), "%s", libraryWord);
     }
 
-    display_->renderButtonPair(dictText(DictStr::Record, lang), PLUGIN_ICON_RECORD, false,
+    display_->renderButtonPair(dictText(display_, DictStr::Record, lang), PLUGIN_ICON_RECORD, false,
                                 rightLabel, PLUGIN_ICON_BOOK);
 }
 
@@ -609,10 +476,10 @@ void DictaphoneCore::drawRecording() {
         peak = audio_->recordingPeakLevel();
     }
     char label[24];
-    snprintf(label, sizeof(label), "%s %s:%u%%", timeBuf, dictText(DictStr::PeakAbbrev, lang),
+    snprintf(label, sizeof(label), "%s %s:%u%%", timeBuf, dictText(display_, DictStr::PeakAbbrev, lang),
              static_cast<unsigned>(peak));
 
-    display_->renderButtonPair(label, PLUGIN_ICON_STOP, true, dictText(DictStr::Library, lang),
+    display_->renderButtonPair(label, PLUGIN_ICON_STOP, true, dictText(display_, DictStr::Library, lang),
                                 PLUGIN_ICON_BOOK);
 }
 
@@ -623,9 +490,9 @@ void DictaphoneCore::drawLibrary() {
 
     if (recordingCount_ == 0) {
         if (display_->renderStatus) {
-            display_->renderStatus(dictText(DictStr::LibraryTitle, lang),
-                                    dictText(DictStr::NoRecordings, lang),
-                                    dictText(DictStr::TapToGoBack, lang));
+            display_->renderStatus(dictText(display_, DictStr::LibraryTitle, lang),
+                                    dictText(display_, DictStr::NoRecordings, lang),
+                                    dictText(display_, DictStr::TapToGoBack, lang));
         }
         return;
     }
@@ -702,12 +569,12 @@ void DictaphoneCore::drawRename() {
     const int lang = display_->languageIndex ? display_->languageIndex() : 0;
 
     char saveLabel[kDictMaxFilenameLen + 8];
-    snprintf(saveLabel, sizeof(saveLabel), "%s: %s", dictText(DictStr::Save, lang), renameBuffer_);
+    snprintf(saveLabel, sizeof(saveLabel), "%s: %s", dictText(display_, DictStr::Save, lang), renameBuffer_);
 
     const char* items[kRenameActionRowCount + kRenameKeyCharCount];
     items[0] = saveLabel;
-    items[1] = dictText(DictStr::Backspace, lang);
-    items[2] = dictText(DictStr::Cancel, lang);
+    items[1] = dictText(display_, DictStr::Backspace, lang);
+    items[2] = dictText(display_, DictStr::Cancel, lang);
 
     char keyLabels[kRenameKeyCharCount][2];
     for (size_t i = 0; i < kRenameKeyCharCount; ++i) {
@@ -818,8 +685,8 @@ void DictaphoneCore::drawConfirmDelete() {
     // Left/right halves here must match handleTouch()'s Screen::ConfirmDelete
     // hit-test (x < width/2 = cancel, else = confirm) exactly, since that
     // logic isn't derived from these buttons — it's just the same split.
-    display_->renderButtonPair(dictText(DictStr::Cancel, lang), PLUGIN_ICON_NONE, false,
-                                dictText(DictStr::Delete, lang), PLUGIN_ICON_DELETE);
+    display_->renderButtonPair(dictText(display_, DictStr::Cancel, lang), PLUGIN_ICON_NONE, false,
+                                dictText(display_, DictStr::Delete, lang), PLUGIN_ICON_DELETE);
 }
 
 // ─── Recording Actions ──────────────────────────────────────────────────────
@@ -829,8 +696,8 @@ void DictaphoneCore::startRecording() {
         // Show error if audio service not available
         if (display_ && display_->renderStatus) {
             const int lang = display_->languageIndex ? display_->languageIndex() : 0;
-            display_->renderStatus(dictText(DictStr::ErrorTitle, lang),
-                                    dictText(DictStr::MicUnavailable, lang), "");
+            display_->renderStatus(dictText(display_, DictStr::ErrorTitle, lang),
+                                    dictText(display_, DictStr::MicUnavailable, lang), "");
         }
         return;
     }
@@ -850,9 +717,9 @@ void DictaphoneCore::startRecording() {
         // Recording failed to start — show feedback
         if (display_ && display_->renderStatus) {
             const int lang = display_->languageIndex ? display_->languageIndex() : 0;
-            display_->renderStatus(dictText(DictStr::ErrorTitle, lang),
-                                    dictText(DictStr::RecordingFailed, lang),
-                                    dictText(DictStr::TryAgain, lang));
+            display_->renderStatus(dictText(display_, DictStr::ErrorTitle, lang),
+                                    dictText(display_, DictStr::RecordingFailed, lang),
+                                    dictText(display_, DictStr::TryAgain, lang));
         }
     }
 }
