@@ -2469,6 +2469,9 @@ void DisplayManager::renderTypographyPreview(const String &beforeText, const Str
   const int maxLabelWidth = virtualWidth - 24;
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
+  // Same vector-chevron corner hint as renderStatus() — this screen had no
+  // visible Back affordance before, only the invisible backCornerHitZone().
+  drawIcon(ui::IconId::Back, 4, 4, 16, dimColor());
   drawTinyTextCentered(fitTinyText(title, maxLabelWidth, kTinyScale), titleY, wordColor(),
                        kTinyScale);
 

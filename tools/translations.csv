@@ -249,6 +249,9 @@ UiText.RestartBook;Restart ksiazki;Restart book;Reiniciar libro;Relancer livre;B
 UiText.AreYouSure;Na pewno?;Are you sure?;Seguro?;Confirmer ?;Sicher?;Sigur?
 UiText.NoKeepPlace;Nie, zostaw;No, keep place;No, conservar;Non, garder;Nein, merken;Nu, pastreaza
 UiText.YesRestart;Tak, restart;Yes, restart;Si, reiniciar;Oui, relancer;Ja, neu;Da, reporneste
+UiText.ResetTypographyQuestion;Zresetowac typografie?;Reset typography?;Restablecer tipografia?;Reinitialiser la typo ?;Typografie zuruecksetzen?;Resetare tipografie?
+UiText.NoKeepSettings;Nie, zostaw;No, keep settings;No, mantener;Non, garder;Nein, behalten;Nu, pastreaza
+UiText.YesReset;Tak, resetuj;Yes, reset;Si, restablecer;Oui, reinitialiser;Ja, zuruecksetzen;Da, reseteaza
 UiText.NoSamples;Brak probek;No samples;Sin muestras;Aucun exemple;Keine Proben;Fara probe
 UiText.Large;Duzy;Large;Grande;Grand;Gross;Mare
 UiText.Medium;Sredni;Medium;Mediano;Moyen;Mittel;Mediu

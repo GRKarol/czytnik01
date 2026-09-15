@@ -226,7 +226,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[61][6] = {
+  static const char *const kTable[64][6] = {
       {"Resume", "Reanudar", "Reprendre", "Weiter", "Continua", "Wznow"},  // Resume
       {"Chapters", "Capitulos", "Chapitres", "Kapitel", "Capitole", "Rozdzialy"},  // Chapters
       {"Library", "Biblioteca", "Bibliotheque", "Bibliothek", "Biblioteca", "Biblioteka"},  // Library
@@ -276,6 +276,9 @@ inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Are you sure?", "Seguro?", "Confirmer ?", "Sicher?", "Sigur?", "Na pewno?"},  // AreYouSure
       {"No, keep place", "No, conservar", "Non, garder", "Nein, merken", "Nu, pastreaza", "Nie, zostaw"},  // NoKeepPlace
       {"Yes, restart", "Si, reiniciar", "Oui, relancer", "Ja, neu", "Da, reporneste", "Tak, restart"},  // YesRestart
+      {"Reset typography?", "Restablecer tipografia?", "Reinitialiser la typo ?", "Typografie zuruecksetzen?", "Resetare tipografie?", "Zresetowac typografie?"},  // ResetTypographyQuestion
+      {"No, keep settings", "No, mantener", "Non, garder", "Nein, behalten", "Nu, pastreaza", "Nie, zostaw"},  // NoKeepSettings
+      {"Yes, reset", "Si, restablecer", "Oui, reinitialiser", "Ja, zuruecksetzen", "Da, reseteaza", "Tak, resetuj"},  // YesReset
       {"No samples", "Sin muestras", "Aucun exemple", "Keine Proben", "Fara probe", "Brak probek"},  // NoSamples
       {"Large", "Grande", "Grand", "Gross", "Mare", "Duzy"},  // Large
       {"Medium", "Mediano", "Moyen", "Mittel", "Mediu", "Sredni"},  // Medium

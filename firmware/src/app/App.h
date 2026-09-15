@@ -116,6 +116,7 @@ class App {
     PluginLibraryScreen,
     PluginDetail,
     RestartConfirm,
+    TypographyResetConfirm,
     SdCardRepairConfirm,
     UpdateConfirm,
     WelcomeInstallApp,
@@ -464,6 +465,8 @@ class App {
   void executeRestorePreset(size_t index, uint32_t nowMs);
   void openRestartConfirm();
   void selectRestartConfirmItem(uint32_t nowMs);
+  void openTypographyResetConfirm();
+  void selectTypographyResetConfirmItem(uint32_t nowMs);
   void openSdCardRepairConfirm();
   void selectSdCardRepairConfirmItem(uint32_t nowMs);
   void runSdCardRepair(uint32_t nowMs);
@@ -649,6 +652,7 @@ class App {
   void renderSettings();
   void showScrollSettingsPreview();
   void renderTypographyTuning();
+  void renderTypographyResetConfirm();
   void renderBookPicker();
   void renderBookDetails();
   void renderChapterPicker();
@@ -788,6 +792,7 @@ class App {
   size_t chapterPickerSelectedIndex_ = 0;
   size_t chapterTransitionIndex_ = static_cast<size_t>(-1);
   size_t restartConfirmSelectedIndex_ = 0;
+  size_t typographyResetConfirmSelectedIndex_ = 0;
   size_t sdCardRepairConfirmSelectedIndex_ = 0;
   size_t updateConfirmSelectedIndex_ = 0;
   uint8_t brightnessLevelIndex_ = 4;

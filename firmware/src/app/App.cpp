@@ -184,6 +184,12 @@ enum RestartConfirmItem : size_t {
   RestartConfirmItemCount,
 };
 
+enum TypographyResetConfirmItem : size_t {
+  TypographyResetConfirmNo,
+  TypographyResetConfirmYes,
+  TypographyResetConfirmItemCount,
+};
+
 enum SdCardRepairConfirmItem : size_t {
   SdCardRepairConfirmNo,
   SdCardRepairConfirmYes,
@@ -197,6 +203,7 @@ enum UpdateConfirmItem : size_t {
 };
 
 constexpr size_t kRestartConfirmHeaderRows = 1;
+constexpr size_t kTypographyResetConfirmHeaderRows = 1;
 constexpr size_t kSdCardRepairConfirmHeaderRows = 1;
 constexpr size_t kUpdateConfirmHeaderRows = 2;
 constexpr size_t kSettingsBackIndex = 0;
@@ -3345,6 +3352,9 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     selectedIndex = &restartConfirmSelectedIndex_;
     itemCount = RestartConfirmItemCount;
+  } else if (menuScreen_ == MenuScreen::TypographyResetConfirm) {
+    selectedIndex = &typographyResetConfirmSelectedIndex_;
+    itemCount = TypographyResetConfirmItemCount;
   } else if (menuScreen_ == MenuScreen::SdCardRepairConfirm) {
     selectedIndex = &sdCardRepairConfirmSelectedIndex_;
     itemCount = SdCardRepairConfirmItemCount;
@@ -4145,6 +4155,10 @@ void App::selectMenuItem(uint32_t nowMs) {
   }
   if (menuScreen_ == MenuScreen::RestartConfirm) {
     selectRestartConfirmItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::TypographyResetConfirm) {
+    selectTypographyResetConfirmItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::SdCardRepairConfirm) {
@@ -5149,19 +5163,39 @@ void App::selectTypographyTuningItem(uint32_t nowMs) {
       preferences_.putUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap);
       break;
     case TypographyTuningReset:
-      typographyConfig_ = defaultTypographyConfig();
-      preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
-      preferences_.putBool(kPrefTypographyFocusHighlight, typographyConfig_.focusHighlight);
-      preferences_.putChar(kPrefTypographyTracking, typographyConfig_.trackingPx);
-      preferences_.putUChar(kPrefTypographyAnchor, typographyConfig_.anchorPercent);
-      preferences_.putUChar(kPrefTypographyGuideWidth, typographyConfig_.guideHalfWidth);
-      preferences_.putUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap);
-      break;
+      openTypographyResetConfirm();
+      return;
     default:
       return;
   }
 
   applyTypographySettings(nowMs);
+}
+
+void App::openTypographyResetConfirm() {
+  typographyResetConfirmSelectedIndex_ = TypographyResetConfirmNo;
+  menuScreen_ = MenuScreen::TypographyResetConfirm;
+  renderTypographyResetConfirm();
+}
+
+void App::selectTypographyResetConfirmItem(uint32_t nowMs) {
+  if (typographyResetConfirmSelectedIndex_ != TypographyResetConfirmYes) {
+    menuScreen_ = MenuScreen::TypographyTuning;
+    renderTypographyTuning();
+    return;
+  }
+
+  typographyConfig_ = defaultTypographyConfig();
+  preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
+  preferences_.putBool(kPrefTypographyFocusHighlight, typographyConfig_.focusHighlight);
+  preferences_.putChar(kPrefTypographyTracking, typographyConfig_.trackingPx);
+  preferences_.putUChar(kPrefTypographyAnchor, typographyConfig_.anchorPercent);
+  preferences_.putUChar(kPrefTypographyGuideWidth, typographyConfig_.guideHalfWidth);
+  preferences_.putUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap);
+  applyTypographySettings(nowMs);
+
+  menuScreen_ = MenuScreen::TypographyTuning;
+  renderTypographyTuning();
 }
 
 void App::cycleTypographyPreviewSample(int direction) {
@@ -9366,6 +9400,8 @@ void App::renderMenu() {
     renderPluginDetail();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     renderRestartConfirm();
+  } else if (menuScreen_ == MenuScreen::TypographyResetConfirm) {
+    renderTypographyResetConfirm();
   } else if (menuScreen_ == MenuScreen::SdCardRepairConfirm) {
     renderSdCardRepairConfirm();
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
@@ -9496,6 +9532,18 @@ void App::renderTypographyTuning() {
                                    kTypographyPreviewWords[index],
                                    afterText,
                                    readerFontSizeIndex_, title, line1, line2);
+}
+
+void App::renderTypographyResetConfirm() {
+  std::vector<String> items;
+  items.reserve(TypographyResetConfirmItemCount + kTypographyResetConfirmHeaderRows);
+  items.push_back(uiText(UiText::ResetTypographyQuestion));
+  items.push_back(uiText(UiText::NoKeepSettings));
+  items.push_back(uiText(UiText::YesReset));
+
+  renderItemGrid(items[0], items,
+                 typographyResetConfirmSelectedIndex_ + kTypographyResetConfirmHeaderRows,
+                 kTypographyResetConfirmHeaderRows);
 }
 
 void App::renderBookPicker() {
