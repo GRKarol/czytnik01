@@ -173,5 +173,11 @@ Co robimy:
    pluginie to teraz jednolinijkowy wrapper na `display_->pluginTr(...)` —
    plugin nadal nie włącza żadnego nagłówka z `app/`. Build (`pio run`)
    przechodzi czysto (Flash 42.5%, RAM 27.4%, identycznie jak przed tą
-   zmianą). Do zrobienia: test fizyczny na sprzęcie (menu dyktafonu we
-   wszystkich 6 językach) przed uznaniem całego planu za zamknięty.
+   zmianą). Test fizyczny na sprzęcie (menu dyktafonu we wszystkich 6
+   językach, v0.3.32) potwierdzony 2026-09-15 — zero różnic.
+
+**Plan zamknięty w całości 2026-09-15.** Wszystkie etapy (1 i 2) zrealizowane,
+zbudowane, wypchnięte na staging jako osobne tagi i potwierdzone fizycznie na
+sprzęcie. Jedyna pozycja pozostawiona świadomie otwarta to punkt "Later/
+opcjonalnie" w Etapie 2 (przeniesienie tabeli tłumaczeń z Flash na SD) — nie
+była wymagana do zamknięcia etapu i nie została zrealizowana.
