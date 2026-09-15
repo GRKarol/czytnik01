@@ -3600,8 +3600,14 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
 
       // Big numeric readout — the whole point of this widget is that the
       // current value is legible without reading a cramped grid label.
+      // (Or, for a slider over named stops like font size, the stop's name
+      // instead of a bare index — see Button::sliderValueLabels.)
       const int valueScale = 4;
-      const String valueText = String(button.sliderValue) + button.sliderUnit;
+      const bool hasValueLabels =
+          !button.sliderValueLabels.empty() && button.sliderValue < button.sliderValueLabels.size();
+      const String valueText = hasValueLabels
+                                    ? button.sliderValueLabels[button.sliderValue]
+                                    : String(button.sliderValue) + button.sliderUnit;
       const int valueW = measureTinyTextWidth(valueText, valueScale);
       const int valueX = static_cast<int>(button.x) +
                          std::max(0, (static_cast<int>(button.width) - valueW) / 2);
@@ -3627,8 +3633,12 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
       drawFilledCircle(knobCx, static_cast<int>(track.y) + static_cast<int>(track.h) / 2, knobR, focusColor());
 
       // Min/max endpoints under the track so the range reads at a glance.
-      const String minText = String(button.sliderMin);
-      const String maxText = String(button.sliderMax);
+      const String minText = hasValueLabels && button.sliderMin < button.sliderValueLabels.size()
+                                  ? button.sliderValueLabels[button.sliderMin]
+                                  : String(button.sliderMin);
+      const String maxText = hasValueLabels && button.sliderMax < button.sliderValueLabels.size()
+                                  ? button.sliderValueLabels[button.sliderMax]
+                                  : String(button.sliderMax);
       const int endY = static_cast<int>(track.y) + static_cast<int>(track.h) + 4;
       drawTinyTextAt(minText, track.x, endY, dimColor(), kTinyScale);
       const int maxTextW = measureTinyTextWidth(maxText, kTinyScale);

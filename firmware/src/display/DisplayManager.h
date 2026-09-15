@@ -122,6 +122,11 @@ class DisplayManager {
     uint16_t sliderValue = 0;
     // Suffix drawn right after the big numeric readout (e.g. " ms", " WPM").
     String sliderUnit = " ms";
+    // Kind::Slider only, optional: when non-empty, the big readout shows
+    // sliderValueLabels[sliderValue] (e.g. "Maly"/"Sredni"/"Duzy" for font
+    // size) instead of the raw number+unit — for a slider over a short list
+    // of named stops rather than a true numeric range.
+    std::vector<String> sliderValueLabels;
     // Font-picker screen only: draw this button's label in that specific
     // typeface instead of the globally active reader typeface, so each
     // button previews its own font by name. ReaderTypeface::Count is the

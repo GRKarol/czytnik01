@@ -118,6 +118,7 @@ class App {
     RestartConfirm,
     TypographyResetConfirm,
     TypographyFontPicker,
+    TypographyValueEditor,
     SdCardRepairConfirm,
     UpdateConfirm,
     WelcomeInstallApp,
@@ -144,6 +145,27 @@ class App {
     LongWords,
     Complexity,
     Punctuation,
+  };
+
+  // Which typography value the TypographyValueEditor screen is currently
+  // showing — one shared drag-slider screen/handler for all five instead of
+  // five near-identical copies (mirrors PacingDelayTarget above).
+  enum class TypographyValueEditorTarget : uint8_t {
+    FontSize,
+    Tracking,
+    Anchor,
+    GuideWidth,
+    GuideGap,
+  };
+
+  struct TypographyValueEditorSpec {
+    String label;
+    uint16_t sliderMin = 0;
+    uint16_t sliderMax = 0;
+    uint16_t sliderValue = 0;
+    uint16_t step = 1;
+    String unit;
+    std::vector<String> valueLabels;  // empty = plain number+unit readout
   };
 
   enum class FooterMetricMode : uint8_t {
@@ -254,7 +276,6 @@ class App {
   void cycleReaderMode(uint32_t nowMs);
   void cycleHandednessMode(uint32_t nowMs);
   void togglePhantomWords(uint32_t nowMs);
-  void cycleReaderFontSize(uint32_t nowMs);
   void applyDisplayPreferences(uint32_t nowMs, bool rerender = true);
   void applyHandednessSettings(uint32_t nowMs, bool rerender = true);
   void applyTypographySettings(uint32_t nowMs, bool rerender = true);
@@ -403,6 +424,17 @@ class App {
   void renderWpmEditor();
   void handleWpmEditorTouch(const TouchEvent &event, uint32_t nowMs);
   void applyWpmEditorTouchX(uint16_t x);
+
+  // Rozmiar/Odstepy/Kotwica/Szerokosc+Przerwa guide: same drag-slider
+  // pattern as the pacing delays above, one screen for all five instead of
+  // five near-identical copies. typographyValueEditorSpec() is the only
+  // per-target switch — render/touch code reads generically from it.
+  void openTypographyValueEditor(TypographyValueEditorTarget target, uint32_t nowMs);
+  void renderTypographyValueEditor();
+  void handleTypographyValueEditorTouch(const TouchEvent &event, uint32_t nowMs);
+  void applyTypographyValueEditorTouchX(uint16_t x);
+  TypographyValueEditorSpec typographyValueEditorSpec() const;
+  void commitTypographyValueEditorValue(uint16_t sliderValue, uint32_t nowMs);
   String wpmEditorLabel() const;
   String firmwareUpdateMenuLabel() const;
   String themeModeLabel() const;
@@ -819,6 +851,8 @@ class App {
   // press-and-drag off the icon doesn't accidentally exit the screen.
   bool pacingDelayEditorTouchOnBack_ = false;
   bool wpmEditorTouchOnBack_ = false;
+  TypographyValueEditorTarget typographyValueEditorTarget_ = TypographyValueEditorTarget::FontSize;
+  bool typographyValueEditorTouchOnBack_ = false;
   size_t typographyTuningSelectedIndex_ = 1;
   size_t typographyPreviewSampleIndex_ = 0;
   // Rects for the currently-rendered button grid, aligned with

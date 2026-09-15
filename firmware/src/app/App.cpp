@@ -465,16 +465,6 @@ int clampIntSetting(int value, int minValue, int maxValue) {
   return std::max(minValue, std::min(maxValue, value));
 }
 
-int nextCyclicSetting(int value, int minValue, int maxValue, int step = 1) {
-  step = std::max(1, step);
-  const int normalized = clampIntSetting(value, minValue, maxValue);
-  int next = normalized + step;
-  if (next > maxValue) {
-    next = minValue;
-  }
-  return next;
-}
-
 DisplayManager::TypographyConfig defaultTypographyConfig() {
   return DisplayManager::TypographyConfig();
 }
@@ -2042,13 +2032,6 @@ void App::togglePhantomWords(uint32_t nowMs) {
   applyDisplayPreferences(nowMs);
 }
 
-void App::cycleReaderFontSize(uint32_t nowMs) {
-  readerFontSizeIndex_ = static_cast<uint8_t>((readerFontSizeIndex_ + 1) % kReaderFontSizeCount);
-  preferences_.putUChar(kPrefReaderFontSize, readerFontSizeIndex_);
-  Serial.printf("[display] font size=%s\n", readerFontSizeLabel().c_str());
-  applyDisplayPreferences(nowMs);
-}
-
 bool App::updateBatteryStatus(uint32_t nowMs, bool force) {
   if (!force) {
     const bool lowBatteryKnown =
@@ -2862,6 +2845,10 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     handleWpmEditorTouch(event, nowMs);
     return;
   }
+  if (menuScreen_ == MenuScreen::TypographyValueEditor) {
+    handleTypographyValueEditorTouch(event, nowMs);
+    return;
+  }
 
   if (event.phase == TouchPhase::Start) {
     pausedTouch_.active = true;
@@ -3213,6 +3200,7 @@ bool App::isDeepMenuScreen() const {
     case MenuScreen::PacingDelayEditor:
     case MenuScreen::WpmEditor:
     case MenuScreen::TypographyFontPicker:
+    case MenuScreen::TypographyValueEditor:
       return true;
     default:
       // Main, and everything one hop off it (SettingsHome, BookPicker,
@@ -5119,7 +5107,9 @@ void App::selectTypographyTuningItem(uint32_t nowMs) {
       renderSettings();
       return;
     case TypographyTuningFontSize:
-      cycleReaderFontSize(nowMs);
+      // Was tap-to-cycle; now opens the same drag-slider widget as WPM, so
+      // it matches the gesture the user actually asked for.
+      openTypographyValueEditor(TypographyValueEditorTarget::FontSize, nowMs);
       return;
     case TypographyTuningTypeface:
       // 10 fonts is too many to cycle one at a time (see font picker below)
@@ -5135,36 +5125,17 @@ void App::selectTypographyTuningItem(uint32_t nowMs) {
       preferences_.putBool(kPrefTypographyFocusHighlight, typographyConfig_.focusHighlight);
       break;
     case TypographyTuningTracking:
-      typographyConfig_.trackingPx = static_cast<int8_t>(
-          nextCyclicSetting(typographyConfig_.trackingPx, kTypographyTrackingMin,
-                            kTypographyTrackingMax));
-      preferences_.putChar(kPrefTypographyTracking, typographyConfig_.trackingPx);
-      break;
-    case TypographyTuningAnchor: {
-      const uint8_t anchorMin =
-          (handednessMode_ == HandednessMode::Left) ? kLeftHandAnchorMin : kTypographyAnchorMin;
-      const uint8_t anchorMax =
-          (handednessMode_ == HandednessMode::Left) ? kLeftHandAnchorMax : kTypographyAnchorMax;
-      const uint8_t nextAnchorPercent = static_cast<uint8_t>(
-          nextCyclicSetting(effectiveAnchorPercent(), anchorMin, anchorMax));
-      typographyConfig_.anchorPercent = (handednessMode_ == HandednessMode::Left)
-                                            ? static_cast<uint8_t>(nextAnchorPercent -
-                                                                   kLeftHandAnchorOffset)
-                                            : nextAnchorPercent;
-      preferences_.putUChar(kPrefTypographyAnchor, typographyConfig_.anchorPercent);
-      break;
-    }
+      openTypographyValueEditor(TypographyValueEditorTarget::Tracking, nowMs);
+      return;
+    case TypographyTuningAnchor:
+      openTypographyValueEditor(TypographyValueEditorTarget::Anchor, nowMs);
+      return;
     case TypographyTuningGuideWidth:
-      typographyConfig_.guideHalfWidth = static_cast<uint8_t>(nextCyclicSetting(
-          typographyConfig_.guideHalfWidth, kTypographyGuideWidthMin,
-          kTypographyGuideWidthMax, kTypographyGuideWidthStep));
-      preferences_.putUChar(kPrefTypographyGuideWidth, typographyConfig_.guideHalfWidth);
-      break;
+      openTypographyValueEditor(TypographyValueEditorTarget::GuideWidth, nowMs);
+      return;
     case TypographyTuningGuideGap:
-      typographyConfig_.guideGap = static_cast<uint8_t>(nextCyclicSetting(
-          typographyConfig_.guideGap, kTypographyGuideGapMin, kTypographyGuideGapMax));
-      preferences_.putUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap);
-      break;
+      openTypographyValueEditor(TypographyValueEditorTarget::GuideGap, nowMs);
+      return;
     case TypographyTuningReset:
       openTypographyResetConfirm();
       return;
@@ -6552,6 +6523,190 @@ void App::handleWpmEditorTouch(const TouchEvent &event, uint32_t nowMs) {
                   static_cast<unsigned long>(reader_.wordIntervalMs()));
     showGridToast(wpmEditorLabel() + ": " + String(reader_.wpm()) + " WPM", nowMs);
     renderWpmEditor();
+  }
+}
+
+App::TypographyValueEditorSpec App::typographyValueEditorSpec() const {
+  TypographyValueEditorSpec spec;
+  switch (typographyValueEditorTarget_) {
+    case TypographyValueEditorTarget::FontSize: {
+      spec.label = uiText(UiText::FontSize);
+      spec.sliderMin = 0;
+      spec.sliderMax = static_cast<uint16_t>(kReaderFontSizeCount - 1);
+      spec.sliderValue = readerFontSizeIndex_;
+      spec.step = 1;
+      spec.valueLabels = {uiText(UiText::Large), uiText(UiText::Medium), uiText(UiText::Small)};
+      return spec;
+    }
+    case TypographyValueEditorTarget::Tracking: {
+      spec.label = uiText(UiText::Tracking);
+      spec.sliderMin = 0;
+      spec.sliderMax = static_cast<uint16_t>(kTypographyTrackingMax - kTypographyTrackingMin);
+      spec.sliderValue = static_cast<uint16_t>(typographyConfig_.trackingPx - kTypographyTrackingMin);
+      spec.step = 1;
+      for (int value = kTypographyTrackingMin; value <= kTypographyTrackingMax; ++value) {
+        spec.valueLabels.push_back((value >= 0 ? "+" : "") + String(value) + " px");
+      }
+      return spec;
+    }
+    case TypographyValueEditorTarget::Anchor: {
+      const uint8_t anchorMin =
+          (handednessMode_ == HandednessMode::Left) ? kLeftHandAnchorMin : kTypographyAnchorMin;
+      const uint8_t anchorMax =
+          (handednessMode_ == HandednessMode::Left) ? kLeftHandAnchorMax : kTypographyAnchorMax;
+      spec.label = uiText(UiText::Anchor);
+      spec.sliderMin = anchorMin;
+      spec.sliderMax = anchorMax;
+      spec.sliderValue = effectiveAnchorPercent();
+      spec.step = 1;
+      spec.unit = "%";
+      return spec;
+    }
+    case TypographyValueEditorTarget::GuideWidth: {
+      spec.label = uiText(UiText::GuideWidth);
+      spec.sliderMin = kTypographyGuideWidthMin;
+      spec.sliderMax = kTypographyGuideWidthMax;
+      spec.sliderValue = typographyConfig_.guideHalfWidth;
+      spec.step = kTypographyGuideWidthStep;
+      spec.unit = " px";
+      return spec;
+    }
+    case TypographyValueEditorTarget::GuideGap:
+    default: {
+      spec.label = uiText(UiText::GuideGap);
+      spec.sliderMin = kTypographyGuideGapMin;
+      spec.sliderMax = kTypographyGuideGapMax;
+      spec.sliderValue = typographyConfig_.guideGap;
+      spec.step = 1;
+      spec.unit = " px";
+      return spec;
+    }
+  }
+}
+
+void App::openTypographyValueEditor(TypographyValueEditorTarget target, uint32_t nowMs) {
+  (void)nowMs;
+  typographyValueEditorTarget_ = target;
+  typographyValueEditorTouchOnBack_ = false;
+  menuScreen_ = MenuScreen::TypographyValueEditor;
+  renderTypographyValueEditor();
+}
+
+void App::renderTypographyValueEditor() {
+  applyReaderUiOrientation();
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
+
+  DisplayManager::Button backButton;
+  backButton.icon = ui::IconId::Back;
+  currentGridButtons_.push_back(backButton);
+  currentGridItemIndices_.push_back(0);
+
+  const TypographyValueEditorSpec spec = typographyValueEditorSpec();
+  DisplayManager::Button slider;
+  slider.kind = DisplayManager::Button::ButtonKind::Slider;
+  slider.label = spec.label;
+  slider.x = kPacingSliderX;
+  slider.y = kPacingSliderY;
+  slider.width = kPacingSliderW;
+  slider.height = kPacingSliderH;
+  slider.sliderMin = spec.sliderMin;
+  slider.sliderMax = spec.sliderMax;
+  slider.sliderValue = spec.sliderValue;
+  slider.sliderUnit = spec.unit;
+  slider.sliderValueLabels = spec.valueLabels;
+  currentGridButtons_.push_back(slider);
+  currentGridItemIndices_.push_back(1);
+
+  applyBackButtonCornerLayout();
+  display_.renderButtonGrid("", currentGridButtons_, 0, 1, activeGridToastText(millis()));
+}
+
+void App::applyTypographyValueEditorTouchX(uint16_t x) {
+  DisplayManager::Button geom;
+  geom.x = kPacingSliderX;
+  geom.y = kPacingSliderY;
+  geom.width = kPacingSliderW;
+  geom.height = kPacingSliderH;
+  const ui::Rect track = DisplayManager::sliderTrackRectFor(geom);
+
+  const TypographyValueEditorSpec spec = typographyValueEditorSpec();
+  const int clampedX = std::max(static_cast<int>(track.x),
+                                std::min(static_cast<int>(x), static_cast<int>(track.x + track.w)));
+  const float ratio =
+      track.w > 0 ? static_cast<float>(clampedX - track.x) / static_cast<float>(track.w) : 0.0f;
+  const int range = static_cast<int>(spec.sliderMax) - static_cast<int>(spec.sliderMin);
+  const int rawValue = spec.sliderMin + static_cast<int>(ratio * static_cast<float>(range) + 0.5f);
+  const int step = std::max<int>(1, spec.step);
+  int snapped = ((rawValue - spec.sliderMin + step / 2) / step) * step + spec.sliderMin;
+  snapped = clampIntSetting(snapped, spec.sliderMin, spec.sliderMax);
+
+  if (spec.sliderValue != static_cast<uint16_t>(snapped)) {
+    commitTypographyValueEditorValue(static_cast<uint16_t>(snapped), millis());
+    renderTypographyValueEditor();
+  }
+}
+
+void App::commitTypographyValueEditorValue(uint16_t sliderValue, uint32_t nowMs) {
+  switch (typographyValueEditorTarget_) {
+    case TypographyValueEditorTarget::FontSize:
+      readerFontSizeIndex_ = static_cast<uint8_t>(sliderValue);
+      preferences_.putUChar(kPrefReaderFontSize, readerFontSizeIndex_);
+      applyDisplayPreferences(nowMs);
+      return;
+    case TypographyValueEditorTarget::Tracking:
+      typographyConfig_.trackingPx =
+          static_cast<int8_t>(static_cast<int>(sliderValue) + kTypographyTrackingMin);
+      preferences_.putChar(kPrefTypographyTracking, typographyConfig_.trackingPx);
+      break;
+    case TypographyValueEditorTarget::Anchor:
+      typographyConfig_.anchorPercent = (handednessMode_ == HandednessMode::Left)
+                                             ? static_cast<uint8_t>(sliderValue - kLeftHandAnchorOffset)
+                                             : static_cast<uint8_t>(sliderValue);
+      preferences_.putUChar(kPrefTypographyAnchor, typographyConfig_.anchorPercent);
+      break;
+    case TypographyValueEditorTarget::GuideWidth:
+      typographyConfig_.guideHalfWidth = static_cast<uint8_t>(sliderValue);
+      preferences_.putUChar(kPrefTypographyGuideWidth, typographyConfig_.guideHalfWidth);
+      break;
+    case TypographyValueEditorTarget::GuideGap:
+      typographyConfig_.guideGap = static_cast<uint8_t>(sliderValue);
+      preferences_.putUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap);
+      break;
+  }
+  applyTypographySettings(nowMs);
+}
+
+void App::handleTypographyValueEditorTouch(const TouchEvent &event, uint32_t nowMs) {
+  if (event.phase == TouchPhase::Start) {
+    typographyValueEditorTouchOnBack_ =
+        event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1;
+    if (!typographyValueEditorTouchOnBack_) {
+      applyTypographyValueEditorTouchX(event.x);
+    }
+    return;
+  }
+
+  if (typographyValueEditorTouchOnBack_) {
+    if (event.phase == TouchPhase::End) {
+      typographyValueEditorTouchOnBack_ = false;
+      if (event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1) {
+        menuScreen_ = MenuScreen::TypographyTuning;
+        renderTypographyTuning();
+      }
+    }
+    return;
+  }
+
+  applyTypographyValueEditorTouchX(event.x);
+
+  if (event.phase == TouchPhase::End) {
+    const TypographyValueEditorSpec spec = typographyValueEditorSpec();
+    const String valueText = !spec.valueLabels.empty() && spec.sliderValue < spec.valueLabels.size()
+                                  ? spec.valueLabels[spec.sliderValue]
+                                  : String(spec.sliderValue) + spec.unit;
+    showGridToast(spec.label + ": " + valueText, nowMs);
+    renderTypographyValueEditor();
   }
 }
 
@@ -9459,6 +9614,8 @@ void App::renderMenu() {
     renderPacingDelayEditor();
   } else if (menuScreen_ == MenuScreen::WpmEditor) {
     renderWpmEditor();
+  } else if (menuScreen_ == MenuScreen::TypographyValueEditor) {
+    renderTypographyValueEditor();
   } else if (menuScreen_ == MenuScreen::BookPicker) {
     renderBookPicker();
   } else if (menuScreen_ == MenuScreen::BookDetails) {
@@ -9604,8 +9761,6 @@ void App::renderTypographyTuning() {
   } else if (typographyTuningSelectedIndex_ == TypographyTuningPhantomWords ||
              typographyTuningSelectedIndex_ == TypographyTuningFocusHighlight) {
     line2 = uiText(UiText::TapToggleSample);
-  } else if (typographyTuningSelectedIndex_ == TypographyTuningFontSize) {
-    line2 = uiText(UiText::TapCycleSample);
   } else if (typographyTuningSelectedIndex_ == TypographyTuningReset) {
     line2 = uiText(UiText::TapToReset);
   }
