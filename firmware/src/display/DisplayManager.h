@@ -13,6 +13,16 @@ class DisplayManager {
     Standard = 0,
     OpenDyslexic = 1,
     AtkinsonHyperlegible = 2,
+    // Book-typeface additions (tools/generate_embedded_font.py) — order here
+    // must match kExtraFontVariants/kExtraFontVariants70 in DisplayManager.cpp.
+    Literata = 3,
+    Merriweather = 4,
+    Lora = 5,
+    Bitter = 6,
+    EBGaramond = 7,
+    Vollkorn = 8,
+    Gelasio = 9,
+    Count = 10,
   };
 
   struct TypographyConfig {

@@ -11,10 +11,25 @@
 #include "board/BoardConfig.h"
 #include "display/EmbeddedAtkinsonFont.h"
 #include "display/EmbeddedAtkinsonFont70.h"
+#include "display/EmbeddedBitterFont.h"
+#include "display/EmbeddedBitterFont70.h"
+#include "display/EmbeddedEBGaramondFont.h"
+#include "display/EmbeddedEBGaramondFont70.h"
+#include "display/EmbeddedFontCommon.h"
+#include "display/EmbeddedGelasioFont.h"
+#include "display/EmbeddedGelasioFont70.h"
+#include "display/EmbeddedLiterataFont.h"
+#include "display/EmbeddedLiterataFont70.h"
+#include "display/EmbeddedLoraFont.h"
+#include "display/EmbeddedLoraFont70.h"
+#include "display/EmbeddedMerriweatherFont.h"
+#include "display/EmbeddedMerriweatherFont70.h"
 #include "display/EmbeddedOpenDyslexicFont.h"
 #include "display/EmbeddedOpenDyslexicFont70.h"
 #include "display/EmbeddedSerifFont.h"
 #include "display/EmbeddedSerifFont70.h"
+#include "display/EmbeddedVollkornFont.h"
+#include "display/EmbeddedVollkornFont70.h"
 #include "display/axs15231b.h"
 #include "text/LatinText.h"
 
@@ -200,11 +215,8 @@ DisplayManager::TypographyConfig &activeTypographyConfig() {
 }
 
 DisplayManager::ReaderTypeface sanitizeReaderTypeface(DisplayManager::ReaderTypeface typeface) {
-  switch (typeface) {
-    case DisplayManager::ReaderTypeface::Standard:
-    case DisplayManager::ReaderTypeface::OpenDyslexic:
-    case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
-      return typeface;
+  if (static_cast<uint8_t>(typeface) < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count)) {
+    return typeface;
   }
   return DisplayManager::ReaderTypeface::Standard;
 }
@@ -278,6 +290,70 @@ String readerChromeKey(const DisplayManager::ReaderChrome &chrome) {
          String(chrome.showSavePointButton ? 1 : 0);
 }
 
+// Book-typeface additions live in a data table instead of growing the
+// switch/case below per font — order must match ReaderTypeface::Literata..
+// Gelasio in DisplayManager.h.
+constexpr EmbeddedFontVariant kExtraFontVariants[] = {
+    {kEmbeddedLiterataBitmaps, kEmbeddedLiterataGlyphs, kEmbeddedLiterataFirstChar,
+     kEmbeddedLiterataLastChar, kEmbeddedLiterataHeight},
+    {kEmbeddedMerriweatherBitmaps, kEmbeddedMerriweatherGlyphs, kEmbeddedMerriweatherFirstChar,
+     kEmbeddedMerriweatherLastChar, kEmbeddedMerriweatherHeight},
+    {kEmbeddedLoraBitmaps, kEmbeddedLoraGlyphs, kEmbeddedLoraFirstChar, kEmbeddedLoraLastChar,
+     kEmbeddedLoraHeight},
+    {kEmbeddedBitterBitmaps, kEmbeddedBitterGlyphs, kEmbeddedBitterFirstChar,
+     kEmbeddedBitterLastChar, kEmbeddedBitterHeight},
+    {kEmbeddedEBGaramondBitmaps, kEmbeddedEBGaramondGlyphs, kEmbeddedEBGaramondFirstChar,
+     kEmbeddedEBGaramondLastChar, kEmbeddedEBGaramondHeight},
+    {kEmbeddedVollkornBitmaps, kEmbeddedVollkornGlyphs, kEmbeddedVollkornFirstChar,
+     kEmbeddedVollkornLastChar, kEmbeddedVollkornHeight},
+    {kEmbeddedGelasioBitmaps, kEmbeddedGelasioGlyphs, kEmbeddedGelasioFirstChar,
+     kEmbeddedGelasioLastChar, kEmbeddedGelasioHeight},
+};
+
+constexpr EmbeddedFontVariant kExtraFontVariants70[] = {
+    {kEmbeddedLiterata70Bitmaps, kEmbeddedLiterata70Glyphs, kEmbeddedLiterata70FirstChar,
+     kEmbeddedLiterata70LastChar, kEmbeddedLiterata70Height},
+    {kEmbeddedMerriweather70Bitmaps, kEmbeddedMerriweather70Glyphs,
+     kEmbeddedMerriweather70FirstChar, kEmbeddedMerriweather70LastChar,
+     kEmbeddedMerriweather70Height},
+    {kEmbeddedLora70Bitmaps, kEmbeddedLora70Glyphs, kEmbeddedLora70FirstChar,
+     kEmbeddedLora70LastChar, kEmbeddedLora70Height},
+    {kEmbeddedBitter70Bitmaps, kEmbeddedBitter70Glyphs, kEmbeddedBitter70FirstChar,
+     kEmbeddedBitter70LastChar, kEmbeddedBitter70Height},
+    {kEmbeddedEBGaramond70Bitmaps, kEmbeddedEBGaramond70Glyphs, kEmbeddedEBGaramond70FirstChar,
+     kEmbeddedEBGaramond70LastChar, kEmbeddedEBGaramond70Height},
+    {kEmbeddedVollkorn70Bitmaps, kEmbeddedVollkorn70Glyphs, kEmbeddedVollkorn70FirstChar,
+     kEmbeddedVollkorn70LastChar, kEmbeddedVollkorn70Height},
+    {kEmbeddedGelasio70Bitmaps, kEmbeddedGelasio70Glyphs, kEmbeddedGelasio70FirstChar,
+     kEmbeddedGelasio70LastChar, kEmbeddedGelasio70Height},
+};
+
+constexpr size_t kExtraFontVariantCount =
+    sizeof(kExtraFontVariants) / sizeof(kExtraFontVariants[0]);
+
+bool isExtraTypeface(DisplayManager::ReaderTypeface typeface) {
+  return static_cast<uint8_t>(typeface) >=
+         static_cast<uint8_t>(DisplayManager::ReaderTypeface::Literata);
+}
+
+const EmbeddedFontVariant &extraFontVariant(DisplayManager::ReaderTypeface typeface) {
+  size_t index = static_cast<size_t>(typeface) -
+                 static_cast<size_t>(DisplayManager::ReaderTypeface::Literata);
+  if (index >= kExtraFontVariantCount) {
+    index = 0;
+  }
+  return kExtraFontVariants[index];
+}
+
+const EmbeddedFontVariant &extraFontVariant70(DisplayManager::ReaderTypeface typeface) {
+  size_t index = static_cast<size_t>(typeface) -
+                 static_cast<size_t>(DisplayManager::ReaderTypeface::Literata);
+  if (index >= kExtraFontVariantCount) {
+    index = 0;
+  }
+  return kExtraFontVariants70[index];
+}
+
 int baseGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
   switch (typeface) {
     case DisplayManager::ReaderTypeface::OpenDyslexic:
@@ -285,7 +361,11 @@ int baseGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
     case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
       return kEmbeddedAtkinsonHeight;
     case DisplayManager::ReaderTypeface::Standard:
+      return kEmbeddedSerifHeight;
     default:
+      if (isExtraTypeface(typeface)) {
+        return extraFontVariant(typeface).height;
+      }
       return kEmbeddedSerifHeight;
   }
 }
@@ -301,7 +381,11 @@ int mediumGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
     case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
       return kEmbeddedAtkinson70Height;
     case DisplayManager::ReaderTypeface::Standard:
+      return kEmbeddedSerif70Height;
     default:
+      if (isExtraTypeface(typeface)) {
+        return extraFontVariant70(typeface).height;
+      }
       return kEmbeddedSerif70Height;
   }
 }
@@ -452,8 +536,19 @@ ReaderGlyph glyphFor(char c, DisplayManager::ReaderTypeface typeface) {
               glyph.xAdvance, kEmbeddedAtkinsonHeight};
     }
     case DisplayManager::ReaderTypeface::Standard:
-    default:
       return serifGlyphForByte(lookupValue);
+    default: {
+      if (!isExtraTypeface(typeface)) {
+        return serifGlyphForByte(lookupValue);
+      }
+      const EmbeddedFontVariant &variant = extraFontVariant(typeface);
+      const uint8_t glyphValue = (lookupValue >= variant.firstChar && lookupValue <= variant.lastChar)
+                                      ? lookupValue
+                                      : LatinText::fallbackAsciiByte(lookupValue);
+      const EmbeddedFontGlyph &glyph = variant.glyphs[glyphValue - variant.firstChar];
+      return {variant.bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, glyph.xAdvance,
+              variant.height};
+    }
   }
 }
 
@@ -488,8 +583,19 @@ ReaderGlyph glyph70For(char c, DisplayManager::ReaderTypeface typeface) {
               glyph.xAdvance, kEmbeddedAtkinson70Height};
     }
     case DisplayManager::ReaderTypeface::Standard:
-    default:
       return serif70GlyphForByte(lookupValue);
+    default: {
+      if (!isExtraTypeface(typeface)) {
+        return serif70GlyphForByte(lookupValue);
+      }
+      const EmbeddedFontVariant &variant = extraFontVariant70(typeface);
+      const uint8_t glyphValue = (lookupValue >= variant.firstChar && lookupValue <= variant.lastChar)
+                                      ? lookupValue
+                                      : LatinText::fallbackAsciiByte(lookupValue);
+      const EmbeddedFontGlyph &glyph = variant.glyphs[glyphValue - variant.firstChar];
+      return {variant.bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, glyph.xAdvance,
+              variant.height};
+    }
   }
 }
 

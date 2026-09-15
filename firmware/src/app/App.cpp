@@ -658,25 +658,16 @@ bool sdCardFolderRepairNeeded(const StorageManager::DiagnosticResult &result) {
 }
 
 DisplayManager::ReaderTypeface readerTypefaceFromSetting(uint8_t value) {
-  switch (static_cast<DisplayManager::ReaderTypeface>(value)) {
-    case DisplayManager::ReaderTypeface::Standard:
-    case DisplayManager::ReaderTypeface::OpenDyslexic:
-    case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
-      return static_cast<DisplayManager::ReaderTypeface>(value);
+  if (value < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count)) {
+    return static_cast<DisplayManager::ReaderTypeface>(value);
   }
   return DisplayManager::ReaderTypeface::Standard;
 }
 
 DisplayManager::ReaderTypeface nextReaderTypeface(DisplayManager::ReaderTypeface current) {
-  switch (readerTypefaceFromSetting(static_cast<uint8_t>(current))) {
-    case DisplayManager::ReaderTypeface::Standard:
-      return DisplayManager::ReaderTypeface::AtkinsonHyperlegible;
-    case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
-      return DisplayManager::ReaderTypeface::OpenDyslexic;
-    case DisplayManager::ReaderTypeface::OpenDyslexic:
-    default:
-      return DisplayManager::ReaderTypeface::Standard;
-  }
+  const uint8_t next = (static_cast<uint8_t>(readerTypefaceFromSetting(static_cast<uint8_t>(current))) + 1) %
+                        static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count);
+  return static_cast<DisplayManager::ReaderTypeface>(next);
 }
 
 App::ReaderMode readerModeFromSetting(uint8_t value) {
@@ -6657,6 +6648,20 @@ String App::readerTypefaceLabel() const {
       return "Atkinson";
     case DisplayManager::ReaderTypeface::OpenDyslexic:
       return "OpenDyslexic";
+    case DisplayManager::ReaderTypeface::Literata:
+      return "Literata";
+    case DisplayManager::ReaderTypeface::Merriweather:
+      return "Merriweather";
+    case DisplayManager::ReaderTypeface::Lora:
+      return "Lora";
+    case DisplayManager::ReaderTypeface::Bitter:
+      return "Bitter";
+    case DisplayManager::ReaderTypeface::EBGaramond:
+      return "EB Garamond";
+    case DisplayManager::ReaderTypeface::Vollkorn:
+      return "Vollkorn";
+    case DisplayManager::ReaderTypeface::Gelasio:
+      return "Gelasio";
     case DisplayManager::ReaderTypeface::Standard:
     default:
       return uiText(UiText::Standard);
