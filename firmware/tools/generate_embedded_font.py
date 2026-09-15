@@ -12,12 +12,16 @@ Point size is auto-calibrated per font (see --target-height) so different
 families with different cap-height/UPM ratios end up visually similar in
 size on the reader screen, matching how the three existing embedded fonts
 were each tuned to a different source point size by hand.
+
+--fnt-output additionally writes the same glyph data as a binary .fnt file
+for SD-card loading (see docs/FONT_FNT_FORMAT.md) instead of PROGMEM.
 """
 
 from __future__ import annotations
 
 import argparse
 import pathlib
+import struct
 import unicodedata
 
 from fontTools.ttLib import TTFont
@@ -222,11 +226,78 @@ def write_header(
     output.write_text("\n".join(lines) + "\n", encoding="ascii")
 
 
+# --- .fnt binary format (see docs/FONT_FNT_FORMAT.md) --------------------
+#
+# Header (16 bytes, all multi-byte fields little-endian):
+#   magic        4s   b"FNT1"
+#   version      H    format version, currently 1
+#   firstChar    B
+#   lastChar     B
+#   height       B
+#   reserved     B    must be 0
+#   glyphCount   H    == lastChar - firstChar + 1
+#   bitmapLength I    byte length of the bitmap blob
+#
+# Glyph table: glyphCount records of 8 bytes each, in slot order
+# (firstChar..lastChar), matching EmbeddedFontGlyph's in-memory layout so
+# the runtime loader can point straight into the loaded buffer instead of
+# parsing field-by-field:
+#   bitmapOffset I
+#   xOffset      b
+#   width        B
+#   xAdvance     B
+#   pad          B    must be 0 (mirrors EmbeddedFontGlyph's trailing pad)
+#
+# Bitmap blob: bitmapLength raw alpha bytes, exactly the same content
+# written into kXxxBitmaps[] by write_header() above.
+
+FNT_MAGIC = b"FNT1"
+FNT_VERSION = 1
+_FNT_HEADER = struct.Struct("<4sHBBBBHI")
+_FNT_GLYPH = struct.Struct("<IbBBB")
+
+
+def pack_fnt(
+    font_height: int,
+    bitmap_bytes: list[int],
+    glyph_entries: list[tuple[int, int, int, int]],
+) -> bytes:
+    glyph_count = len(glyph_entries)
+    header = _FNT_HEADER.pack(
+        FNT_MAGIC,
+        FNT_VERSION,
+        FIRST_CHAR,
+        LAST_CHAR,
+        font_height,
+        0,
+        glyph_count,
+        len(bitmap_bytes),
+    )
+    glyph_table = b"".join(
+        _FNT_GLYPH.pack(bitmap_offset, x_offset, glyph_width, x_advance, 0)
+        for bitmap_offset, x_offset, glyph_width, x_advance in glyph_entries
+    )
+    return header + glyph_table + bytes(bitmap_bytes)
+
+
+def write_fnt(
+    output: pathlib.Path,
+    font_height: int,
+    bitmap_bytes: list[int],
+    glyph_entries: list[tuple[int, int, int, int]],
+) -> None:
+    output.write_bytes(pack_fnt(font_height, bitmap_bytes, glyph_entries))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ttf_path", type=pathlib.Path)
     parser.add_argument("--symbol-prefix", required=True)
-    parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--output", type=pathlib.Path, required=True,
+                         help="Path for the generated C++ header (PROGMEM, flash-embedded).")
+    parser.add_argument("--fnt-output", type=pathlib.Path, default=None,
+                         help="Optional path for the binary .fnt file (SD-card format, "
+                              "see docs/FONT_FNT_FORMAT.md).")
     parser.add_argument("--font-label", required=True)
     parser.add_argument("--target-height", type=int, required=True,
                          help="Desired glyph raster height in px (auto-calibrates point size).")
@@ -249,6 +320,11 @@ def main() -> None:
                  args.font_label, point_size)
     print(f"{args.symbol_prefix}: point_size={point_size} height={font_height} "
           f"bytes={len(bitmap_bytes)}")
+
+    if args.fnt_output is not None:
+        write_fnt(args.fnt_output, font_height, bitmap_bytes, glyph_entries)
+        fnt_size = args.fnt_output.stat().st_size
+        print(f"{args.symbol_prefix}: wrote {args.fnt_output} ({fnt_size} bytes)")
 
 
 if __name__ == "__main__":
