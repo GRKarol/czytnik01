@@ -5228,6 +5228,11 @@ void App::selectTypographyFontPickerItem(uint32_t nowMs) {
   preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
   applyTypographySettings(nowMs);
 
+  if (display_.consumeFontLoadFailure()) {
+    display_.renderStatus("Font", "Not found on SD", "Using Atkinson");
+    delay(1400);
+  }
+
   menuScreen_ = MenuScreen::TypographyTuning;
   renderTypographyTuning();
 }

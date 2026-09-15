@@ -13,8 +13,9 @@ class DisplayManager {
     Standard = 0,
     OpenDyslexic = 1,
     AtkinsonHyperlegible = 2,
-    // Book-typeface additions (tools/generate_embedded_font.py) — order here
-    // must match kExtraFontVariants/kExtraFontVariants70 in DisplayManager.cpp.
+    // Book-typeface additions (tools/generate_embedded_font.py) — glyph data
+    // for these lives on the SD card, loaded on demand by SdFontLoader (see
+    // sdFontBaseName()/ensureExtraTypefaceLoaded() in DisplayManager.cpp).
     Literata = 3,
     Merriweather = 4,
     Lora = 5,
@@ -152,6 +153,10 @@ class DisplayManager {
   void setUiOrientation(BoardConfig::UiOrientation orientation);
   void setUiRotated180(bool rotated180);
   void setTypographyConfig(const TypographyConfig &config);
+  // True at most once per failed/missing SD font load (see SdFontLoader) —
+  // clears itself on read so callers show the warning exactly once, right
+  // after the user action that triggered the load attempt.
+  bool consumeFontLoadFailure();
   void setScrollFontSize(uint8_t level);
   void setScrollLineSpacing(uint8_t level);
   void setScrollMargin(uint8_t level);

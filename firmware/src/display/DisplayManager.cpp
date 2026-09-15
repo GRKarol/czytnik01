@@ -11,25 +11,12 @@
 #include "board/BoardConfig.h"
 #include "display/EmbeddedAtkinsonFont.h"
 #include "display/EmbeddedAtkinsonFont70.h"
-#include "display/EmbeddedBitterFont.h"
-#include "display/EmbeddedBitterFont70.h"
-#include "display/EmbeddedEBGaramondFont.h"
-#include "display/EmbeddedEBGaramondFont70.h"
 #include "display/EmbeddedFontCommon.h"
-#include "display/EmbeddedGelasioFont.h"
-#include "display/EmbeddedGelasioFont70.h"
-#include "display/EmbeddedLiterataFont.h"
-#include "display/EmbeddedLiterataFont70.h"
-#include "display/EmbeddedLoraFont.h"
-#include "display/EmbeddedLoraFont70.h"
-#include "display/EmbeddedMerriweatherFont.h"
-#include "display/EmbeddedMerriweatherFont70.h"
 #include "display/EmbeddedOpenDyslexicFont.h"
 #include "display/EmbeddedOpenDyslexicFont70.h"
 #include "display/EmbeddedSerifFont.h"
 #include "display/EmbeddedSerifFont70.h"
-#include "display/EmbeddedVollkornFont.h"
-#include "display/EmbeddedVollkornFont70.h"
+#include "display/SdFontLoader.h"
 #include "display/axs15231b.h"
 #include "text/LatinText.h"
 
@@ -299,68 +286,81 @@ String readerChromeKey(const DisplayManager::ReaderChrome &chrome) {
          String(chrome.showSavePointButton ? 1 : 0);
 }
 
-// Book-typeface additions live in a data table instead of growing the
-// switch/case below per font — order must match ReaderTypeface::Literata..
-// Gelasio in DisplayManager.h.
-constexpr EmbeddedFontVariant kExtraFontVariants[] = {
-    {kEmbeddedLiterataBitmaps, kEmbeddedLiterataGlyphs, kEmbeddedLiterataFirstChar,
-     kEmbeddedLiterataLastChar, kEmbeddedLiterataHeight},
-    {kEmbeddedMerriweatherBitmaps, kEmbeddedMerriweatherGlyphs, kEmbeddedMerriweatherFirstChar,
-     kEmbeddedMerriweatherLastChar, kEmbeddedMerriweatherHeight},
-    {kEmbeddedLoraBitmaps, kEmbeddedLoraGlyphs, kEmbeddedLoraFirstChar, kEmbeddedLoraLastChar,
-     kEmbeddedLoraHeight},
-    {kEmbeddedBitterBitmaps, kEmbeddedBitterGlyphs, kEmbeddedBitterFirstChar,
-     kEmbeddedBitterLastChar, kEmbeddedBitterHeight},
-    {kEmbeddedEBGaramondBitmaps, kEmbeddedEBGaramondGlyphs, kEmbeddedEBGaramondFirstChar,
-     kEmbeddedEBGaramondLastChar, kEmbeddedEBGaramondHeight},
-    {kEmbeddedVollkornBitmaps, kEmbeddedVollkornGlyphs, kEmbeddedVollkornFirstChar,
-     kEmbeddedVollkornLastChar, kEmbeddedVollkornHeight},
-    {kEmbeddedGelasioBitmaps, kEmbeddedGelasioGlyphs, kEmbeddedGelasioFirstChar,
-     kEmbeddedGelasioLastChar, kEmbeddedGelasioHeight},
-};
+// Book-typeface additions (Literata..Gelasio) no longer ship their glyph
+// data in flash — SdFontLoader reads /fonts/<name>[_70].fnt from the SD
+// card into PSRAM on demand (see docs/PLAN_FONTY_NA_SD.md, Etap 2/3). Only
+// the currently-selected extra typeface's two size variants stay resident;
+// Atkinson (still in flash) is the fallback used whenever the SD file is
+// missing, corrupt, or the card isn't mounted — never a blank/garbled font.
+SdFontLoader gSdFontLoader;
+SdFontLoader gSdFontLoader70;
+DisplayManager::ReaderTypeface gSdFontLoadedTypeface = DisplayManager::ReaderTypeface::Count;
+bool gSdFontLoadFailurePending = false;
 
-constexpr EmbeddedFontVariant kExtraFontVariants70[] = {
-    {kEmbeddedLiterata70Bitmaps, kEmbeddedLiterata70Glyphs, kEmbeddedLiterata70FirstChar,
-     kEmbeddedLiterata70LastChar, kEmbeddedLiterata70Height},
-    {kEmbeddedMerriweather70Bitmaps, kEmbeddedMerriweather70Glyphs,
-     kEmbeddedMerriweather70FirstChar, kEmbeddedMerriweather70LastChar,
-     kEmbeddedMerriweather70Height},
-    {kEmbeddedLora70Bitmaps, kEmbeddedLora70Glyphs, kEmbeddedLora70FirstChar,
-     kEmbeddedLora70LastChar, kEmbeddedLora70Height},
-    {kEmbeddedBitter70Bitmaps, kEmbeddedBitter70Glyphs, kEmbeddedBitter70FirstChar,
-     kEmbeddedBitter70LastChar, kEmbeddedBitter70Height},
-    {kEmbeddedEBGaramond70Bitmaps, kEmbeddedEBGaramond70Glyphs, kEmbeddedEBGaramond70FirstChar,
-     kEmbeddedEBGaramond70LastChar, kEmbeddedEBGaramond70Height},
-    {kEmbeddedVollkorn70Bitmaps, kEmbeddedVollkorn70Glyphs, kEmbeddedVollkorn70FirstChar,
-     kEmbeddedVollkorn70LastChar, kEmbeddedVollkorn70Height},
-    {kEmbeddedGelasio70Bitmaps, kEmbeddedGelasio70Glyphs, kEmbeddedGelasio70FirstChar,
-     kEmbeddedGelasio70LastChar, kEmbeddedGelasio70Height},
-};
-
-constexpr size_t kExtraFontVariantCount =
-    sizeof(kExtraFontVariants) / sizeof(kExtraFontVariants[0]);
+const EmbeddedFontVariant kAtkinsonFallbackVariant = {
+    kEmbeddedAtkinsonBitmaps, reinterpret_cast<const EmbeddedFontGlyph *>(kEmbeddedAtkinsonGlyphs),
+    kEmbeddedAtkinsonFirstChar, kEmbeddedAtkinsonLastChar, kEmbeddedAtkinsonHeight};
+const EmbeddedFontVariant kAtkinsonFallbackVariant70 = {
+    kEmbeddedAtkinson70Bitmaps,
+    reinterpret_cast<const EmbeddedFontGlyph *>(kEmbeddedAtkinson70Glyphs),
+    kEmbeddedAtkinson70FirstChar, kEmbeddedAtkinson70LastChar, kEmbeddedAtkinson70Height};
 
 bool isExtraTypeface(DisplayManager::ReaderTypeface typeface) {
   return static_cast<uint8_t>(typeface) >=
          static_cast<uint8_t>(DisplayManager::ReaderTypeface::Literata);
 }
 
-const EmbeddedFontVariant &extraFontVariant(DisplayManager::ReaderTypeface typeface) {
-  size_t index = static_cast<size_t>(typeface) -
-                 static_cast<size_t>(DisplayManager::ReaderTypeface::Literata);
-  if (index >= kExtraFontVariantCount) {
-    index = 0;
+// Lowercase file stem under /fonts/ for each extra typeface — must match
+// whatever name tools/generate_embedded_font.py --fnt-output was run with.
+const char *sdFontBaseName(DisplayManager::ReaderTypeface typeface) {
+  switch (typeface) {
+    case DisplayManager::ReaderTypeface::Literata:
+      return "literata";
+    case DisplayManager::ReaderTypeface::Merriweather:
+      return "merriweather";
+    case DisplayManager::ReaderTypeface::Lora:
+      return "lora";
+    case DisplayManager::ReaderTypeface::Bitter:
+      return "bitter";
+    case DisplayManager::ReaderTypeface::EBGaramond:
+      return "ebgaramond";
+    case DisplayManager::ReaderTypeface::Vollkorn:
+      return "vollkorn";
+    case DisplayManager::ReaderTypeface::Gelasio:
+      return "gelasio";
+    default:
+      return "";
   }
-  return kExtraFontVariants[index];
+}
+
+// Called whenever the active typeface changes (see setTypographyConfig
+// below) — a deliberate, rare, user-driven event, not something that runs
+// per glyph or per frame, so a blocking SD read here is cheap in context.
+void ensureExtraTypefaceLoaded(DisplayManager::ReaderTypeface typeface) {
+  if (!isExtraTypeface(typeface)) {
+    return;
+  }
+  if (gSdFontLoadedTypeface == typeface && gSdFontLoader.isLoaded() &&
+      gSdFontLoader70.isLoaded()) {
+    return;
+  }
+  gSdFontLoadedTypeface = typeface;
+  const String base = sdFontBaseName(typeface);
+  const bool baseOk = gSdFontLoader.load("/fonts/" + base + ".fnt");
+  const bool mediumOk = gSdFontLoader70.load("/fonts/" + base + "_70.fnt");
+  if (!baseOk || !mediumOk) {
+    gSdFontLoadFailurePending = true;
+  }
+}
+
+const EmbeddedFontVariant &extraFontVariant(DisplayManager::ReaderTypeface typeface) {
+  (void)typeface;  // whichever extra face is loaded governs; caller already checked isExtraTypeface
+  return gSdFontLoader.isLoaded() ? gSdFontLoader.variant() : kAtkinsonFallbackVariant;
 }
 
 const EmbeddedFontVariant &extraFontVariant70(DisplayManager::ReaderTypeface typeface) {
-  size_t index = static_cast<size_t>(typeface) -
-                 static_cast<size_t>(DisplayManager::ReaderTypeface::Literata);
-  if (index >= kExtraFontVariantCount) {
-    index = 0;
-  }
-  return kExtraFontVariants70[index];
+  (void)typeface;
+  return gSdFontLoader70.isLoaded() ? gSdFontLoader70.variant() : kAtkinsonFallbackVariant70;
 }
 
 int baseGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
@@ -1095,6 +1095,7 @@ void DisplayManager::setUiRotated180(bool rotated180) {
 void DisplayManager::setTypographyConfig(const TypographyConfig &config) {
   TypographyConfig next;
   next.typeface = sanitizeReaderTypeface(config.typeface);
+  ensureExtraTypefaceLoaded(next.typeface);
   next.focusHighlight = config.focusHighlight;
   next.trackingPx = static_cast<int8_t>(clampTypographyTracking(config.trackingPx));
   next.anchorPercent = static_cast<uint8_t>(clampTypographyAnchorPercent(config.anchorPercent));
@@ -1113,6 +1114,14 @@ void DisplayManager::setTypographyConfig(const TypographyConfig &config) {
   current = next;
   tickerPlaybackFrameActive_ = false;
   lastRenderKey_ = "";
+}
+
+bool DisplayManager::consumeFontLoadFailure() {
+  if (!gSdFontLoadFailurePending) {
+    return false;
+  }
+  gSdFontLoadFailurePending = false;
+  return true;
 }
 
 DisplayManager::TypographyConfig DisplayManager::typographyConfig() const {

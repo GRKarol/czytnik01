@@ -1,7 +1,48 @@
 # Plan: fonty książki wczytywane z karty SD zamiast z flasha
 
-Status: zaplanowane, nierozpoczęte. Do podjęcia w nowym czacie.
+Status: Etap 1-3 zrobione (patrz niżej), Etap 4 czeka.
 Branch roboczy: `main` na staging (ten sam co dotychczasowy refaktor typografii).
+
+## Zrobione — Etap 2 i 3 (odstępstwo od pierwotnego opisu Etapu 3)
+
+`SdFontLoader` (`firmware/src/display/SdFontLoader.h/.cpp`) czyta jeden plik
+`.fnt` do bufora PSRAM i wskazuje w niego `EmbeddedFontVariant` — bez kopiowania
+pole po polu (`static_assert(sizeof(EmbeddedFontGlyph) == 8)` pilnuje, że
+layout pliku faktycznie odpowiada strukturze w pamięci). `DisplayManager.cpp`
+trzyma po jednej instancji loadera na rozmiar (`gSdFontLoader`/`gSdFontLoader70`),
+wczytuje przy zmianie kroju w `setTypographyConfig()` (`ensureExtraTypefaceLoaded()`),
+i pyta o plik `/fonts/<nazwa>_70.fnt` dla wariantu "70". **Konwencja nazw
+plików** (nigdzie wcześniej nie spisana wprost): `sdFontBaseName()` w
+`DisplayManager.cpp` — `literata`, `merriweather`, `lora`, `bitter`,
+`ebgaramond`, `vollkorn`, `gelasio` (lowercase, bez spacji), pliki
+`/fonts/<nazwa>.fnt` (podstawowy) i `/fonts/<nazwa>_70.fnt` (wariant "70").
+Brak pliku/uszkodzony plik -> fallback na Atkinson (który zawsze jest w
+flashu) + widoczny komunikat `renderStatus("Font", "Not found on SD", "Using
+Atkinson")` w `App::selectTypographyFontPickerItem()` (jedyne miejsce, gdzie
+to leci — inne wywołania `applyTypographySettings()` zdarzają się też przed
+`display_.begin()` na starcie, gdzie renderStatus nie ma sensu).
+
+**Odstępstwo od pierwotnego opisu Etapu 3**: tekst niżej mówił o usunięciu 9 z
+10 fontów z flasha, czyli też Serif (=Standard) i OpenDyslexic — to by
+zepsuło domyślny krój czytnika, bo ich kod (`serifGlyphForByte`,
+`glyphFor`/`glyph70For` switch-case) nigdy nie został objęty loaderem SD, ani
+w tym planie, ani w Etapie 2. Zostały w flashu, nietknięte. Usunięto tylko
+dane 7 "extra" krojów (Literata..Gelasio) — **i to się okazało w praktyce
+zbędne jako osobny krok**: samo przełączenie `extraFontVariant()`/`70()` na
+loader w Etapie 2 już uczyniło stare tablice `kExtraFontVariants[]`
+nieużywane, więc linker (`--gc-sections`) wyrzucił ich dane z binarki przed
+jakimkolwiek ręcznym usuwaniem nagłówków — flash spadł z 83.4% na **42.6%**
+(zmierzone, `waveshare_esp32s3_usb_msc`) zanim usunąłem choć jeden plik.
+Usunięcie 14 nagłówków (`EmbeddedLiterataFont.h` itd.) było więc czystym
+porządkiem w repo (mniej plików, szybszy build), nie warunkiem odzyskania
+miejsca we flashu. Zbudowane i zweryfikowane na `waveshare_esp32s3` i
+`waveshare_esp32s3_usb_msc` — flash 42.1-42.6%, brak błędów kompilacji.
+
+**Świadomie nietestowane fizycznie w tej sesji**: bez plików `.fnt` na karcie
+SD (Etap 4/5 jeszcze nie zrobione) wybranie Literata/Merriweather/Lora/
+Bitter/EB Garamond/Vollkorn/Gelasio pokaże fallback Atkinson + komunikat —
+to jest oczekiwane, nie błąd. Realny test wczytywania z SD wymaga fizycznego
+pliku `/fonts/literata.fnt` (itd.) na karcie.
 
 ## Punkt wyjścia — zmierzone fakty, nie szacunki
 
@@ -83,7 +124,7 @@ od liczby fontów.
   jako twardy fallback (proponuję Atkinson — już ma uzasadnienie czytelności
   w istniejącym kodzie/nazwie).
 
-### Etap 2 — Runtime loader z SD
+### Etap 2 — Runtime loader z SD (zrobione)
 - Nowa klasa `SdFontLoader` (wzorzec z `PluginLoader.cpp`/`EpubConverter.cpp`):
   otwiera `/fonts/<nazwa>_<rozmiar>.fnt` przez `SD_MMC`, całość do bufora
   `heap_caps_malloc(..., MALLOC_CAP_SPIRAM)`, waliduje magic/wersję/zakresy,
@@ -99,7 +140,7 @@ od liczby fontów.
 - Obsługa braku/uszkodzenia pliku: fallback na Atkinson + widoczny komunikat
   (nie cichy fallback — użytkownik ma wiedzieć, że czcionka się nie wczytała).
 
-### Etap 3 — Odchudzenie flasha
+### Etap 3 — Odchudzenie flasha (zrobione, ze zmianą zakresu — patrz sekcja "Zrobione" wyżej)
 - Usunąć z firmware 9 z 10 obecnych fontów wbudowanych (Serif, OpenDyslexic,
   Literata, Merriweather, Lora, Bitter, EB Garamond, Vollkorn, Gelasio),
   zostawić tylko Atkinson jako fallback.
