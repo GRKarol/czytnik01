@@ -257,7 +257,16 @@ int currentGuideGap() {
   return clampTypographyGuideGap(activeTypographyConfig().guideGap);
 }
 
+// Set only while drawButtons() draws a button that opted into
+// Button::previewTypeface (the font-picker screen) — lets that one label
+// render in a specific font without threading a typeface parameter through
+// every drawSerifText*/measureSerifText* helper. Count = no override.
+DisplayManager::ReaderTypeface gButtonLabelPreviewTypeface = DisplayManager::ReaderTypeface::Count;
+
 DisplayManager::ReaderTypeface currentReaderTypeface() {
+  if (gButtonLabelPreviewTypeface != DisplayManager::ReaderTypeface::Count) {
+    return gButtonLabelPreviewTypeface;
+  }
   return sanitizeReaderTypeface(activeTypographyConfig().typeface);
 }
 
@@ -3832,6 +3841,11 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
         ((button.label[0] >= 'a' && button.label[0] <= 'z') ||
          (button.label[0] >= 'A' && button.label[0] <= 'Z'));
     const uint8_t labelScalePercent = singleAsciiLetter ? 42 : 26;
+    const bool hasPreviewTypeface =
+        button.previewTypeface != DisplayManager::ReaderTypeface::Count;
+    if (hasPreviewTypeface) {
+      gButtonLabelPreviewTypeface = button.previewTypeface;
+    }
     const String label =
         fitSerifTextScaled(button.label, std::max(0, static_cast<int>(button.width) - 8),
                            labelScalePercent);
@@ -3845,12 +3859,21 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
         std::max(1, (static_cast<int>(button.height) - labelHeight) / 2);
     if (singleAsciiLetter) {
       drawSerifTextScaledAt(label, textX, textY, labelColor, labelScalePercent);
+      if (hasPreviewTypeface) {
+        gButtonLabelPreviewTypeface = DisplayManager::ReaderTypeface::Count;
+      }
       continue;
     }
 
     if (!label.isEmpty()) {
       drawSerifTextScaledAt(label, textX, textY, labelColor, labelScalePercent);
+      if (hasPreviewTypeface) {
+        gButtonLabelPreviewTypeface = DisplayManager::ReaderTypeface::Count;
+      }
       continue;
+    }
+    if (hasPreviewTypeface) {
+      gButtonLabelPreviewTypeface = DisplayManager::ReaderTypeface::Count;
     }
 
     const int fallbackScale = kTinyScale;

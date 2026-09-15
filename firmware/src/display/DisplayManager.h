@@ -122,6 +122,11 @@ class DisplayManager {
     uint16_t sliderValue = 0;
     // Suffix drawn right after the big numeric readout (e.g. " ms", " WPM").
     String sliderUnit = " ms";
+    // Font-picker screen only: draw this button's label in that specific
+    // typeface instead of the globally active reader typeface, so each
+    // button previews its own font by name. ReaderTypeface::Count is the
+    // sentinel for "no override, use the global one" (see drawButtons()).
+    ReaderTypeface previewTypeface = ReaderTypeface::Count;
   };
 
   // Track rect (in the same virtual-screen coordinates as touch events) for

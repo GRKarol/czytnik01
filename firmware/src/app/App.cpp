@@ -664,12 +664,6 @@ DisplayManager::ReaderTypeface readerTypefaceFromSetting(uint8_t value) {
   return DisplayManager::ReaderTypeface::Standard;
 }
 
-DisplayManager::ReaderTypeface nextReaderTypeface(DisplayManager::ReaderTypeface current) {
-  const uint8_t next = (static_cast<uint8_t>(readerTypefaceFromSetting(static_cast<uint8_t>(current))) + 1) %
-                        static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count);
-  return static_cast<DisplayManager::ReaderTypeface>(next);
-}
-
 App::ReaderMode readerModeFromSetting(uint8_t value) {
   switch (value) {
     case static_cast<uint8_t>(App::ReaderMode::Scroll):
@@ -3146,7 +3140,8 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           menuScreen_ == MenuScreen::PluginsActive ||
           menuScreen_ == MenuScreen::PluginLibraryScreen ||
           menuScreen_ == MenuScreen::PluginDetail ||
-          menuScreen_ == MenuScreen::TypographyTuning) {
+          menuScreen_ == MenuScreen::TypographyTuning ||
+          menuScreen_ == MenuScreen::TypographyFontPicker) {
         // Set selection to Back and select it
         if (menuScreen_ == MenuScreen::Presets || menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
           presetsSelectedIndex_ = 0;
@@ -3174,6 +3169,8 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
           pluginDetailSelectedIndex_ = 0;
         } else if (menuScreen_ == MenuScreen::TypographyTuning) {
           typographyTuningSelectedIndex_ = TypographyTuningBack;
+        } else if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+          typographyFontPickerSelectedIndex_ = 0;
         }
         selectMenuItem(nowMs);
         return;
@@ -3215,6 +3212,7 @@ bool App::isDeepMenuScreen() const {
     case MenuScreen::PresetsDeleteConfirm:
     case MenuScreen::PacingDelayEditor:
     case MenuScreen::WpmEditor:
+    case MenuScreen::TypographyFontPicker:
       return true;
     default:
       // Main, and everything one hop off it (SettingsHome, BookPicker,
@@ -3310,6 +3308,9 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
   } else if (menuScreen_ == MenuScreen::TypographyTuning) {
     selectedIndex = &typographyTuningSelectedIndex_;
     itemCount = TypographyTuningItemCount;
+  } else if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+    selectedIndex = &typographyFontPickerSelectedIndex_;
+    itemCount = typographyFontPickerMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::BookPicker) {
     selectedIndex = &bookPickerSelectedIndex_;
     itemCount = bookMenuItems_.size();
@@ -3392,6 +3393,9 @@ void App::moveMenuSelection(int direction) {
     Serial.printf("[wifi] selected=%s\n", wifiNetworkMenuItems_[wifiNetworkSelectedIndex_].title.c_str());
   } else if (menuScreen_ == MenuScreen::TypographyTuning) {
     Serial.printf("[typography] selected=%s\n", typographyTuningLabel().c_str());
+  } else if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+    Serial.printf("[typography-font-picker] selected=%s\n",
+                  typographyFontPickerMenuItems_[typographyFontPickerSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::BookPicker) {
     Serial.printf("[book-picker] selected=%s\n",
                   bookMenuItems_[bookPickerSelectedIndex_].title.c_str());
@@ -3612,6 +3616,8 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
       annotateMainMenuButton(button);
     } else if (menuScreen_ == MenuScreen::PluginDetail) {
       annotatePluginDetailButton(button, canonicalIndex);
+    } else if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+      annotateTypographyFontPickerButton(button, canonicalIndex);
     }
     currentGridButtons_.push_back(button);
     currentGridItemIndices_.push_back(canonicalIndex);
@@ -4102,6 +4108,10 @@ void App::selectMenuItem(uint32_t nowMs) {
   }
   if (menuScreen_ == MenuScreen::TypographyTuning) {
     selectTypographyTuningItem(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+    selectTypographyFontPickerItem(nowMs);
     return;
   }
   if (menuScreen_ == MenuScreen::BookPicker) {
@@ -5112,9 +5122,11 @@ void App::selectTypographyTuningItem(uint32_t nowMs) {
       cycleReaderFontSize(nowMs);
       return;
     case TypographyTuningTypeface:
-      typographyConfig_.typeface = nextReaderTypeface(typographyConfig_.typeface);
-      preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
-      break;
+      // 10 fonts is too many to cycle one at a time (see font picker below)
+      // — tapping this row now opens a grid where each button previews its
+      // own name in its own font, tap one to select it directly.
+      openTypographyFontPicker();
+      return;
     case TypographyTuningPhantomWords:
       togglePhantomWords(nowMs);
       return;
@@ -5203,6 +5215,68 @@ void App::cycleTypographyPreviewSample(int direction) {
   }
   typographyPreviewSampleIndex_ = static_cast<size_t>(next);
   renderTypographyTuning();
+}
+
+// Replaces the old tap-to-cycle Krój behavior (annoying once there were 10
+// typefaces instead of 3): a grid of buttons, one per font, each showing its
+// own name live in that actual font (annotateTypographyFontPickerButton())
+// so you can see what a krój looks like before picking it.
+void App::openTypographyFontPicker() {
+  typographyFontPickerMenuItems_.clear();
+  typographyFontPickerMenuItems_.reserve(
+      static_cast<size_t>(DisplayManager::ReaderTypeface::Count) + 1);
+  typographyFontPickerMenuItems_.push_back(uiText(UiText::Back));
+
+  size_t currentSelection = 0;
+  for (uint8_t i = 0; i < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count); ++i) {
+    const auto typeface = static_cast<DisplayManager::ReaderTypeface>(i);
+    typographyFontPickerMenuItems_.push_back(typefaceDisplayName(typeface));
+    if (typeface == typographyConfig_.typeface) {
+      currentSelection = typographyFontPickerMenuItems_.size() - 1;
+    }
+  }
+
+  typographyFontPickerSelectedIndex_ = currentSelection;
+  menuScreen_ = MenuScreen::TypographyFontPicker;
+  renderTypographyFontPicker();
+}
+
+void App::selectTypographyFontPickerItem(uint32_t nowMs) {
+  if (typographyFontPickerSelectedIndex_ == 0) {
+    menuScreen_ = MenuScreen::TypographyTuning;
+    renderTypographyTuning();
+    return;
+  }
+
+  const size_t typefaceIndex = typographyFontPickerSelectedIndex_ - 1;
+  if (typefaceIndex >= static_cast<size_t>(DisplayManager::ReaderTypeface::Count)) {
+    return;
+  }
+
+  typographyConfig_.typeface = static_cast<DisplayManager::ReaderTypeface>(typefaceIndex);
+  preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
+  applyTypographySettings(nowMs);
+
+  menuScreen_ = MenuScreen::TypographyTuning;
+  renderTypographyTuning();
+}
+
+void App::renderTypographyFontPicker() {
+  renderItemGrid(uiText(UiText::Typeface), typographyFontPickerMenuItems_,
+                 typographyFontPickerSelectedIndex_);
+}
+
+void App::annotateTypographyFontPickerButton(DisplayManager::Button &button,
+                                              size_t canonicalIndex) const {
+  // canonicalIndex is 1-based here (0 is Back, pulled into the corner
+  // button before this ever runs) and mirrors the exact push_back order in
+  // openTypographyFontPicker() above, which walks ReaderTypeface 0..Count-1
+  // — so the ReaderTypeface value is always canonicalIndex - 1.
+  if (canonicalIndex == 0 ||
+      canonicalIndex > static_cast<size_t>(DisplayManager::ReaderTypeface::Count)) {
+    return;
+  }
+  button.previewTypeface = static_cast<DisplayManager::ReaderTypeface>(canonicalIndex - 1);
 }
 
 void App::rebuildSettingsMenuItems() {
@@ -6642,8 +6716,8 @@ String App::readerFontSizeLabel() const {
   }
 }
 
-String App::readerTypefaceLabel() const {
-  switch (typographyConfig_.typeface) {
+String App::typefaceDisplayName(DisplayManager::ReaderTypeface typeface) const {
+  switch (typeface) {
     case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
       return "Atkinson";
     case DisplayManager::ReaderTypeface::OpenDyslexic:
@@ -6667,6 +6741,8 @@ String App::readerTypefaceLabel() const {
       return uiText(UiText::Standard);
   }
 }
+
+String App::readerTypefaceLabel() const { return typefaceDisplayName(typographyConfig_.typeface); }
 
 String App::typographyTuningLabel() const {
   switch (typographyTuningSelectedIndex_) {
@@ -9403,6 +9479,8 @@ void App::renderMenu() {
     renderPluginLibraryScreen();
   } else if (menuScreen_ == MenuScreen::PluginDetail) {
     renderPluginDetail();
+  } else if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+    renderTypographyFontPicker();
   } else if (menuScreen_ == MenuScreen::RestartConfirm) {
     renderRestartConfirm();
   } else if (menuScreen_ == MenuScreen::TypographyResetConfirm) {
@@ -9526,8 +9604,7 @@ void App::renderTypographyTuning() {
   } else if (typographyTuningSelectedIndex_ == TypographyTuningPhantomWords ||
              typographyTuningSelectedIndex_ == TypographyTuningFocusHighlight) {
     line2 = uiText(UiText::TapToggleSample);
-  } else if (typographyTuningSelectedIndex_ == TypographyTuningFontSize ||
-             typographyTuningSelectedIndex_ == TypographyTuningTypeface) {
+  } else if (typographyTuningSelectedIndex_ == TypographyTuningFontSize) {
     line2 = uiText(UiText::TapCycleSample);
   } else if (typographyTuningSelectedIndex_ == TypographyTuningReset) {
     line2 = uiText(UiText::TapToReset);

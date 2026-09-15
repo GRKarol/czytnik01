@@ -117,6 +117,7 @@ class App {
     PluginDetail,
     RestartConfirm,
     TypographyResetConfirm,
+    TypographyFontPicker,
     SdCardRepairConfirm,
     UpdateConfirm,
     WelcomeInstallApp,
@@ -419,6 +420,7 @@ class App {
   String navModeLabel() const;
   String readerFontSizeLabel() const;
   String readerTypefaceLabel() const;
+  String typefaceDisplayName(DisplayManager::ReaderTypeface typeface) const;
   String typographyTuningLabel() const;
   String typographyTuningValueLabel() const;
   String uiText(UiText key) const;
@@ -454,6 +456,10 @@ class App {
   void openPluginLibraryScreen();
   void selectPluginLibraryItem(uint32_t nowMs);
   void renderPluginLibraryScreen();
+
+  void openTypographyFontPicker();
+  void selectTypographyFontPickerItem(uint32_t nowMs);
+  void renderTypographyFontPicker();
   void openPluginDetail(size_t entryIndex);
   void selectPluginDetailItem(uint32_t nowMs);
   void renderPluginDetail();
@@ -591,6 +597,10 @@ class App {
   /// a row of state dots — instead of every setting looking like the same
   /// plain rectangle regardless of what it controls.
   void annotateSettingsDisplayButton(DisplayManager::Button &button, size_t canonicalIndex) const;
+  /// TypographyFontPicker-only: each font's button previews its own name
+  /// drawn in that actual typeface (DisplayManager::Button::previewTypeface)
+  /// instead of every krój option looking identical until you tap it.
+  void annotateTypographyFontPickerButton(DisplayManager::Button &button, size_t canonicalIndex) const;
   /// SavePointsList-only: gives the "+ Add save point" row and each named
   /// save point the floppy-disk icon (ui::IconId::SavePoint) — drawn via
   /// drawButtons()'s icon+label combo mode, since (unlike Back) these
@@ -922,6 +932,8 @@ class App {
   size_t pluginLibrarySelectedIndex_ = 0;
   std::vector<String> pluginDetailMenuItems_;
   size_t pluginDetailSelectedIndex_ = 0;
+  std::vector<String> typographyFontPickerMenuItems_;
+  size_t typographyFontPickerSelectedIndex_ = 0;
   size_t pluginDetailIndex_ = 0;
   // Second wrapped line of the description row, if it didn't fit on one
   // line — empty when the whole description fit on pluginDetailMenuItems_'s
