@@ -4027,11 +4027,27 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
         button.label.length() == 1 &&
         ((button.label[0] >= 'a' && button.label[0] <= 'z') ||
          (button.label[0] >= 'A' && button.label[0] <= 'Z'));
-    const uint8_t labelScalePercent = singleAsciiLetter ? 42 : 26;
     const bool hasPreviewTypeface =
         button.previewTypeface != DisplayManager::ReaderTypeface::Count;
     if (hasPreviewTypeface) {
       gButtonLabelPreviewTypeface = button.previewTypeface;
+    }
+    // Calibrated against the built-in serif raster (kEmbeddedSerifHeight,
+    // ~62px): 26%/42% land normal/single-letter labels at ~16px/~26px.
+    // SD-backed font-picker previews draw from a much shorter flash
+    // thumbnail raster (~24-28px, see tools/generate_font_thumbnails.sh) —
+    // applying the same fixed percent to that shrunk the space glyph below
+    // 1px and glued multi-word preview names together (e.g. "EB Garamond"
+    // rendered as one word). Rescale so every typeface's preview lands on
+    // the same target pixel height regardless of its source raster height.
+    uint8_t labelScalePercent = singleAsciiLetter ? 42 : 26;
+    const DisplayManager::ReaderTypeface labelTypeface =
+        effectiveReaderTypefaceForText(button.label);
+    if (isExtraTypeface(labelTypeface)) {
+      const int sourceGlyphHeight = std::max(1, baseGlyphHeightForTypeface(labelTypeface));
+      const int targetHeightPx = (kEmbeddedSerifHeight * labelScalePercent + 50) / 100;
+      const int rawScalePercent = (targetHeightPx * 100 + sourceGlyphHeight / 2) / sourceGlyphHeight;
+      labelScalePercent = static_cast<uint8_t>(std::min(100, std::max(10, rawScalePercent)));
     }
     const String label =
         fitSerifTextScaled(button.label, std::max(0, static_cast<int>(button.width) - 8),
