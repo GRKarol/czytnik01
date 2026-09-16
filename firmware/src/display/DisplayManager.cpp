@@ -483,15 +483,14 @@ void ensureExtraTypefaceLoaded(DisplayManager::ReaderTypeface typeface) {
   }
   if (gSdFontLoadedTypeface == typeface && gSdFontLoader.isLoaded() &&
       gSdFontLoader70.isLoaded()) {
+    gSdFontLoadFailurePending = false;
     return;
   }
   gSdFontLoadedTypeface = typeface;
   const String base = sdFontBaseName(typeface);
   const bool baseOk = gSdFontLoader.load("/fonts/" + base + ".fnt");
   const bool mediumOk = gSdFontLoader70.load("/fonts/" + base + "_70.fnt");
-  if (!baseOk || !mediumOk) {
-    gSdFontLoadFailurePending = true;
-  }
+  gSdFontLoadFailurePending = !baseOk || !mediumOk;
 }
 
 const EmbeddedFontVariant &extraFontVariant(DisplayManager::ReaderTypeface typeface) {

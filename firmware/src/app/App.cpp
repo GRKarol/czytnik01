@@ -936,6 +936,15 @@ void App::begin() {
 #endif
 
   storageReady_ = storage_.begin();
+  if (storageReady_) {
+    // The typeface saved in preferences may be an SD-backed font (see
+    // DisplayManager::ReaderTypeface). The earlier applyTypographySettings()
+    // call above ran before storage_.begin(), so if the saved typeface lives
+    // on SD, that first load attempt always failed (card not mounted yet)
+    // and silently fell back to Atkinson for the rest of the session. Retry
+    // now that the card is actually mounted.
+    applyTypographySettings(bootStartedMs_, false);
+  }
   const uint16_t savedWpm = preferences_.getUShort(kPrefWpm, reader_.wpm());
   reader_.setWpm(savedWpm);
 
