@@ -27,6 +27,12 @@
 
 static const char *kAppTag = "app";
 constexpr uint32_t kOtaCheckTaskStackBytes = 10240;
+constexpr uint32_t kFontDownloadTaskStackBytes = 10240;
+// How often maybeAutoDownloadFonts() re-checks for saved Wi-Fi once the pack
+// isn't complete yet — deliberately not "once at boot only", since the user
+// may pair the Flower app and save Wi-Fi credentials well after first boot,
+// and the whole point is that no explicit action should be required.
+constexpr uint32_t kFontDownloadRetryIntervalMs = 60000;
 constexpr uint32_t kBootSplashMs = 750;
 constexpr uint32_t kWpmFeedbackMs = 900;
 constexpr uint32_t kPowerOffHoldMs = 1600;
@@ -942,6 +948,8 @@ void App::begin() {
   }
 
   maybeAutoCheckForUpdates(bootStartedMs_);
+  refreshFontPackComplete();
+  maybeAutoDownloadFonts(bootStartedMs_);
   // Plugin sync runs in background after first update loop iteration
   // (moved out of boot path to prevent blocking)
 
@@ -1103,6 +1111,8 @@ void App::update(uint32_t nowMs) {
   }
 
   pollOtaCheckResult(nowMs);
+  pollFontDownloadResult(nowMs);
+  maybeAutoDownloadFonts(nowMs);
   updateState(nowMs);
   loadPendingBootBook(nowMs);
   // Deliberately not auto-opening UpdateConfirm here: an update found mid-read
@@ -5194,14 +5204,27 @@ void App::cycleTypographyPreviewSample(int direction) {
 // so you can see what a krój looks like before picking it.
 void App::openTypographyFontPicker() {
   typographyFontPickerMenuItems_.clear();
+  typographyFontPickerTypefaceForIndex_.clear();
   typographyFontPickerMenuItems_.reserve(
       static_cast<size_t>(DisplayManager::ReaderTypeface::Count) + 1);
+  typographyFontPickerTypefaceForIndex_.reserve(
+      static_cast<size_t>(DisplayManager::ReaderTypeface::Count) + 1);
   typographyFontPickerMenuItems_.push_back(uiText(UiText::Back));
+  typographyFontPickerTypefaceForIndex_.push_back(DisplayManager::ReaderTypeface::Count);
 
+  // Rows are filtered to fonts actually present: the 3 built-in (flash)
+  // faces are always available; the 17 SD-backed ones only show up once
+  // downloadAsset() has put both their .fnt files on the card (see
+  // maybeAutoDownloadFonts()) — no point offering a font that will just
+  // fall back to Atkinson.
   size_t currentSelection = 0;
   for (uint8_t i = 0; i < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count); ++i) {
     const auto typeface = static_cast<DisplayManager::ReaderTypeface>(i);
+    if (!DisplayManager::isTypefaceAvailableOnSd(typeface)) {
+      continue;
+    }
     typographyFontPickerMenuItems_.push_back(typefaceDisplayName(typeface));
+    typographyFontPickerTypefaceForIndex_.push_back(typeface);
     if (typeface == typographyConfig_.typeface) {
       currentSelection = typographyFontPickerMenuItems_.size() - 1;
     }
@@ -5219,12 +5242,11 @@ void App::selectTypographyFontPickerItem(uint32_t nowMs) {
     return;
   }
 
-  const size_t typefaceIndex = typographyFontPickerSelectedIndex_ - 1;
-  if (typefaceIndex >= static_cast<size_t>(DisplayManager::ReaderTypeface::Count)) {
+  if (typographyFontPickerSelectedIndex_ >= typographyFontPickerTypefaceForIndex_.size()) {
     return;
   }
 
-  typographyConfig_.typeface = static_cast<DisplayManager::ReaderTypeface>(typefaceIndex);
+  typographyConfig_.typeface = typographyFontPickerTypefaceForIndex_[typographyFontPickerSelectedIndex_];
   preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
   applyTypographySettings(nowMs);
 
@@ -5245,14 +5267,12 @@ void App::renderTypographyFontPicker() {
 void App::annotateTypographyFontPickerButton(DisplayManager::Button &button,
                                               size_t canonicalIndex) const {
   // canonicalIndex is 1-based here (0 is Back, pulled into the corner
-  // button before this ever runs) and mirrors the exact push_back order in
-  // openTypographyFontPicker() above, which walks ReaderTypeface 0..Count-1
-  // — so the ReaderTypeface value is always canonicalIndex - 1.
-  if (canonicalIndex == 0 ||
-      canonicalIndex > static_cast<size_t>(DisplayManager::ReaderTypeface::Count)) {
+  // button before this ever runs) and mirrors typographyFontPickerTypefaceForIndex_,
+  // built in the same filtered order by openTypographyFontPicker() above.
+  if (canonicalIndex == 0 || canonicalIndex >= typographyFontPickerTypefaceForIndex_.size()) {
     return;
   }
-  button.previewTypeface = static_cast<DisplayManager::ReaderTypeface>(canonicalIndex - 1);
+  button.previewTypeface = typographyFontPickerTypefaceForIndex_[canonicalIndex];
 }
 
 void App::rebuildSettingsMenuItems() {
@@ -6190,6 +6210,176 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
       Serial.printf("[ota] update available: %s -> %s (user will be notified)\n",
                     currentBase.c_str(), latest.c_str());
     }
+  }
+}
+
+// ─── Font pack auto-download (Etap 4/5+, docs/PLAN_FONTY_NA_SD.md) ──────────
+//
+// No menu entry, no prompt: the 17 SD-backed typefaces stay hidden from the
+// font picker (see openTypographyFontPicker()) until they're actually on the
+// card, and download themselves silently the moment saved Wi-Fi credentials
+// exist — at boot, right after a successful SD repair, or on the periodic
+// retry below if Wi-Fi gets configured later (e.g. via the Flower app).
+
+bool App::refreshFontPackComplete() {
+  bool complete = true;
+  for (uint8_t i = static_cast<uint8_t>(DisplayManager::ReaderTypeface::Literata);
+       i < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count); ++i) {
+    const auto typeface = static_cast<DisplayManager::ReaderTypeface>(i);
+    if (!DisplayManager::isTypefaceAvailableOnSd(typeface)) {
+      complete = false;
+      break;
+    }
+  }
+  fontPackComplete_ = complete;
+  return complete;
+}
+
+void App::maybeAutoDownloadFonts(uint32_t nowMs) {
+  if (fontPackComplete_ || fontDownloadInProgress_) {
+    return;
+  }
+  if (lastFontDownloadAttemptMs_ != 0 &&
+      nowMs - lastFontDownloadAttemptMs_ < kFontDownloadRetryIntervalMs) {
+    return;
+  }
+  lastFontDownloadAttemptMs_ = nowMs;
+
+  OtaUpdater::Config config = preferredOtaConfig();
+  if (!otaUpdater_.isConfigured(config)) {
+    // No saved Wi-Fi yet — stay quiet and try again on the next interval.
+    return;
+  }
+
+  Serial.println("[fonts] Wi-Fi configured — starting background font pack download");
+  startBackgroundFontDownload(config);
+}
+
+bool App::startBackgroundFontDownload(const OtaUpdater::Config &config) {
+  if (fontDownloadInProgress_) {
+    Serial.println("[fonts] background download already running");
+    return false;
+  }
+
+  if (fontDownloadQueue_ == nullptr) {
+    fontDownloadQueue_ = xQueueCreate(1, sizeof(FontDownloadResult));
+    if (fontDownloadQueue_ == nullptr) {
+      Serial.println("[fonts] could not create result queue");
+      return false;
+    }
+  }
+  xQueueReset(fontDownloadQueue_);
+
+  FontDownloadTaskParams *params = new FontDownloadTaskParams();
+  if (params == nullptr) {
+    Serial.println("[fonts] could not allocate task params");
+    return false;
+  }
+  params->config = config;
+  params->resultQueue = fontDownloadQueue_;
+
+  fontDownloadInProgress_ = true;
+  BaseType_t created = xTaskCreatePinnedToCore(
+      fontDownloadTask, "font_dl", kFontDownloadTaskStackBytes, params, 1, nullptr, 0);
+  if (created != pdPASS) {
+    Serial.printf("[fonts] background task create failed: %ld\n", static_cast<long>(created));
+    fontDownloadInProgress_ = false;
+    delete params;
+    return false;
+  }
+
+  Serial.println("[fonts] background download started");
+  return true;
+}
+
+void App::fontDownloadTask(void *params) {
+  FontDownloadTaskParams *taskParams = static_cast<FontDownloadTaskParams *>(params);
+  if (taskParams == nullptr) {
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  std::vector<DisplayManager::ReaderTypeface> missing;
+  for (uint8_t i = static_cast<uint8_t>(DisplayManager::ReaderTypeface::Literata);
+       i < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count); ++i) {
+    const auto typeface = static_cast<DisplayManager::ReaderTypeface>(i);
+    if (!DisplayManager::isTypefaceAvailableOnSd(typeface)) {
+      missing.push_back(typeface);
+    }
+  }
+
+  FontDownloadResult queuedResult;
+  queuedResult.totalMissing = static_cast<uint8_t>(missing.size());
+
+  if (!missing.empty()) {
+    OtaUpdater updater;
+    if (!updater.connectWiFi(taskParams->config, nullptr, nullptr)) {
+      queuedResult.wifiFailed = true;
+      Serial.println("[fonts] Wi-Fi connect failed, will retry later");
+    } else {
+      for (DisplayManager::ReaderTypeface typeface : missing) {
+        const String base = DisplayManager::sdFontFileBaseName(typeface);
+        if (base.isEmpty()) {
+          continue;
+        }
+
+        String errorDetail;
+        const bool baseOk =
+            updater.downloadAsset(taskParams->config, base + ".fnt", "",
+                                  "/fonts/" + base + ".fnt", errorDetail);
+        if (!baseOk) {
+          Serial.printf("[fonts] %s.fnt failed: %s\n", base.c_str(), errorDetail.c_str());
+          continue;
+        }
+
+        errorDetail = "";
+        const bool mediumOk =
+            updater.downloadAsset(taskParams->config, base + "_70.fnt", "",
+                                  "/fonts/" + base + "_70.fnt", errorDetail);
+        if (!mediumOk) {
+          Serial.printf("[fonts] %s_70.fnt failed: %s\n", base.c_str(), errorDetail.c_str());
+          continue;
+        }
+
+        queuedResult.downloaded++;
+      }
+      updater.disconnectWiFi();
+    }
+  }
+
+  Serial.printf("[fonts] background download finished: %u/%u fetched\n",
+               static_cast<unsigned int>(queuedResult.downloaded),
+               static_cast<unsigned int>(queuedResult.totalMissing));
+
+  if (taskParams->resultQueue != nullptr) {
+    xQueueOverwrite(taskParams->resultQueue, &queuedResult);
+  }
+
+  delete taskParams;
+  vTaskDelete(nullptr);
+}
+
+void App::pollFontDownloadResult(uint32_t nowMs) {
+  (void)nowMs;
+  if (fontDownloadQueue_ == nullptr) {
+    return;
+  }
+
+  FontDownloadResult result;
+  while (xQueueReceive(fontDownloadQueue_, &result, 0) == pdTRUE) {
+    fontDownloadInProgress_ = false;
+    if (result.totalMissing > 0 && result.downloaded == result.totalMissing) {
+      refreshFontPackComplete();
+      Serial.println("[fonts] font pack complete");
+      // Rebuild the picker in place if it's open right now, so the newly
+      // downloaded fonts show up without requiring a menu round-trip.
+      if (menuScreen_ == MenuScreen::TypographyFontPicker) {
+        openTypographyFontPicker();
+      }
+    }
+    // Partial/failed batches leave fontPackComplete_ false; the missing-only
+    // re-scan in fontDownloadTask() means the next retry only fetches what's
+    // still absent, so a flaky connection just costs time, not redundant work.
   }
 }
 
@@ -8240,7 +8430,6 @@ void App::runSdCardCheck(uint32_t nowMs) {
 }
 
 void App::runSdCardRepair(uint32_t nowMs) {
-  (void)nowMs;
   Serial.println("[app] repairing SD card folder layout");
   display_.renderStatus("SD", tr2(TrKey2::RepairingFolders), tr(TrKey::PleaseWait));
   const bool repaired = storage_.repairSdCardFolders();
@@ -8251,6 +8440,12 @@ void App::runSdCardRepair(uint32_t nowMs) {
     renderMenu();
     return;
   }
+
+  // A freshly repaired/formatted card has no /fonts contents — kick off the
+  // silent background download here too, not just at boot, so a card
+  // formatted mid-session doesn't have to wait for the next power cycle.
+  refreshFontPackComplete();
+  maybeAutoDownloadFonts(nowMs);
 
   display_.renderStatus("SD", tr2(TrKey2::FoldersRepaired), tr2(TrKey2::CheckingCard));
   delay(900);

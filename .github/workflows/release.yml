@@ -10,6 +10,8 @@ name: Release firmware
 #   - *-plugin.bin                  (binaria pluginów)
 #   - *-manifest.json               (manifesty pluginów)
 #   - plugins-registry.json         (rejestr pluginów dla urządzenia)
+#   - *.fnt                         (17 dodatkowych krojów, pobierane przez
+#                                     czytnik automatycznie w tle po Wi-Fi)
 
 on:
   push:
@@ -86,6 +88,14 @@ jobs:
   build-plugins:
     needs: build-and-release
     uses: ./.github/workflows/build-plugins.yml
+    with:
+      tag: ${{ needs.build-and-release.outputs.tag }}
+    permissions:
+      contents: write
+
+  build-fonts:
+    needs: build-and-release
+    uses: ./.github/workflows/build-fonts.yml
     with:
       tag: ${{ needs.build-and-release.outputs.tag }}
     permissions:

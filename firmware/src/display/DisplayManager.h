@@ -167,6 +167,17 @@ class DisplayManager {
   // clears itself on read so callers show the warning exactly once, right
   // after the user action that triggered the load attempt.
   bool consumeFontLoadFailure();
+  // True for the 3 built-in (flash) faces; false for the 17 SD-backed ones
+  // added by tools/generate_embedded_font.py --fnt-output.
+  static bool isSdBackedTypeface(ReaderTypeface typeface);
+  // Lowercase file stem under /fonts/ for an SD-backed typeface (e.g.
+  // "literata"); empty for built-in faces. Callers build "/fonts/<name>.fnt"
+  // and "/fonts/<name>_70.fnt" from it.
+  static String sdFontFileBaseName(ReaderTypeface typeface);
+  // Cheap existence check (SD_MMC.exists, no PSRAM allocation) — always true
+  // for built-in faces; for SD-backed faces only once both the base and
+  // _70 .fnt files are present on the card. Safe to call from any task.
+  static bool isTypefaceAvailableOnSd(ReaderTypeface typeface);
   void setScrollFontSize(uint8_t level);
   void setScrollLineSpacing(uint8_t level);
   void setScrollMargin(uint8_t level);

@@ -745,3 +745,141 @@ OtaUpdater::Result OtaUpdater::installAsset(const Config &config, const String &
       return result;
   }
 }
+
+// ─── Asset-to-SD download (font pack) ────────────────────────────────────────
+
+bool OtaUpdater::downloadAsset(const Config &config, const String &assetName,
+                               const String &tagName, const String &destPath,
+                               String &errorDetail, StatusCallback callback,
+                               void *context) const {
+  const String releaseUrl = tagName.isEmpty()
+      ? "https://api.github.com/repos/" + config.githubOwner + "/" + config.githubRepo +
+            "/releases/latest"
+      : "https://api.github.com/repos/" + config.githubOwner + "/" + config.githubRepo +
+            "/releases/tags/" + tagName;
+
+  WiFiClientSecure metaClient;
+  metaClient.setInsecure();
+  metaClient.setHandshakeTimeout(15);
+
+  HTTPClient metaHttp;
+  metaHttp.setUserAgent(userAgentForVersion(currentVersion()));
+  metaHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  metaHttp.setTimeout(15000);
+  if (!metaHttp.begin(metaClient, releaseUrl)) {
+    errorDetail = "HTTP begin failed";
+    return false;
+  }
+
+  metaHttp.addHeader("Accept", "application/vnd.github+json");
+  const int metaStatus = metaHttp.GET();
+  if (metaStatus != HTTP_CODE_OK) {
+    errorDetail = "GitHub HTTP " + String(metaStatus);
+    metaHttp.end();
+    return false;
+  }
+
+  const String body = readBodyLimited(metaHttp, kMaxReleaseJsonBytes);
+  metaHttp.end();
+
+  String assetUrl;
+  if (!extractAssetDownloadUrl(body, assetName, assetUrl) || assetUrl.isEmpty()) {
+    errorDetail = assetName + " missing";
+    return false;
+  }
+
+  String resolvedUrl;
+  if (!resolveDownloadUrl(assetUrl, assetName, resolvedUrl, errorDetail, callback, context)) {
+    return false;
+  }
+
+  WiFiClientSecure dlClient;
+  dlClient.setInsecure();
+  dlClient.setHandshakeTimeout(15);
+
+  HTTPClient dlHttp;
+  dlHttp.setUserAgent(userAgentForVersion(currentVersion()));
+  dlHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  dlHttp.setTimeout(15000);
+  if (!dlHttp.begin(dlClient, resolvedUrl)) {
+    errorDetail = "Download begin failed";
+    return false;
+  }
+
+  dlHttp.addHeader("Accept", "application/octet-stream");
+  const int dlStatus = dlHttp.GET();
+  if (dlStatus != HTTP_CODE_OK) {
+    errorDetail = "Download HTTP " + String(dlStatus);
+    dlHttp.end();
+    return false;
+  }
+
+  const int lastSlash = destPath.lastIndexOf('/');
+  if (lastSlash > 0) {
+    SD_MMC.mkdir(destPath.substring(0, lastSlash));
+  }
+
+  const String tmpPath = destPath + ".part";
+  SD_MMC.remove(tmpPath);
+  File out = SD_MMC.open(tmpPath, FILE_WRITE);
+  if (!out) {
+    errorDetail = "SD open failed";
+    dlHttp.end();
+    return false;
+  }
+
+  WiFiClient *stream = dlHttp.getStreamPtr();
+  const int reportedSize = dlHttp.getSize();
+  uint8_t buffer[1024];
+  size_t totalWritten = 0;
+  uint32_t lastDataMs = millis();
+  bool stalled = false;
+  while (dlHttp.connected() || stream->available()) {
+    if (reportedSize > 0 && totalWritten >= static_cast<size_t>(reportedSize)) {
+      break;
+    }
+
+    const int available = stream->available();
+    if (available <= 0) {
+      if (millis() - lastDataMs > 15000) {
+        stalled = true;
+        break;
+      }
+      delay(1);
+      continue;
+    }
+
+    const size_t chunkSize = std::min(sizeof(buffer), static_cast<size_t>(available));
+    const int bytesRead = stream->readBytes(buffer, chunkSize);
+    if (bytesRead <= 0) {
+      break;
+    }
+
+    out.write(buffer, static_cast<size_t>(bytesRead));
+    totalWritten += static_cast<size_t>(bytesRead);
+    lastDataMs = millis();
+
+    if (reportedSize > 0 && callback != nullptr) {
+      const int progress =
+          static_cast<int>((static_cast<int64_t>(totalWritten) * 100) / reportedSize);
+      reportStatus(callback, context, "Fonts", "Downloading", assetName, progress);
+    }
+  }
+  out.close();
+  dlHttp.end();
+
+  const bool sizeMatches = reportedSize <= 0 || totalWritten == static_cast<size_t>(reportedSize);
+  if (stalled || !sizeMatches || totalWritten == 0) {
+    SD_MMC.remove(tmpPath);
+    errorDetail = stalled ? "Download stalled" : "Incomplete download";
+    return false;
+  }
+
+  SD_MMC.remove(destPath);
+  if (!SD_MMC.rename(tmpPath, destPath)) {
+    errorDetail = "SD rename failed";
+    return false;
+  }
+
+  return true;
+}

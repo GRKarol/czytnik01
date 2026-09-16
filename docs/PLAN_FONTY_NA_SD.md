@@ -4,6 +4,62 @@ Status: Etap 1-5 zrobione (patrz niżej), Etap 6 (redesign ekranu wyboru
 fontu) czeka.
 Branch roboczy: `main` na staging (ten sam co dotychczasowy refaktor typografii).
 
+## Zrobione — Etap 5 dokończony: automatyczne pobieranie w tle
+
+Karol poprosił, żeby fonty pobierały się same — bez ręcznego rozpakowywania
+zipa na kartę — w momencie kiedy czytnik ma zapisane Wi-Fi (np. po sparowaniu
+z apką Flower), bez żadnego działania użytkownika, i żeby do tego czasu
+biblioteka fontów pokazywała tylko to co realnie jest na karcie.
+
+**Nowe API `DisplayManager`** (`isSdBackedTypeface()`, `sdFontFileBaseName()`,
+`isTypefaceAvailableOnSd()`) — publiczne, statyczne wrappery na dotychczasowe
+funkcje w anonimowej przestrzeni nazw `DisplayManager.cpp`, żeby `App.cpp`
+mógł pytać "czy font X jest na karcie" bez duplikowania tabeli nazw plików.
+
+**`OtaUpdater::downloadAsset()`** — nowa publiczna metoda obok
+`installAsset()`: pobiera nazwany asset z Release'u (ten sam mechanizm
+resolve-URL/redirect co OTA), ale zamiast flashować przez `HTTPUpdate`,
+strumieniuje na kartę SD (plik `.part` + atomowy `rename`, żeby przerwane
+pobieranie nie zostawiło uszkodzonego `.fnt`). `connectWiFi()`/`disconnectWiFi()`
+są teraz publiczne, żeby wywołujący mógł pobrać wiele plików w jednej sesji
+Wi-Fi zamiast łączyć się od nowa za każdym razem.
+
+**`App.cpp`** — nowy stan analogiczny do istniejącego auto-update OTA
+(`maybeAutoCheckForUpdates`/`startBackgroundOtaCheck`/`otaCheckTask`/
+`pollOtaCheckResult`), ta sama para kolejka+task:
+- `maybeAutoDownloadFonts(nowMs)` — co 60 s (`kFontDownloadRetryIntervalMs`)
+  sprawdza `otaUpdater_.isConfigured()` (czy jest zapisane SSID); jeśli nie,
+  cicho czeka na kolejną próbę. Jeśli tak, odpala `startBackgroundFontDownload()`.
+  Wywoływane przy boocie, co klatkę w `update()`, i po udanym
+  `runSdCardRepair()` (świeżo sformatowana/naprawiona karta też odpala
+  sprawdzenie od razu, nie czeka do restartu).
+- `fontDownloadTask()` (FreeRTOS task, core 0) — liczy które z 17 fontów SD
+  faktycznie brakują (`isTypefaceAvailableOnSd()`), łączy Wi-Fi raz, pobiera
+  tylko brakujące (`<nazwa>.fnt` + `<nazwa>_70.fnt` jako osobne assety
+  Release'u o nazwie 1:1 z plikiem na SD), rozłącza Wi-Fi, wrzuca wynik do
+  kolejki. Częściowa/nieudana partia po prostu zostaje do następnej próby za
+  60 s — brakuje-only re-scan sprawia, że retry nie pobiera ponownie tego, co
+  się już udało.
+- `openTypographyFontPicker()` filtruje listę do fontów faktycznie obecnych
+  na karcie (3 wbudowane zawsze, 17 SD-owych tylko gdy pobrane) — stąd nowy
+  wektor `typographyFontPickerTypefaceForIndex_` (indeks wyświetlany ≠ numer
+  `ReaderTypeface`, bo lista jest filtrowana).
+
+**CI**: nowy `.github/workflows/build-fonts.yml`, wołany z `release.yml`
+analogicznie do `build-plugins.yml` — uruchamia
+`tools/generate_font_pack.sh` i wgrywa 34 pliki `.fnt` jako osobne, nazwane
+assety Release'u (nie zip), bo `downloadAsset()` dopasowuje po dokładnej
+nazwie pliku z JSON-a Release'u, a na urządzeniu nie ma biblioteki do
+rozpakowywania zipów (sprawdzone: `platformio.ini` nie ma żadnej zależności
+zip/unzip). Ważne: to zadziała dopiero dla **kolejnego** taga wypchniętego po
+tej zmianie — istniejące release'y (np. `v0.3.38` z ręcznie doklejonym
+`fonts-pack-v0.3.38.zip`) nie mają tych pojedynczych assetów.
+
+**Świadomie nietestowane fizycznie**: cała ścieżka (Wi-Fi się łączy →
+pobieranie w tle → fonty pojawiają się w bibliotece bez restartu) wymaga
+prawdziwego releasu z assetami z nowego workflow i prawdziwego czytnika ze
+skonfigurowanym Wi-Fi.
+
 ## Zrobione — Etap 4 i 5
 
 Katalog rozszerzony z 7 do 17 fontów SD (20 krojów łącznie z 3 fontami w
@@ -225,12 +281,12 @@ od liczby fontów.
   `flower-firmware.bin`), do ręcznego rozpakowania na kartę SD przez czytnik
   kart (albo przez USB Mass Storage, które czytnik już obsługuje —
   `UsbMassStorageManager.cpp`).
-- **Nie zrobione w tej sesji** — przy boocie sprawdzenie czy `/fonts/` ma
-  komplet plików z manifestu wbudowanego w firmware. Dziś fallback per-font
-  (Atkinson + komunikat) działa przy braku pojedynczego pliku, ale nie ma
-  jednego zbiorczego komunikatu "brakuje X z 17 fontów" przy starcie.
-- Automatyczne dosyłanie fontów przez BLE/companion app (na wzór sync
-  książek) — świadomie poza zakresem tego planu, do rozważenia później.
+- **Zrobione** (patrz sekcja "Automatyczne pobieranie w tle" wyżej): przy
+  boocie, po SD repair, i co 60 s dopóki paczka nie jest kompletna,
+  `App::refreshFontPackComplete()` sprawdza `/fonts/` względem 17 fontów;
+  brakujące pobierają się same przez Wi-Fi z Release'u, bez interakcji
+  użytkownika i bez BLE/companion app (zwykłe stacja Wi-Fi + GitHub Releases,
+  ten sam kanał co OTA firmware).
 
 ### Etap 6 — Ekran wyboru fontu
 - Wdrożyć decyzję z sekcji wyżej (rekomendacja: opcja A, pre-renderowane

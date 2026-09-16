@@ -71,6 +71,17 @@ class App {
     QueueHandle_t resultQueue = nullptr;
   };
 
+  struct FontDownloadResult {
+    bool wifiFailed = false;
+    uint8_t totalMissing = 0;
+    uint8_t downloaded = 0;
+  };
+
+  struct FontDownloadTaskParams {
+    OtaUpdater::Config config;
+    QueueHandle_t resultQueue = nullptr;
+  };
+
   struct PausedTouchSession {
     bool active = false;
     uint16_t startX = 0;
@@ -326,6 +337,15 @@ class App {
   bool startBackgroundOtaCheck(const OtaUpdater::Config &config);
   static void otaCheckTask(void *params);
   void pollOtaCheckResult(uint32_t nowMs);
+  // Font pack (Etap 4/5+ planu fontów na SD): no user action required — the
+  // 17 SD-backed typefaces download themselves the moment saved Wi-Fi
+  // credentials exist, and stay absent from the font picker until then. See
+  // docs/PLAN_FONTY_NA_SD.md.
+  bool refreshFontPackComplete();
+  void maybeAutoDownloadFonts(uint32_t nowMs);
+  bool startBackgroundFontDownload(const OtaUpdater::Config &config);
+  static void fontDownloadTask(void *params);
+  void pollFontDownloadResult(uint32_t nowMs);
   void maybeOpenUpdateConfirm(uint32_t nowMs);
   bool updateConfirmCanOpen() const;
   bool blockNetworkActionForOtaCheck(const String &title, uint32_t nowMs);
@@ -937,6 +957,7 @@ class App {
   MenuScreen menuScreen_ = MenuScreen::Main;
   MenuScreen restartConfirmReturnScreen_ = MenuScreen::Main;
   QueueHandle_t otaCheckQueue_ = nullptr;
+  QueueHandle_t fontDownloadQueue_ = nullptr;
   std::vector<String> settingsMenuItems_;
   std::vector<DisplayManager::LibraryItem> wifiNetworkMenuItems_;
   std::vector<DisplayManager::LibraryItem> bookMenuItems_;
@@ -967,6 +988,12 @@ class App {
   std::vector<String> pluginDetailMenuItems_;
   size_t pluginDetailSelectedIndex_ = 0;
   std::vector<String> typographyFontPickerMenuItems_;
+  // Parallel to typographyFontPickerMenuItems_ (index 0 unused — that slot is
+  // "Back"): which ReaderTypeface each displayed row maps to. Needed because
+  // rows are filtered to only fonts actually available (see
+  // DisplayManager::isTypefaceAvailableOnSd()), so display index and
+  // ReaderTypeface enum value no longer line up 1:1.
+  std::vector<DisplayManager::ReaderTypeface> typographyFontPickerTypefaceForIndex_;
   size_t typographyFontPickerSelectedIndex_ = 0;
   size_t pluginDetailIndex_ = 0;
   // Second wrapped line of the description row, if it didn't fit on one
@@ -1038,6 +1065,9 @@ class App {
   bool otaCheckInProgress_ = false;
   bool otaUpdatePromptPending_ = false;
   bool otaUpdatePromptDismissed_ = false;
+  bool fontDownloadInProgress_ = false;
+  bool fontPackComplete_ = false;
+  uint32_t lastFontDownloadAttemptMs_ = 0;
   uint8_t pwrTapCount_ = 0;
   uint32_t pwrFirstTapMs_ = 0;
   bool contextViewVisible_ = false;

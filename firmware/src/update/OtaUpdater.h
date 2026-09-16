@@ -53,6 +53,26 @@ class OtaUpdater {
   Result installAsset(const Config &config, const String &assetName, const String &tagName,
                       StatusCallback callback = nullptr, void *context = nullptr) const;
 
+  // Connects to Wi-Fi using config.wifiSsid/wifiPassword. Public so callers
+  // that need to download several assets in one Wi-Fi session (e.g. the font
+  // pack) can connect once, call downloadAsset() repeatedly, then
+  // disconnectWiFi() — instead of paying the ~15s connect cost per file.
+  bool connectWiFi(const Config &config, StatusCallback callback = nullptr,
+                   void *context = nullptr) const;
+  void disconnectWiFi() const;
+
+  /**
+   * Pobiera pojedynczy nazwany asset z release'u (jak installAsset) i zapisuje
+   * go na SD pod destPath, zamiast flashować przez HTTPUpdate. Nie łączy ani
+   * nie rozłącza Wi-Fi — zakłada że wywołujący już wywołał connectWiFi().
+   * Zapis jest atomowy (plik tymczasowy + rename), żeby przerwane pobieranie
+   * nie zostawiło uszkodzonego .fnt na karcie.
+   * tagName: np. "v0.3.38" (pusty = "latest" release).
+   */
+  bool downloadAsset(const Config &config, const String &assetName, const String &tagName,
+                     const String &destPath, String &errorDetail,
+                     StatusCallback callback = nullptr, void *context = nullptr) const;
+
  private:
   struct LatestRelease {
     String tagName;
@@ -60,8 +80,6 @@ class OtaUpdater {
   };
 
   bool loadConfigFromPath(const char *path, Config &config) const;
-  bool connectWiFi(const Config &config, StatusCallback callback, void *context) const;
-  void disconnectWiFi() const;
   bool fetchLatestRelease(const Config &config, LatestRelease &release, String &errorDetail,
                           StatusCallback callback, void *context) const;
   bool resolveDownloadUrl(const String &assetUrl, const String &version, String &resolvedUrl,

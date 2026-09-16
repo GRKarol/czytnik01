@@ -7,6 +7,7 @@
 
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <SD_MMC.h>
 
 #include "board/BoardConfig.h"
 #include "display/EmbeddedAtkinsonFont.h"
@@ -1142,6 +1143,21 @@ bool DisplayManager::consumeFontLoadFailure() {
   }
   gSdFontLoadFailurePending = false;
   return true;
+}
+
+bool DisplayManager::isSdBackedTypeface(ReaderTypeface typeface) { return isExtraTypeface(typeface); }
+
+String DisplayManager::sdFontFileBaseName(ReaderTypeface typeface) { return sdFontBaseName(typeface); }
+
+bool DisplayManager::isTypefaceAvailableOnSd(ReaderTypeface typeface) {
+  if (!isExtraTypeface(typeface)) {
+    return true;
+  }
+  const String base = sdFontBaseName(typeface);
+  if (base.isEmpty()) {
+    return false;
+  }
+  return SD_MMC.exists("/fonts/" + base + ".fnt") && SD_MMC.exists("/fonts/" + base + "_70.fnt");
 }
 
 DisplayManager::TypographyConfig DisplayManager::typographyConfig() const {

@@ -1,0 +1,59 @@
+name: Build font pack
+
+# Generuje 17 dodatkowych krojów książki (firmware/tools/generate_font_pack.sh)
+# i wgrywa każdy plik .fnt jako OSOBNY, nazwany asset Release'u (nie zip) —
+# firmware pobiera je pojedynczo w tle (OtaUpdater::downloadAsset, patrz
+# App::fontDownloadTask) po nazwie pliku, np. "literata.fnt", "literata_70.fnt".
+#
+# Triggerowany AUTOMATYCZNIE przez release.yml (workflow_call) po zbudowaniu
+# bazowego firmware. Można też uruchomić ręcznie podając tag.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.38"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.38"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-fonts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install font tooling
+        run: pip install --upgrade fonttools Pillow
+
+      - name: Generate font pack
+        run: firmware/tools/generate_font_pack.sh dist/fonts
+
+      - name: Verify artifacts
+        run: |
+          count=$(ls dist/fonts/*.fnt | wc -l)
+          echo "generated $count .fnt files"
+          test "$count" -eq 34
+
+      - name: Upload fonts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: dist/fonts/*.fnt
