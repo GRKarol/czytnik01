@@ -6896,6 +6896,26 @@ String App::typefaceDisplayName(DisplayManager::ReaderTypeface typeface) const {
       return "Vollkorn";
     case DisplayManager::ReaderTypeface::Gelasio:
       return "Gelasio";
+    case DisplayManager::ReaderTypeface::PtSerif:
+      return "PT Serif";
+    case DisplayManager::ReaderTypeface::IbmPlexSerif:
+      return "IBM Plex Serif";
+    case DisplayManager::ReaderTypeface::Cardo:
+      return "Cardo";
+    case DisplayManager::ReaderTypeface::ZillaSlab:
+      return "Zilla Slab";
+    case DisplayManager::ReaderTypeface::OldStandard:
+      return "Old Standard";
+    case DisplayManager::ReaderTypeface::Domine:
+      return "Domine";
+    case DisplayManager::ReaderTypeface::Alegreya:
+      return "Alegreya";
+    case DisplayManager::ReaderTypeface::Newsreader:
+      return "Newsreader";
+    case DisplayManager::ReaderTypeface::NotoSerif:
+      return "Noto Serif";
+    case DisplayManager::ReaderTypeface::Spectral:
+      return "Spectral";
     case DisplayManager::ReaderTypeface::Standard:
     default:
       return uiText(UiText::Standard);

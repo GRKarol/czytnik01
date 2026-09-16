@@ -293,8 +293,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ttf_path", type=pathlib.Path)
     parser.add_argument("--symbol-prefix", required=True)
-    parser.add_argument("--output", type=pathlib.Path, required=True,
-                         help="Path for the generated C++ header (PROGMEM, flash-embedded).")
+    parser.add_argument("--output", type=pathlib.Path, default=None,
+                         help="Path for the generated C++ header (PROGMEM, flash-embedded). "
+                              "Omit for SD-only fonts that only need --fnt-output.")
     parser.add_argument("--fnt-output", type=pathlib.Path, default=None,
                          help="Optional path for the binary .fnt file (SD-card format, "
                               "see docs/FONT_FNT_FORMAT.md).")
@@ -316,8 +317,9 @@ def main() -> None:
         point_size = calibrate_point_size(args.ttf_path, cmap, args.target_height)
 
     font_height, bitmap_bytes, glyph_entries = generate(args.ttf_path, point_size, cmap)
-    write_header(args.output, args.symbol_prefix, font_height, bitmap_bytes, glyph_entries,
-                 args.font_label, point_size)
+    if args.output is not None:
+        write_header(args.output, args.symbol_prefix, font_height, bitmap_bytes, glyph_entries,
+                     args.font_label, point_size)
     print(f"{args.symbol_prefix}: point_size={point_size} height={font_height} "
           f"bytes={len(bitmap_bytes)}")
 

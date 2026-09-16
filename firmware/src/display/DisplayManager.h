@@ -23,7 +23,17 @@ class DisplayManager {
     EBGaramond = 7,
     Vollkorn = 8,
     Gelasio = 9,
-    Count = 10,
+    PtSerif = 10,
+    IbmPlexSerif = 11,
+    Cardo = 12,
+    ZillaSlab = 13,
+    OldStandard = 14,
+    Domine = 15,
+    Alegreya = 16,
+    Newsreader = 17,
+    NotoSerif = 18,
+    Spectral = 19,
+    Count = 20,
   };
 
   struct TypographyConfig {

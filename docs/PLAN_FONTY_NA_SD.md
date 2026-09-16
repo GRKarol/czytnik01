@@ -1,7 +1,72 @@
 # Plan: fonty książki wczytywane z karty SD zamiast z flasha
 
-Status: Etap 1-3 zrobione (patrz niżej), Etap 4 czeka.
+Status: Etap 1-5 zrobione (patrz niżej), Etap 6 (redesign ekranu wyboru
+fontu) czeka.
 Branch roboczy: `main` na staging (ten sam co dotychczasowy refaktor typografii).
+
+## Zrobione — Etap 4 i 5
+
+Katalog rozszerzony z 7 do 17 fontów SD (20 krojów łącznie z 3 fontami w
+flashu: Standard/OpenDyslexic/Atkinson) — dokładnie w widełkach planu
+(~10-13 nowych, dodano 10). Nowe kroje, wszystkie sprawdzone pod kątem
+pokrycia polskich/środkowoeuropejskich znaków przez `fontTools` cmap
+(`CUSTOM_GLYPH_CODEPOINTS` z `generate_embedded_font.py` + 9 polskich liter
+ą/ć/ę/ł/ń/ó/ś/ź/ż) przed wyborem — wszystkie 10 mają 95-100% pokrycia:
+
+- PT Serif (`ptserif`), IBM Plex Serif (`ibmplexserif`), Cardo (`cardo`),
+  Zilla Slab (`zillaslab`), Old Standard TT (`oldstandard`), Domine
+  (`domine`), Alegreya (`alegreya`), Newsreader (`newsreader`), Noto Serif
+  (`notoserif`), Spectral (`spectral`) — wszystkie Google Fonts, licencja
+  OFL, ten sam mechanizm co istniejące 7 (`isExtraTypeface()`,
+  `sdFontBaseName()`, brak dedykowanego kodu per-font).
+- Odrzucone po sprawdzeniu: Neuton (tylko 15% pokrycia CE — pomija większość
+  polskich znaków), Cormorant/Cormorant Garamond/Libre Baskerville/Crimson
+  Pro (100% pokrycia, ale odrzucone dla różnorodności stylistycznej — zestaw
+  i tak już ma kilka fontów o podobnym, wąskim/eleganckim rysunku).
+
+**Zmiany w kodzie** (mechaniczne, bez nowej logiki — architektura z Etapu 2
+już była generyczna po `ReaderTypeface::Count`):
+- `DisplayManager.h`: enum `ReaderTypeface` rozszerzony o 10 wpisów
+  (`PtSerif`..`Spectral`), `Count` 10 -> 20.
+- `DisplayManager.cpp`: `sdFontBaseName()` o 10 nowych `case`.
+- `App.cpp`: `typefaceDisplayName()` o 10 nowych `case` (etykiety do UI).
+- `CompanionSyncManager.cpp`: `kMaxReaderTypeface` 9 -> 19 — bez tej zmiany
+  aplikacja mobilna przycinałaby zsynchronizowaną wartość kroju z powrotem
+  do starego zakresu 0-9, przez co nowe fonty nigdy nie zostałyby wybrane
+  przez sync. Jedyne miejsce w kodzie poza samym enumem, które twardo
+  zakładało `Count == 10`.
+- Ekran wyboru fontu (`App::openTypographyFontPicker()`) i limit indeksu w
+  `selectTypographyFontPickerItem()`/`annotateTypographyFontPickerButton()`
+  już iterowały `0..Count-1` dynamicznie — zero zmian potrzebnych.
+
+**Narzędzie generujące** (`tools/generate_embedded_font.py`): `--output`
+(nagłówek `.h` do flasha) jest teraz opcjonalny — nowe kroje nie potrzebują
+wersji flashowej, więc generacja leci tylko z `--fnt-output`. Dodano
+`tools/generate_font_pack.sh <output_dir>` — reprodukowalny skrypt, który
+pobiera wszystkie 17 fontów SD ze `github.com/google/fonts` (OFL, nie
+commitowane do repo — ten sam brak commitowania źródeł co przy oryginalnych
+7 fontach) i generuje 34 pliki `.fnt` (17 fontów x 2 rozmiary) przy
+`--target-height 52` (podstawowy) / `39` ("70") — wartości dobrane tak, żeby
+wysokość glifów wyszła zbliżona do już działających 7 fontów (52-54px /
+39-41px w oryginalnych nagłówkach).
+
+**Build zweryfikowany na obu środowiskach** (`waveshare_esp32s3`,
+`waveshare_esp32s3_usb_msc`) — flash **42.1-42.6%, bez zmian** względem
+stanu po Etapie 3 (oczekiwane: nowe fonty to tylko `case` w switchu, żadnych
+nowych danych PROGMEM).
+
+**Dystrybucja**: `fonts-pack.zip` (34 pliki `.fnt`, ~8.2 MB rozpakowane,
+~1.2 MB spakowane) dołączony jako dodatkowy asset do release'u na
+`staging` — do rozpakowania na karcie SD w `/fonts/`.
+
+**Świadomie nietestowane fizycznie**: jak w Etapie 2/3, realne wczytanie i
+wygląd 17 fontów wymaga fizycznego testu na sprzęcie z plikami z paczki na
+karcie. Podgląd nazw fontów na przyciskach ekranu wyboru (Etap 6, wciąż nie
+zaczęty) nadal pokazuje tylko aktualnie aktywny font poprawnie — reszta
+przycisków renderuje się w foncie fallback (Atkinson), bo `extraFontVariant()`
+zwraca to, co aktualnie załadowane w `gSdFontLoader`, nie ładuje każdego
+fontu osobno na podgląd. To nie jest nowy problem tej sesji — to ta sama
+architektoniczna przyczyna, dla której Etap 6 w ogóle istnieje w planie.
 
 ## Zrobione — Etap 2 i 3 (odstępstwo od pierwotnego opisu Etapu 3)
 
@@ -147,21 +212,23 @@ od liczby fontów.
 - Zweryfikować build: flash powinien spaść z 83.4% z powrotem w okolice
   bazowej wartości (firmware + 1 font).
 
-### Etap 4 — Rozszerzenie katalogu do ~20 fontów
+### Etap 4 — Rozszerzenie katalogu do ~20 fontów (zrobione)
 - Dobrać kolejnych ~10–13 krojów pod czytanie książek (flash już nie jest
   ograniczeniem), wygenerować `.fnt` dla wszystkich przez narzędzie z Etapu 1.
 - Sprawdzić pokrycie znaków zgodne z obecnym zestawem tłumaczeń (polskie
   znaki ą/ę/ś/ć/ź/ż/ń/ó/ł — już wymagane, patrz `firstChar`/`lastChar`
   istniejących fontów).
 
-### Etap 5 — Dystrybucja plików fontów na kartę
+### Etap 5 — Dystrybucja plików fontów na kartę (zrobione częściowo)
 - Pliki `.fnt` nie mogą jechać w binarce firmware — muszą trafić na SD osobno.
 - Paczka `fonts-pack-vX.zip` jako dodatkowy asset w GitHub Release (obok
   `flower-firmware.bin`), do ręcznego rozpakowania na kartę SD przez czytnik
   kart (albo przez USB Mass Storage, które czytnik już obsługuje —
   `UsbMassStorageManager.cpp`).
-- Przy boocie: sprawdzić czy `/fonts/` ma komplet plików z manifestu
-  wbudowanego w firmware; jeśli brakuje — jasny komunikat, nie cichy fallback.
+- **Nie zrobione w tej sesji** — przy boocie sprawdzenie czy `/fonts/` ma
+  komplet plików z manifestu wbudowanego w firmware. Dziś fallback per-font
+  (Atkinson + komunikat) działa przy braku pojedynczego pliku, ale nie ma
+  jednego zbiorczego komunikatu "brakuje X z 17 fontów" przy starcie.
 - Automatyczne dosyłanie fontów przez BLE/companion app (na wzór sync
   książek) — świadomie poza zakresem tego planu, do rozważenia później.
 

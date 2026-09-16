@@ -328,6 +328,26 @@ const char *sdFontBaseName(DisplayManager::ReaderTypeface typeface) {
       return "vollkorn";
     case DisplayManager::ReaderTypeface::Gelasio:
       return "gelasio";
+    case DisplayManager::ReaderTypeface::PtSerif:
+      return "ptserif";
+    case DisplayManager::ReaderTypeface::IbmPlexSerif:
+      return "ibmplexserif";
+    case DisplayManager::ReaderTypeface::Cardo:
+      return "cardo";
+    case DisplayManager::ReaderTypeface::ZillaSlab:
+      return "zillaslab";
+    case DisplayManager::ReaderTypeface::OldStandard:
+      return "oldstandard";
+    case DisplayManager::ReaderTypeface::Domine:
+      return "domine";
+    case DisplayManager::ReaderTypeface::Alegreya:
+      return "alegreya";
+    case DisplayManager::ReaderTypeface::Newsreader:
+      return "newsreader";
+    case DisplayManager::ReaderTypeface::NotoSerif:
+      return "notoserif";
+    case DisplayManager::ReaderTypeface::Spectral:
+      return "spectral";
     default:
       return "";
   }
