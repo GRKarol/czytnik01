@@ -670,6 +670,23 @@ ReaderGlyph serif70GlyphForByte(uint8_t value) {
           glyph.xAdvance, kEmbeddedSerif70Height};
 }
 
+// SD-generated fonts (tools/generate_embedded_font.py) carry each font's
+// real space-glyph metric, which for typical Google Fonts book faces comes
+// out to ~0.15-0.2x the glyph raster height. The three built-in fonts sit
+// at ~0.29-0.5x (measured from their embedded glyph tables). At reading
+// scale that narrower space reads as barely-there, so multi-word runs of
+// dimmed context text (RSVP phantom words, but any word-wrapped text is
+// affected) look glued into a single blob. Floor it to a legible fraction
+// of the font's own height instead of touching letter spacing/kerning.
+uint8_t withMinimumSpaceAdvance(uint8_t xAdvance, uint8_t codepoint, uint8_t glyphHeight) {
+  if (codepoint != ' ') {
+    return xAdvance;
+  }
+  const uint8_t minAdvance =
+      static_cast<uint8_t>(std::max(1, (static_cast<int>(glyphHeight) * 7 + 10) / 20));  // ~0.35x
+  return std::max(xAdvance, minAdvance);
+}
+
 ReaderGlyph glyphFor(char c, DisplayManager::ReaderTypeface typeface) {
   const uint8_t value = LatinText::byteValue(c);
   uint8_t baseValue = 0;
@@ -708,7 +725,9 @@ ReaderGlyph glyphFor(char c, DisplayManager::ReaderTypeface typeface) {
                                       ? lookupValue
                                       : LatinText::fallbackAsciiByte(lookupValue);
       const EmbeddedFontGlyph &glyph = variant.glyphs[glyphValue - variant.firstChar];
-      return {variant.bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, glyph.xAdvance,
+      const uint8_t xAdvance =
+          withMinimumSpaceAdvance(glyph.xAdvance, lookupValue, variant.height);
+      return {variant.bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, xAdvance,
               variant.height};
     }
   }
@@ -755,7 +774,9 @@ ReaderGlyph glyph70For(char c, DisplayManager::ReaderTypeface typeface) {
                                       ? lookupValue
                                       : LatinText::fallbackAsciiByte(lookupValue);
       const EmbeddedFontGlyph &glyph = variant.glyphs[glyphValue - variant.firstChar];
-      return {variant.bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, glyph.xAdvance,
+      const uint8_t xAdvance =
+          withMinimumSpaceAdvance(glyph.xAdvance, lookupValue, variant.height);
+      return {variant.bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width, xAdvance,
               variant.height};
     }
   }
