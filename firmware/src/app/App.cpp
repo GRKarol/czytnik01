@@ -403,8 +403,18 @@ constexpr uint16_t kPacingSliderW = BoardConfig::DISPLAY_WIDTH - 8;
 constexpr uint16_t kPacingSliderH = BoardConfig::DISPLAY_HEIGHT - 24;
 // Generous hit box around the small corner Back icon (drawn at 3,3,26,20 by
 // applyBackButtonCornerLayout()) for the editor's hand-rolled touch handler.
-constexpr int kPacingSliderBackHitX1 = 34;
-constexpr int kPacingSliderBackHitY1 = 26;
+// Matches App::backCornerHitZone()'s non-deep-screen size so Back is exactly
+// as easy to hit here as everywhere else in the app.
+constexpr int kPacingSliderBackHitX1 = 80;
+constexpr int kPacingSliderBackHitY1 = 35;
+// Vertical/horizontal slack around the visible slider track (see
+// DisplayManager::sliderTrackRectFor()) within which a touch still counts as
+// "on the slider". Outside this band — e.g. a tap on the label text near the
+// top of the screen — the touch is dead: it must not silently drag the
+// value just because it shares an x-coordinate with some position on the
+// track.
+constexpr int kTypographySliderHitToleranceX = 20;
+constexpr int kTypographySliderHitToleranceY = 40;
 constexpr uint16_t kSettingsWpmMin = 10;
 constexpr uint16_t kSettingsWpmMax = 1000;
 constexpr uint16_t kWpmSliderStepWpm = 10;
@@ -6817,6 +6827,23 @@ void App::renderTypographyValueEditor() {
   display_.renderButtonGrid("", currentGridButtons_, 0, 1, activeGridToastText(millis()));
 }
 
+bool App::touchInsideTypographySliderZone(uint16_t x, uint16_t y) const {
+  DisplayManager::Button geom;
+  geom.x = kPacingSliderX;
+  geom.y = kPacingSliderY;
+  geom.width = kPacingSliderW;
+  geom.height = kPacingSliderH;
+  const ui::Rect track = DisplayManager::sliderTrackRectFor(geom);
+
+  const int minX = static_cast<int>(track.x) - kTypographySliderHitToleranceX;
+  const int maxX = static_cast<int>(track.x) + static_cast<int>(track.w) + kTypographySliderHitToleranceX;
+  const int minY = static_cast<int>(track.y) - kTypographySliderHitToleranceY;
+  const int maxY = static_cast<int>(track.y) + static_cast<int>(track.h) + kTypographySliderHitToleranceY;
+
+  return static_cast<int>(x) >= minX && static_cast<int>(x) <= maxX &&
+         static_cast<int>(y) >= minY && static_cast<int>(y) <= maxY;
+}
+
 void App::applyTypographyValueEditorTouchX(uint16_t x) {
   DisplayManager::Button geom;
   geom.x = kPacingSliderX;
@@ -6877,7 +6904,10 @@ void App::handleTypographyValueEditorTouch(const TouchEvent &event, uint32_t now
     typographyValueEditorTouchOnBack_ =
         event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1;
     if (!typographyValueEditorTouchOnBack_) {
-      applyTypographyValueEditorTouchX(event.x);
+      typographyValueEditorTouchOnSlider_ = touchInsideTypographySliderZone(event.x, event.y);
+      if (typographyValueEditorTouchOnSlider_) {
+        applyTypographyValueEditorTouchX(event.x);
+      }
     }
     return;
   }
@@ -6893,9 +6923,16 @@ void App::handleTypographyValueEditorTouch(const TouchEvent &event, uint32_t now
     return;
   }
 
+  if (!typographyValueEditorTouchOnSlider_) {
+    // Touch started on dead space (e.g. the label text) — ignore the whole
+    // gesture instead of dragging the value to wherever it happens to end.
+    return;
+  }
+
   applyTypographyValueEditorTouchX(event.x);
 
   if (event.phase == TouchPhase::End) {
+    typographyValueEditorTouchOnSlider_ = false;
     const TypographyValueEditorSpec spec = typographyValueEditorSpec();
     const String valueText = !spec.valueLabels.empty() && spec.sliderValue < spec.valueLabels.size()
                                   ? spec.valueLabels[spec.sliderValue]
@@ -9972,10 +10009,15 @@ void App::renderTypographyTuning() {
   const String beforeText = phantomWordsEnabled_ ? kTypographyPreviewWords[beforeIndex] : "";
   const String afterText = phantomWordsEnabled_ ? kTypographyPreviewWords[afterIndex] : "";
   const String line1 = typographyTuningLabel() + ": " + typographyTuningValueLabel();
+  // Position among the TypographyTuningItemCount swipeable settings (Back
+  // included, so this always shows something like "3/10") — makes the
+  // horizontal-swipe paging discoverable the same way page dots do on grid
+  // screens, since this single-item-at-a-time screen has no dots to show.
   const String title =
-      uiText(UiText::Typography) + " " + String(static_cast<unsigned int>(index + 1)) + "/" +
-      String(static_cast<unsigned int>(kTypographyPreviewWordCount));
-  String line2 = uiText(UiText::TapChangeSample);
+      uiText(UiText::Typography) + " " +
+      String(static_cast<unsigned int>(typographyTuningSelectedIndex_) + 1) + "/" +
+      String(static_cast<unsigned int>(TypographyTuningItemCount));
+  String line2 = uiText(UiText::SwipeMoreSettings);
   if (typographyTuningSelectedIndex_ == TypographyTuningBack) {
     line2 = uiText(UiText::TapExitSample);
   } else if (typographyTuningSelectedIndex_ == TypographyTuningPhantomWords ||

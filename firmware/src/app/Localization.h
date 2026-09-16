@@ -79,6 +79,7 @@ enum class UiText : uint8_t {
   TimeEstimateFast,
   ScrollLineSpacing,
   ScrollMargins,
+  SwipeMoreSettings,
 };
 
 namespace Localization {

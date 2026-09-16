@@ -226,7 +226,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[64][6] = {
+  static const char *const kTable[65][6] = {
       {"Resume", "Reanudar", "Reprendre", "Weiter", "Continua", "Wznow"},  // Resume
       {"Chapters", "Capitulos", "Chapitres", "Kapitel", "Capitole", "Rozdzialy"},  // Chapters
       {"Library", "Biblioteca", "Bibliotheque", "Bibliothek", "Biblioteca", "Biblioteka"},  // Library
@@ -291,6 +291,7 @@ inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Fast", "Rapido", "Rapide", "Schnell", "Rapid", "Szybki"},  // TimeEstimateFast
       {"Line spacing", "Interlineado", "Interligne", "Zeilenabst.", "Spatiere", "Interlinia"},  // ScrollLineSpacing
       {"Margins", "Margenes", "Marges", "Raender", "Margini", "Marginesy"},  // ScrollMargins
+      {"Swipe L/R: more settings", "Desliza L/D: mas ajustes", "Glissez G/D: plus reglages", "Wischen L/R: mehr Optionen", "Glisati S/D: mai multe", "Przesun L/P: wiecej ustawien"},  // SwipeMoreSettings
   };
   return kTable[keyIndex][langIndex];
 }

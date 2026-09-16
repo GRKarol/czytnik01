@@ -453,6 +453,7 @@ class App {
   void renderTypographyValueEditor();
   void handleTypographyValueEditorTouch(const TouchEvent &event, uint32_t nowMs);
   void applyTypographyValueEditorTouchX(uint16_t x);
+  bool touchInsideTypographySliderZone(uint16_t x, uint16_t y) const;
   TypographyValueEditorSpec typographyValueEditorSpec() const;
   void commitTypographyValueEditorValue(uint16_t sliderValue, uint32_t nowMs);
   String wpmEditorLabel() const;
@@ -873,6 +874,11 @@ class App {
   bool wpmEditorTouchOnBack_ = false;
   TypographyValueEditorTarget typographyValueEditorTarget_ = TypographyValueEditorTarget::FontSize;
   bool typographyValueEditorTouchOnBack_ = false;
+  // True while the touch that is currently down started inside the visible
+  // slider track (with tolerance) rather than on dead space elsewhere on the
+  // screen — a stray tap on the label/value text above the track must not
+  // silently drag the value. Set on TouchPhase::Start, consumed on End.
+  bool typographyValueEditorTouchOnSlider_ = false;
   size_t typographyTuningSelectedIndex_ = 1;
   size_t typographyPreviewSampleIndex_ = 0;
   // Rects for the currently-rendered button grid, aligned with
