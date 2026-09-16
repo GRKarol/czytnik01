@@ -1,8 +1,57 @@
 # Plan: fonty książki wczytywane z karty SD zamiast z flasha
 
-Status: Etap 1-5 zrobione (patrz niżej), Etap 6 (redesign ekranu wyboru
-fontu) czeka.
+Status: Etap 1-6 zrobione (patrz niżej). Plan zamknięty — zostaje tylko
+fizyczna weryfikacja na sprzęcie (patrz sekcja Etap 6).
 Branch roboczy: `main` na staging (ten sam co dotychczasowy refaktor typografii).
+
+## Zrobione — Etap 6: redesign ekranu wyboru fontu (miniaturki nazw)
+
+Wybrana opcja A z sekcji "Kluczowa decyzja" niżej: pre-renderowane
+miniaturki nazw fontów, trzymane w flashu.
+
+**`tools/generate_embedded_font.py`**: nowy tryb `--thumbnail-output` (+
+`--thumbnail-target-height`, domyślnie 24px) — generuje ten sam nagłówek co
+`--output`, ale ograniczony do zakresu drukowalnego ASCII (32-126, 95
+znaków) zamiast pełnego zakresu 1-255, i przy dużo mniejszym punkcie
+(przeskalowanym proporcjonalnie od już skalibrowanego `point_size` głównego
+wyjścia). Nazwy fontów w UI to zawsze zwykły ASCII (`typefaceDisplayName()`
+w `App.cpp`), więc ograniczenie do drukowalnego ASCII nie traci żadnego
+znaku, a redukuje rozmiar per font z ~320KB (pełny zakres, wysokość 52px)
+do ~23-28KB (ASCII-only, wysokość ~26-30px) — zmierzone, nie szacowane.
+
+**`tools/generate_font_thumbnails.sh`** (nowy, wzorowany na
+`generate_font_pack.sh`): pobiera tych samych 17 fontów Google Fonts (OFL) i
+generuje `firmware/src/display/thumbnails/Embedded<Nazwa>Thumbnail.h` dla
+każdego. W przeciwieństwie do `generate_font_pack.sh` (którego wyjście na SD
+nigdy nie trafia do repo), wyjście tego skryptu **jest commitowane** — to
+dane flashowe, ta sama zasada co 3 wbudowane fonty (Atkinson/Serif/
+OpenDyslexic). Odtworzyć i zacommitować diff przy każdej zmianie katalogu
+fontów SD.
+
+**`DisplayManager.cpp`**: 17 nowych `EmbeddedFontVariant` (po jednym na font
+SD, zbudowane z nagłówków miniaturek) + funkcja `thumbnailFontVariant()`
+mapująca `ReaderTypeface -> const EmbeddedFontVariant *`. Jedna zmiana w
+`extraFontVariant()`: gdy pytany o typeface **inny** niż aktualnie wczytany
+z SD (`gSdFontLoadedTypeface`) — czyli dokładnie przypadek podglądu na
+przycisku, bo normalne czytanie zawsze pyta o aktywny font — zwraca
+miniaturkę z flasha zamiast Atkinsona. Żadna funkcja rysująca/mierząca
+tekst nie wymagała zmian: `glyphFor`, `drawSerifTextScaledAt`,
+`baseGlyphHeightForTypeface` już przyjmowały `EmbeddedFontVariant` przez tę
+jedną funkcję, więc podmiana źródła danych wystarczyła. Aktywny font wciąż
+renderuje się z prawdziwego pliku SD (bez zmian w tej ścieżce) — miniaturka
+dotyczy wyłącznie pozostałych 16 przycisków.
+
+**Zweryfikowane realnie**: build czysty na obu środowiskach. Flash
+`waveshare_esp32s3` 42.1% -> **48.9%**, `waveshare_esp32s3_usb_msc` 42.6% ->
+**49.4%** — wzrost ~413-424KB odpowiada zmierzonej sumie 17 miniaturek
+(426 944 B surowych danych PROGMEM). Duży margines do pełnej partycji
+(6.25 MB) zostaje.
+
+**Świadomie nietestowane fizycznie**: wygląd miniaturek na prawdziwym
+ekranie (czy 26% skalowanie z ~26-30px źródła daje czytelny, nierozmazany
+tekst), czas otwarcia ekranu wyboru fontu przy 20 pozycjach, i że aktywny
+font nadal renderuje się z SD (nie miniaturki) po wybraniu. Wymaga
+fizycznego testu na sprzęcie z flashem `v0.3.40`+ (kolejny savepoint).
 
 ## Zrobione — Etap 5 dokończony: automatyczne pobieranie w tle
 
@@ -117,12 +166,9 @@ nowych danych PROGMEM).
 
 **Świadomie nietestowane fizycznie**: jak w Etapie 2/3, realne wczytanie i
 wygląd 17 fontów wymaga fizycznego testu na sprzęcie z plikami z paczki na
-karcie. Podgląd nazw fontów na przyciskach ekranu wyboru (Etap 6, wciąż nie
-zaczęty) nadal pokazuje tylko aktualnie aktywny font poprawnie — reszta
-przycisków renderuje się w foncie fallback (Atkinson), bo `extraFontVariant()`
-zwraca to, co aktualnie załadowane w `gSdFontLoader`, nie ładuje każdego
-fontu osobno na podgląd. To nie jest nowy problem tej sesji — to ta sama
-architektoniczna przyczyna, dla której Etap 6 w ogóle istnieje w planie.
+karcie. Podgląd nazw fontów na przyciskach ekranu wyboru był w tym momencie
+planu jeszcze ograniczony do aktualnie aktywnego fontu — rozwiązane później
+w Etapie 6 (patrz sekcja wyżej) przez flashowe miniaturki ASCII.
 
 ## Zrobione — Etap 2 i 3 (odstępstwo od pierwotnego opisu Etapu 3)
 
@@ -288,12 +334,12 @@ od liczby fontów.
   użytkownika i bez BLE/companion app (zwykłe stacja Wi-Fi + GitHub Releases,
   ten sam kanał co OTA firmware).
 
-### Etap 6 — Ekran wyboru fontu
-- Wdrożyć decyzję z sekcji wyżej (rekomendacja: opcja A, pre-renderowane
-  miniaturki nazw).
-- Zweryfikować na sprzęcie: czas otwarcia ekranu wyboru fontu przy 20
-  pozycjach, czas przełączenia fontu w czytniku (odczyt SD), oraz że fallback
-  Atkinson faktycznie działa przy braku karty/pliku.
+### Etap 6 — Ekran wyboru fontu (zrobione, patrz sekcja "Zrobione" na górze)
+- Wdrożono opcję A: pre-renderowane miniaturki nazw, w flashu.
+- Pozostaje do zweryfikowania na sprzęcie: czas otwarcia ekranu wyboru fontu
+  przy 20 pozycjach, czas przełączenia fontu w czytniku (odczyt SD), wygląd
+  miniaturek na realnym ekranie, oraz że fallback Atkinson faktycznie działa
+  przy braku karty/pliku dla aktywnego fontu.
 
 ## Co świadomie zostaje bez zmian
 - Reszta ekranu typografii (suwaki rozmiar/odstępy/kotwica/guide, słowa

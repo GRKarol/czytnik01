@@ -15,6 +15,12 @@ were each tuned to a different source point size by hand.
 
 --fnt-output additionally writes the same glyph data as a binary .fnt file
 for SD-card loading (see docs/FONT_FNT_FORMAT.md) instead of PROGMEM.
+
+--thumbnail-output writes a small flash-resident header covering only the
+printable-ASCII range (32-126) at the same point size as the main output —
+used for font-picker button-preview thumbnails (Etap 6 of
+docs/PLAN_FONTY_NA_SD.md), so a font's own name can render in its own face
+without touching the SD card or the (single-slot) SdFontLoader cache.
 """
 
 from __future__ import annotations
@@ -120,6 +126,8 @@ def generate(
     ttf_path: pathlib.Path,
     point_size: int,
     cmap: dict,
+    first_char: int = FIRST_CHAR,
+    last_char: int = LAST_CHAR,
 ) -> tuple[int, list[int], list[tuple[int, int, int, int]]]:
     font = load_font(ttf_path, point_size)
 
@@ -127,7 +135,7 @@ def generate(
     global_top = CANVAS_HEIGHT
     global_bottom = -1
 
-    for slot in range(FIRST_CHAR, LAST_CHAR + 1):
+    for slot in range(first_char, last_char + 1):
         ch = resolve_char(slot, cmap)
         img = Image.new("L", (CANVAS_WIDTH, CANVAS_HEIGHT), 0)
         draw = ImageDraw.Draw(img)
@@ -150,7 +158,7 @@ def generate(
     bitmap_bytes: list[int] = []
     glyph_entries: list[tuple[int, int, int, int]] = []
 
-    for slot in range(FIRST_CHAR, LAST_CHAR + 1):
+    for slot in range(first_char, last_char + 1):
         raster = rasters[slot]
         min_x = CANVAS_WIDTH
         max_x = -1
@@ -191,6 +199,8 @@ def write_header(
     glyph_entries: list[tuple[int, int, int, int]],
     font_label: str,
     point_size: int,
+    first_char: int = FIRST_CHAR,
+    last_char: int = LAST_CHAR,
 ) -> None:
     lines: list[str] = [
         "#pragma once",
@@ -203,8 +213,8 @@ def write_header(
         "// embedded as glyph data.",
         f"// Source font: {font_label} at {point_size} pt",
         "",
-        f"constexpr uint8_t k{symbol_prefix}FirstChar = {FIRST_CHAR};",
-        f"constexpr uint8_t k{symbol_prefix}LastChar = {LAST_CHAR};",
+        f"constexpr uint8_t k{symbol_prefix}FirstChar = {first_char};",
+        f"constexpr uint8_t k{symbol_prefix}LastChar = {last_char};",
         f"constexpr uint8_t k{symbol_prefix}Height = {font_height};",
         "",
         f"static const uint8_t k{symbol_prefix}Bitmaps[] PROGMEM = " + "{",
@@ -299,6 +309,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fnt-output", type=pathlib.Path, default=None,
                          help="Optional path for the binary .fnt file (SD-card format, "
                               "see docs/FONT_FNT_FORMAT.md).")
+    parser.add_argument("--thumbnail-output", type=pathlib.Path, default=None,
+                         help="Optional path for a small flash-resident header covering only "
+                              "printable ASCII (32-126), for font-picker button previews.")
+    parser.add_argument("--thumbnail-target-height", type=int, default=24,
+                         help="Raster height for --thumbnail-output (px). Buttons draw labels "
+                              "scaled to ~26%% of the full reading size, so a much smaller "
+                              "source raster than --target-height keeps flash usage low "
+                              "(default: 24).")
     parser.add_argument("--font-label", required=True)
     parser.add_argument("--target-height", type=int, required=True,
                          help="Desired glyph raster height in px (auto-calibrates point size).")
@@ -327,6 +345,18 @@ def main() -> None:
         write_fnt(args.fnt_output, font_height, bitmap_bytes, glyph_entries)
         fnt_size = args.fnt_output.stat().st_size
         print(f"{args.symbol_prefix}: wrote {args.fnt_output} ({fnt_size} bytes)")
+
+    if args.thumbnail_output is not None:
+        thumb_first, thumb_last = 32, 126
+        thumb_point_size = max(8, round(point_size * args.thumbnail_target_height / args.target_height))
+        thumb_height, thumb_bitmap_bytes, thumb_glyph_entries = generate(
+            args.ttf_path, thumb_point_size, cmap, first_char=thumb_first, last_char=thumb_last)
+        write_header(args.thumbnail_output, args.symbol_prefix, thumb_height, thumb_bitmap_bytes,
+                     thumb_glyph_entries, args.font_label, thumb_point_size,
+                     first_char=thumb_first, last_char=thumb_last)
+        print(f"{args.symbol_prefix}: wrote {args.thumbnail_output} "
+              f"(ascii-only, point_size={thumb_point_size} height={thumb_height} "
+              f"bytes={len(thumb_bitmap_bytes)})")
 
 
 if __name__ == "__main__":
