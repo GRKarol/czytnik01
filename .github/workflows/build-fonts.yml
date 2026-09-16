@@ -44,7 +44,7 @@ jobs:
         run: pip install --upgrade fonttools Pillow
 
       - name: Generate font pack
-        run: firmware/tools/generate_font_pack.sh dist/fonts
+        run: bash firmware/tools/generate_font_pack.sh dist/fonts
 
       - name: Verify artifacts
         run: |
