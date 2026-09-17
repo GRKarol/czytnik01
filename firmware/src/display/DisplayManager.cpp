@@ -1297,6 +1297,14 @@ bool DisplayManager::consumeFontLoadFailure() {
   return true;
 }
 
+bool DisplayManager::isActiveTypefaceLoaded() const {
+  const ReaderTypeface typeface = activeTypographyConfig().typeface;
+  if (!isExtraTypeface(typeface)) {
+    return true;
+  }
+  return gSdFontLoadedTypeface == typeface && gSdFontLoader.isLoaded() && gSdFontLoader70.isLoaded();
+}
+
 bool DisplayManager::isSdBackedTypeface(ReaderTypeface typeface) { return isExtraTypeface(typeface); }
 
 String DisplayManager::sdFontFileBaseName(ReaderTypeface typeface) { return sdFontBaseName(typeface); }

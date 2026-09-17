@@ -291,6 +291,14 @@ class App {
   void applyHandednessSettings(uint32_t nowMs, bool rerender = true);
   void applyTypographySettings(uint32_t nowMs, bool rerender = true);
   void loadTypographyConfigFromPreferences();
+  // Boot mounts SD right after the first (necessarily pre-mount) font load
+  // attempt and retries once immediately (see setup()) — but on a real cold
+  // power-on the card can still need a bit longer to become readable than
+  // that single retry allows. Called every update() tick while a saved
+  // SD-backed typeface hasn't loaded yet; keeps retrying at a low rate and
+  // repaints the instant it succeeds, instead of leaving the reader stuck on
+  // the Atkinson fallback for the rest of the session.
+  void maybeRetryTypographyFontLoad(uint32_t nowMs);
   uint8_t currentBrightnessPercent() const;
   bool updateBatteryStatus(uint32_t nowMs, bool force = false);
   void handleBatteryProtection(uint32_t nowMs);
@@ -1122,4 +1130,7 @@ class App {
   HandednessMode handednessMode_ = HandednessMode::Right;
   NavMode navMode_ = NavMode::Buttons;
   DisplayManager::TypographyConfig typographyConfig_;
+  bool typographyFontRetryPending_ = false;
+  uint32_t typographyFontRetryLastAttemptMs_ = 0;
+  uint32_t typographyFontRetryDeadlineMs_ = 0;
 };

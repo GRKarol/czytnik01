@@ -945,6 +945,17 @@ void App::begin() {
     // now that the card is actually mounted.
     applyTypographySettings(bootStartedMs_, false);
   }
+  if (!display_.isActiveTypefaceLoaded()) {
+    // Still not loaded — either storage_.begin() itself failed on this cold
+    // power-on (card needs longer than its internal retry loop allows), or
+    // the .fnt pair just hasn't finished the Wi-Fi auto-download yet. Keep
+    // retrying at a low rate from the main loop (see
+    // maybeRetryTypographyFontLoad) instead of settling on Atkinson for the
+    // whole session.
+    typographyFontRetryPending_ = true;
+    typographyFontRetryLastAttemptMs_ = bootStartedMs_;
+    typographyFontRetryDeadlineMs_ = bootStartedMs_ + 20000;
+  }
   const uint16_t savedWpm = preferences_.getUShort(kPrefWpm, reader_.wpm());
   reader_.setWpm(savedWpm);
 
@@ -1132,6 +1143,7 @@ void App::update(uint32_t nowMs) {
   pollOtaCheckResult(nowMs);
   pollFontDownloadResult(nowMs);
   maybeAutoDownloadFonts(nowMs);
+  maybeRetryTypographyFontLoad(nowMs);
   updateState(nowMs);
   loadPendingBootBook(nowMs);
   // Deliberately not auto-opening UpdateConfirm here: an update found mid-read
@@ -1973,6 +1985,34 @@ void App::applyTypographySettings(uint32_t nowMs, bool rerender) {
 
   if (state_ == AppState::Paused || state_ == AppState::Playing) {
     renderActiveReader(nowMs);
+  }
+}
+
+void App::maybeRetryTypographyFontLoad(uint32_t nowMs) {
+  if (!typographyFontRetryPending_) {
+    return;
+  }
+  if (display_.isActiveTypefaceLoaded()) {
+    typographyFontRetryPending_ = false;
+    return;
+  }
+  if (nowMs >= typographyFontRetryDeadlineMs_) {
+    // Give up after ~20s — either the card is genuinely absent/unreadable or
+    // the font pack hasn't downloaded yet (maybeAutoDownloadFonts() keeps
+    // trying that independently). Stay on the Atkinson fallback rather than
+    // retrying an SD read every tick for the rest of the session.
+    typographyFontRetryPending_ = false;
+    return;
+  }
+  if (nowMs - typographyFontRetryLastAttemptMs_ < 750) {
+    return;
+  }
+  typographyFontRetryLastAttemptMs_ = nowMs;
+  if (!storageReady_) {
+    storageReady_ = storage_.begin();
+  }
+  if (storageReady_) {
+    applyTypographySettings(nowMs, true);
   }
 }
 

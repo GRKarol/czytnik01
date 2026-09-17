@@ -167,6 +167,13 @@ class DisplayManager {
   // clears itself on read so callers show the warning exactly once, right
   // after the user action that triggered the load attempt.
   bool consumeFontLoadFailure();
+  // Non-destructive peek (unlike consumeFontLoadFailure): true once the
+  // currently-configured typeface's glyph data is actually usable — always
+  // true for the 3 built-in faces, true for an SD-backed face only once its
+  // .fnt pair has been read into PSRAM. Lets callers retry a boot-time SD
+  // load that raced the card mount without disturbing the picker's one-shot
+  // failure toast.
+  bool isActiveTypefaceLoaded() const;
   // True for the 3 built-in (flash) faces; false for the 17 SD-backed ones
   // added by tools/generate_embedded_font.py --fnt-output.
   static bool isSdBackedTypeface(ReaderTypeface typeface);
