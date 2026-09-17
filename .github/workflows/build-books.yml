@@ -1,0 +1,57 @@
+name: Build starter library
+
+# Generuje 5 tytulow domeny publicznej na jezyk (firmware/tools/generate_starter_library.py)
+# i wgrywa kazdy plik .rsvp jako OSOBNY, nazwany asset Release'u (nie zip) —
+# firmware pobiera je pojedynczo w tle podczas kreatora pierwszego uruchomienia
+# (OtaUpdater::downloadAsset, patrz App::bookDownloadTask) po nazwie pliku,
+# np. "starter-pl-1.rsvp".
+#
+# Triggerowany AUTOMATYCZNIE przez release.yml (workflow_call) po zbudowaniu
+# bazowego firmware. Mozna tez uruchomic recznie podajac tag.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.50"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag releasu, np. v0.3.50"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-books:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate starter library
+        run: python3 firmware/tools/generate_starter_library.py dist/books
+
+      - name: Verify artifacts
+        run: |
+          count=$(ls dist/books/*.rsvp | wc -l)
+          echo "generated $count .rsvp files"
+          test "$count" -ge 1
+
+      - name: Upload starter books to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: dist/books/*.rsvp

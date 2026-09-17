@@ -12,6 +12,9 @@ name: Release firmware
 #   - plugins-registry.json         (rejestr pluginów dla urządzenia)
 #   - *.fnt                         (17 dodatkowych krojów, pobierane przez
 #                                     czytnik automatycznie w tle po Wi-Fi)
+#   - starter-<lang>-<1..5>.rsvp    (starter library kreatora pierwszego
+#                                     uruchomienia, 5 tytułów domeny publicznej
+#                                     na język, pobierane po Wi-Fi w kroku 2.4)
 
 on:
   push:
@@ -96,6 +99,14 @@ jobs:
   build-fonts:
     needs: build-and-release
     uses: ./.github/workflows/build-fonts.yml
+    with:
+      tag: ${{ needs.build-and-release.outputs.tag }}
+    permissions:
+      contents: write
+
+  build-books:
+    needs: build-and-release
+    uses: ./.github/workflows/build-books.yml
     with:
       tag: ${{ needs.build-and-release.outputs.tag }}
     permissions:
