@@ -33,6 +33,11 @@ constexpr uint32_t kFontDownloadTaskStackBytes = 10240;
 // may pair the Flower app and save Wi-Fi credentials well after first boot,
 // and the whole point is that no explicit action should be required.
 constexpr uint32_t kFontDownloadRetryIntervalMs = 60000;
+// Starter library (krok 2.4/5-6 kreatora, "Co dziś czytamy?"): ile tytułów na
+// jeden język kreator próbuje ściągnąć z GitHuba. Brakujący slot (Karol
+// jeszcze nie wgrał tego tytułu dla danego języka) to nie błąd, po prostu
+// mniej pozycji w bibliotece na starcie — patrz bookDownloadTask().
+constexpr uint8_t kStarterBookCountPerLanguage = 5;
 constexpr uint32_t kBootSplashMs = 750;
 // Extra budget (from bootStartedMs_, not on top of the splash) to let a
 // pending SD-backed typeface load finish before handing off to the reader.
@@ -1161,6 +1166,7 @@ void App::update(uint32_t nowMs) {
 
   pollOtaCheckResult(nowMs);
   pollFontDownloadResult(nowMs);
+  pollBookDownloadResult(nowMs);
   maybeAutoDownloadFonts(nowMs);
   maybeRetryTypographyFontLoad(nowMs);
   updateWelcomeTimedScreens(nowMs);
@@ -5984,10 +5990,16 @@ void App::updateWelcomeLoading(uint32_t nowMs) {
     if (!fontPackComplete_ && otaUpdater_.isConfigured(config)) {
       startBackgroundFontDownload(config);
     }
+    // Karta pusta na tym etapie (typowe dla świeżo sformatowanej/nowej) —
+    // spróbuj po cichu ściągnąć starter library dla języka wybranego w kroku
+    // 1, żeby krok 2.4 miał co pokazać zamiast pustej biblioteki.
+    if (storage_.bookCount() == 0 && otaUpdater_.isConfigured(config)) {
+      startBackgroundBookDownload(config);
+    }
   }
 
   const uint32_t elapsed = nowMs - welcomeScreenEnteredMs_;
-  const bool workDone = !fontDownloadInProgress_;
+  const bool workDone = !fontDownloadInProgress_ && !bookDownloadInProgress_;
   if ((elapsed >= kWelcomeLoadingMinMs && workDone) || elapsed >= kWelcomeLoadingMaxMs) {
     openWelcomeSuper(nowMs);
     return;
@@ -6169,13 +6181,14 @@ void App::selectWelcomeConnectTap(uint32_t nowMs) {
 }
 
 // ─── Krok 2.4: "Prawie gotowe! Co dziś czytamy?" ────────────────────────────
-// Reużywa cały ekran Biblioteki (BookPicker) — jeśli na karcie SD są już
-// jakieś książki (typowe na tym etapie, bo dev/test karty zwykle mają coś
-// wgrane), pokazujemy realną listę. Pobieranie 5 domyślnych tytułów na
-// język wprost z GitHuba NIE jest jeszcze podłączone — nie ma jeszcze
-// wgranych plików startowych do żadnego release'u (patrz podsumowanie na
-// czacie), więc na pustej karcie ekran po prostu przechodzi dalej bez
-// zawieszania kreatora na czymś, czego nie może pokazać.
+// Reużywa cały ekran Biblioteki (BookPicker). Starter library (patrz
+// startBackgroundBookDownload(), uruchamiane w kroku 5+6/WelcomeLoading) już
+// próbowała ściągnąć do 5 tytułów dla wybranego języka, zanim doszliśmy tu —
+// jeśli się udało, storage_.bookCount() > 0 i widać realną listę. Jeśli
+// Karol jeszcze nie wgrał żadnego "starter-<kod>-N.rsvp" dla tego języka na
+// GitHuba (albo nie było Wi-Fi), karta zostaje pusta i ekran po prostu
+// przechodzi dalej bez zawieszania kreatora na czymś, czego nie może
+// pokazać.
 void App::openWelcomeBookPicker(uint32_t nowMs) {
   wizardBookPickerActive_ = true;
   openBookPicker(false);
@@ -6701,6 +6714,129 @@ void App::pollFontDownloadResult(uint32_t nowMs) {
     // Partial/failed batches leave fontPackComplete_ false; the missing-only
     // re-scan in fontDownloadTask() means the next retry only fetches what's
     // still absent, so a flaky connection just costs time, not redundant work.
+  }
+}
+
+// ─── Starter library (krok 2.4/5-6 kreatora) ────────────────────────────────
+// Ten sam wzorzec co pobieranie fontów: osobny task FreeRTOS, wynik przez
+// jednoelementową kolejkę, brak asseta = po prostu pomiń, nie błąd. Assety na
+// GitHubie: "starter-<kod języka>-<1..5>.rsvp", np. "starter-pl-1.rsvp".
+// Rozszerzenie MUSI być .rsvp, nie .txt — StorageManager czyta dyrektywy
+// "@title"/"@author"/"@chapter" tylko z plików .rsvp (hasRsvpExtension()),
+// pliki .txt są parsowane jako czysty tekst i dyrektywy wyświetliłyby się
+// jako zwykłe słowa. Zobacz firmware/tools/generate_starter_library.py,
+// który generuje te assety w tym samym formacie co
+// firmware/tools/sd_card_converter/convert_books.py.
+namespace {
+String starterBookLanguageCode(UiLanguage lang) {
+  switch (lang) {
+    case UiLanguage::Polish: return "pl";
+    case UiLanguage::German: return "de";
+    case UiLanguage::Spanish: return "es";
+    case UiLanguage::French: return "fr";
+    case UiLanguage::Romanian: return "ro";
+    case UiLanguage::English:
+    default: return "en";
+  }
+}
+}  // namespace
+
+bool App::startBackgroundBookDownload(const OtaUpdater::Config &config) {
+  if (bookDownloadInProgress_) {
+    Serial.println("[books] background download already running");
+    return false;
+  }
+
+  if (bookDownloadQueue_ == nullptr) {
+    bookDownloadQueue_ = xQueueCreate(1, sizeof(BookDownloadResult));
+    if (bookDownloadQueue_ == nullptr) {
+      Serial.println("[books] could not create result queue");
+      return false;
+    }
+  }
+  xQueueReset(bookDownloadQueue_);
+
+  BookDownloadTaskParams *params = new BookDownloadTaskParams();
+  if (params == nullptr) {
+    Serial.println("[books] could not allocate task params");
+    return false;
+  }
+  params->config = config;
+  params->resultQueue = bookDownloadQueue_;
+  params->languageIndex = static_cast<uint8_t>(uiLanguage_);
+
+  bookDownloadInProgress_ = true;
+  BaseType_t created = xTaskCreatePinnedToCore(
+      bookDownloadTask, "book_dl", kFontDownloadTaskStackBytes, params, 1, nullptr, 0);
+  if (created != pdPASS) {
+    Serial.printf("[books] background task create failed: %ld\n", static_cast<long>(created));
+    bookDownloadInProgress_ = false;
+    delete params;
+    return false;
+  }
+
+  Serial.println("[books] background download started");
+  return true;
+}
+
+void App::bookDownloadTask(void *params) {
+  BookDownloadTaskParams *taskParams = static_cast<BookDownloadTaskParams *>(params);
+  if (taskParams == nullptr) {
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  const String code =
+      starterBookLanguageCode(static_cast<UiLanguage>(taskParams->languageIndex));
+
+  BookDownloadResult queuedResult;
+  queuedResult.totalAttempted = kStarterBookCountPerLanguage;
+
+  OtaUpdater updater;
+  if (!updater.connectWiFi(taskParams->config, nullptr, nullptr)) {
+    queuedResult.wifiFailed = true;
+    Serial.println("[books] Wi-Fi connect failed, skipping starter books this attempt");
+  } else {
+    for (uint8_t i = 1; i <= kStarterBookCountPerLanguage; ++i) {
+      const String assetName = "starter-" + code + "-" + String(i) + ".rsvp";
+      const String destPath = "/books/books/" + assetName;
+      String errorDetail;
+      if (updater.downloadAsset(taskParams->config, assetName, "", destPath, errorDetail)) {
+        queuedResult.downloaded++;
+      } else {
+        Serial.printf("[books] %s not available yet: %s\n", assetName.c_str(),
+                      errorDetail.c_str());
+      }
+    }
+    updater.disconnectWiFi();
+  }
+
+  Serial.printf("[books] starter download finished: %u/%u fetched (lang=%s)\n",
+               static_cast<unsigned int>(queuedResult.downloaded),
+               static_cast<unsigned int>(queuedResult.totalAttempted), code.c_str());
+
+  if (taskParams->resultQueue != nullptr) {
+    xQueueOverwrite(taskParams->resultQueue, &queuedResult);
+  }
+
+  delete taskParams;
+  vTaskDelete(nullptr);
+}
+
+void App::pollBookDownloadResult(uint32_t nowMs) {
+  (void)nowMs;
+  if (bookDownloadQueue_ == nullptr) {
+    return;
+  }
+
+  BookDownloadResult result;
+  while (xQueueReceive(bookDownloadQueue_, &result, 0) == pdTRUE) {
+    bookDownloadInProgress_ = false;
+    if (result.downloaded > 0) {
+      storage_.refreshBooks();
+      Serial.printf("[books] library refreshed, %u starter title(s) added\n",
+                    static_cast<unsigned int>(result.downloaded));
+    }
   }
 }
 

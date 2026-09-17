@@ -82,6 +82,18 @@ class App {
     QueueHandle_t resultQueue = nullptr;
   };
 
+  struct BookDownloadResult {
+    bool wifiFailed = false;
+    uint8_t totalAttempted = 0;
+    uint8_t downloaded = 0;
+  };
+
+  struct BookDownloadTaskParams {
+    OtaUpdater::Config config;
+    QueueHandle_t resultQueue = nullptr;
+    uint8_t languageIndex = 0;
+  };
+
   struct PausedTouchSession {
     bool active = false;
     uint16_t startX = 0;
@@ -358,6 +370,14 @@ class App {
   bool startBackgroundFontDownload(const OtaUpdater::Config &config);
   static void fontDownloadTask(void *params);
   void pollFontDownloadResult(uint32_t nowMs);
+  // Starter library (krok 2.4/5-6 kreatora): kiedy karta SD nie ma jeszcze
+  // żadnej książki, wizard próbuje po cichu ściągnąć do 5 tytułów domeny
+  // publicznej dla wybranego w kroku 1 języka z release'u na GitHubie.
+  // Brakujący slot (jeszcze niedodany przez Karola) to nie błąd — po prostu
+  // krok 2.4 pokaże mniej tytułów albo przejdzie dalej bez żadnego.
+  bool startBackgroundBookDownload(const OtaUpdater::Config &config);
+  static void bookDownloadTask(void *params);
+  void pollBookDownloadResult(uint32_t nowMs);
   void maybeOpenUpdateConfirm(uint32_t nowMs);
   bool updateConfirmCanOpen() const;
   bool blockNetworkActionForOtaCheck(const String &title, uint32_t nowMs);
@@ -1003,6 +1023,7 @@ class App {
   MenuScreen restartConfirmReturnScreen_ = MenuScreen::Main;
   QueueHandle_t otaCheckQueue_ = nullptr;
   QueueHandle_t fontDownloadQueue_ = nullptr;
+  QueueHandle_t bookDownloadQueue_ = nullptr;
   std::vector<String> settingsMenuItems_;
   std::vector<DisplayManager::LibraryItem> wifiNetworkMenuItems_;
   std::vector<DisplayManager::LibraryItem> bookMenuItems_;
@@ -1115,6 +1136,7 @@ class App {
   bool fontDownloadInProgress_ = false;
   bool fontPackComplete_ = false;
   uint32_t lastFontDownloadAttemptMs_ = 0;
+  bool bookDownloadInProgress_ = false;
   uint8_t pwrTapCount_ = 0;
   uint32_t pwrFirstTapMs_ = 0;
   bool contextViewVisible_ = false;
