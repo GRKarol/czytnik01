@@ -306,6 +306,7 @@ class App {
   void updateBatteryWarningOverlay(uint32_t nowMs);
   void handleTouch(uint32_t nowMs);
   void applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs);
+  void maybeFinalizeTouchPlayRelease(uint32_t nowMs);
   void handleReaderTap(uint16_t x, uint16_t y, uint32_t nowMs);
   bool handleFooterMetricTap(uint16_t x, uint16_t y, uint32_t nowMs);
   bool handleBatteryBadgeTap(uint16_t x, uint16_t y, uint32_t nowMs);
@@ -1060,6 +1061,8 @@ class App {
   uint16_t lastReaderTapY_ = 0;
   bool touchInitialized_ = false;
   bool touchPlayHeld_ = false;
+  bool touchPlayPendingRelease_ = false;
+  uint32_t touchPlayPendingReleaseAtMs_ = 0;
   bool playLocked_ = false;
   bool pauseAtSentenceEndRequested_ = false;
   bool lastReaderTapValid_ = false;

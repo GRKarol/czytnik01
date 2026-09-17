@@ -51,6 +51,17 @@ constexpr uint32_t kPowerOffReleaseWaitMs = 4000;
 constexpr uint32_t kPowerDoubleTapWindowMs = 350;
 constexpr uint32_t kBatterySampleIntervalMs = 180000;
 constexpr uint32_t kTouchPlayHoldMs = 420;
+// AXS15231B occasionally reports an empty sample or two mid-hold even while
+// a finger sits perfectly still (skin contact/pressure noise) — the touch
+// driver's 2-sample debounce (TouchHandler::kReleaseConfirmSamples) already
+// filters single-frame dropouts, but a run of several still slips through
+// and reads as a real release. Without this grace window that false release
+// instantly paused hold-to-read and made the reader wait out
+// kTouchPlayHoldMs all over again once the sensor recovered a moment later —
+// visible as reading repeatedly stopping/resuming while the finger never
+// left the screen. Genuine releases just pay this as extra latency before
+// the pause actually lands.
+constexpr uint32_t kTouchPlayReleaseGraceMs = 150;
 constexpr uint32_t kPreviewBrowseHoldMs = 240;
 constexpr uint32_t kReaderDoubleTapWindowMs = 520;
 constexpr uint32_t kThemeToggleHoldMs = 900;
@@ -1312,6 +1323,7 @@ void App::setState(AppState nextState, uint32_t nowMs) {
   }
   if (nextState != AppState::Playing) {
     touchPlayHeld_ = false;
+    touchPlayPendingRelease_ = false;
     playLocked_ = false;
     pauseAtSentenceEndRequested_ = false;
     chapterTransitionVisible_ = false;
@@ -2534,6 +2546,7 @@ void App::requestReaderPauseAtSentenceEnd(uint32_t nowMs) {
 
   playLocked_ = false;
   touchPlayHeld_ = false;
+  touchPlayPendingRelease_ = false;
   if (pauseMode_ == PauseMode::Instant) {
     pauseAtSentenceEndRequested_ = false;
     setState(AppState::Paused, nowMs);
@@ -2570,10 +2583,27 @@ void App::finalizeReaderPause(uint32_t nowMs) {
   setState(AppState::Paused, nowMs);
 }
 
+void App::maybeFinalizeTouchPlayRelease(uint32_t nowMs) {
+  if (!touchPlayPendingRelease_) {
+    return;
+  }
+
+  if (nowMs - touchPlayPendingReleaseAtMs_ < kTouchPlayReleaseGraceMs) {
+    return;
+  }
+
+  touchPlayPendingRelease_ = false;
+  touchPlayHeld_ = false;
+  saveReadingPosition(true);
+  requestReaderPauseAtSentenceEnd(nowMs);
+}
+
 void App::handleTouch(uint32_t nowMs) {
   if (!touchInitialized_) {
     return;
   }
+
+  maybeFinalizeTouchPlayRelease(nowMs);
 
   // Grid arm-then-confirm: once the confirm window lapses without a second
   // tap, clear the highlight even without any new touch input, so the UI
@@ -2599,6 +2629,7 @@ void App::handleTouch(uint32_t nowMs) {
     pausedTouch_.active = false;
     pausedTouchIntent_ = TouchIntent::None;
     touchPlayHeld_ = false;
+    touchPlayPendingRelease_ = false;
     resetReaderTapTracking();
     return;
   }
@@ -2634,14 +2665,19 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     resetReaderTapTracking();
     pausedTouch_.active = false;
     pausedTouchIntent_ = TouchIntent::None;
-    touchPlayHeld_ = false;
-    // Auto-save position when releasing hold-to-read
-    saveReadingPosition(true);
-    requestReaderPauseAtSentenceEnd(nowMs);
+    // Don't pause immediately — the touch controller can drop a sample or
+    // two under a steady hold (see kTouchPlayReleaseGraceMs) and report it
+    // as a real release. Keep touchPlayHeld_/Playing alive for a short
+    // grace window; maybeFinalizeTouchPlayRelease() commits the pause once
+    // it actually expires, and a Start event arriving in the meantime
+    // cancels it below so a genuine ongoing hold never stutters.
+    touchPlayPendingRelease_ = true;
+    touchPlayPendingReleaseAtMs_ = nowMs;
     return;
   }
 
   if (event.phase == TouchPhase::Start) {
+    touchPlayPendingRelease_ = false;
     pausedTouch_.active = true;
     pausedTouchIntent_ = TouchIntent::None;
     if (state_ != AppState::Playing) {
@@ -9509,6 +9545,7 @@ void App::enterPowerOff(uint32_t nowMs) {
   pausedTouch_.active = false;
   pausedTouchIntent_ = TouchIntent::None;
   touchPlayHeld_ = false;
+  touchPlayPendingRelease_ = false;
   contextViewVisible_ = false;
   wpmFeedbackVisible_ = false;
   menuScreen_ = MenuScreen::Main;
