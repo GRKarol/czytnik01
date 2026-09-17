@@ -1163,6 +1163,7 @@ void App::update(uint32_t nowMs) {
   pollFontDownloadResult(nowMs);
   maybeAutoDownloadFonts(nowMs);
   maybeRetryTypographyFontLoad(nowMs);
+  updateWelcomeTimedScreens(nowMs);
   updateState(nowMs);
   loadPendingBootBook(nowMs);
   // Deliberately not auto-opening UpdateConfirm here: an update found mid-read
@@ -1389,10 +1390,12 @@ void App::updateState(uint32_t nowMs) {
     // setState(Menu), bo setState→renderMenu() patrzy na menuScreen_ i bez
     // tego renderuje Main menu zamiast naszej listy języków.
     if (!preferences_.getBool(kPrefSetupDone, false)) {
-      // Krok 0: QR z adresem aplikacji. Stąd tap prowadzi do WelcomeLanguage
-      // i dalej normalnym łańcuchem kreatora.
-      menuScreen_ = MenuScreen::WelcomeInstallApp;
+      // Krok 1 kreatora: wybór języka. rebuildSettingsMenuItems() MUSI polecieć
+      // przed setState(Menu) — renderMenu()->renderSettings() rysuje
+      // settingsMenuItems_ tak jak stoi, bez własnego rebuildu.
+      menuScreen_ = MenuScreen::WelcomeLanguage;
       settingsSelectedIndex_ = 0;
+      rebuildSettingsMenuItems();
       setState(AppState::Menu, nowMs);
       return;
     }
@@ -1740,12 +1743,17 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
       pwrTapCount_ = 0;
       setState(AppState::Paused, nowMs);
     } else {
-      if (menuScreen_ == MenuScreen::WelcomeInstallApp ||
-          menuScreen_ == MenuScreen::WelcomeConnect ||
+      if (menuScreen_ == MenuScreen::WelcomeConnect ||
           menuScreen_ == MenuScreen::WelcomeLanguage ||
           menuScreen_ == MenuScreen::WelcomeTheme ||
           menuScreen_ == MenuScreen::WelcomeHighlightColor ||
-          menuScreen_ == MenuScreen::WelcomePacing) {
+          menuScreen_ == MenuScreen::WelcomeLoading ||
+          menuScreen_ == MenuScreen::WelcomeSuper ||
+          menuScreen_ == MenuScreen::WelcomeConfigureIntro ||
+          menuScreen_ == MenuScreen::WelcomeReadingMode ||
+          menuScreen_ == MenuScreen::WelcomeReadingModePreview ||
+          (menuScreen_ == MenuScreen::TypographyFontPicker && wizardFontPickerActive_) ||
+          (menuScreen_ == MenuScreen::BookPicker && wizardBookPickerActive_)) {
         finishWelcomeWizard(nowMs);
         return;
       }
@@ -3041,13 +3049,19 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
-  // Krok 0 kreatora (QR aplikacji) nie ma listy ani siatki przycisków —
-  // cały ekran jest jednym przyciskiem. Obsługujemy tap tutaj (tak jak
-  // TypographyTuning niżej), żeby działał w każdym trybie nawigacji, a nie
-  // tylko w starym Swipe.
-  if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
+  // Krok "Połącz z telefonem" i podgląd sposobu czytania nie mają listy ani
+  // siatki przycisków — cały ekran jest jednym przyciskiem. Obsługujemy tap
+  // tutaj (tak jak TypographyTuning niżej), żeby działał w każdym trybie
+  // nawigacji, a nie tylko w starym Swipe.
+  if (menuScreen_ == MenuScreen::WelcomeConnect) {
     if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
-      openWelcomeLanguage();
+      selectWelcomeConnectTap(nowMs);
+    }
+    return;
+  }
+  if (menuScreen_ == MenuScreen::WelcomeReadingModePreview) {
+    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+      openWelcomeReadingMode();
     }
     return;
   }
@@ -3411,7 +3425,8 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
-      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomePacing || menuScreen_ == MenuScreen::WelcomeConnect) {
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme ||
+      menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomeReadingMode) {
     selectedIndex = &settingsSelectedIndex_;
     itemCount = settingsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
@@ -3499,7 +3514,8 @@ void App::moveMenuSelection(int direction) {
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
-      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomePacing || menuScreen_ == MenuScreen::WelcomeConnect) {
+      menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme ||
+      menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomeReadingMode) {
     Serial.printf("[settings] selected=%s\n", settingsMenuItems_[settingsSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::WifiNetworks) {
     Serial.printf("[wifi] selected=%s\n", wifiNetworkMenuItems_[wifiNetworkSelectedIndex_].title.c_str());
@@ -4195,11 +4211,15 @@ void App::selectMenuItem(uint32_t nowMs) {
   }
   lastMenuActionAtMs_ = nowMs;
 
-  if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
-    // Cały ekran = jeden przycisk "dalej". Bez tego wejścia potwierdzenie
+  if (menuScreen_ == MenuScreen::WelcomeConnect) {
+    // Cały ekran to jeden przycisk "Dalej" — bez tego wejścia potwierdzenie
     // z D-Pada/przycisku wpadłoby w switch menu głównego i wyrzuciło
     // użytkownika z kreatora.
-    openWelcomeLanguage();
+    selectWelcomeConnectTap(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::WelcomeReadingModePreview) {
+    openWelcomeReadingMode();
     return;
   }
   if (menuScreen_ == MenuScreen::TutorialStep1 ||
@@ -4439,13 +4459,8 @@ void App::selectSettingsItem(uint32_t nowMs) {
     return;
   }
 
-  if (menuScreen_ == MenuScreen::WelcomePacing) {
-    selectWelcomePacingItem(nowMs);
-    return;
-  }
-
-  if (menuScreen_ == MenuScreen::WelcomeConnect) {
-    selectWelcomeConnectItem(nowMs);
+  if (menuScreen_ == MenuScreen::WelcomeReadingMode) {
+    selectWelcomeReadingModeItem(nowMs);
     return;
   }
 
@@ -4672,6 +4687,7 @@ void App::selectSettingsItem(uint32_t nowMs) {
 }
 
 void App::openWifiSettings() {
+  wifiFlowFromWizard_ = false;
   settingsSelectedIndex_ = kWifiSettingsChooseIndex;
   menuScreen_ = MenuScreen::WifiSettings;
   rebuildSettingsMenuItems();
@@ -4743,7 +4759,8 @@ void App::scanWifiNetworks() {
   const int networkCount = WiFi.scanNetworks(false, true);
   wifiNetworks_.clear();
   wifiNetworkMenuItems_.clear();
-  wifiNetworkMenuItems_.push_back({uiText(UiText::Back), ""});
+  wifiNetworkMenuItems_.push_back(
+      {wifiFlowFromWizard_ ? tr2(TrKey2::SkipForNow) : uiText(UiText::Back), ""});
 
   if (networkCount > 0) {
     for (int i = 0; i < networkCount; ++i) {
@@ -4767,7 +4784,7 @@ void App::scanWifiNetworks() {
   if (wifiNetworks_.empty()) {
     display_.renderStatus("Wi-Fi", tr2(TrKey2::NoNetworksFound), "");
     delay(1200);
-    openWifiSettings();
+    returnFromWifiFlow(millis());
     return;
   }
 
@@ -4810,13 +4827,13 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
   (void)nowMs;
 
   if (wifiNetworkSelectedIndex_ == kWifiNetworksBackIndex || wifiNetworkMenuItems_.size() <= 1) {
-    openWifiSettings();
+    returnFromWifiFlow(nowMs);
     return;
   }
 
   const size_t networkIndex = wifiNetworkSelectedIndex_ - kWifiNetworksFirstItemIndex;
   if (networkIndex >= wifiNetworks_.size()) {
-    openWifiSettings();
+    returnFromWifiFlow(nowMs);
     return;
   }
 
@@ -4830,7 +4847,7 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
       preferences_.putString(kPrefWifiPass, savedPassword);
       display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), network.ssid);
       delay(900);
-      openWifiSettings();
+      returnFromWifiFlow(nowMs);
       return;
     }
     String initialValue;
@@ -4847,7 +4864,7 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
   preferences_.putString(kPrefWifiPass, "");
   display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), network.ssid);
   delay(900);
-  openWifiSettings();
+  returnFromWifiFlow(nowMs);
 }
 
 void App::openTextEntry(TextEntryPurpose purpose, const String &title, const String &prompt,
@@ -5137,7 +5154,7 @@ void App::commitTextEntry(uint32_t nowMs) {
       textEntryButtons_.clear();
       display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), ssid);
       delay(900);
-      openWifiSettings();
+      returnFromWifiFlow(nowMs);
       return;
     }
     case TextEntryPurpose::OtaOwner: {
@@ -5351,6 +5368,11 @@ void App::openTypographyFontPicker() {
 
 void App::selectTypographyFontPickerItem(uint32_t nowMs) {
   if (typographyFontPickerSelectedIndex_ == 0) {
+    if (wizardFontPickerActive_) {
+      wizardFontPickerActive_ = false;
+      openWelcomeReadingMode();
+      return;
+    }
     menuScreen_ = MenuScreen::TypographyTuning;
     renderTypographyTuning();
     return;
@@ -5369,13 +5391,19 @@ void App::selectTypographyFontPickerItem(uint32_t nowMs) {
     delay(1400);
   }
 
+  if (wizardFontPickerActive_) {
+    wizardFontPickerActive_ = false;
+    openWelcomeReadingMode();
+    return;
+  }
+
   menuScreen_ = MenuScreen::TypographyTuning;
   renderTypographyTuning();
 }
 
 void App::renderTypographyFontPicker() {
-  renderItemGrid(uiText(UiText::Typeface), typographyFontPickerMenuItems_,
-                 typographyFontPickerSelectedIndex_);
+  const String title = wizardFontPickerActive_ ? tr3(TrKey3::WelcomeChooseFontTitle) : uiText(UiText::Typeface);
+  renderItemGrid(title, typographyFontPickerMenuItems_, typographyFontPickerSelectedIndex_);
 }
 
 void App::annotateTypographyFontPickerButton(DisplayManager::Button &button,
@@ -5464,22 +5492,12 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(tr3(TrKey3::ColorYellow));
     settingsMenuItems_.push_back(tr3(TrKey3::ColorOrange));
     settingsMenuItems_.push_back(tr3(TrKey3::ColorPurple));
-  } else if (menuScreen_ == MenuScreen::WelcomePacing) {
-    // First-run wizard — krok 4/5. Spowolnienie po kropkach/długich słowach.
-    settingsMenuItems_.push_back(tr3(TrKey3::PacingNone));
-    settingsMenuItems_.push_back(tr3(TrKey3::PacingLight));
-    settingsMenuItems_.push_back(tr3(TrKey3::PacingMedium));
-    settingsMenuItems_.push_back(tr3(TrKey3::PacingStrong));
-    settingsMenuItems_.push_back(tr3(TrKey3::PacingVeryStrong));
-  } else if (menuScreen_ == MenuScreen::WelcomeConnect) {
-    // First-run wizard — krok 5/5. Połączenie z telefonem.
-    // Więcej pozycji żeby scroll nie przeskakiwał od razu na "Pomiń".
-    const String ssid = companionSync_.active() ? companionSync_.statusLine1() : "Flower";
-    settingsMenuItems_.push_back(String("Wi-Fi: ") + ssid);
-    settingsMenuItems_.push_back("IP: 192.168.4.1");
-    settingsMenuItems_.push_back("---");
-    settingsMenuItems_.push_back(tr2(TrKey2::CompanionSync));
-    settingsMenuItems_.push_back(tr2(TrKey2::SkipForNow));
+  } else if (menuScreen_ == MenuScreen::WelcomeReadingMode) {
+    // First-run wizard — krok 2.2. Sposób czytania + podgląd dla każdego.
+    settingsMenuItems_.push_back("RSVP");
+    settingsMenuItems_.push_back(tr3(TrKey3::WelcomePreviewRsvpRow));
+    settingsMenuItems_.push_back(tr3(TrKey3::WelcomeReadingModeScrollRow));
+    settingsMenuItems_.push_back(tr3(TrKey3::WelcomePreviewScrollRow));
   } else if (menuScreen_ == MenuScreen::SettingsDisplay) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(uiText(UiText::Theme)) + ": " + themeModeLabel());
@@ -5628,8 +5646,7 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::WelcomeLanguage ||
          menuScreen_ == MenuScreen::WelcomeTheme ||
          menuScreen_ == MenuScreen::WelcomeHighlightColor ||
-         menuScreen_ == MenuScreen::WelcomePacing ||
-         menuScreen_ == MenuScreen::WelcomeConnect;
+         menuScreen_ == MenuScreen::WelcomeReadingMode;
 }
 
 void App::showHelpForCurrentItem() {
@@ -5805,9 +5822,10 @@ void App::selectSettingsAboutItem(uint32_t nowMs) {
 // ─── First-run welcome wizard ────────────────────────────────────────────────
 
 namespace {
-// Krok 0 kreatora — adres PWA zaszyty na sztywno w QR. Statyczny tekst, więc
-// generujemy go raz, przy pierwszym rysowaniu ekranu.
-constexpr const char *kInstallAppUrl = "https://grkarol.github.io/czytnik01/app/";
+// Krok "Połącz czytnik z telefonem" — adres strony pobrania apki, zaszyty na
+// sztywno w QR. Statyczny tekst, więc generujemy go raz, przy pierwszym
+// rysowaniu ekranu.
+constexpr const char *kInstallAppUrl = "https://flower.theworkpc.com/appdownload";
 // Wersja 4 = 33x33 modułów, ECC_LOW mieści 78 bajtów — URL ma ~40 znaków,
 // czyli zapas jest spory, a moduł nadal wychodzi 4 px na 172 px wysokości.
 constexpr uint8_t kInstallAppQrVersion = 4;
@@ -5841,22 +5859,20 @@ void ensureInstallAppQr() {
   Serial.printf("[welcome] install QR ready %ux%u\n", static_cast<unsigned>(g_installAppQrSize),
                 static_cast<unsigned>(g_installAppQrSize));
 }
-}  // namespace
 
-void App::renderWelcomeInstallApp() {
-  ensureInstallAppQr();
-  // Tytuł idzie dużym krojem serif, który się nie zawija — stąd krótki.
-  // Zdanie właściwe leci w linijce pod nim (mała czcionka, ~37 znaków).
-  const char *title = tr3(TrKey3::ScanCode);
-  const char *line1 = tr3(TrKey3::InstallApp);
-  const char *hint = tr3(TrKey3::TapContinue);
-  if (g_installAppQrSize > 0) {
-    display_.renderStatusWithQr(title, line1, g_installAppQrData, g_installAppQrSize, hint);
-  } else {
-    // Bez QR nadal pokazujemy adres — ekran nigdy nie zostaje pusty.
-    display_.renderStatus(title, kInstallAppUrl, hint);
-  }
-}
+// Krok "Ładowanie" (~15s) — trzy frazy rotują w pętli, każda widoczna ~2s z
+// krótką przerwą między nimi. To jest cięcie czas-na-czas, nie prawdziwy
+// pixel-alpha fade (ten wymagałby nowej prymitywy w DisplayManager) — wygląda
+// jak "pojawia się / znika", tylko bez płynnego blendu.
+constexpr uint32_t kWelcomeLoadingPhraseCycleMs = 2500;
+constexpr uint32_t kWelcomeLoadingPhraseVisibleMs = 2000;
+constexpr uint32_t kWelcomeLoadingMinMs = 15000;
+// Siatka bezpieczeństwa — gdyby pobieranie fontów utknęło (np. słabe Wi-Fi),
+// ekran i tak rusza dalej zamiast wisieć w nieskończoność.
+constexpr uint32_t kWelcomeLoadingMaxMs = 25000;
+constexpr uint32_t kWelcomeTimedMessageMs = 3000;
+constexpr uint32_t kWelcomeScreenFrameMs = 150;
+}  // namespace
 
 void App::openWelcomeLanguage() {
   menuScreen_ = MenuScreen::WelcomeLanguage;
@@ -5922,38 +5938,197 @@ void App::selectWelcomeHighlightColorItem(uint32_t /*nowMs*/) {
   display_.setFocusColorIndex(colorIndex);
   preferences_.putUChar(kPrefFocusColorIndex, colorIndex);
   Serial.printf("[welcome] highlight color=%u\n", static_cast<unsigned>(colorIndex));
-  openWelcomePacing();
+  openWelcomeWifi();
 }
 
-void App::openWelcomePacing() {
-  menuScreen_ = MenuScreen::WelcomePacing;
-  // Default selection: Medium (200ms) = index 2
-  settingsSelectedIndex_ = 2;
+// ─── Krok 4: Wi-Fi domowe ────────────────────────────────────────────────────
+// Nie ma osobnego ekranu "chcesz się połączyć?" — wchodzimy prosto do skanu
+// sieci, tak samo jak z Ustawień > Wi-Fi > Wybierz sieć. wifiFlowFromWizard_
+// mówi scanWifiNetworks()/selectWifiNetworkItem()/commitTextEntry() żeby po
+// zapisaniu (albo pominięciu) sieci wrócić do kolejnego kroku kreatora
+// zamiast do ekranu Ustawień Wi-Fi.
+
+void App::openWelcomeWifi() {
+  wifiFlowFromWizard_ = true;
+  scanWifiNetworks();
+}
+
+void App::returnFromWifiFlow(uint32_t nowMs) {
+  if (wifiFlowFromWizard_) {
+    wifiFlowFromWizard_ = false;
+    openWelcomeLoading(nowMs);
+    return;
+  }
+  openWifiSettings();
+}
+
+// ─── Krok 5+6: skan aktualizacji + pobranie zasobów, ekran "Ładowanie" ──────
+// Jedna wizualizacja dla obu — w tle rusza pobieranie brakujących fontów z SD
+// (ten sam mechanizm co cichy auto-download po skonfigurowaniu Wi-Fi, patrz
+// maybeAutoDownloadFonts()), a na ekranie kręcą się trzy zachęcające frazy
+// przez minimum ~15s. Świadomie NIE odpalamy tu prawdziwej instalacji
+// aktualizacji firmware (checkAndInstall) — restart w środku kreatora
+// pierwszego uruchomienia byłby złym zaskoczeniem.
+void App::openWelcomeLoading(uint32_t nowMs) {
+  menuScreen_ = MenuScreen::WelcomeLoading;
+  welcomeScreenEnteredMs_ = nowMs;
+  welcomeLoadingLastRenderMs_ = 0;
+  welcomeLoadingWorkStarted_ = false;
+  renderWelcomeLoading(nowMs);
+}
+
+void App::updateWelcomeLoading(uint32_t nowMs) {
+  if (!welcomeLoadingWorkStarted_) {
+    welcomeLoadingWorkStarted_ = true;
+    OtaUpdater::Config config = preferredOtaConfig();
+    if (!fontPackComplete_ && otaUpdater_.isConfigured(config)) {
+      startBackgroundFontDownload(config);
+    }
+  }
+
+  const uint32_t elapsed = nowMs - welcomeScreenEnteredMs_;
+  const bool workDone = !fontDownloadInProgress_;
+  if ((elapsed >= kWelcomeLoadingMinMs && workDone) || elapsed >= kWelcomeLoadingMaxMs) {
+    openWelcomeSuper(nowMs);
+    return;
+  }
+
+  if (nowMs - welcomeLoadingLastRenderMs_ >= kWelcomeScreenFrameMs) {
+    renderWelcomeLoading(nowMs);
+  }
+}
+
+void App::renderWelcomeLoading(uint32_t nowMs) {
+  welcomeLoadingLastRenderMs_ = nowMs;
+  const uint32_t elapsed = nowMs - welcomeScreenEnteredMs_;
+
+  const uint32_t phraseCycle = elapsed % (kWelcomeLoadingPhraseCycleMs * 3);
+  const size_t phraseIndex = static_cast<size_t>(phraseCycle / kWelcomeLoadingPhraseCycleMs);
+  const uint32_t phraseLocal = phraseCycle % kWelcomeLoadingPhraseCycleMs;
+  String phrase;
+  if (phraseLocal < kWelcomeLoadingPhraseVisibleMs) {
+    switch (phraseIndex) {
+      case 0: phrase = tr3(TrKey3::WelcomeLoadingPhrase1); break;
+      case 1: phrase = tr3(TrKey3::WelcomeLoadingPhrase2); break;
+      default: phrase = tr3(TrKey3::WelcomeLoadingPhrase3); break;
+    }
+  }
+
+  const bool downloading = fontDownloadInProgress_;
+  const String bottomLabel = downloading ? tr3(TrKey3::WelcomeLoadingBottomDownloading)
+                                          : tr3(TrKey3::WelcomeLoadingBottomLoading);
+  // Pasek postępu jako zastępnik "kręcącego się kółka" — prawdziwa animacja
+  // spinnera wymagałaby nowej prymitywy rysującej w DisplayManager, a pasek
+  // 0->100 w pętli daje ten sam efekt "coś się dzieje" bez nowego kodu w
+  // warstwie wyświetlacza.
+  const int sawtoothPercent = static_cast<int>((elapsed % 2000UL) / 20UL);
+  display_.renderProgress("", phrase, bottomLabel, sawtoothPercent);
+}
+
+// ─── Ekrany "Super!" / "Skonfigurujmy Twoje urządzenie!" ────────────────────
+// Auto-advance po 3s, bez potrzeby dotyku — patrz updateWelcomeTimedScreens().
+
+void App::openWelcomeSuper(uint32_t nowMs) {
+  menuScreen_ = MenuScreen::WelcomeSuper;
+  welcomeScreenEnteredMs_ = nowMs;
+  renderWelcomeTimedMessage(tr3(TrKey3::WelcomeSuperTitle));
+}
+
+void App::openWelcomeConfigureIntro(uint32_t nowMs) {
+  menuScreen_ = MenuScreen::WelcomeConfigureIntro;
+  welcomeScreenEnteredMs_ = nowMs;
+  renderWelcomeTimedMessage(tr3(TrKey3::WelcomeConfigureTitle));
+}
+
+void App::renderWelcomeTimedMessage(const String &line1, const String &line2) {
+  display_.renderStatus("", line1, line2);
+}
+
+void App::updateWelcomeTimedScreens(uint32_t nowMs) {
+  if (menuScreen_ == MenuScreen::WelcomeLoading) {
+    updateWelcomeLoading(nowMs);
+    return;
+  }
+  if (menuScreen_ != MenuScreen::WelcomeSuper && menuScreen_ != MenuScreen::WelcomeConfigureIntro) {
+    return;
+  }
+  if (nowMs - welcomeScreenEnteredMs_ < kWelcomeTimedMessageMs) {
+    return;
+  }
+  if (menuScreen_ == MenuScreen::WelcomeSuper) {
+    openWelcomeConfigureIntro(nowMs);
+  } else {
+    // Krok 2.1 — reużywamy cały ekran/handler TypographyFontPicker; flaga
+    // mówi selectTypographyFontPickerItem() żeby po wyborze wrócić do
+    // następnego kroku kreatora zamiast do TypographyTuning.
+    wizardFontPickerActive_ = true;
+    openTypographyFontPicker();
+  }
+}
+
+// ─── Krok 2.2: sposób czytania (RSVP / przewijanie) + podgląd ───────────────
+
+void App::openWelcomeReadingMode() {
+  menuScreen_ = MenuScreen::WelcomeReadingMode;
+  settingsSelectedIndex_ = 0;
   rebuildSettingsMenuItems();
   renderSettings();
 }
 
-void App::selectWelcomePacingItem(uint32_t nowMs) {
-  // 0=None(0ms), 1=Light(100ms), 2=Medium(200ms), 3=Strong(300ms), 4=VeryStrong(400ms)
-  constexpr uint16_t kPacingValues[] = {0, 100, 200, 300, 400};
-  const uint16_t delayMs = kPacingValues[settingsSelectedIndex_ < 5 ? settingsSelectedIndex_ : 2];
-  pacingLongWordDelayMs_ = delayMs;
-  pacingComplexWordDelayMs_ = delayMs;
-  pacingPunctuationDelayMs_ = delayMs;
-  preferences_.putUShort(kPrefPacingLongMs, delayMs);
-  preferences_.putUShort(kPrefPacingComplexMs, delayMs);
-  preferences_.putUShort(kPrefPacingPunctuationMs, delayMs);
-  applyPacingSettings();
-  Serial.printf("[welcome] pacing delay=%u ms\n", static_cast<unsigned>(delayMs));
-  openWelcomeConnect(nowMs);
+void App::selectWelcomeReadingModeItem(uint32_t nowMs) {
+  switch (settingsSelectedIndex_) {
+    case 0:  // RSVP
+      readerMode_ = ReaderMode::Rsvp;
+      preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_));
+      Serial.println("[welcome] reading mode=RSVP");
+      openWelcomeConnect(nowMs);
+      return;
+    case 1:  // Podgląd RSVP
+      openWelcomeReadingModePreview(0);
+      return;
+    case 2:  // Przewijanie strony
+      readerMode_ = ReaderMode::Scroll;
+      preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_));
+      Serial.println("[welcome] reading mode=Scroll");
+      openWelcomeConnect(nowMs);
+      return;
+    case 3:  // Podgląd przewijania
+      openWelcomeReadingModePreview(1);
+      return;
+    default:
+      return;
+  }
 }
+
+void App::openWelcomeReadingModePreview(uint8_t mode) {
+  welcomeReadingModePreviewMode_ = mode;
+  menuScreen_ = MenuScreen::WelcomeReadingModePreview;
+  renderWelcomeReadingModePreview();
+}
+
+void App::renderWelcomeReadingModePreview() {
+  if (welcomeReadingModePreviewMode_ == 0) {
+    // Ta sama prymitywa co podgląd w Typography Tuning (jedno "słowo-duch"
+    // z sąsiadami przygaszonymi po bokach) — realny wygląd RSVP na tym
+    // urządzeniu, bez uruchamiania właściwego silnika odtwarzania.
+    const bool hasNeighbours = kTypographyPreviewWordCount > 1;
+    const String before = hasNeighbours ? kTypographyPreviewWords[kTypographyPreviewWordCount - 1] : "";
+    const String after = hasNeighbours ? kTypographyPreviewWords[1 % kTypographyPreviewWordCount] : "";
+    display_.renderTypographyPreview(before, kTypographyPreviewWords[0], after, readerFontSizeIndex_,
+                                     "RSVP", tr3(TrKey3::WelcomePreviewRsvpLine),
+                                     tr3(TrKey3::WelcomeTapToGoBack));
+  } else {
+    display_.renderStatus(tr3(TrKey3::WelcomeReadingModeScrollLabel),
+                          tr3(TrKey3::WelcomePreviewScrollBody), tr3(TrKey3::WelcomeTapToGoBack));
+  }
+}
+
+// ─── Krok 2.3: połącz z telefonem (QR + parowanie AP) ───────────────────────
 
 void App::openWelcomeConnect(uint32_t nowMs) {
   (void)nowMs;
   menuScreen_ = MenuScreen::WelcomeConnect;
-  settingsSelectedIndex_ = 0;
-  rebuildSettingsMenuItems();
-  renderSettings();
+  renderWelcomeConnect();
 
   // Start AP if not already running from auto-sync
   if (!autoSyncActive_ && !companionSync_.active()) {
@@ -5969,33 +6144,65 @@ void App::openWelcomeConnect(uint32_t nowMs) {
   }
 }
 
-void App::selectWelcomeConnectItem(uint32_t nowMs) {
-  // 0 = Wi-Fi name (info), 1 = IP (info), 2 = separator, 3 = Connect, 4 = Skip
-  if (settingsSelectedIndex_ <= 2) {
-    // Info rows — treat tap as "Skip" so the UI never feels frozen.
-    // Previously these did nothing, leaving the user stuck without
-    // an obvious touch-based exit path.
-    settingsSelectedIndex_ = 4;
-  }
-  if (settingsSelectedIndex_ == 4) {
-    // User chose to skip — shut down AP if it was started for wizard
-    if (autoSyncActive_ && !autoSyncClientConnected_) {
-      companionSync_.end();
-      autoSyncActive_ = false;
-      Serial.println("[welcome] user skipped phone connect, AP stopped");
-    }
+void App::renderWelcomeConnect() {
+  ensureInstallAppQr();
+  const String hint = autoSyncClientConnected_ ? tr3(TrKey3::WelcomeConnectHintConnected)
+                                                : tr3(TrKey3::WelcomeConnectHintWaiting);
+  if (g_installAppQrSize > 0) {
+    display_.renderStatusWithQr(tr3(TrKey3::WelcomeConnectTitle), tr3(TrKey3::WelcomeConnectLine1),
+                                g_installAppQrData, g_installAppQrSize, hint);
   } else {
-    // User chose "Connect" (index 3) — keep AP alive
-    Serial.println("[welcome] user confirmed phone connect, AP stays active");
+    display_.renderStatus(tr3(TrKey3::WelcomeConnectTitle), kInstallAppUrl, hint);
   }
-  finishWelcomeWizard(nowMs);
+}
+
+void App::selectWelcomeConnectTap(uint32_t nowMs) {
+  // Cały ekran to jeden przycisk "Dalej" — jeśli telefon jeszcze się nie
+  // połączył traktujemy tap jak "pomiń", żeby nigdy nie zostawić użytkownika
+  // bez dotykowego wyjścia z tego ekranu.
+  if (autoSyncActive_ && !autoSyncClientConnected_) {
+    companionSync_.end();
+    autoSyncActive_ = false;
+    Serial.println("[welcome] user left phone connect step, AP stopped");
+  }
+  openWelcomeBookPicker(nowMs);
+}
+
+// ─── Krok 2.4: "Prawie gotowe! Co dziś czytamy?" ────────────────────────────
+// Reużywa cały ekran Biblioteki (BookPicker) — jeśli na karcie SD są już
+// jakieś książki (typowe na tym etapie, bo dev/test karty zwykle mają coś
+// wgrane), pokazujemy realną listę. Pobieranie 5 domyślnych tytułów na
+// język wprost z GitHuba NIE jest jeszcze podłączone — nie ma jeszcze
+// wgranych plików startowych do żadnego release'u (patrz podsumowanie na
+// czacie), więc na pustej karcie ekran po prostu przechodzi dalej bez
+// zawieszania kreatora na czymś, czego nie może pokazać.
+void App::openWelcomeBookPicker(uint32_t nowMs) {
+  wizardBookPickerActive_ = true;
+  openBookPicker(false);
+  if (storage_.bookCount() == 0) {
+    finishWelcomeWizard(nowMs);
+    return;
+  }
+  showGridToast(tr3(TrKey3::WelcomeBookPickerTitle), nowMs);
 }
 
 void App::finishWelcomeWizard(uint32_t nowMs) {
-  (void)nowMs;
+  wifiFlowFromWizard_ = false;
+  wizardFontPickerActive_ = false;
+  wizardBookPickerActive_ = false;
   preferences_.putBool(kPrefSetupDone, true);
-  // Start tutorial after wizard
-  openTutorialStep1();
+  // Stary 5-krokowy tutorial na urządzeniu (RSVP/tempo/pauza/menu/pomoc)
+  // zostaje dostępny ręcznie z Ustawienia > O aplikacji > Tutorial, ale nie
+  // jest już wymuszany po kreatorze — krok "Co dziś czytamy" prowadzi prosto
+  // do czytania, tak jak poprosił Karol. Bez oznaczenia tut_done=true
+  // updateState() wymuszałby tutorial przy KAŻDYM kolejnym boocie (patrz
+  // komentarz "Setup done but tutorial not finished" wyżej w tym pliku).
+  preferences_.putBool(kPrefTutorialDone, true);
+  tutorialCompleted_ = true;
+  menuScreen_ = MenuScreen::Main;
+  menuSelectedIndex_ = 0;
+  renderMainMenu();
+  setState(AppState::Menu, nowMs);
 }
 
 // ─── Post-wizard tutorial ────────────────────────────────────────────────────
@@ -7315,7 +7522,8 @@ void App::openBookPicker(bool articlesOnly) {
   restoreArchivedSavePointsForReturnedBooks();
   bookMenuItems_.clear();
   bookPickerBookIndices_.clear();
-  bookMenuItems_.push_back({uiText(UiText::Back), ""});
+  bookMenuItems_.push_back(
+      {wizardBookPickerActive_ ? tr2(TrKey2::SkipForNow) : uiText(UiText::Back), ""});
 
   const size_t count = storage_.bookCount();
   std::vector<size_t> sortedBookIndices;
@@ -7376,6 +7584,13 @@ void App::openBookPicker(bool articlesOnly) {
 
 void App::selectBookPickerItem(uint32_t nowMs) {
   if (bookPickerSelectedIndex_ == kBookPickerBackIndex || bookMenuItems_.size() <= 1) {
+    if (wizardBookPickerActive_) {
+      // Krok 2.4 kreatora, "Wstecz"/brak książek — kończymy kreator bez
+      // otwierania żadnej książki, zamiast wracać do Biblioteki, która i tak
+      // jest pusta.
+      finishWelcomeWizard(nowMs);
+      return;
+    }
     menuScreen_ = MenuScreen::Main;
     menuSelectedIndex_ = MenuLibrary;
     renderMainMenu();
@@ -7389,6 +7604,23 @@ void App::selectBookPickerItem(uint32_t nowMs) {
   }
 
   const size_t bookIndex = bookPickerBookIndices_[rowIndex];
+  if (wizardBookPickerActive_) {
+    // "Prawie gotowe! Co dziś czytamy?" — wybór książki od razu otwiera
+    // czytanie, bez przystanku na ekranie szczegółów książki.
+    wizardBookPickerActive_ = false;
+    preferences_.putBool(kPrefSetupDone, true);
+    preferences_.putBool(kPrefTutorialDone, true);
+    tutorialCompleted_ = true;
+    saveReadingPosition(true);
+    if (loadBookAtIndex(bookIndex, nowMs, true, true, true, true)) {
+      menuScreen_ = MenuScreen::Main;
+      setState(AppState::Paused, nowMs);
+    } else {
+      finishWelcomeWizard(nowMs);
+    }
+    return;
+  }
+
   openBookDetails(bookIndex, nowMs);
 }
 
@@ -9957,8 +10189,7 @@ void App::renderMenu() {
       menuScreen_ == MenuScreen::WelcomeLanguage ||
       menuScreen_ == MenuScreen::WelcomeTheme ||
       menuScreen_ == MenuScreen::WelcomeHighlightColor ||
-      menuScreen_ == MenuScreen::WelcomePacing ||
-      menuScreen_ == MenuScreen::WelcomeConnect) {
+      menuScreen_ == MenuScreen::WelcomeReadingMode) {
     renderSettings();
   } else if (menuScreen_ == MenuScreen::Presets) {
     renderMenuAnyMode("", settingsMenuItems_, presetsSelectedIndex_);
@@ -10008,8 +10239,16 @@ void App::renderMenu() {
     renderSdCardRepairConfirm();
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
     renderUpdateConfirm();
-  } else if (menuScreen_ == MenuScreen::WelcomeInstallApp) {
-    renderWelcomeInstallApp();
+  } else if (menuScreen_ == MenuScreen::WelcomeConnect) {
+    renderWelcomeConnect();
+  } else if (menuScreen_ == MenuScreen::WelcomeReadingModePreview) {
+    renderWelcomeReadingModePreview();
+  } else if (menuScreen_ == MenuScreen::WelcomeLoading) {
+    renderWelcomeLoading(millis());
+  } else if (menuScreen_ == MenuScreen::WelcomeSuper) {
+    renderWelcomeTimedMessage(tr3(TrKey3::WelcomeSuperTitle));
+  } else if (menuScreen_ == MenuScreen::WelcomeConfigureIntro) {
+    renderWelcomeTimedMessage(tr3(TrKey3::WelcomeConfigureTitle));
   } else if (menuScreen_ == MenuScreen::TutorialStep1 ||
              menuScreen_ == MenuScreen::TutorialStep2 ||
              menuScreen_ == MenuScreen::TutorialStep3 ||
@@ -10090,7 +10329,9 @@ void App::renderSettings() {
     }
   }
 
-  renderMenuAnyMode("", renderItems, settingsSelectedIndex_);
+  const String title =
+      menuScreen_ == MenuScreen::WelcomeReadingMode ? tr3(TrKey3::WelcomeReadingModeTitle) : "";
+  renderMenuAnyMode(title, renderItems, settingsSelectedIndex_);
 }
 
 void App::renderTypographyTuning() {

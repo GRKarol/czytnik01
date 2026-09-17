@@ -142,7 +142,7 @@ inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[78][6] = {
+  static const char *const kTable[91][6] = {
       {"Save point added", "Punto guardado agregado", "Point de sauvegarde ajoute", "Lesezeichen hinzugefuegt", "Punct salvat adaugat", "Punkt zapisu dodany"},  // SavePointAdded
       {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zakladke"},  // NameBookmark
       {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazwe:"},  // EnterNamePrompt
@@ -157,18 +157,10 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Yellow", "Amarillo", "Jaune", "Gelb", "Galben", "Zolty"},  // ColorYellow
       {"Orange", "Naranja", "Orange", "Orange", "Portocaliu", "Pomaranczowy"},  // ColorOrange
       {"Purple", "Morado", "Violet", "Violett", "Violet", "Fioletowy"},  // ColorPurple
-      {"None (0 ms)", "Ninguno (0 ms)", "Aucun (0 ms)", "Keine (0 ms)", "Fara (0 ms)", "Brak (0 ms)"},  // PacingNone
-      {"Light (100 ms)", "Ligero (100 ms)", "Leger (100 ms)", "Leicht (100 ms)", "Usor (100 ms)", "Lekkie (100 ms)"},  // PacingLight
-      {"Medium (200 ms)", "Medio (200 ms)", "Moyen (200 ms)", "Mittel (200 ms)", "Mediu (200 ms)", "Srednie (200 ms)"},  // PacingMedium
-      {"Strong (300 ms)", "Fuerte (300 ms)", "Fort (300 ms)", "Stark (300 ms)", "Puternic (300 ms)", "Mocne (300 ms)"},  // PacingStrong
-      {"Very strong (400 ms)", "Muy fuerte (400 ms)", "Tres fort (400 ms)", "Sehr stark (400 ms)", "Foarte puternic (400 ms)", "Bardzo mocne (400 ms)"},  // PacingVeryStrong
-      {"Save btn: ", "Boton guardar: ", "Bouton sauveg. : ", "Speicherbtn.: ", "Buton salvare: ", "Przycisk zapisu: "},  // SaveBtnColon
-      {"Focus color: ", "Color letra: ", "Couleur lettre : ", "Buchstabenfarbe: ", "Culoare litera: ", "Kolor litery: "},  // FocusColorColon
-      {"Help (?): ", "Ayuda (?): ", "Aide (?) : ", "Hilfe (?): ", "Ajutor (?): ", "Pomoc (?): "},  // HelpQColon
-      {"Navigation: ", "Navegacion: ", "Navigation : ", "Navigation: ", "Navigare: ", "Nawigacja: "},  // NavigationColon
-      {"Scan the code", "Escanea el codigo", "Scannez le code", "Code scannen", "Scaneaza codul", "Zeskanuj kod"},  // ScanCode
-      {"Install the app", "Instala la app", "Installez l'app", "App installieren", "Instaleaza aplicatia", "Zainstaluj aplikacje"},  // InstallApp
-      {"Tap the screen to continue", "Toca la pantalla para continuar", "Touchez l'ecran pour continuer", "Bildschirm beruehren zum Fortfahren", "Atinge ecranul pentru a continua", "Dotknij ekranu, by przejsc dalej"},  // TapContinue
+      {"Save btn: ", "Boton guardar: ", "Bouton sauveg. : ", "Speicherbtn.: ", "Buton salvare:", "Przycisk zapisu: "},  // SaveBtnColon
+      {"Focus color: ", "Color letra: ", "Couleur lettre : ", "Buchstabenfarbe: ", "Culoare litera:", "Kolor litery: "},  // FocusColorColon
+      {"Help (?): ", "Ayuda (?): ", "Aide (?) : ", "Hilfe (?): ", "Ajutor (?):", "Pomoc (?): "},  // HelpQColon
+      {"Navigation: ", "Navegacion: ", "Navigation : ", "Navigation: ", "Navigare:", "Nawigacja: "},  // NavigationColon
       {"Words one at a time. ORP letter guides your eye.", "Palabras una por una. La letra ORP guia tu vista.", "Mots un par un. La lettre ORP guide votre regard.", "Woerter eins nach dem anderen. Der ORP-Buchstabe fuehrt den Blick.", "Cuvinte unul cate unul. Litera ORP iti ghideaza privirea.", "Slowa jedno po drugim. Litera ORP kieruje wzrok."},  // TutorialRsvpDesc
       {"Speed", "Velocidad", "Vitesse", "Tempo", "Viteza", "Tempo"},  // SpeedLabel
       {"Hold + up/down: change speed.", "Manten + arriba/abajo: cambia velocidad.", "Maintenir + haut/bas : change la vitesse.", "Halten + hoch/runter: Tempo aendern.", "Tine apasat + sus/jos: schimba viteza.", "Przytrzymaj + gora/dol: zmiana predkosci."},  // TutorialSpeedDesc
@@ -221,6 +213,27 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Vol +", "Vol +", "Vol +", "Lst +", "Vol +", "Gl +"},  // VolumeUp
       {"Position", "Posicion", "Position", "Position", "Pozitie", "Pozycja"},  // PositionLabel
       {"Vol", "Vol", "Vol", "Lst", "Vol", "Gl"},  // VolumeAbbrev
+      {"Super!", "Genial!", "Super !", "Super!", "Super!", "Super!"},  // WelcomeSuperTitle
+      {"Let's set up your device!", "Configuremos tu dispositivo!", "Configurons votre appareil !", "Richten wir dein Geraet ein!", "Sa configuram dispozitivul tau!", "Skonfigurujmy Twoje urzadzenie!"},  // WelcomeConfigureTitle
+      {"Choose a typeface!", "Elige una tipografia!", "Choisissez une police !", "Waehle eine Schriftart!", "Alege un font!", "Wybierz czcionke!"},  // WelcomeChooseFontTitle
+      {"Choose how you read!", "Elige como leer!", "Choisissez votre mode de lecture !", "Waehle deine Lesart!", "Alege modul de citire!", "Wybierz sposob czytania!"},  // WelcomeReadingModeTitle
+      {"Scrolling page", "Pagina con desplazamiento", "Page defilante", "Scroll-Ansicht", "Pagina cu defilare", "Przewijanie strony"},  // WelcomeReadingModeScrollRow
+      {"Preview RSVP", "Vista previa RSVP", "Apercu RSVP", "RSVP-Vorschau", "Previzualizare RSVP", "Podglad RSVP"},  // WelcomePreviewRsvpRow
+      {"Preview scrolling", "Vista previa de desplazamiento", "Apercu du defilement", "Scroll-Vorschau", "Previzualizare defilare", "Podglad przewijania"},  // WelcomePreviewScrollRow
+      {"This is what RSVP reading looks like", "Asi se ve la lectura RSVP", "Voici a quoi ressemble la lecture RSVP", "So sieht RSVP-Lesen aus", "Asa arata citirea RSVP", "Tak wyglada czytanie RSVP"},  // WelcomePreviewRsvpLine
+      {"Text scrolls line by line, like in a normal book.", "El texto se desplaza linea por linea, como en un libro normal.", "Le texte defile ligne par ligne, comme dans un livre normal.", "Der Text scrollt zeilenweise, wie in einem normalen Buch.", "Textul deruleaza rand cu rand, ca intr-o carte normala.", "Tekst przewija sie linia po linii, tak jak w zwyklej ksiazce."},  // WelcomePreviewScrollBody
+      {"Scrolling page - preview", "Pagina con desplazamiento - vista previa", "Page defilante - apercu", "Scroll-Ansicht - Vorschau", "Pagina cu defilare - previzualizare", "Przewijanie strony - podglad"},  // WelcomeReadingModeScrollLabel
+      {"Tap to go back", "Toca para volver", "Touchez pour revenir", "Zum Zurueckgehen tippen", "Atinge pentru a te intoarce", "Dotknij, aby wrocic"},  // WelcomeTapToGoBack
+      {"Connect your reader to your phone!", "Conecta tu lector a tu telefono!", "Connectez votre liseuse a votre telephone !", "Verbinde deinen Reader mit deinem Handy!", "Conecteaza cititorul la telefon!", "Polacz czytnik z telefonem!"},  // WelcomeConnectTitle
+      {"Scan and download the Flower app", "Escanea y descarga la app Flower", "Scannez et telechargez l'appli Flower", "Scannen und Flower-App herunterladen", "Scaneaza si descarca aplicatia Flower", "Zeskanuj i pobierz aplikacje Flower"},  // WelcomeConnectLine1
+      {"Waiting for connection... tap to skip", "Esperando conexion... toca para omitir", "En attente de connexion... touchez pour ignorer", "Warte auf Verbindung... zum Ueberspringen tippen", "Se asteapta conexiunea... atinge pentru a sari peste", "Oczekiwanie na polaczenie... dotknij, aby pominac"},  // WelcomeConnectHintWaiting
+      {"Connected! Tap Next", "Conectado! Toca Siguiente", "Connecte ! Touchez Suivant", "Verbunden! Auf Weiter tippen", "Conectat! Atinge Urmatorul", "Polaczono! Dotknij Dalej"},  // WelcomeConnectHintConnected
+      {"Almost done! What shall we read today?", "Casi listo! Que leemos hoy?", "Presque termine ! Que lisons-nous aujourd'hui ?", "Fast fertig! Was lesen wir heute?", "Aproape gata! Ce citim azi?", "Prawie gotowe! Co dzis czytamy?"},  // WelcomeBookPickerTitle
+      {"Recover your Flow state", "Recupera tu estado de Flow", "Retrouvez votre etat de Flow", "Erlange deinen Flow-Zustand zurueck", "Recupereaza-ti starea de Flow", "Odzyskaj stan Flow"},  // WelcomeLoadingPhrase1
+      {"Read your favourite book", "Lee tu libro favorito", "Lisez votre livre prefere", "Lies dein Lieblingsbuch", "Citeste-ti cartea preferata", "Przeczytaj ulubiona ksiazke"},  // WelcomeLoadingPhrase2
+      {"Rediscover your love of reading", "Recupera tu pasion por la lectura", "Retrouvez votre passion pour la lecture", "Entdecke deine Lesefreude neu", "Redescopera-ti pasiunea pentru citit", "Odzyskaj pasje do czytania"},  // WelcomeLoadingPhrase3
+      {"Loading", "Cargando", "Chargement", "Wird geladen", "Se incarca", "Ladowanie"},  // WelcomeLoadingBottomLoading
+      {"Downloading required resources", "Descargando recursos necesarios", "Telechargement des ressources necessaires", "Erforderliche Ressourcen werden heruntergeladen", "Se descarca resursele necesare", "Pobieranie potrzebnych zasobow"},  // WelcomeLoadingBottomDownloading
   };
   return kTable[keyIndex][langIndex];
 }
@@ -291,7 +304,7 @@ inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Fast", "Rapido", "Rapide", "Schnell", "Rapid", "Szybki"},  // TimeEstimateFast
       {"Line spacing", "Interlineado", "Interligne", "Zeilenabst.", "Spatiere", "Interlinia"},  // ScrollLineSpacing
       {"Margins", "Margenes", "Marges", "Raender", "Margini", "Marginesy"},  // ScrollMargins
-      {"Swipe L/R: more settings", "Desliza L/D: mas ajustes", "Glissez G/D: plus reglages", "Wischen L/R: mehr Optionen", "Glisati S/D: mai multe", "Przesun L/P: wiecej ustawien"},  // SwipeMoreSettings
+      {"Swipe  L/R: more settings", "Desliza  I/D: mas ajustes", "Glissez  G/D : plus de reglages", "Wischen  L/R: mehr Einstellungen", "Gliseaza  S/D: mai multe setari", "Przesun  L/R: wiecej ustawien"},  // SwipeMoreSettings
   };
   return kTable[keyIndex][langIndex];
 }

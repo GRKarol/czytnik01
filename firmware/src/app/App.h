@@ -132,11 +132,14 @@ class App {
     TypographyValueEditor,
     SdCardRepairConfirm,
     UpdateConfirm,
-    WelcomeInstallApp,
     WelcomeLanguage,
     WelcomeTheme,
     WelcomeHighlightColor,
-    WelcomePacing,
+    WelcomeLoading,
+    WelcomeSuper,
+    WelcomeConfigureIntro,
+    WelcomeReadingMode,
+    WelcomeReadingModePreview,
     WelcomeConnect,
     TutorialStep1,
     TutorialStep2,
@@ -410,22 +413,37 @@ class App {
   void openSettingsAbout();
   void selectSettingsAboutItem(uint32_t nowMs);
 
-  /// First-run welcome wizard — pyta o język i motyw zanim klient zobaczy
-  /// główne menu. Pokazywany tylko jeśli `kPrefSetupDone == false`.
-  /// Krok 0 kreatora: kod QR do PWA. Cały ekran jest przyciskiem — dowolny
-  /// tap idzie dalej, do wyboru języka. Ekran włącza się w updateState()
-  /// przy pierwszym boocie (`kPrefSetupDone == false`).
-  void renderWelcomeInstallApp();
+  /// First-run welcome wizard — pyta o język, motyw, Wi-Fi, czcionkę i tryb
+  /// czytania zanim klient zobaczy główne menu. Pokazywany tylko jeśli
+  /// `kPrefSetupDone == false`. Kroki 1-3 (język/motyw/kolor) budują listę
+  /// przez rebuildSettingsMenuItems() + renderSettings() jak zwykły ekran
+  /// Ustawień. Krok Wi-Fi i krok czcionki NIE mają własnych ekranów — reużywają
+  /// WifiNetworks/TypographyFontPicker z flagą kontekstu (patrz
+  /// wifiFlowFromWizard_/wizardFontPickerActive_/wizardBookPickerActive_
+  /// poniżej), żeby nie duplikować całej logiki skanowania/pobierania.
   void openWelcomeLanguage();
   void selectWelcomeLanguageItem(uint32_t nowMs);
   void openWelcomeTheme();
   void selectWelcomeThemeItem(uint32_t nowMs);
   void openWelcomeHighlightColor();
   void selectWelcomeHighlightColorItem(uint32_t nowMs);
-  void openWelcomePacing();
-  void selectWelcomePacingItem(uint32_t nowMs);
+  void openWelcomeWifi();
+  void returnFromWifiFlow(uint32_t nowMs);
+  void openWelcomeLoading(uint32_t nowMs);
+  void updateWelcomeLoading(uint32_t nowMs);
+  void renderWelcomeLoading(uint32_t nowMs);
+  void openWelcomeSuper(uint32_t nowMs);
+  void openWelcomeConfigureIntro(uint32_t nowMs);
+  void updateWelcomeTimedScreens(uint32_t nowMs);
+  void renderWelcomeTimedMessage(const String &line1, const String &line2 = "");
+  void openWelcomeReadingMode();
+  void selectWelcomeReadingModeItem(uint32_t nowMs);
+  void openWelcomeReadingModePreview(uint8_t mode);
+  void renderWelcomeReadingModePreview();
   void openWelcomeConnect(uint32_t nowMs);
-  void selectWelcomeConnectItem(uint32_t nowMs);
+  void renderWelcomeConnect();
+  void selectWelcomeConnectTap(uint32_t nowMs);
+  void openWelcomeBookPicker(uint32_t nowMs);
   void finishWelcomeWizard(uint32_t nowMs);
   void openTutorialStep1();
   void openTutorialStep2();
@@ -861,6 +879,18 @@ class App {
   uint32_t aboutLastTapMs_ = 0;
   size_t wifiNetworkSelectedIndex_ = 0;
   size_t bookPickerSelectedIndex_ = 0;
+  // Wizard reuse flags — WifiNetworks/TypographyFontPicker/BookPicker są
+  // pełnoprawnymi ekranami Ustawień/Biblioteki; kreator pierwszego
+  // uruchomienia woła te same open/select funkcje zamiast duplikować skan
+  // Wi-Fi, listę fontów czy listę książek. Flaga mówi "wróć do kolejnego
+  // kroku kreatora" zamiast "wróć do Ustawień/TypographyTuning/Biblioteki".
+  bool wifiFlowFromWizard_ = false;
+  bool wizardFontPickerActive_ = false;
+  bool wizardBookPickerActive_ = false;
+  uint32_t welcomeScreenEnteredMs_ = 0;
+  uint32_t welcomeLoadingLastRenderMs_ = 0;
+  bool welcomeLoadingWorkStarted_ = false;
+  uint8_t welcomeReadingModePreviewMode_ = 0;  // 0=RSVP, 1=Scroll
   size_t chapterPickerSelectedIndex_ = 0;
   size_t chapterTransitionIndex_ = static_cast<size_t>(-1);
   size_t restartConfirmSelectedIndex_ = 0;

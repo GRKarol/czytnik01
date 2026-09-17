@@ -136,18 +136,10 @@ TrKey3.ColorGreen;Zielony;Green;Verde;Vert;Gruen;Verde
 TrKey3.ColorYellow;Zolty;Yellow;Amarillo;Jaune;Gelb;Galben
 TrKey3.ColorOrange;Pomaranczowy;Orange;Naranja;Orange;Orange;Portocaliu
 TrKey3.ColorPurple;Fioletowy;Purple;Morado;Violet;Violett;Violet
-TrKey3.PacingNone;Brak (0 ms);None (0 ms);Ninguno (0 ms);Aucun (0 ms);Keine (0 ms);Fara (0 ms)
-TrKey3.PacingLight;Lekkie (100 ms);Light (100 ms);Ligero (100 ms);Leger (100 ms);Leicht (100 ms);Usor (100 ms)
-TrKey3.PacingMedium;Srednie (200 ms);Medium (200 ms);Medio (200 ms);Moyen (200 ms);Mittel (200 ms);Mediu (200 ms)
-TrKey3.PacingStrong;Mocne (300 ms);Strong (300 ms);Fuerte (300 ms);Fort (300 ms);Stark (300 ms);Puternic (300 ms)
-TrKey3.PacingVeryStrong;Bardzo mocne (400 ms);Very strong (400 ms);Muy fuerte (400 ms);Tres fort (400 ms);Sehr stark (400 ms);Foarte puternic (400 ms)
-TrKey3.SaveBtnColon;Przycisk zapisu: ;Save btn: ;Boton guardar: ;Bouton sauveg. : ;Speicherbtn.: ;Buton salvare: 
-TrKey3.FocusColorColon;Kolor litery: ;Focus color: ;Color letra: ;Couleur lettre : ;Buchstabenfarbe: ;Culoare litera: 
-TrKey3.HelpQColon;Pomoc (?): ;Help (?): ;Ayuda (?): ;Aide (?) : ;Hilfe (?): ;Ajutor (?): 
-TrKey3.NavigationColon;Nawigacja: ;Navigation: ;Navegacion: ;Navigation : ;Navigation: ;Navigare: 
-TrKey3.ScanCode;Zeskanuj kod;Scan the code;Escanea el codigo;Scannez le code;Code scannen;Scaneaza codul
-TrKey3.InstallApp;Zainstaluj aplikacje;Install the app;Instala la app;Installez l'app;App installieren;Instaleaza aplicatia
-TrKey3.TapContinue;Dotknij ekranu, by przejsc dalej;Tap the screen to continue;Toca la pantalla para continuar;Touchez l'ecran pour continuer;Bildschirm beruehren zum Fortfahren;Atinge ecranul pentru a continua
+TrKey3.SaveBtnColon;Przycisk zapisu: ;Save btn: ;Boton guardar: ;Bouton sauveg. : ;Speicherbtn.: ;Buton salvare:
+TrKey3.FocusColorColon;Kolor litery: ;Focus color: ;Color letra: ;Couleur lettre : ;Buchstabenfarbe: ;Culoare litera:
+TrKey3.HelpQColon;Pomoc (?): ;Help (?): ;Ayuda (?): ;Aide (?) : ;Hilfe (?): ;Ajutor (?):
+TrKey3.NavigationColon;Nawigacja: ;Navigation: ;Navegacion: ;Navigation : ;Navigation: ;Navigare:
 TrKey3.TutorialRsvpDesc;Slowa jedno po drugim. Litera ORP kieruje wzrok.;Words one at a time. ORP letter guides your eye.;Palabras una por una. La letra ORP guia tu vista.;Mots un par un. La lettre ORP guide votre regard.;Woerter eins nach dem anderen. Der ORP-Buchstabe fuehrt den Blick.;Cuvinte unul cate unul. Litera ORP iti ghideaza privirea.
 TrKey3.SpeedLabel;Tempo;Speed;Velocidad;Vitesse;Tempo;Viteza
 TrKey3.TutorialSpeedDesc;Przytrzymaj + gora/dol: zmiana predkosci.;Hold + up/down: change speed.;Manten + arriba/abajo: cambia velocidad.;Maintenir + haut/bas : change la vitesse.;Halten + hoch/runter: Tempo aendern.;Tine apasat + sus/jos: schimba viteza.
@@ -200,6 +192,27 @@ TrKey3.VolumeDown;Gl -;Vol -;Vol -;Vol -;Lst -;Vol -
 TrKey3.VolumeUp;Gl +;Vol +;Vol +;Vol +;Lst +;Vol +
 TrKey3.PositionLabel;Pozycja;Position;Posicion;Position;Position;Pozitie
 TrKey3.VolumeAbbrev;Gl;Vol;Vol;Vol;Lst;Vol
+TrKey3.WelcomeSuperTitle;Super!;Super!;Genial!;Super !;Super!;Super!
+TrKey3.WelcomeConfigureTitle;Skonfigurujmy Twoje urzadzenie!;Let's set up your device!;Configuremos tu dispositivo!;Configurons votre appareil !;Richten wir dein Geraet ein!;Sa configuram dispozitivul tau!
+TrKey3.WelcomeChooseFontTitle;Wybierz czcionke!;Choose a typeface!;Elige una tipografia!;Choisissez une police !;Waehle eine Schriftart!;Alege un font!
+TrKey3.WelcomeReadingModeTitle;Wybierz sposob czytania!;Choose how you read!;Elige como leer!;Choisissez votre mode de lecture !;Waehle deine Lesart!;Alege modul de citire!
+TrKey3.WelcomeReadingModeScrollRow;Przewijanie strony;Scrolling page;Pagina con desplazamiento;Page defilante;Scroll-Ansicht;Pagina cu defilare
+TrKey3.WelcomePreviewRsvpRow;Podglad RSVP;Preview RSVP;Vista previa RSVP;Apercu RSVP;RSVP-Vorschau;Previzualizare RSVP
+TrKey3.WelcomePreviewScrollRow;Podglad przewijania;Preview scrolling;Vista previa de desplazamiento;Apercu du defilement;Scroll-Vorschau;Previzualizare defilare
+TrKey3.WelcomePreviewRsvpLine;Tak wyglada czytanie RSVP;This is what RSVP reading looks like;Asi se ve la lectura RSVP;Voici a quoi ressemble la lecture RSVP;So sieht RSVP-Lesen aus;Asa arata citirea RSVP
+TrKey3.WelcomePreviewScrollBody;Tekst przewija sie linia po linii, tak jak w zwyklej ksiazce.;Text scrolls line by line, like in a normal book.;El texto se desplaza linea por linea, como en un libro normal.;Le texte defile ligne par ligne, comme dans un livre normal.;Der Text scrollt zeilenweise, wie in einem normalen Buch.;Textul deruleaza rand cu rand, ca intr-o carte normala.
+TrKey3.WelcomeReadingModeScrollLabel;Przewijanie strony - podglad;Scrolling page - preview;Pagina con desplazamiento - vista previa;Page defilante - apercu;Scroll-Ansicht - Vorschau;Pagina cu defilare - previzualizare
+TrKey3.WelcomeTapToGoBack;Dotknij, aby wrocic;Tap to go back;Toca para volver;Touchez pour revenir;Zum Zurueckgehen tippen;Atinge pentru a te intoarce
+TrKey3.WelcomeConnectTitle;Polacz czytnik z telefonem!;Connect your reader to your phone!;Conecta tu lector a tu telefono!;Connectez votre liseuse a votre telephone !;Verbinde deinen Reader mit deinem Handy!;Conecteaza cititorul la telefon!
+TrKey3.WelcomeConnectLine1;Zeskanuj i pobierz aplikacje Flower;Scan and download the Flower app;Escanea y descarga la app Flower;Scannez et telechargez l'appli Flower;Scannen und Flower-App herunterladen;Scaneaza si descarca aplicatia Flower
+TrKey3.WelcomeConnectHintWaiting;Oczekiwanie na polaczenie... dotknij, aby pominac;Waiting for connection... tap to skip;Esperando conexion... toca para omitir;En attente de connexion... touchez pour ignorer;Warte auf Verbindung... zum Ueberspringen tippen;Se asteapta conexiunea... atinge pentru a sari peste
+TrKey3.WelcomeConnectHintConnected;Polaczono! Dotknij Dalej;Connected! Tap Next;Conectado! Toca Siguiente;Connecte ! Touchez Suivant;Verbunden! Auf Weiter tippen;Conectat! Atinge Urmatorul
+TrKey3.WelcomeBookPickerTitle;Prawie gotowe! Co dzis czytamy?;Almost done! What shall we read today?;Casi listo! Que leemos hoy?;Presque termine ! Que lisons-nous aujourd'hui ?;Fast fertig! Was lesen wir heute?;Aproape gata! Ce citim azi?
+TrKey3.WelcomeLoadingPhrase1;Odzyskaj stan Flow;Recover your Flow state;Recupera tu estado de Flow;Retrouvez votre etat de Flow;Erlange deinen Flow-Zustand zurueck;Recupereaza-ti starea de Flow
+TrKey3.WelcomeLoadingPhrase2;Przeczytaj ulubiona ksiazke;Read your favourite book;Lee tu libro favorito;Lisez votre livre prefere;Lies dein Lieblingsbuch;Citeste-ti cartea preferata
+TrKey3.WelcomeLoadingPhrase3;Odzyskaj pasje do czytania;Rediscover your love of reading;Recupera tu pasion por la lectura;Retrouvez votre passion pour la lecture;Entdecke deine Lesefreude neu;Redescopera-ti pasiunea pentru citit
+TrKey3.WelcomeLoadingBottomLoading;Ladowanie;Loading;Cargando;Chargement;Wird geladen;Se incarca
+TrKey3.WelcomeLoadingBottomDownloading;Pobieranie potrzebnych zasobow;Downloading required resources;Descargando recursos necesarios;Telechargement des ressources necessaires;Erforderliche Ressourcen werden heruntergeladen;Se descarca resursele necesare
 UiText.Resume;Wznow;Resume;Reanudar;Reprendre;Weiter;Continua
 UiText.Chapters;Rozdzialy;Chapters;Capitulos;Chapitres;Kapitel;Capitole
 UiText.Library;Biblioteka;Library;Biblioteca;Bibliotheque;Bibliothek;Biblioteca
@@ -242,6 +255,7 @@ UiText.TapChangeSample;Dotknij zmien  L/R probka;Tap change  L/R sample;Toca cam
 UiText.TapExitSample;Dotknij wyjdz  L/R probka;Tap exit  L/R sample;Toca salir L/R muestra;Touchez sortie  G/D echant.;Tippen zuruck  L/R Probe;Atinge iesi  S/D proba
 UiText.TapToggleSample;Dotknij przel.  L/R probka;Tap toggle  L/R sample;Toca alternar L/R muestra;Touchez option  G/D echant.;Tippen schalten  L/R Probe;Atinge comuta  S/D proba
 UiText.TapCycleSample;Dotknij cykl  L/R probka;Tap cycle  L/R sample;Toca ciclo L/R muestra;Touchez cycle  G/D echant.;Tippen wechseln  L/R Probe;Atinge ciclu  S/D proba
+UiText.SwipeMoreSettings;Przesun  L/R: wiecej ustawien;Swipe  L/R: more settings;Desliza  I/D: mas ajustes;Glissez  G/D : plus de reglages;Wischen  L/R: mehr Einstellungen;Gliseaza  S/D: mai multe setari
 UiText.CurrentBook;Biezaca ksiazka;Current book;Libro actual;Livre actuel;Aktuelles Buch;Cartea curenta
 UiText.Start;Start;Start;Inicio;Debut;Start;Inceput
 UiText.StartOfBook;Poczatek ksiazki;Start of book;Inicio del libro;Debut du livre;Buchanfang;Inceputul cartii
