@@ -34,6 +34,14 @@ constexpr uint32_t kFontDownloadTaskStackBytes = 10240;
 // and the whole point is that no explicit action should be required.
 constexpr uint32_t kFontDownloadRetryIntervalMs = 60000;
 constexpr uint32_t kBootSplashMs = 750;
+// Extra budget (from bootStartedMs_, not on top of the splash) to let a
+// pending SD-backed typeface load finish before handing off to the reader.
+// Almost never fully used — the splash animation itself already burns ~1.8s
+// synchronously, and a normal SD mount + font read finishes well under
+// that. Only a genuinely slow card eats into this, and even then it just
+// falls back to Atkinson and keeps retrying in the background afterward
+// (see maybeRetryTypographyFontLoad) instead of freezing indefinitely.
+constexpr uint32_t kBootFontWaitBudgetMs = 4000;
 constexpr uint32_t kWpmFeedbackMs = 900;
 constexpr uint32_t kPowerOffHoldMs = 1600;
 constexpr uint32_t kPowerOffReleaseWaitMs = 4000;
@@ -1382,6 +1390,17 @@ void App::updateState(uint32_t nowMs) {
     if (!tutorialCompleted_) {
       menuScreen_ = MenuScreen::TutorialStep1;
       setState(AppState::Menu, nowMs);
+      return;
+    }
+
+    // If the saved typeface lives on SD and hasn't loaded yet, hold here —
+    // still on the frozen splash frame, no new screen shown — instead of
+    // handing off to the reader in Atkinson and popping to the real font
+    // mid-read once maybeRetryTypographyFontLoad() (called every tick before
+    // updateState()) succeeds. Bounded so a genuinely absent/broken card
+    // can't freeze boot forever; the retry keeps going in the background
+    // afterward regardless of this timeout.
+    if (typographyFontRetryPending_ && nowMs - bootStartedMs_ < kBootFontWaitBudgetMs) {
       return;
     }
 
