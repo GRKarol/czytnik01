@@ -494,20 +494,23 @@ void ensureExtraTypefaceLoaded(DisplayManager::ReaderTypeface typeface) {
 }
 
 const EmbeddedFontVariant &extraFontVariant(DisplayManager::ReaderTypeface typeface) {
-  // Font-picker buttons preview every SD-backed typeface, but SdFontLoader
-  // only ever keeps the one active typeface resident (see
-  // ensureExtraTypefaceLoaded above). For any other extra typeface asked
-  // for here — i.e. a button preview, since normal reading always asks for
-  // the active typeface — fall back to its flash-resident ASCII thumbnail
-  // (Etap 6, docs/PLAN_FONTY_NA_SD.md) instead of Atkinson, so every button
-  // shows its own font's shape, not a blocking SD read per button.
-  if (typeface != gSdFontLoadedTypeface) {
-    const EmbeddedFontVariant *thumbnail = thumbnailFontVariant(typeface);
-    if (thumbnail != nullptr) {
-      return *thumbnail;
-    }
+  // Full SD-loaded glyph set only exists once ensureExtraTypefaceLoaded()
+  // has actually read it from the card — never true yet at boot (splash /
+  // "Mounting card" render before storage_.begin()) and never true for any
+  // typeface other than the one currently active (font-picker previews).
+  // In both cases, prefer the flash-resident ASCII thumbnail (Etap 6,
+  // docs/PLAN_FONTY_NA_SD.md) over Atkinson — it carries the requested
+  // font's own shape without needing the card mounted, so chrome text
+  // (boot splash, SD-loading progress, menus) drawn before the card is
+  // ready still looks like the font the user picked, not a fallback font.
+  if (typeface == gSdFontLoadedTypeface && gSdFontLoader.isLoaded()) {
+    return gSdFontLoader.variant();
   }
-  return gSdFontLoader.isLoaded() ? gSdFontLoader.variant() : kAtkinsonFallbackVariant;
+  const EmbeddedFontVariant *thumbnail = thumbnailFontVariant(typeface);
+  if (thumbnail != nullptr) {
+    return *thumbnail;
+  }
+  return kAtkinsonFallbackVariant;
 }
 
 const EmbeddedFontVariant &extraFontVariant70(DisplayManager::ReaderTypeface typeface) {
@@ -533,6 +536,25 @@ int baseGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
 
 int baseGlyphHeight() {
   return baseGlyphHeightForTypeface(currentReaderTypeface());
+}
+
+// Scale a typeface-aware label so it lands at roughly the same pixel height
+// regardless of which font it's asking for. basePercent is calibrated
+// against the built-in serif raster (kEmbeddedSerifHeight, ~62px); SD-backed
+// fonts (full glyph set or the shorter ~24-28px ASCII thumbnail, see
+// extraFontVariant above) get rescaled so the same basePercent always lands
+// on the same target pixel height. Shared by every UI-chrome label (menu
+// items, library rows, status lines) that used to hardcode the tiny bitmap
+// font instead of honoring the user's chosen typeface.
+uint8_t chromeLabelScalePercent(const String &text, uint8_t basePercent) {
+  const DisplayManager::ReaderTypeface typeface = effectiveReaderTypefaceForText(text);
+  if (!isExtraTypeface(typeface)) {
+    return basePercent;
+  }
+  const int sourceGlyphHeight = std::max(1, baseGlyphHeightForTypeface(typeface));
+  const int targetHeightPx = (kEmbeddedSerifHeight * basePercent + 50) / 100;
+  const int rawScalePercent = (targetHeightPx * 100 + sourceGlyphHeight / 2) / sourceGlyphHeight;
+  return static_cast<uint8_t>(std::min(100, std::max(10, rawScalePercent)));
 }
 
 int mediumGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
@@ -3316,8 +3338,12 @@ void DisplayManager::renderMenuWithDPad(const std::vector<String> &items, size_t
     if (selected) {
       fillVirtualRect(10, y + 2, 5, kTinyGlyphHeight * kTinyScale + 2, selectedBarColor());
     }
-    drawTinyTextAt(fitTinyText(items[itemIndex], maxWidth, kTinyScale), kCompactMenuX, y + 3, color,
-                   kTinyScale);
+    const uint8_t labelScalePercent = chromeLabelScalePercent(items[itemIndex], 26);
+    const String label = fitSerifTextScaled(items[itemIndex], maxWidth, labelScalePercent);
+    const int labelH = scaledPercentDimension(
+        baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(label)), labelScalePercent);
+    drawSerifTextScaledAt(label, kCompactMenuX, y + std::max(1, (rowHeight - labelH) / 2), color,
+                          labelScalePercent);
     y += rowHeight;
   }
 
@@ -3419,8 +3445,12 @@ void DisplayManager::renderMenuScroll(const std::vector<String> &items, size_t s
     if (selected) {
       fillVirtualRect(6, y + 2, 5, kTinyGlyphHeight * kTinyScale + 2, selectedBarColor());
     }
-    drawTinyTextAt(fitTinyText(items[itemIndex], maxWidth, kTinyScale), kListX, y + 3, color,
-                   kTinyScale);
+    const uint8_t labelScalePercent = chromeLabelScalePercent(items[itemIndex], 26);
+    const String label = fitSerifTextScaled(items[itemIndex], maxWidth, labelScalePercent);
+    const int labelH = scaledPercentDimension(
+        baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(label)), labelScalePercent);
+    drawSerifTextScaledAt(label, kListX, y + std::max(1, (rowHeight - labelH) / 2), color,
+                          labelScalePercent);
     y += rowHeight;
   }
 
@@ -3492,15 +3522,19 @@ void DisplayManager::renderLibrary(const std::vector<LibraryItem> &items, size_t
       fillVirtualRect(10, rowY + 3, 5, kLibraryRowHeight - 6, selectedBarColor());
     }
 
-    const String title = fitTinyText(item.title, maxWidth, kTinyScale);
+    const uint8_t titleScalePercent = chromeLabelScalePercent(item.title, 26);
+    const String title = fitSerifTextScaled(item.title, maxWidth, titleScalePercent);
     if (item.subtitle.isEmpty()) {
-      drawTinyTextAt(title, kLibraryInsetX, rowY + 12, titleColor, kTinyScale);
+      drawSerifTextScaledAt(title, kLibraryInsetX, rowY + 12, titleColor, titleScalePercent);
       continue;
     }
 
-    drawTinyTextAt(title, kLibraryInsetX, rowY + kLibraryTitleYOffset, titleColor, kTinyScale);
-    drawTinyTextAt(fitTinyText(item.subtitle, maxWidth, kTinyScale), kLibraryInsetX,
-                   rowY + kLibrarySubtitleYOffset, subtitleColor, kTinyScale);
+    drawSerifTextScaledAt(title, kLibraryInsetX, rowY + kLibraryTitleYOffset, titleColor,
+                          titleScalePercent);
+    const uint8_t subtitleScalePercent = chromeLabelScalePercent(item.subtitle, 20);
+    drawSerifTextScaledAt(fitSerifTextScaled(item.subtitle, maxWidth, subtitleScalePercent),
+                          kLibraryInsetX, rowY + kLibrarySubtitleYOffset, subtitleColor,
+                          subtitleScalePercent);
   }
 
   drawBatteryBadge();
@@ -3953,12 +3987,15 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
       const int textAreaX = iconX + iconSize + 4;
       const int maxWidth =
           std::max(0, static_cast<int>(button.x) + static_cast<int>(button.width) - textAreaX - 4);
-      const String label = fitTinyText(button.label, maxWidth, kTinyScale);
-      const int labelW = measureTinyTextWidth(label, kTinyScale);
+      const uint8_t labelScalePercent = chromeLabelScalePercent(button.label, 26);
+      const String label = fitSerifTextScaled(button.label, maxWidth, labelScalePercent);
+      const int labelW = measureSerifTextWidthScaled(label, labelScalePercent);
+      const int labelH = scaledPercentDimension(
+          baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(label)), labelScalePercent);
       const int textX = textAreaX + std::max(0, (maxWidth - labelW) / 2);
-      const int textY = static_cast<int>(button.y) +
-                        std::max(1, (static_cast<int>(button.height) - kTinyGlyphHeight * kTinyScale) / 2);
-      drawTinyTextAt(label, textX, textY, labelColor, kTinyScale);
+      const int textY =
+          static_cast<int>(button.y) + std::max(1, (static_cast<int>(button.height) - labelH) / 2);
+      drawSerifTextScaledAt(label, textX, textY, labelColor, labelScalePercent);
       continue;
     }
 
@@ -4030,24 +4067,29 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
     if (!button.sublabel.isEmpty()) {
       // Library-style two-line button: title on top, dimmed subtitle below.
       const int maxWidth = std::max(0, static_cast<int>(button.width) - 8);
-      const String titleText = fitTinyText(button.label, maxWidth, kTinyScale);
-      const String subtitleText = fitTinyText(button.sublabel, maxWidth, kTinyScale);
-      const int lineH = kTinyGlyphHeight * kTinyScale;
+      const uint8_t titleScalePercent = chromeLabelScalePercent(button.label, 26);
+      const uint8_t subtitleScalePercent = chromeLabelScalePercent(button.sublabel, 20);
+      const String titleText = fitSerifTextScaled(button.label, maxWidth, titleScalePercent);
+      const String subtitleText = fitSerifTextScaled(button.sublabel, maxWidth, subtitleScalePercent);
+      const int titleH = scaledPercentDimension(
+          baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(titleText)), titleScalePercent);
       const int titleY =
-          static_cast<int>(button.y) + std::max(1, static_cast<int>(button.height) / 2 - lineH - 1);
+          static_cast<int>(button.y) + std::max(1, static_cast<int>(button.height) / 2 - titleH - 1);
       const int subtitleY = static_cast<int>(button.y) + static_cast<int>(button.height) / 2 + 1;
       const int titleX = static_cast<int>(button.x) +
                          std::max(0, (static_cast<int>(button.width) -
-                                      measureTinyTextWidth(titleText, kTinyScale)) /
+                                      measureSerifTextWidthScaled(titleText, titleScalePercent)) /
                                          2);
-      const int subtitleX = static_cast<int>(button.x) +
-                            std::max(0, (static_cast<int>(button.width) -
-                                         measureTinyTextWidth(subtitleText, kTinyScale)) /
-                                            2);
+      const int subtitleX =
+          static_cast<int>(button.x) +
+          std::max(0, (static_cast<int>(button.width) -
+                       measureSerifTextWidthScaled(subtitleText, subtitleScalePercent)) /
+                          2);
       const uint16_t titleColor = button.armed ? labelColor : (button.active ? focusColor() : wordColor());
-      drawTinyTextAt(titleText, titleX, titleY, titleColor, kTinyScale);
-      drawTinyTextAt(subtitleText, subtitleX, subtitleY,
-                     blendOverBackground(titleColor, kLibrarySubtitleAlpha), kTinyScale);
+      drawSerifTextScaledAt(titleText, titleX, titleY, titleColor, titleScalePercent);
+      drawSerifTextScaledAt(subtitleText, subtitleX, subtitleY,
+                            blendOverBackground(titleColor, kLibrarySubtitleAlpha),
+                            subtitleScalePercent);
       continue;
     }
 
@@ -4285,10 +4327,14 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
   drawIcon(ui::IconId::Back, 4, 4, 16, dimColor());
   drawWordLine(title, titleY, wordColor());
   if (!line1.isEmpty()) {
-    drawTinyTextCentered(line1, line1Y, dimColor(), kTinyScale);
+    const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 26);
+    drawSerifTextScaledCentered(fitSerifTextScaled(line1, virtualWidth - 16, line1ScalePercent),
+                                line1Y, dimColor(), line1ScalePercent, virtualWidth, 0);
   }
   if (!line2.isEmpty()) {
-    drawTinyTextCentered(line2, line2Y, focusColor(), kTinyScale);
+    const uint8_t line2ScalePercent = chromeLabelScalePercent(line2, 20);
+    drawSerifTextScaledCentered(fitSerifTextScaled(line2, virtualWidth - 16, line2ScalePercent),
+                                line2Y, focusColor(), line2ScalePercent, virtualWidth, 0);
   }
   drawBatteryBadge();
 
@@ -4406,10 +4452,14 @@ void DisplayManager::renderProgress(const String &title, const String &line1, co
   clearVirtualBuffer(virtualWidth, virtualHeight);
   drawWordLine(title, titleY, wordColor());
   if (!line1.isEmpty()) {
-    drawTinyTextCentered(line1, line1Y, dimColor(), kTinyScale);
+    const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 26);
+    drawSerifTextScaledCentered(fitSerifTextScaled(line1, virtualWidth - 16, line1ScalePercent),
+                                line1Y, dimColor(), line1ScalePercent, virtualWidth, 0);
   }
   if (!line2.isEmpty()) {
-    drawTinyTextCentered(line2, line2Y, focusColor(), kTinyScale);
+    const uint8_t line2ScalePercent = chromeLabelScalePercent(line2, 20);
+    drawSerifTextScaledCentered(fitSerifTextScaled(line2, virtualWidth - 16, line2ScalePercent),
+                                line2Y, focusColor(), line2ScalePercent, virtualWidth, 0);
   }
 
   if (progressPercent >= 0) {
