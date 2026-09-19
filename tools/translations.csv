@@ -87,6 +87,8 @@ TrKey2.CredentialsCleared;Dane usuniete;Credentials cleared;Credenciales borrada
 TrKey2.NoNetworksFound;Brak sieci;No networks found;Sin redes;Aucun reseau;Keine Netzwerke;Nicio retea gasita
 TrKey2.NetworkSaved;Siec zapisana;Network saved;Red guardada;Reseau enregistre;Netzwerk gespeichert;Retea salvata
 TrKey2.PasswordRequired;Wymagane haslo;Password required;Contrasena requerida;Mot de passe requis;Passwort erforderlich;Parola necesara
+TrKey2.ConnectingToNetwork;Laczenie...;Connecting...;Conectando...;Connexion...;Verbinde...;Se conecteaza...
+TrKey2.ConnectFailedCheckPassword;Nie udalo sie polaczyc. Sprawdz haslo.;Could not connect. Check the password.;No se pudo conectar. Revisa la contrasena.;Echec de connexion. Verifiez le mot de passe.;Verbindung fehlgeschlagen. Passwort pruefen.;Conectare esuata. Verifica parola.
 TrKey2.ResetToDefault;Przywrocono domyslne;Reset to default;Restablecido;Reinitialise;Zurueckgesetzt;Resetat la implicit
 TrKey2.OwnerSaved;Zapisano;Owner saved;Guardado;Enregistre;Gespeichert;Salvat
 TrKey2.CheckingFeeds;Sprawdzam kanaly;Checking feeds;Verificando fuentes;Verification flux;Feeds pruefen;Verificare fluxuri
@@ -192,6 +194,9 @@ TrKey3.VolumeDown;Gl -;Vol -;Vol -;Vol -;Lst -;Vol -
 TrKey3.VolumeUp;Gl +;Vol +;Vol +;Vol +;Lst +;Vol +
 TrKey3.PositionLabel;Pozycja;Position;Posicion;Position;Position;Pozitie
 TrKey3.VolumeAbbrev;Gl;Vol;Vol;Vol;Lst;Vol
+TrKey3.WelcomeLanguageTitle;Wybierz jezyk;Choose your language;Elige tu idioma;Choisissez votre langue;Waehle deine Sprache;Alege limba
+TrKey3.WelcomeThemeTitle;Wybierz motyw;Choose your theme;Elige tu tema;Choisissez votre theme;Waehle dein Design;Alege tema
+TrKey3.WelcomeHighlightColorTitle;Wybierz kolor podswietlenia;Choose your highlight colour;Elige el color de resaltado;Choisissez la couleur de surbrillance;Waehle die Hervorhebungsfarbe;Alege culoarea de evidentiere
 TrKey3.WelcomeSuperTitle;Super!;Super!;Genial!;Super !;Super!;Super!
 TrKey3.WelcomeConfigureTitle;Skonfigurujmy Twoje urzadzenie!;Let's set up your device!;Configuremos tu dispositivo!;Configurons votre appareil !;Richten wir dein Geraet ein!;Sa configuram dispozitivul tau!
 TrKey3.WelcomeChooseFontTitle;Wybierz czcionke!;Choose a typeface!;Elige una tipografia!;Choisissez une police !;Waehle eine Schriftart!;Alege un font!
@@ -213,6 +218,7 @@ TrKey3.WelcomeLoadingPhrase2;Przeczytaj ulubiona ksiazke;Read your favourite boo
 TrKey3.WelcomeLoadingPhrase3;Odzyskaj pasje do czytania;Rediscover your love of reading;Recupera tu pasion por la lectura;Retrouvez votre passion pour la lecture;Entdecke deine Lesefreude neu;Redescopera-ti pasiunea pentru citit
 TrKey3.WelcomeLoadingBottomLoading;Ladowanie;Loading;Cargando;Chargement;Wird geladen;Se incarca
 TrKey3.WelcomeLoadingBottomDownloading;Pobieranie potrzebnych zasobow;Downloading required resources;Descargando recursos necesarios;Telechargement des ressources necessaires;Erforderliche Ressourcen werden heruntergeladen;Se descarca resursele necesare
+TrKey3.WelcomePowerBackHint;Przycisk zasilania cofa o krok;Power button goes back a step;El boton de encendido retrocede un paso;Le bouton d'alimentation revient en arriere;Netzschalter geht einen Schritt zurueck;Butonul de pornire revine cu un pas
 UiText.Resume;Wznow;Resume;Reanudar;Reprendre;Weiter;Continua
 UiText.Chapters;Rozdzialy;Chapters;Capitulos;Chapitres;Kapitel;Capitole
 UiText.Library;Biblioteka;Library;Biblioteca;Bibliotheque;Bibliothek;Biblioteca

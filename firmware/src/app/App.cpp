@@ -38,7 +38,9 @@ constexpr uint32_t kFontDownloadRetryIntervalMs = 60000;
 // jeszcze nie wgrał tego tytułu dla danego języka) to nie błąd, po prostu
 // mniej pozycji w bibliotece na starcie — patrz bookDownloadTask().
 constexpr uint8_t kStarterBookCountPerLanguage = 5;
-constexpr uint32_t kBootSplashMs = 750;
+constexpr uint32_t kBootSplashMs = 5000;
+constexpr uint32_t kBootSplashBlackMs = 200;
+constexpr uint32_t kBootSplashFadeMs = 600;
 // Extra budget (from bootStartedMs_, not on top of the splash) to let a
 // pending SD-backed typeface load finish before handing off to the reader.
 // Almost never fully used — the splash animation itself already burns ~1.8s
@@ -452,7 +454,7 @@ constexpr uint8_t kLeftHandAnchorMax = kTypographyAnchorMax + kLeftHandAnchorOff
 constexpr uint8_t kTypographyGuideWidthMin = 12;
 constexpr uint8_t kTypographyGuideWidthMax = 30;
 constexpr uint8_t kTypographyGuideWidthStep = 2;
-constexpr uint8_t kTypographyGuideGapMin = 2;
+constexpr uint8_t kTypographyGuideGapMin = 0;
 constexpr uint8_t kTypographyGuideGapMax = 8;
 constexpr const char *kTypographyPreviewWords[] = {
     "minimum",
@@ -924,7 +926,7 @@ void App::begin() {
   loadTypographyConfigFromPreferences();
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
-  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
+  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 1));
   applyHandednessSettings(0, false);
   applyDisplayPreferences(0, false);
   applyTypographySettings(0, false);
@@ -937,17 +939,19 @@ void App::begin() {
   logApp("Initializing hardware modules");
   const bool displayReady = display_.begin();
 
-  // Show boot splash immediately after display init — before anything else.
-  // This ensures the user sees the animation ASAP with no black screen gap.
+  // Boot splash: a beat of black, then the artwork fades in — deliberate
+  // pacing instead of an instant flash. kBootSplashMs (the total time the
+  // Booting state holds before handing off to the wizard/reader) is sized
+  // to comfortably cover this sequence.
   if (displayReady) {
-    display_.renderBootSplash();
+    display_.renderBootSplashFadeIn(kBootSplashBlackMs, kBootSplashFadeMs);
     logApp("Display init ok");
   } else {
     ESP_LOGE(kAppTag, "Display init failed");
     Serial.println("[app] Display init failed");
   }
 
-  // Initialize remaining hardware while FLOWER is still visible on screen.
+  // Initialize remaining hardware while the splash is still visible on screen.
   updateBatteryStatus(bootStartedMs_, true);
   touchInitialized_ = touch_.begin();
   audio_.begin();
@@ -959,6 +963,11 @@ void App::begin() {
   return;
 #endif
 
+  // Keep SD status text ("Mounting card", "Scanning books", ...) off the
+  // boot splash for the whole boot sequence, not just the deferred book
+  // load — storage_.begin() below fires the same status callback. Cleared
+  // at every exit out of AppState::Booting in updateState().
+  suppressBootStorageStatusRender_ = true;
   storageReady_ = storage_.begin();
   if (storageReady_) {
     // The typeface saved in preferences may be an SD-backed font (see
@@ -1170,6 +1179,7 @@ void App::update(uint32_t nowMs) {
   maybeAutoDownloadFonts(nowMs);
   maybeRetryTypographyFontLoad(nowMs);
   updateWelcomeTimedScreens(nowMs);
+  updateWelcomeReadingModePreview(nowMs);
   updateState(nowMs);
   loadPendingBootBook(nowMs);
   // Deliberately not auto-opening UpdateConfirm here: an update found mid-read
@@ -1252,6 +1262,13 @@ void App::update(uint32_t nowMs) {
     if (clients > 0 && !autoSyncClientConnected_) {
       autoSyncClientConnected_ = true;
       Serial.println("[app] auto-sync: client connected, keeping AP alive");
+      // Bez tego ekran WelcomeConnect zostawal na "Oczekiwanie na
+      // polaczenie..." az do nastepnego niepowiazanego przerysowania —
+      // "Polaczono!" pojawialo sie dopiero przypadkiem, czasem naklejone
+      // na uklad liczony jeszcze dla poprzedniego stanu ekranu.
+      if (menuScreen_ == MenuScreen::WelcomeConnect) {
+        renderWelcomeConnect();
+      }
     }
     if (!autoSyncClientConnected_ && (nowMs - autoSyncStartedMs_ >= 30000)) {
       Serial.println("[app] auto-sync: 30s timeout, no client — shutting down AP");
@@ -1380,6 +1397,14 @@ void App::setState(AppState nextState, uint32_t nowMs) {
     saveReadingPosition(true);
   }
 
+  if (previousState == AppState::Booting) {
+    // The boot splash faded the backlight out before this switch drew the
+    // wizard/reader screen underneath it (see updateState()'s
+    // bootSplashFadedOut_ handling) — fade back in now that new content is
+    // on screen, instead of an abrupt cut from black to full brightness.
+    display_.fadeInBacklight(kBootSplashFadeMs);
+  }
+
   ESP_LOGI(kAppTag, "state -> %s", stateName(state_));
   Serial.printf("[app] state -> %s at %lu ms\n", stateName(state_),
                 static_cast<unsigned long>(nowMs));
@@ -1389,6 +1414,16 @@ void App::updateState(uint32_t nowMs) {
   if (state_ == AppState::Booting) {
     if (nowMs - bootStartedMs_ < kBootSplashMs) {
       return;
+    }
+
+    // Fade the splash artwork out to black exactly once, right as the hold
+    // time expires — not on every tick spent waiting below for the SD font
+    // retry budget, which would otherwise re-trigger the fade repeatedly
+    // and stack extra delay onto boot. setState() fades back in once the
+    // wizard/reader screen underneath has actually been drawn.
+    if (!bootSplashFadedOut_) {
+      bootSplashFadedOut_ = true;
+      display_.fadeOutBacklight(kBootSplashFadeMs);
     }
 
     // Pierwsze uruchomienie po flashowaniu — pokaż welcome wizard zamiast
@@ -1402,6 +1437,10 @@ void App::updateState(uint32_t nowMs) {
       menuScreen_ = MenuScreen::WelcomeLanguage;
       settingsSelectedIndex_ = 0;
       rebuildSettingsMenuItems();
+      // Leaving Booting here without ever calling loadPendingBootBook() —
+      // clear the suppress flag set in setup() so SD status text works
+      // normally again from here on.
+      suppressBootStorageStatusRender_ = false;
       setState(AppState::Menu, nowMs);
       return;
     }
@@ -1410,6 +1449,7 @@ void App::updateState(uint32_t nowMs) {
     tutorialCompleted_ = preferences_.getBool(kPrefTutorialDone, false);
     if (!tutorialCompleted_) {
       menuScreen_ = MenuScreen::TutorialStep1;
+      suppressBootStorageStatusRender_ = false;
       setState(AppState::Menu, nowMs);
       return;
     }
@@ -1429,6 +1469,11 @@ void App::updateState(uint32_t nowMs) {
     // instead of switching to Paused first and showing a separate
     // "Ładowanie książki" screen while it runs — see loadPendingBootBook().
     loadPendingBootBook(nowMs);
+    // loadPendingBootBook() already clears this when it actually ran a
+    // load; also clear it here so the no-deferred-load path (built-in demo
+    // text, pendingBootBookLoad_ was already false) doesn't leave SD status
+    // text suppressed for the rest of the session.
+    suppressBootStorageStatusRender_ = false;
 
     setState((touchPlayHeld_ || playLocked_ || pauseAtSentenceEndRequested_) ? AppState::Playing
                                                                               : AppState::Paused,
@@ -1749,8 +1794,15 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
       pwrTapCount_ = 0;
       setState(AppState::Paused, nowMs);
     } else {
+      if (menuScreen_ == MenuScreen::WelcomeLanguage) {
+        // Zupełnie pierwszy ekran kreatora po flashu/resecie — przycisk
+        // power/select ma tu nic nie robić (poza realnym wyłączeniem, które
+        // jest obsłużone wcześniej przez przytrzymanie), żeby jednym
+        // przypadkowym kliknięciem nie dało się wyskoczyć z konfiguracji
+        // początkowej prosto do czytania.
+        return;
+      }
       if (menuScreen_ == MenuScreen::WelcomeConnect ||
-          menuScreen_ == MenuScreen::WelcomeLanguage ||
           menuScreen_ == MenuScreen::WelcomeTheme ||
           menuScreen_ == MenuScreen::WelcomeHighlightColor ||
           menuScreen_ == MenuScreen::WelcomeLoading ||
@@ -1760,7 +1812,10 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
           menuScreen_ == MenuScreen::WelcomeReadingModePreview ||
           (menuScreen_ == MenuScreen::TypographyFontPicker && wizardFontPickerActive_) ||
           (menuScreen_ == MenuScreen::BookPicker && wizardBookPickerActive_)) {
-        finishWelcomeWizard(nowMs);
+        // Kreatora pierwszego uruchomienia nie da się już pominąć jednym
+        // kliknięciem PWR — krótkie kliknięcie cofa o krok, tak jak Back
+        // gdziekolwiek indziej w aplikacji.
+        wizardStepBack(nowMs);
         return;
       }
       if (menuScreen_ == MenuScreen::TutorialStep1 ||
@@ -1976,7 +2031,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   loadTypographyConfigFromPreferences();
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
-  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 0));
+  display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 1));
 
   reader_.setWpm(preferences_.getUShort(kPrefWpm, reader_.wpm()));
   applyReaderUiOrientation();
@@ -2088,6 +2143,16 @@ void App::cycleThemeMode(uint32_t nowMs) {
   preferences_.putBool(kPrefDarkMode, darkMode_);
   preferences_.putBool(kPrefNightMode, nightMode_);
   Serial.printf("[display] theme=%s\n", themeModeLabel().c_str());
+
+  // Ekran WelcomeTheme w kreatorze wybiera motyw z listy (Light/Dark/Night)
+  // po zaznaczonym wierszu, nie po darkMode_/nightMode_ — bez tej
+  // synchronizacji długi przytrzymanie fizycznego przycisku zmieniało kolory
+  // na ekranie, ale kolejny tap (selectWelcomeThemeItem) i tak zapisywał
+  // stary, wcześniej podświetlony wiersz, cofając zmianę bez ostrzeżenia.
+  if (menuScreen_ == MenuScreen::WelcomeTheme) {
+    settingsSelectedIndex_ = nightMode_ ? 2 : (darkMode_ ? 1 : 0);
+  }
+
   applyDisplayPreferences(nowMs);
 }
 
@@ -3758,8 +3823,16 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
   }
 
   applyBackButtonCornerLayout();
+  // First-run wizard screens (language/theme/highlight/reading-mode picks)
+  // get the same filled-bar, scale-2 title treatment as the toast below —
+  // legible for low-vision users on their very first boot, instead of the
+  // scale-1 footnote every other grid screen uses.
+  const bool prominentTitle = menuScreen_ == MenuScreen::WelcomeLanguage ||
+                              menuScreen_ == MenuScreen::WelcomeTheme ||
+                              menuScreen_ == MenuScreen::WelcomeHighlightColor ||
+                              menuScreen_ == MenuScreen::WelcomeReadingMode;
   display_.renderButtonGrid(title, currentGridButtons_, page, pageCount, activeGridToastText(millis()),
-                            showBatteryBadge, gridPagesVertically_);
+                            showBatteryBadge, gridPagesVertically_, prominentTitle);
 }
 
 void App::renderItemGridLibrary(const std::vector<DisplayManager::LibraryItem> &items,
@@ -4851,8 +4924,7 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
       // password instead of asking for it again.
       preferences_.putString(kPrefWifiSsid, network.ssid);
       preferences_.putString(kPrefWifiPass, savedPassword);
-      display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), network.ssid);
-      delay(900);
+      attemptWifiConnection(network.ssid, savedPassword, nowMs);
       returnFromWifiFlow(nowMs);
       return;
     }
@@ -4868,9 +4940,31 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
 
   preferences_.putString(kPrefWifiSsid, network.ssid);
   preferences_.putString(kPrefWifiPass, "");
-  display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), network.ssid);
-  delay(900);
+  attemptWifiConnection(network.ssid, "", nowMs);
   returnFromWifiFlow(nowMs);
+}
+
+// Łączy się realnie z zapisaną siecią i pokazuje wynik na ekranie — bez tego
+// ekran po prostu chwalił się "Siec zapisana" nawet gdy haslo bylo zle albo
+// siec byla poza zasiegiem, a kreator/Ustawienia jechaly dalej w ciemno,
+// zostawiajac krok "auto-pobierz z GitHub" bez realnego Wi-Fi.
+bool App::attemptWifiConnection(const String &ssid, const String &password, uint32_t nowMs) {
+  (void)nowMs;
+  display_.renderStatus("Wi-Fi", tr2(TrKey2::ConnectingToNetwork), ssid);
+
+  OtaUpdater::Config config;
+  config.wifiSsid = ssid;
+  config.wifiPassword = password;
+  const bool connected = otaUpdater_.connectWiFi(config, &App::handleStorageStatus, this);
+  otaUpdater_.disconnectWiFi();
+
+  if (connected) {
+    display_.renderStatus("Wi-Fi", tr(TrKey::Connected), ssid);
+  } else {
+    display_.renderStatus("Wi-Fi", tr2(TrKey2::ConnectFailedCheckPassword), ssid);
+  }
+  delay(1200);
+  return connected;
 }
 
 void App::openTextEntry(TextEntryPurpose purpose, const String &title, const String &prompt,
@@ -5153,13 +5247,13 @@ void App::commitTextEntry(uint32_t nowMs) {
       }
 
       const String ssid = textEntrySession_.contextValue;
+      const String password = textEntrySession_.value;
       preferences_.putString(kPrefWifiSsid, ssid);
-      preferences_.putString(kPrefWifiPass, textEntrySession_.value);
-      rememberWifiNetwork(ssid, textEntrySession_.value);
+      preferences_.putString(kPrefWifiPass, password);
+      rememberWifiNetwork(ssid, password);
       textEntrySession_ = TextEntrySession();
       textEntryButtons_.clear();
-      display_.renderStatus("Wi-Fi", tr2(TrKey2::NetworkSaved), ssid);
-      delay(900);
+      attemptWifiConnection(ssid, password, nowMs);
       returnFromWifiFlow(nowMs);
       return;
     }
@@ -5886,6 +5980,9 @@ void App::openWelcomeLanguage() {
   settingsSelectedIndex_ = 0;
   rebuildSettingsMenuItems();
   renderSettings();
+  // Jedyne miejsce, gdzie tłumaczymy co robi PWR w kreatorze — na kolejnych
+  // krokach ten sam toast byłby już tylko szumem.
+  showGridToast(tr3(TrKey3::WelcomePowerBackHint), millis());
 }
 
 void App::selectWelcomeLanguageItem(uint32_t /*nowMs*/) {
@@ -6112,9 +6209,72 @@ void App::selectWelcomeReadingModeItem(uint32_t nowMs) {
   }
 }
 
+namespace {
+// Kilka kopii tego samego zdania w kolejnych "akapitach" — wystarczy słów,
+// żeby okno przewijania miało co scrollować w pętli przez cały czas
+// pokazywania podglądu.
+constexpr int kWelcomeScrollPreviewParagraphs = 4;
+constexpr uint32_t kWelcomeRsvpPreviewWordMs = 500;
+constexpr uint32_t kWelcomeScrollPreviewWordMs = 260;
+}  // namespace
+
 void App::openWelcomeReadingModePreview(uint8_t mode) {
   welcomeReadingModePreviewMode_ = mode;
+  welcomeReadingModePreviewWordIndex_ = 0;
+  welcomeReadingModePreviewLastTickMs_ = millis();
   menuScreen_ = MenuScreen::WelcomeReadingModePreview;
+
+  if (mode == 1) {
+    // Zbuduj listę słów raz przy otwarciu — to samo zdanie powtórzone kilka
+    // razy jako kolejne akapity, żeby renderScrollView() miało realny,
+    // wielowierszowy tekst do przewijania zamiast jednego zdania na sztywno.
+    welcomeScrollPreviewWords_.clear();
+    const String sentence = tr3(TrKey3::WelcomePreviewScrollBody);
+    for (int paragraph = 0; paragraph < kWelcomeScrollPreviewParagraphs; ++paragraph) {
+      int start = 0;
+      bool firstWordInParagraph = true;
+      while (start < static_cast<int>(sentence.length())) {
+        int spaceIndex = sentence.indexOf(' ', start);
+        if (spaceIndex < 0) {
+          spaceIndex = sentence.length();
+        }
+        if (spaceIndex > start) {
+          DisplayManager::ContextWord word;
+          word.text = sentence.substring(start, spaceIndex);
+          word.paragraphStart = firstWordInParagraph;
+          firstWordInParagraph = false;
+          welcomeScrollPreviewWords_.push_back(word);
+        }
+        start = spaceIndex + 1;
+      }
+    }
+  }
+
+  renderWelcomeReadingModePreview();
+}
+
+void App::updateWelcomeReadingModePreview(uint32_t nowMs) {
+  if (menuScreen_ != MenuScreen::WelcomeReadingModePreview) {
+    return;
+  }
+
+  const uint32_t tickMs =
+      welcomeReadingModePreviewMode_ == 0 ? kWelcomeRsvpPreviewWordMs : kWelcomeScrollPreviewWordMs;
+  if (nowMs - welcomeReadingModePreviewLastTickMs_ < tickMs) {
+    return;
+  }
+  welcomeReadingModePreviewLastTickMs_ = nowMs;
+
+  if (welcomeReadingModePreviewMode_ == 0) {
+    if (kTypographyPreviewWordCount > 0) {
+      welcomeReadingModePreviewWordIndex_ =
+          (welcomeReadingModePreviewWordIndex_ + 1) % kTypographyPreviewWordCount;
+    }
+  } else if (!welcomeScrollPreviewWords_.empty()) {
+    welcomeReadingModePreviewWordIndex_ =
+        (welcomeReadingModePreviewWordIndex_ + 1) % welcomeScrollPreviewWords_.size();
+  }
+
   renderWelcomeReadingModePreview();
 }
 
@@ -6122,16 +6282,44 @@ void App::renderWelcomeReadingModePreview() {
   if (welcomeReadingModePreviewMode_ == 0) {
     // Ta sama prymitywa co podgląd w Typography Tuning (jedno "słowo-duch"
     // z sąsiadami przygaszonymi po bokach) — realny wygląd RSVP na tym
-    // urządzeniu, bez uruchamiania właściwego silnika odtwarzania.
+    // urządzeniu. Słowo faktycznie zmienia się co kWelcomeRsvpPreviewWordMs
+    // (patrz updateWelcomeReadingModePreview) — bez tego ekran pokazywał
+    // jedno zamrożone słowo i niczego nie demonstrował.
+    if (kTypographyPreviewWordCount == 0) {
+      return;
+    }
+    const size_t current = welcomeReadingModePreviewWordIndex_ % kTypographyPreviewWordCount;
     const bool hasNeighbours = kTypographyPreviewWordCount > 1;
-    const String before = hasNeighbours ? kTypographyPreviewWords[kTypographyPreviewWordCount - 1] : "";
-    const String after = hasNeighbours ? kTypographyPreviewWords[1 % kTypographyPreviewWordCount] : "";
-    display_.renderTypographyPreview(before, kTypographyPreviewWords[0], after, readerFontSizeIndex_,
-                                     "RSVP", tr3(TrKey3::WelcomePreviewRsvpLine),
+    const size_t beforeIndex =
+        current == 0 ? kTypographyPreviewWordCount - 1 : current - 1;
+    const size_t afterIndex = (current + 1) % kTypographyPreviewWordCount;
+    const String before = hasNeighbours ? kTypographyPreviewWords[beforeIndex] : "";
+    const String after = hasNeighbours ? kTypographyPreviewWords[afterIndex] : "";
+    display_.renderTypographyPreview(before, kTypographyPreviewWords[current], after,
+                                     readerFontSizeIndex_, "RSVP",
+                                     tr3(TrKey3::WelcomePreviewRsvpLine),
                                      tr3(TrKey3::WelcomeTapToGoBack));
   } else {
-    display_.renderStatus(tr3(TrKey3::WelcomeReadingModeScrollLabel),
-                          tr3(TrKey3::WelcomePreviewScrollBody), tr3(TrKey3::WelcomeTapToGoBack));
+    // Przewijanie faktycznie płynie — currentWordIndex rośnie co
+    // kWelcomeScrollPreviewWordMs (patrz updateWelcomeReadingModePreview),
+    // renderScrollView() sam dosuwa tekst tak, żeby ta pozycja była
+    // widoczna. Statyczny renderStatus() wcześniej nie ruszał się wcale.
+    if (welcomeScrollPreviewWords_.empty()) {
+      display_.renderStatus(tr3(TrKey3::WelcomeReadingModeScrollLabel),
+                            tr3(TrKey3::WelcomePreviewScrollBody),
+                            tr3(TrKey3::WelcomeTapToGoBack));
+      return;
+    }
+    DisplayManager::ReaderChrome chrome;
+    chrome.showBattery = false;
+    chrome.showChapter = false;
+    chrome.showProgress = false;
+    chrome.showPreviousSentenceHint = false;
+    chrome.showSavePointButton = false;
+    const size_t current =
+        welcomeReadingModePreviewWordIndex_ % welcomeScrollPreviewWords_.size();
+    display_.renderScrollView(welcomeScrollPreviewWords_, 0, 0, current, 0, "", 0,
+                              tr3(TrKey3::WelcomeTapToGoBack), "", chrome);
   }
 }
 
@@ -6216,6 +6404,51 @@ void App::finishWelcomeWizard(uint32_t nowMs) {
   menuSelectedIndex_ = 0;
   renderMainMenu();
   setState(AppState::Menu, nowMs);
+}
+
+// PWR krótkie kliknięcie na ekranach kreatora cofa o jeden krok zamiast
+// wychodzić z konfiguracji (patrz toggleMenuFromPowerButton) — kreator
+// pierwszego uruchomienia musi się dać tylko przejść do końca, nie ominąć.
+void App::wizardStepBack(uint32_t nowMs) {
+  switch (menuScreen_) {
+    case MenuScreen::WelcomeTheme:
+      openWelcomeLanguage();
+      return;
+    case MenuScreen::WelcomeHighlightColor:
+      openWelcomeTheme();
+      return;
+    case MenuScreen::WelcomeLoading:
+      openWelcomeHighlightColor();
+      return;
+    case MenuScreen::WelcomeSuper:
+      openWelcomeLoading(nowMs);
+      return;
+    case MenuScreen::WelcomeConfigureIntro:
+      openWelcomeSuper(nowMs);
+      return;
+    case MenuScreen::WelcomeReadingMode:
+      wizardFontPickerActive_ = true;
+      openTypographyFontPicker();
+      return;
+    case MenuScreen::WelcomeReadingModePreview:
+      openWelcomeReadingMode();
+      return;
+    case MenuScreen::WelcomeConnect:
+      openWelcomeReadingMode();
+      return;
+    default:
+      break;
+  }
+  if (menuScreen_ == MenuScreen::TypographyFontPicker && wizardFontPickerActive_) {
+    wizardFontPickerActive_ = false;
+    openWelcomeConfigureIntro(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::BookPicker && wizardBookPickerActive_) {
+    wizardBookPickerActive_ = false;
+    openWelcomeConnect(nowMs);
+    return;
+  }
 }
 
 // ─── Post-wizard tutorial ────────────────────────────────────────────────────
@@ -10465,8 +10698,23 @@ void App::renderSettings() {
     }
   }
 
-  const String title =
-      menuScreen_ == MenuScreen::WelcomeReadingMode ? tr3(TrKey3::WelcomeReadingModeTitle) : "";
+  String title;
+  switch (menuScreen_) {
+    case MenuScreen::WelcomeLanguage:
+      title = tr3(TrKey3::WelcomeLanguageTitle);
+      break;
+    case MenuScreen::WelcomeTheme:
+      title = tr3(TrKey3::WelcomeThemeTitle);
+      break;
+    case MenuScreen::WelcomeHighlightColor:
+      title = tr3(TrKey3::WelcomeHighlightColorTitle);
+      break;
+    case MenuScreen::WelcomeReadingMode:
+      title = tr3(TrKey3::WelcomeReadingModeTitle);
+      break;
+    default:
+      break;
+  }
   renderMenuAnyMode(title, renderItems, settingsSelectedIndex_);
 }
 

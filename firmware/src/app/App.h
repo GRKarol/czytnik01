@@ -386,6 +386,7 @@ class App {
   void scanWifiNetworks();
   void renderWifiNetworks();
   void selectWifiNetworkItem(uint32_t nowMs);
+  bool attemptWifiConnection(const String &ssid, const String &password, uint32_t nowMs);
   void openTextEntry(TextEntryPurpose purpose, const String &title, const String &prompt,
                      const String &helperText, const String &initialValue,
                      const String &contextValue, bool masked, size_t maxLength,
@@ -460,11 +461,13 @@ class App {
   void selectWelcomeReadingModeItem(uint32_t nowMs);
   void openWelcomeReadingModePreview(uint8_t mode);
   void renderWelcomeReadingModePreview();
+  void updateWelcomeReadingModePreview(uint32_t nowMs);
   void openWelcomeConnect(uint32_t nowMs);
   void renderWelcomeConnect();
   void selectWelcomeConnectTap(uint32_t nowMs);
   void openWelcomeBookPicker(uint32_t nowMs);
   void finishWelcomeWizard(uint32_t nowMs);
+  void wizardStepBack(uint32_t nowMs);
   void openTutorialStep1();
   void openTutorialStep2();
   void openTutorialStep3();
@@ -860,6 +863,7 @@ class App {
   TouchIntent pausedTouchIntent_ = TouchIntent::None;
 
   uint32_t bootStartedMs_ = 0;
+  bool bootSplashFadedOut_ = false;
   uint32_t lastStateLogMs_ = 0;
   uint32_t wpmFeedbackUntilMs_ = 0;
   uint32_t lastProgressSaveMs_ = 0;
@@ -911,6 +915,12 @@ class App {
   uint32_t welcomeLoadingLastRenderMs_ = 0;
   bool welcomeLoadingWorkStarted_ = false;
   uint8_t welcomeReadingModePreviewMode_ = 0;  // 0=RSVP, 1=Scroll
+  // Podgląd RSVP/Scroll w kreatorze musi realnie animować słowa/przewijanie
+  // — statyczny kadr niczego nie demonstruje. Wspólny licznik czasu i
+  // indeks wystarczą, bo w danej chwili aktywny jest tylko jeden z trybów.
+  uint32_t welcomeReadingModePreviewLastTickMs_ = 0;
+  size_t welcomeReadingModePreviewWordIndex_ = 0;
+  std::vector<DisplayManager::ContextWord> welcomeScrollPreviewWords_;
   size_t chapterPickerSelectedIndex_ = 0;
   size_t chapterTransitionIndex_ = static_cast<size_t>(-1);
   size_t restartConfirmSelectedIndex_ = 0;
@@ -922,9 +932,9 @@ class App {
   uint8_t scrollFontSize_ = 4;
   uint8_t scrollLineSpacing_ = 1;
   uint8_t scrollMargin_ = 1;
-  uint16_t pacingLongWordDelayMs_ = 200;
-  uint16_t pacingComplexWordDelayMs_ = 200;
-  uint16_t pacingPunctuationDelayMs_ = 200;
+  uint16_t pacingLongWordDelayMs_ = 100;
+  uint16_t pacingComplexWordDelayMs_ = 100;
+  uint16_t pacingPunctuationDelayMs_ = 100;
   PacingDelayTarget pacingDelayEditorTarget_ = PacingDelayTarget::LongWords;
   // True while the touch that is currently down started on the editor's
   // corner Back icon — set on TouchPhase::Start, consumed on End, so a
@@ -1156,16 +1166,16 @@ class App {
   bool batteryRuntimeEstimateReady_ = false;
   uint8_t batteryCriticalSampleCount_ = 0;
   bool phantomWordsEnabled_ = true;
-  bool readerBatteryVisibleWhilePlaying_ = true;
-  bool readerChapterVisibleWhilePlaying_ = false;
+  bool readerBatteryVisibleWhilePlaying_ = false;
+  bool readerChapterVisibleWhilePlaying_ = true;
   bool readerProgressVisibleWhilePlaying_ = false;
-  bool savePointButtonVisible_ = true;
+  bool savePointButtonVisible_ = false;
   // True while naming a save point created via the in-reader quick-save
   // button, so committing/cancelling that name entry resumes reading
   // instead of landing on the SavePointsList menu (which is where naming
   // one from that list itself should still end up).
   bool savePointQuickSaveFromReader_ = false;
-  bool showHelpHints_ = true;
+  bool showHelpHints_ = false;
   bool showingHelpPopup_ = false;
   bool tutorialCompleted_ = false;
   const char* helpPopupTitle_ = nullptr;
@@ -1177,7 +1187,7 @@ class App {
   uint8_t screensaverAutoOffIndex_ = 0;   // default: off (never)
   uint8_t screensaverSleepGuardIndex_ = 0; // default: off (never)
   size_t screensaverSettingsSelectedIndex_ = 1;
-  PauseMode pauseMode_ = PauseMode::SentenceEnd;
+  PauseMode pauseMode_ = PauseMode::Instant;
   bool darkMode_ = true;
   bool nightMode_ = false;
   UiLanguage uiLanguage_ = UiLanguage::English;

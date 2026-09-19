@@ -108,6 +108,8 @@ enum class TrKey2 : uint8_t {
   NoNetworksFound,
   NetworkSaved,
   PasswordRequired,
+  ConnectingToNetwork,
+  ConnectFailedCheckPassword,
   ResetToDefault,
   OwnerSaved,
   CheckingFeeds,
@@ -229,6 +231,9 @@ enum class TrKey3 : uint8_t {
   PositionLabel,
   VolumeAbbrev,
   // ─── Kreator pierwszego uruchomienia (redesign 2026-09) ──────────────────
+  WelcomeLanguageTitle,
+  WelcomeThemeTitle,
+  WelcomeHighlightColorTitle,
   WelcomeSuperTitle,
   WelcomeConfigureTitle,
   WelcomeChooseFontTitle,
@@ -250,6 +255,7 @@ enum class TrKey3 : uint8_t {
   WelcomeLoadingPhrase3,
   WelcomeLoadingBottomLoading,
   WelcomeLoadingBottomDownloading,
+  WelcomePowerBackHint,
 };
 
 namespace Translations3 {

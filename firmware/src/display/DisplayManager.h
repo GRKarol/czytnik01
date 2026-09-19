@@ -42,7 +42,7 @@ class DisplayManager {
     int8_t trackingPx = 0;
     uint8_t anchorPercent = 35;
     uint8_t guideHalfWidth = 20;
-    uint8_t guideGap = 4;
+    uint8_t guideGap = 0;
   };
 
   struct ContextWord {
@@ -194,7 +194,9 @@ class DisplayManager {
   void prepareForSleep();
   bool wakeFromSleep();
   void renderCenteredWord(const String &word, uint16_t color = 0xFFFF);
-  void renderBootSplash();
+  void renderBootSplashFadeIn(uint32_t blackMs, uint32_t fadeMs);
+  void fadeInBacklight(uint32_t fadeMs);
+  void fadeOutBacklight(uint32_t fadeMs);
   void renderRsvpWord(const String &word, const String &chapterLabel = "",
                       uint8_t progressPercent = 0, bool showFooter = true,
                       const String &footerStatusLabel = "",
@@ -242,7 +244,8 @@ class DisplayManager {
                        const String &helperText, const std::vector<Button> &buttons);
   void renderButtonGrid(const String &title, const std::vector<Button> &buttons, size_t pageIndex,
                         size_t pageCount, const String &toastText = "",
-                        bool showBatteryBadge = true, bool dotsOnLeft = false);
+                        bool showBatteryBadge = true, bool dotsOnLeft = false,
+                        bool prominentTitle = false);
   void renderStatus(const String &title, const String &line1 = "", const String &line2 = "");
   // `hint` to trzecia, przygaszona linijka pod QR-em. Domyślnie zdanie dla
   // ekranu parowania z telefonem; ekran „zainstaluj aplikację" podaje swoje.
@@ -350,7 +353,7 @@ class DisplayManager {
   size_t txBufferBytes_ = 0;
   bool initialized_ = false;
   uint8_t brightnessPercent_ = 100;
-  uint8_t focusColorIndex_ = 0;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple
+  uint8_t focusColorIndex_ = 1;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple
   bool darkMode_ = true;
   bool nightMode_ = false;
   BoardConfig::UiOrientation uiOrientation_ =

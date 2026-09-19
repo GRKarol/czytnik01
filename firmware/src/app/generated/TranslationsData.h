@@ -85,7 +85,7 @@ inline const char *trKeyLookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[51][6] = {
+  static const char *const kTable[53][6] = {
       {"Books", "Libros", "Livres", "Buecher", "Carti", "Ksiazki"},  // Books
       {"Articles", "Articulos", "Articles", "Artikel", "Articole", "Artykuly"},  // Articles
       {"Focus Timer", "Temporizador", "Minuteur", "Fokus-Timer", "Cronometru", "Klepsydra"},  // FocusTimer
@@ -102,6 +102,8 @@ inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"No networks found", "Sin redes", "Aucun reseau", "Keine Netzwerke", "Nicio retea gasita", "Brak sieci"},  // NoNetworksFound
       {"Network saved", "Red guardada", "Reseau enregistre", "Netzwerk gespeichert", "Retea salvata", "Siec zapisana"},  // NetworkSaved
       {"Password required", "Contrasena requerida", "Mot de passe requis", "Passwort erforderlich", "Parola necesara", "Wymagane haslo"},  // PasswordRequired
+      {"Connecting...", "Conectando...", "Connexion...", "Verbinde...", "Se conecteaza...", "Laczenie..."},  // ConnectingToNetwork
+      {"Could not connect. Check the password.", "No se pudo conectar. Revisa la contrasena.", "Echec de connexion. Verifiez le mot de passe.", "Verbindung fehlgeschlagen. Passwort pruefen.", "Conectare esuata. Verifica parola.", "Nie udalo sie polaczyc. Sprawdz haslo."},  // ConnectFailedCheckPassword
       {"Reset to default", "Restablecido", "Reinitialise", "Zurueckgesetzt", "Resetat la implicit", "Przywrocono domyslne"},  // ResetToDefault
       {"Owner saved", "Guardado", "Enregistre", "Gespeichert", "Salvat", "Zapisano"},  // OwnerSaved
       {"Checking feeds", "Verificando fuentes", "Verification flux", "Feeds pruefen", "Verificare fluxuri", "Sprawdzam kanaly"},  // CheckingFeeds
@@ -142,7 +144,7 @@ inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[91][6] = {
+  static const char *const kTable[95][6] = {
       {"Save point added", "Punto guardado agregado", "Point de sauvegarde ajoute", "Lesezeichen hinzugefuegt", "Punct salvat adaugat", "Punkt zapisu dodany"},  // SavePointAdded
       {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zakladke"},  // NameBookmark
       {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazwe:"},  // EnterNamePrompt
@@ -213,6 +215,9 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Vol +", "Vol +", "Vol +", "Lst +", "Vol +", "Gl +"},  // VolumeUp
       {"Position", "Posicion", "Position", "Position", "Pozitie", "Pozycja"},  // PositionLabel
       {"Vol", "Vol", "Vol", "Lst", "Vol", "Gl"},  // VolumeAbbrev
+      {"Choose your language", "Elige tu idioma", "Choisissez votre langue", "Waehle deine Sprache", "Alege limba", "Wybierz jezyk"},  // WelcomeLanguageTitle
+      {"Choose your theme", "Elige tu tema", "Choisissez votre theme", "Waehle dein Design", "Alege tema", "Wybierz motyw"},  // WelcomeThemeTitle
+      {"Choose your highlight colour", "Elige el color de resaltado", "Choisissez la couleur de surbrillance", "Waehle die Hervorhebungsfarbe", "Alege culoarea de evidentiere", "Wybierz kolor podswietlenia"},  // WelcomeHighlightColorTitle
       {"Super!", "Genial!", "Super !", "Super!", "Super!", "Super!"},  // WelcomeSuperTitle
       {"Let's set up your device!", "Configuremos tu dispositivo!", "Configurons votre appareil !", "Richten wir dein Geraet ein!", "Sa configuram dispozitivul tau!", "Skonfigurujmy Twoje urzadzenie!"},  // WelcomeConfigureTitle
       {"Choose a typeface!", "Elige una tipografia!", "Choisissez une police !", "Waehle eine Schriftart!", "Alege un font!", "Wybierz czcionke!"},  // WelcomeChooseFontTitle
@@ -234,6 +239,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Rediscover your love of reading", "Recupera tu pasion por la lectura", "Retrouvez votre passion pour la lecture", "Entdecke deine Lesefreude neu", "Redescopera-ti pasiunea pentru citit", "Odzyskaj pasje do czytania"},  // WelcomeLoadingPhrase3
       {"Loading", "Cargando", "Chargement", "Wird geladen", "Se incarca", "Ladowanie"},  // WelcomeLoadingBottomLoading
       {"Downloading required resources", "Descargando recursos necesarios", "Telechargement des ressources necessaires", "Erforderliche Ressourcen werden heruntergeladen", "Se descarca resursele necesare", "Pobieranie potrzebnych zasobow"},  // WelcomeLoadingBottomDownloading
+      {"Power button goes back a step", "El boton de encendido retrocede un paso", "Le bouton d'alimentation revient en arriere", "Netzschalter geht einen Schritt zurueck", "Butonul de pornire revine cu un pas", "Przycisk zasilania cofa o krok"},  // WelcomePowerBackHint
   };
   return kTable[keyIndex][langIndex];
 }

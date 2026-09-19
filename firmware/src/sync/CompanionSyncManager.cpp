@@ -68,7 +68,7 @@ constexpr const char *kPrefScrollLineSpacing = "sc_line_sp";
 constexpr const char *kPrefScrollMargin = "sc_margin";
 constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
-constexpr uint16_t kDefaultWpm = 300;
+constexpr uint16_t kDefaultWpm = 230;
 constexpr uint16_t kMinWpm = 10;
 constexpr uint16_t kMaxWpm = 1000;
 constexpr uint8_t kDefaultBrightness = 3;
@@ -81,19 +81,19 @@ constexpr uint8_t kMaxBatteryLabel = 2;
 constexpr uint8_t kMaxReaderFontSize = 2;
 constexpr uint8_t kMaxReaderTypeface = 19;  // DisplayManager::ReaderTypeface::Count - 1
 constexpr uint8_t kMaxPauseMode = 1;
-constexpr uint16_t kDefaultPacingDelayMs = 200;
+constexpr uint16_t kDefaultPacingDelayMs = 100;
 constexpr uint16_t kMaxPacingDelayMs = 600;
 constexpr int8_t kMinTypographyTracking = -2;
 constexpr int8_t kMaxTypographyTracking = 3;
 constexpr uint8_t kMinTypographyAnchor = 30;
 constexpr uint8_t kMaxTypographyAnchor = 40;
-constexpr uint8_t kDefaultTypographyAnchor = 30;
+constexpr uint8_t kDefaultTypographyAnchor = 35;
 constexpr uint8_t kMinTypographyGuideWidth = 12;
 constexpr uint8_t kMaxTypographyGuideWidth = 30;
 constexpr uint8_t kDefaultTypographyGuideWidth = 30;
-constexpr uint8_t kMinTypographyGuideGap = 2;
+constexpr uint8_t kMinTypographyGuideGap = 0;
 constexpr uint8_t kMaxTypographyGuideGap = 8;
-constexpr uint8_t kDefaultTypographyGuideGap = 5;
+constexpr uint8_t kDefaultTypographyGuideGap = 0;
 constexpr uint8_t kMaxScrollFontSize = 8;
 constexpr uint8_t kDefaultScrollFontSize = 4;
 constexpr uint8_t kMaxScrollLineSpacing = 2;
@@ -1922,7 +1922,7 @@ String CompanionSyncManager::settingsJson() {
   const uint8_t readerMode =
       static_cast<uint8_t>(clampInt(preferences_.getUChar(kPrefReaderMode, 0), 0, kMaxReaderMode));
   const uint8_t pauseMode =
-      static_cast<uint8_t>(clampInt(preferences_.getUChar(kPrefPauseMode, 0), 0, kMaxPauseMode));
+      static_cast<uint8_t>(clampInt(preferences_.getUChar(kPrefPauseMode, 1), 0, kMaxPauseMode));
   const uint16_t longDelay =
       clampU16(preferences_.getUShort(kPrefPacingLongMs, kDefaultPacingDelayMs), 0,
                kMaxPacingDelayMs);
@@ -1999,9 +1999,9 @@ String CompanionSyncManager::settingsJson() {
   body += enumLabel(batteryLabel, batteryLabelLabels, 3);
   body += "\"";
   body += ",\"readingBattery\":" +
-          String(preferences_.getBool(kPrefReaderBatteryVisible, true) ? "true" : "false");
+          String(preferences_.getBool(kPrefReaderBatteryVisible, false) ? "true" : "false");
   body += ",\"readingChapter\":" +
-          String(preferences_.getBool(kPrefReaderChapterVisible, false) ? "true" : "false");
+          String(preferences_.getBool(kPrefReaderChapterVisible, true) ? "true" : "false");
   body += ",\"readingProgress\":" +
           String(preferences_.getBool(kPrefReaderProgressVisible, false) ? "true" : "false");
   body += ",\"language\":" + String(language);

@@ -53,7 +53,7 @@ class ReadingLoop {
 
   size_t currentIndex_ = 0;
   uint32_t lastAdvanceMs_ = 0;
-  uint16_t wpm_ = 300;
+  uint16_t wpm_ = 230;
   PacingConfig pacingConfig_;
   String currentWord_;
   std::vector<String> loadedWords_;

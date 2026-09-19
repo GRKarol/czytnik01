@@ -12,6 +12,7 @@
 #include "board/BoardConfig.h"
 #include "display/EmbeddedAtkinsonFont.h"
 #include "display/EmbeddedAtkinsonFont70.h"
+#include "display/EmbeddedBootSplashImage.h"
 #include "display/EmbeddedFontCommon.h"
 #include "display/EmbeddedOpenDyslexicFont.h"
 #include "display/EmbeddedOpenDyslexicFont70.h"
@@ -54,6 +55,10 @@ constexpr int kMaxTextScale = 1;
 constexpr uint8_t kGlyphAlphaThreshold = 16;
 constexpr uint16_t kTrueBlack = 0x0000;
 constexpr uint16_t kPureWhite = 0xFFFF;
+// Jasny motyw: (222,219,214) zamiast niemal-bieli — poprzednia wartosc
+// (247,245,237) wciaz razila w oczy przy pelnej jasnosci podswietlenia
+// (drugie zgloszenie Karola 2026-09-19, po teście na sprzęcie).
+constexpr uint16_t kLightBackgroundColor = 0xDEDA;
 constexpr uint16_t kDarkWordColor = 0xFFFF;
 constexpr uint16_t kLightWordColor = 0x0000;
 constexpr uint16_t kFocusLetterColor = 0xF800;
@@ -126,7 +131,7 @@ constexpr int kTypographyAnchorMin = 30;
 constexpr int kTypographyAnchorMax = 60;
 constexpr int kTypographyGuideHalfWidthMin = 12;
 constexpr int kTypographyGuideHalfWidthMax = 30;
-constexpr int kTypographyGuideGapMin = 2;
+constexpr int kTypographyGuideGapMin = 0;
 constexpr int kTypographyGuideGapMax = 8;
 constexpr int kOpticalLetterGapPx = 2;
 
@@ -1511,7 +1516,7 @@ uint16_t DisplayManager::backgroundColor() const {
   if (nightMode_) {
     return kTrueBlack;
   }
-  return darkMode_ ? kTrueBlack : kPureWhite;
+  return darkMode_ ? kTrueBlack : kLightBackgroundColor;
 }
 
 uint16_t DisplayManager::wordColor() const {
@@ -2302,63 +2307,102 @@ void DisplayManager::renderCenteredWord(const String &word, uint16_t color) {
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
-void DisplayManager::renderBootSplash() {
+void DisplayManager::renderBootSplashFadeIn(uint32_t blackMs, uint32_t fadeMs) {
   if (!initialized_) {
     return;
   }
 
-  // Colors: green for "FLOW", blue for "ER" (RGB565)
-  constexpr uint16_t kSplashGreen = 0x07E0;
-  constexpr uint16_t kSplashBlue = 0x001F;
-  const String fullWord = "FLOWER";
+  // Static full-screen dandelion artwork, pre-sized to the panel
+  // (640x172) — one draw, no animation. The frame stays on screen for as
+  // long as the rest of boot() takes to finish (SD mount, book load, ...),
+  // since nothing else draws over it until the caller hands off to the
+  // wizard or the reader. See App::setup()/updateState() for the
+  // suppressBootStorageStatusRender_ flag that keeps SD status text off
+  // this screen during that window.
+  static_assert(kBootSplashImageWidth == kDisplayWidth, "boot splash image must match panel width");
+  static_assert(kBootSplashImageHeight == kDisplayHeight, "boot splash image must match panel height");
 
-  const int scale = chooseTextScale(fullWord);
-  const int virtualWidth = (kDisplayWidth + scale - 1) / scale;
-  const int virtualHeight = (kDisplayHeight + scale - 1) / scale;
-  const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(fullWord));
-  const int y = std::max(0, (virtualHeight - glyphHeight) / 2);
-
-  // Measure full word to get centered starting X
-  const TextLayoutMetrics fullLayout = serifWordLayout(fullWord, -1);
-  const int fullTextWidth = textLayoutWidth(fullLayout);
-  const int startX = std::max(0, ((kVirtualBufferWidth - fullTextWidth) / 2) - fullLayout.minX);
-
-  // Animate: letters appear one by one with a longer delay for a smooth entrance
-  const ReaderTypeface typeface = effectiveReaderTypefaceForText(fullWord);
-  constexpr int kLetterDelayMs = 200;
-  constexpr int kFinalHoldMs = 600;
-
-  for (size_t letterCount = 1; letterCount <= fullWord.length(); ++letterCount) {
-    clearVirtualBuffer(virtualWidth, virtualHeight);
-
-    int cursorX = startX;
-    for (size_t i = 0; i < letterCount; ++i) {
-      const uint16_t color = (i < 4) ? kSplashGreen : kSplashBlue;
-      const ReaderGlyph glyph = glyphFor(fullWord[i], typeface);
-      drawGlyph(cursorX + glyph.xOffset, y, fullWord[i], color, typeface);
-      int tracked = trackedAdvance(glyph.xAdvance, i, fullWord.length());
-      if (i + 1 < fullWord.length()) {
-        const ReaderGlyph nextGlyph = glyphFor(fullWord[i + 1], typeface);
-        tracked -= opticalKerningAdjustment(fullWord[i], fullWord[i + 1], glyph.xOffset,
-                                            glyph.width, tracked, nextGlyph.xOffset,
-                                            regularDesiredGap());
-      }
-      cursorX += std::max(1, tracked);
-    }
-
-    flushScaledFrame(scale, virtualWidth, virtualHeight);
-
-    // Turn on backlight with the first letter — no black screen gap
-    if (letterCount == 1) {
-      applyBrightness();
-    }
-
-    delay(kLetterDelayMs);
+  // Backlight stays off for blackMs before the artwork is drawn, then the
+  // draw itself happens while still dark so the fade-in ramp below is the
+  // first light the panel shows — no flash of full brightness up front.
+  axs15231bSetBacklight(false);
+  if (blackMs > 0) {
+    delay(blackMs);
   }
 
-  // Hold the completed word
-  delay(kFinalHoldMs);
+  for (int row = 0; row < kBootSplashImageHeight; ++row) {
+    uint16_t *dstRow = virtualFrame_ + row * kVirtualBufferWidth;
+    const uint16_t *srcRow = kBootSplashImage + row * kBootSplashImageWidth;
+    for (int col = 0; col < kBootSplashImageWidth; ++col) {
+      dstRow[col] = panelColor(pgm_read_word(&srcRow[col]));
+    }
+  }
+  flushScaledFrame(1, kBootSplashImageWidth, kBootSplashImageHeight);
   lastRenderKey_ = "";
+
+  fadeInBacklight(fadeMs);
+}
+
+void DisplayManager::fadeInBacklight(uint32_t fadeMs) {
+  if (!initialized_) {
+    return;
+  }
+
+  // Ramp the backlight from the panel's minimum visible duty up to the
+  // user's configured brightness. axs15231bSetBrightnessPercent() clamps
+  // anything below ~15% to fully off on this panel, so the ramp starts at
+  // that floor rather than 0 — going lower wouldn't be visibly darker.
+  constexpr uint8_t kFadeStartPercent = 15;
+  uint8_t endPercent = brightnessPercent_;
+  if (endPercent < kFadeStartPercent) {
+    endPercent = kFadeStartPercent;
+  }
+  // Set the starting duty before turning the backlight on — otherwise the
+  // "on" write uses whatever brightness was last active (e.g. 100% from
+  // before sleep), producing a one-frame flash at full brightness before
+  // the ramp below pulls it back down to the floor.
+  axs15231bSetBrightnessPercent(kFadeStartPercent);
+  axs15231bSetBacklight(true);
+  if (fadeMs == 0 || endPercent <= kFadeStartPercent) {
+    axs15231bSetBrightnessPercent(endPercent);
+  } else {
+    constexpr uint32_t kFadeStepMs = 20;
+    const uint32_t steps = fadeMs / kFadeStepMs;
+    for (uint32_t step = 1; step <= steps; ++step) {
+      const uint8_t percent = kFadeStartPercent +
+          static_cast<uint8_t>((static_cast<uint32_t>(endPercent - kFadeStartPercent) * step) / steps);
+      axs15231bSetBrightnessPercent(percent);
+      delay(kFadeStepMs);
+    }
+    axs15231bSetBrightnessPercent(endPercent);
+  }
+}
+
+void DisplayManager::fadeOutBacklight(uint32_t fadeMs) {
+  if (!initialized_) {
+    return;
+  }
+
+  // Mirror of fadeInBacklight(): ramp down from the current target
+  // brightness to the panel's minimum visible duty, then cut the backlight
+  // entirely. Used to hand off from the boot splash to the wizard/reader
+  // without an abrupt cut to full brightness content.
+  constexpr uint8_t kFadeStartPercent = 15;
+  uint8_t startPercent = brightnessPercent_;
+  if (startPercent < kFadeStartPercent) {
+    startPercent = kFadeStartPercent;
+  }
+  if (fadeMs > 0 && startPercent > kFadeStartPercent) {
+    constexpr uint32_t kFadeStepMs = 20;
+    const uint32_t steps = fadeMs / kFadeStepMs;
+    for (uint32_t step = 1; step <= steps; ++step) {
+      const uint8_t percent = startPercent -
+          static_cast<uint8_t>((static_cast<uint32_t>(startPercent - kFadeStartPercent) * step) / steps);
+      axs15231bSetBrightnessPercent(percent);
+      delay(kFadeStepMs);
+    }
+  }
+  axs15231bSetBacklight(false);
 }
 
 void DisplayManager::renderRsvpWord(const String &word, const String &chapterLabel,
@@ -4166,10 +4210,11 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
 void DisplayManager::renderButtonGrid(const String &title, const std::vector<Button> &buttons,
                                       size_t pageIndex, size_t pageCount,
                                       const String &toastText, bool showBatteryBadge,
-                                      bool dotsOnLeft) {
+                                      bool dotsOnLeft, bool prominentTitle) {
   String renderKey = "grid|";
   renderKey += showBatteryBadge ? "1" : "0";
   renderKey += dotsOnLeft ? "1" : "0";
+  renderKey += prominentTitle ? "1" : "0";
   renderKey += title;
   renderKey += "|p:";
   renderKey += String(pageIndex);
@@ -4233,7 +4278,24 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
   // below, so there is exactly one Back affordance, and it's the one you
   // can actually hit.
   if (!title.isEmpty()) {
-    drawTinyTextCentered(fitTinyText(title, virtualWidth - 40, 1), 4, footerColor(), 1);
+    if (prominentTitle) {
+      // Onboarding wizard screens: same filled-bar/scale-2 treatment as the
+      // toast below (see the toastText block further down) instead of the
+      // tiny scale-1 label everywhere else uses — a first-run user reading
+      // "Choose your language" needs the header legible, not a footnote.
+      const int barW = std::min(320, virtualWidth - 20);
+      const int barH = 18;
+      const int barX = (virtualWidth - barW) / 2;
+      const int barY = 2;
+      fillVirtualRect(barX, barY, barW, barH, focusColor());
+      const String fitted = fitTinyText(title, barW - 8, kTinyScale);
+      const int textW = measureTinyTextWidth(fitted, kTinyScale);
+      const int textX = barX + std::max(0, (barW - textW) / 2);
+      const int textY = barY + std::max(0, (barH - kTinyGlyphHeight * kTinyScale) / 2);
+      drawTinyTextAt(fitted, textX, textY, backgroundColor(), kTinyScale);
+    } else {
+      drawTinyTextCentered(fitTinyText(title, virtualWidth - 40, 1), 4, footerColor(), 1);
+    }
   }
 
   drawButtons(buttons);
@@ -4315,10 +4377,14 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
   const int virtualHeight = kDisplayHeight;
   const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(title));
   const int titleY = std::max(0, (virtualHeight - glyphHeight) / 2 - 26);
-  const int line1Y = std::min(virtualHeight - kTinyGlyphHeight * kTinyScale,
-                              titleY + glyphHeight + 22);
-  const int line2Y = std::min(virtualHeight - kTinyGlyphHeight * kTinyScale,
-                              line1Y + kTinyGlyphHeight * kTinyScale + 10);
+  const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 36);
+  const uint8_t line2ScalePercent = chromeLabelScalePercent(line2, 28);
+  const int line1GlyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(line1)), line1ScalePercent);
+  const int line2GlyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(line2)), line2ScalePercent);
+  const int line1Y = titleY + glyphHeight + 16;
+  const int line2Y = std::min(virtualHeight - line2GlyphHeight - 4, line1Y + line1GlyphHeight + 8);
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
   // Back arrow hint in top-left — vector chevron (same drawIcon() path as
@@ -4327,12 +4393,10 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
   drawIcon(ui::IconId::Back, 4, 4, 16, dimColor());
   drawWordLine(title, titleY, wordColor());
   if (!line1.isEmpty()) {
-    const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 26);
     drawSerifTextScaledCentered(fitSerifTextScaled(line1, virtualWidth - 16, line1ScalePercent),
                                 line1Y, dimColor(), line1ScalePercent, virtualWidth, 0);
   }
   if (!line2.isEmpty()) {
-    const uint8_t line2ScalePercent = chromeLabelScalePercent(line2, 20);
     drawSerifTextScaledCentered(fitSerifTextScaled(line2, virtualWidth - 16, line2ScalePercent),
                                 line2Y, focusColor(), line2ScalePercent, virtualWidth, 0);
   }
@@ -4347,8 +4411,24 @@ void DisplayManager::renderStatusWithQr(const String &title, const String &line1
     return;
   }
 
-  // Nie używamy cache renderKey - zawsze renderujemy QR gdy się wywołuje
-  lastRenderKey_ = "";
+  // renderMenu() calls back into this on every unrelated tick while the
+  // pairing/QR screen is open (battery poll, touch handling, ...). Skipping
+  // the render-key cache used to force a full clear+redraw on every one of
+  // those calls even when nothing changed — the resulting flicker is what
+  // made phones lose focus/lock on the QR mid-scan and occasionally caught
+  // the panel mid-redraw with the previous frame's text still showing
+  // (Karol's report 2026-09-19). qrData/qrSize are safe to key on the
+  // caller's pointer+size: the only caller (install-app QR) fills a static
+  // buffer once and reuses it, so identical pointer+size means identical
+  // pixels.
+  const String renderKey = "qr|" + title + "|" + line1 + "|" + hint + "|" +
+                           String(reinterpret_cast<uintptr_t>(qrData)) + "|" +
+                           String(qrSize) + "|d:" + String(darkMode_ ? 1 : 0) +
+                           "|n:" + String(nightMode_ ? 1 : 0);
+  if (renderKey == lastRenderKey_) {
+    return;
+  }
+  lastRenderKey_ = renderKey;
 
   const int scale = 1;
   const int virtualWidth = kDisplayWidth;    // 640
@@ -4398,21 +4478,36 @@ void DisplayManager::renderStatusWithQr(const String &title, const String &line1
   const int textAreaX = qrBlockX + totalQrWithQuiet + 14;
   const int textAreaWidth = virtualWidth - textAreaX - 8;
 
-  const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(title));
+  // Tytuł rysowany jest w 50% skali (patrz drawSerifTextScaledCentered
+  // niżej) — reszta rozmieszczenia MUSI liczyć na przeskalowanej wysokości,
+  // inaczej odstęp do linii SSID/hint wychodzi za duży albo za mały i przy
+  // dłuższych tłumaczeniach (fr/de) tekst zaczyna zachodzić na kolejne linie.
+  const int titleScalePercent = 50;
+  const int glyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(title)), titleScalePercent);
   const int titleY = std::max(0, (virtualHeight - glyphHeight) / 2 - 16);
+  const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 32);
+  const uint8_t hintScalePercent = chromeLabelScalePercent(hint, 26);
+  const int line1GlyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(line1)), line1ScalePercent);
   const int line1Y = titleY + glyphHeight + 12;
-  const int line2Y = line1Y + kTinyGlyphHeight * kTinyScale + 8;
+  const int line2Y = std::min(virtualHeight - 6, line1Y + line1GlyphHeight + 8);
 
-  // Tytuł wyśrodkowany w obszarze tekstowym po prawej
-  drawSerifTextScaledCentered(title, titleY, wordColor(), 50, textAreaWidth, textAreaX);
+  // Tytuł wyśrodkowany w obszarze tekstowym po prawej — skrócony jeśli nie
+  // mieści się w textAreaWidth, żeby nie wychodził na kod QR ani poza ekran.
+  drawSerifTextScaledCentered(fitSerifTextScaled(title, textAreaWidth, titleScalePercent), titleY,
+                              wordColor(), titleScalePercent, textAreaWidth, textAreaX);
 
-  // Linia 1 (SSID)
+  // Linia 1 (SSID) — ta sama skalowalna czcionka serif co tytuł, zamiast
+  // osobnej maleńkiej czcionki bitmapowej (wyglądała jak inny, obcy font).
   if (!line1.isEmpty()) {
-    drawTinyTextCentered(line1, line1Y, focusColor(), kTinyScale, textAreaWidth, textAreaX);
+    drawSerifTextScaledCentered(fitSerifTextScaled(line1, textAreaWidth, line1ScalePercent),
+                                line1Y, focusColor(), line1ScalePercent, textAreaWidth, textAreaX);
   }
 
   // Trzecia linijka — instrukcja dla użytkownika (patrz parametr `hint`).
-  drawTinyTextCentered(hint, line2Y, dimColor(), kTinyScale, textAreaWidth, textAreaX);
+  drawSerifTextScaledCentered(fitSerifTextScaled(hint, textAreaWidth, hintScalePercent), line2Y,
+                              dimColor(), hintScalePercent, textAreaWidth, textAreaX);
 
   // Wskazówka nawigacji
   drawTinyTextAt("<", 4, 4, dimColor(), kTinyScale);
@@ -4439,25 +4534,26 @@ void DisplayManager::renderProgress(const String &title, const String &line1, co
   const int virtualHeight = kDisplayHeight;
   const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(title));
   const int titleY = std::max(0, (virtualHeight - glyphHeight) / 2 - 34);
-  const int line1Y = std::min(virtualHeight - kTinyGlyphHeight * kTinyScale,
-                              titleY + glyphHeight + 18);
-  const int line2Y = std::min(virtualHeight - kTinyGlyphHeight * kTinyScale,
-                              line1Y + kTinyGlyphHeight * kTinyScale + 10);
+  const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 36);
+  const uint8_t line2ScalePercent = chromeLabelScalePercent(line2, 28);
+  const int line1GlyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(line1)), line1ScalePercent);
+  const int line2GlyphHeight = scaledPercentDimension(
+      baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(line2)), line2ScalePercent);
+  const int line1Y = titleY + glyphHeight + 14;
+  const int line2Y = line1Y + line1GlyphHeight + 8;
   const int barWidth = std::min(300, virtualWidth - 48);
   const int barHeight = 8;
   const int barX = std::max(0, (virtualWidth - barWidth) / 2);
-  const int barY = std::min(virtualHeight - barHeight - 8,
-                            line2Y + kTinyGlyphHeight * kTinyScale + 14);
+  const int barY = std::min(virtualHeight - barHeight - 8, line2Y + line2GlyphHeight + 12);
 
   clearVirtualBuffer(virtualWidth, virtualHeight);
   drawWordLine(title, titleY, wordColor());
   if (!line1.isEmpty()) {
-    const uint8_t line1ScalePercent = chromeLabelScalePercent(line1, 26);
     drawSerifTextScaledCentered(fitSerifTextScaled(line1, virtualWidth - 16, line1ScalePercent),
                                 line1Y, dimColor(), line1ScalePercent, virtualWidth, 0);
   }
   if (!line2.isEmpty()) {
-    const uint8_t line2ScalePercent = chromeLabelScalePercent(line2, 20);
     drawSerifTextScaledCentered(fitSerifTextScaled(line2, virtualWidth - 16, line2ScalePercent),
                                 line2Y, focusColor(), line2ScalePercent, virtualWidth, 0);
   }
