@@ -3747,6 +3747,78 @@ void DisplayManager::fillRoundedRect(int x, int y, int w, int h, int radius, uin
   drawFilledCircle(x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+uint16_t DisplayManager::modernDockHeight() {
+  return 30;
+}
+
+void DisplayManager::drawModernDock(const ModernDock &dock) {
+  const size_t n = dock.tabs.size();
+  if (n == 0) {
+    return;
+  }
+  const int height = static_cast<int>(modernDockHeight());
+  const int y = kDisplayHeight - height;
+  const int margin = 6;
+  const int gap = 4;
+  const int available = kDisplayWidth - 2 * margin - static_cast<int>(n - 1) * gap;
+  if (available <= 0) {
+    return;
+  }
+  // Same "active tab eats the space the inactive ones give up" formula as
+  // rsvpnano's watch-UI dock (screens::detail::navigation in their
+  // Layout.h/ScreenCommon.cpp), generalized from their fixed 4 tabs to
+  // however many App::buildModernDock() hands us.
+  const int small = std::max(20, available / (static_cast<int>(n) + 2));
+  const int activeWidth = std::max(small, available - small * static_cast<int>(n - 1));
+  int x = margin;
+  for (size_t i = 0; i < n; ++i) {
+    const bool active = i == dock.activeIndex;
+    const int w = active ? activeWidth : small;
+    const DockTab &tab = dock.tabs[i];
+    const uint16_t accent = tab.accentColor != 0 ? tab.accentColor : focusColor();
+    const uint16_t surface = active ? blendOverBackground(accent, nightMode_ ? 70 : 26) : backgroundColor();
+    constexpr int kRadius = 7;
+    fillRoundedRect(x, y + 2, w, height - 4, kRadius, accent);
+    fillRoundedRect(x + 2, y + 4, std::max(0, w - 4), std::max(0, height - 8),
+                    std::max(0, kRadius - 2), surface);
+    const int iconSize = std::min(height - 12, 18);
+    const int iconY = y + (height - iconSize) / 2;
+    if (active && !tab.label.isEmpty()) {
+      const int iconX = x + 6;
+      drawIcon(tab.icon, iconX, iconY, iconSize, accent);
+      const int textMaxW = std::max(0, w - iconSize - 14);
+      const String label = fitTinyText(tab.label, textMaxW, kTinyScale);
+      const int textX = iconX + iconSize + 4;
+      const int textY = y + (height - kTinyGlyphHeight * kTinyScale) / 2;
+      drawTinyTextAt(label, textX, textY, wordColor(), kTinyScale);
+    } else {
+      const int iconX = x + (w - iconSize) / 2;
+      drawIcon(tab.icon, iconX, iconY, iconSize, accent);
+    }
+    x += w + gap;
+  }
+}
+
+void DisplayManager::drawProgressRing(int cx, int cy, int radius, uint8_t percent, uint16_t ringColor) {
+  if (radius < 8) {
+    return;
+  }
+  percent = std::min<uint8_t>(percent, 100);
+  constexpr int kSegments = 32;
+  for (int i = 0; i < kSegments; ++i) {
+    const float angle = (i * (360.0f / kSegments) - 90.0f) * 0.01745329252f;
+    const int x0 = cx + static_cast<int>(std::cos(angle) * (radius - 4));
+    const int y0 = cy + static_cast<int>(std::sin(angle) * (radius - 4));
+    const int x1 = cx + static_cast<int>(std::cos(angle) * radius);
+    const int y1 = cy + static_cast<int>(std::sin(angle) * radius);
+    const bool lit = (i * 100) < (static_cast<int>(percent) * kSegments);
+    drawIconLine(x0, y0, x1, y1, lit ? ringColor : dimColor(), 2);
+  }
+  const String label = String(percent) + "%";
+  const int textW = measureTinyTextWidth(label, kTinyScale);
+  drawTinyTextAt(label, cx - textW / 2, cy - (kTinyGlyphHeight * kTinyScale) / 2, ringColor, kTinyScale);
+}
+
 // Minimal vector placeholder glyphs for the built-in IconId set — every
 // shape is built from fillVirtualRect (axis-aligned fills) and
 // drawIconLine (linearly-interpolated strokes), the only 2D primitives
@@ -3906,6 +3978,38 @@ void DisplayManager::drawIcon(ui::IconId id, int x, int y, int size, uint16_t co
       drawIconLine(rightX, cy, cx, botY, color, 2);
       drawIconLine(cx, botY, leftX, cy, color, 2);
       drawFilledCircle(cx, cy, s * 2 / 10, color);
+      break;
+    }
+    case ui::IconId::Device: {
+      // Small screen (rounded body + hollow display) on a short foot —
+      // reads as "device/hub" distinct from Settings' gear.
+      fillRoundedRect(x, y, s, s * 7 / 10, 2, color);
+      fillVirtualRect(x + 2, y + 2, std::max(0, s - 4), std::max(0, s * 7 / 10 - 4),
+                      backgroundColor());
+      fillVirtualRect(cx - s / 10, y + s * 7 / 10, std::max(2, s / 5), 2, color);
+      fillVirtualRect(x + s * 3 / 10, y + s - 2, std::max(2, s * 4 / 10), 2, color);
+      break;
+    }
+    case ui::IconId::Preset: {
+      // Five-point star outline — "saved configuration" glyph, distinct
+      // from the Book/SavePoint bookmark ribbon already used elsewhere.
+      constexpr int kPoints = 5;
+      int px[kPoints] = {}, py[kPoints] = {};
+      int ix[kPoints] = {}, iy[kPoints] = {};
+      const float outerR = s * 0.5f;
+      const float innerR = outerR * 0.42f;
+      for (int i = 0; i < kPoints; ++i) {
+        const float outerAngle = -1.57079633f + i * 2.0f * 3.14159265f / kPoints;
+        const float innerAngle = outerAngle + 3.14159265f / kPoints;
+        px[i] = cx + static_cast<int>(std::cos(outerAngle) * outerR);
+        py[i] = cy + static_cast<int>(std::sin(outerAngle) * outerR);
+        ix[i] = cx + static_cast<int>(std::cos(innerAngle) * innerR);
+        iy[i] = cy + static_cast<int>(std::sin(innerAngle) * innerR);
+      }
+      for (int i = 0; i < kPoints; ++i) {
+        drawIconLine(px[i], py[i], ix[i], iy[i], color, 1);
+        drawIconLine(ix[i], iy[i], px[(i + 1) % kPoints], py[(i + 1) % kPoints], color, 1);
+      }
       break;
     }
     default:
@@ -4316,8 +4420,18 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
 void DisplayManager::renderButtonGrid(const String &title, const std::vector<Button> &buttons,
                                       size_t pageIndex, size_t pageCount,
                                       const String &toastText, bool showBatteryBadge,
-                                      bool dotsOnLeft, bool prominentTitle) {
+                                      bool dotsOnLeft, bool prominentTitle,
+                                      const ModernDock *dock) {
   String renderKey = "grid|";
+  if (dock != nullptr) {
+    renderKey += "dock:";
+    renderKey += String(dock->activeIndex);
+    for (const DockTab &tab : dock->tabs) {
+      renderKey += ",";
+      renderKey += tab.label;
+    }
+    renderKey += "|";
+  }
   renderKey += showBatteryBadge ? "1" : "0";
   renderKey += dotsOnLeft ? "1" : "0";
   renderKey += prominentTitle ? "1" : "0";
@@ -4443,12 +4557,19 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
     const int totalWidth =
         static_cast<int>(pageCount) * dotSize + static_cast<int>(pageCount - 1) * dotGap;
     int dotX = std::max(0, (virtualWidth - totalWidth) / 2);
-    const int dotY = virtualHeight - dotSize - 2;
+    // Sit just above the Modern dock strip instead of hugging the very
+    // bottom edge when one is present, so the dots don't overlap it.
+    const int dotY = (dock != nullptr ? virtualHeight - static_cast<int>(modernDockHeight()) : virtualHeight) -
+                     dotSize - 2;
     for (size_t i = 0; i < pageCount; ++i) {
       const uint16_t color = (i == pageIndex) ? focusColor() : dimColor();
       fillVirtualRect(dotX, dotY, dotSize, dotSize, color);
       dotX += dotSize + dotGap;
     }
+  }
+
+  if (dock != nullptr) {
+    drawModernDock(*dock);
   }
 
   // Grid toast: full, untruncated text of whatever a Toggle/Cycle button's
@@ -4472,6 +4593,112 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
   if (showBatteryBadge) {
     drawBatteryBadge();
   }
+  flushScaledFrame(scale, virtualWidth, virtualHeight);
+}
+
+void DisplayManager::renderLibraryCarousel(const std::vector<LibraryItem> &items, size_t selectedIndex,
+                                           const ModernDock &dock) {
+  if (items.empty()) {
+    renderCenteredWord("LIBRARY");
+    return;
+  }
+  if (selectedIndex >= items.size()) {
+    selectedIndex = items.size() - 1;
+  }
+
+  String renderKey = "libcarousel|";
+  renderKey += String(selectedIndex);
+  renderKey += "|dock:";
+  renderKey += String(dock.activeIndex);
+  renderKey += "|b:";
+  renderKey += batteryLabel_;
+  renderKey += "|d:";
+  renderKey += String(darkMode_ ? 1 : 0);
+  renderKey += "|n:";
+  renderKey += String(nightMode_ ? 1 : 0);
+  for (const LibraryItem &item : items) {
+    renderKey += "|";
+    renderKey += item.title;
+    renderKey += "~";
+    renderKey += item.subtitle;
+    renderKey += "~";
+    renderKey += String(item.progressPercent);
+  }
+
+  if (!initialized_ || renderKey == lastRenderKey_) {
+    return;
+  }
+  lastRenderKey_ = renderKey;
+
+  const int scale = 1;
+  const int virtualWidth = kDisplayWidth;
+  const int virtualHeight = kDisplayHeight;
+  clearVirtualBuffer(virtualWidth, virtualHeight);
+
+  const int dockH = static_cast<int>(modernDockHeight());
+  const int marginX = 8;
+  const int top = 4;
+  const int contentH = virtualHeight - dockH - top - 4;
+  const bool hasNeighbors = items.size() > 1;
+  const int peek = hasNeighbors ? std::max(16, contentH / 6) : 0;
+  const int centerY = top + peek + (hasNeighbors ? 3 : 0);
+  const int centerH = std::max(24, contentH - peek * 2 - (hasNeighbors ? 6 : 0));
+  const int areaW = virtualWidth - marginX * 2;
+  const size_t prevIndex = (selectedIndex + items.size() - 1) % items.size();
+  const size_t nextIndex = (selectedIndex + 1) % items.size();
+
+  // Peek strips: thin, dimmed bars showing the previous/next book's title —
+  // tapping one rotates the carousel onto it (see
+  // App::handleLibraryCarouselTap()). Mirrors rsvpnano's
+  // screens::LibraryScreen::draw() top/bottom peek cards.
+  const uint16_t peekBorder = blendOverBackground(focusColor(), 90);
+  if (hasNeighbors) {
+    fillRoundedRect(marginX, top, areaW, peek, 6, peekBorder);
+    fillRoundedRect(marginX + 2, top + 2, std::max(0, areaW - 4), std::max(0, peek - 4), 4,
+                    backgroundColor());
+    const String prevTitle = fitTinyText(items[prevIndex].title, areaW - 16, kTinyScale);
+    const int prevW = measureTinyTextWidth(prevTitle, kTinyScale);
+    drawTinyTextAt(prevTitle, marginX + std::max(0, (areaW - prevW) / 2),
+                   top + std::max(0, (peek - kTinyGlyphHeight * kTinyScale) / 2), dimColor(), kTinyScale);
+  }
+
+  // Center card: progress ring on the left, title/subtitle on the right —
+  // tapping it opens the book (App::handleLibraryCarouselTap()).
+  const uint16_t cardBorder = focusColor();
+  fillRoundedRect(marginX, centerY, areaW, centerH, 8, cardBorder);
+  fillRoundedRect(marginX + 2, centerY + 2, std::max(0, areaW - 4), std::max(0, centerH - 4), 6,
+                  blendOverBackground(cardBorder, nightMode_ ? 56 : 16));
+
+  const LibraryItem &current = items[selectedIndex];
+  const int ringSize = std::min(centerH - 10, 64);
+  const int ringCx = marginX + 12 + ringSize / 2;
+  const int ringCy = centerY + centerH / 2;
+  drawProgressRing(ringCx, ringCy, ringSize / 2, current.progressPercent, cardBorder);
+
+  const int textX = marginX + 12 + ringSize + 12;
+  const int textW = std::max(0, areaW - (textX - marginX) - 10);
+  const uint8_t titleScale = chromeLabelScalePercent(current.title, 26);
+  const String fittedTitle = fitSerifTextScaled(current.title, textW, titleScale);
+  drawSerifTextScaledAt(fittedTitle, textX, centerY + centerH / 2 - 16, wordColor(), titleScale);
+  if (!current.subtitle.isEmpty()) {
+    const uint8_t subtitleScale = chromeLabelScalePercent(current.subtitle, 18);
+    drawSerifTextScaledAt(fitSerifTextScaled(current.subtitle, textW, subtitleScale), textX,
+                          centerY + centerH / 2 + 6, dimColor(), subtitleScale);
+  }
+
+  if (hasNeighbors) {
+    const int nextY = virtualHeight - dockH - peek - 2;
+    fillRoundedRect(marginX, nextY, areaW, peek, 6, peekBorder);
+    fillRoundedRect(marginX + 2, nextY + 2, std::max(0, areaW - 4), std::max(0, peek - 4), 4,
+                    backgroundColor());
+    const String nextTitle = fitTinyText(items[nextIndex].title, areaW - 16, kTinyScale);
+    const int nextW = measureTinyTextWidth(nextTitle, kTinyScale);
+    drawTinyTextAt(nextTitle, marginX + std::max(0, (areaW - nextW) / 2),
+                   nextY + std::max(0, (peek - kTinyGlyphHeight * kTinyScale) / 2), dimColor(), kTinyScale);
+  }
+
+  drawModernDock(dock);
+  drawBatteryBadge();
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 

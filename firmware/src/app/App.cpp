@@ -3297,6 +3297,21 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
+  // Modern dock bar / library carousel: neither lives in currentGridButtons_
+  // (the dock overlays every dock-tab screen; the carousel replaces the grid
+  // entirely on BookPicker), so both need first refusal on a plain tap,
+  // before handleGridTap() below hit-tests against possibly-stale rects.
+  if (navMode_ == NavMode::Modern && absDeltaX <= static_cast<int>(kTapSlopPx) &&
+      absDeltaY <= static_cast<int>(kTapSlopPx)) {
+    if (menuScreen_ == MenuScreen::BookPicker &&
+        handleLibraryCarouselTap(event.x, event.y, nowMs)) {
+      return;
+    }
+    if (handleModernDockTap(event.x, event.y, nowMs)) {
+      return;
+    }
+  }
+
   // Immediate-mode button grid: tap directly hits whichever button is
   // visible at that spot (same Rects the last render built), swipe
   // left/right pages through screens with more items than fit at once.
@@ -3894,7 +3909,10 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
   constexpr uint16_t kAreaY = 32;
   constexpr uint16_t kGap = 4;
   const uint16_t areaW = static_cast<uint16_t>(BoardConfig::DISPLAY_WIDTH - 2 * kAreaX);
-  const uint16_t bottomReserve = (pageCount > 1 && !gridPagesVertically_) ? 10 : 2;
+  const bool showModernDock = isModernDockScreen();
+  const uint16_t bottomReserve = showModernDock
+                                     ? DisplayManager::modernDockHeight()
+                                     : ((pageCount > 1 && !gridPagesVertically_) ? 10 : 2);
   const uint16_t areaH =
       static_cast<uint16_t>(BoardConfig::DISPLAY_HEIGHT - kAreaY - bottomReserve);
 
@@ -3976,8 +3994,10 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
                               menuScreen_ == MenuScreen::WelcomeTheme ||
                               menuScreen_ == MenuScreen::WelcomeHighlightColor ||
                               menuScreen_ == MenuScreen::WelcomeReadingMode;
+  const DisplayManager::ModernDock dock = showModernDock ? buildModernDock() : DisplayManager::ModernDock{};
   display_.renderButtonGrid(title, currentGridButtons_, page, pageCount, activeGridToastText(millis()),
-                            showBatteryBadge, gridPagesVertically_, prominentTitle);
+                            showBatteryBadge, gridPagesVertically_, prominentTitle,
+                            showModernDock ? &dock : nullptr);
 }
 
 void App::renderItemGridLibrary(const std::vector<DisplayManager::LibraryItem> &items,
@@ -4109,6 +4129,26 @@ void App::renderMenuAnyMode(const String &title, const std::vector<String> &item
 
 void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem> &items,
                                    size_t selectedIndex, const String &title) {
+  // Cover-flow carousel instead of the plain title+subtitle grid — only for
+  // the actual Library screen; WifiNetworks reuses this same function but
+  // is a deep settings screen, not a dock-tab hub, so it keeps the old
+  // header+grid chrome even in Modern mode (see isModernDockScreen()).
+  if (navMode_ == NavMode::Modern && menuScreen_ == MenuScreen::BookPicker) {
+    applyReaderUiOrientation();
+    display_.setModernCardStyle(true);
+    currentGridButtons_.clear();
+    currentGridItemIndices_.clear();
+    // items[0] is always the Back/Skip row (see openBookPicker()) — the
+    // carousel has no such row, back navigation happens through the dock.
+    std::vector<DisplayManager::LibraryItem> carouselItems;
+    if (items.size() > 1) {
+      carouselItems.assign(items.begin() + 1, items.end());
+    }
+    const size_t carouselSelected = selectedIndex > 0 ? selectedIndex - 1 : 0;
+    display_.renderLibraryCarousel(carouselItems, carouselSelected, buildModernDock());
+    return;
+  }
+
   if (navMode_ == NavMode::Buttons || navMode_ == NavMode::Modern) {
     renderItemGridLibrary(items, selectedIndex, title);
     return;
@@ -4130,6 +4170,159 @@ void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem
   } else {
     display_.renderMenuScroll(titles, selectedIndex);
   }
+}
+
+namespace {
+constexpr uint16_t packRgb565(uint8_t r, uint8_t g, uint8_t b) {
+  return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+}
+}  // namespace
+
+bool App::isModernDockScreen() const {
+  if (navMode_ != NavMode::Modern) {
+    return false;
+  }
+  switch (menuScreen_) {
+    case MenuScreen::Main:
+    case MenuScreen::BookPicker:
+    case MenuScreen::SettingsHome:
+    case MenuScreen::PluginsHome:
+    case MenuScreen::Presets:
+      return true;
+    default:
+      return false;
+  }
+}
+
+App::ModernDockTab App::modernDockActiveTab() const {
+  switch (menuScreen_) {
+    case MenuScreen::SettingsHome:
+      return ModernDockTab::Settings;
+    case MenuScreen::PluginsHome:
+      return ModernDockTab::Plugins;
+    case MenuScreen::Presets:
+      return ModernDockTab::Presets;
+    default:
+      return ModernDockTab::Read;
+  }
+}
+
+DisplayManager::ModernDock App::buildModernDock() const {
+  DisplayManager::ModernDock dock;
+  dock.tabs.reserve(4);
+  // Stable face colors (not the current focus color) so the dock reads the
+  // same regardless of the user's chosen highlight color — same reasoning
+  // as rsvpnano's own dock, see their ScreenCommon.cpp comment. Read (0)
+  // is the exception: it stays tied to focusColor() (accentColor left 0),
+  // since it's the "home" tab and should match the rest of the reading UI.
+  dock.tabs.push_back({uiText(UiText::Read), ui::IconId::Book, 0});
+  dock.tabs.push_back(
+      {uiText(UiText::Settings), ui::IconId::Settings, packRgb565(190, 130, 32)});
+  dock.tabs.push_back(
+      {uiText(UiText::Plugins), ui::IconId::Plugin, packRgb565(70, 132, 205)});
+  dock.tabs.push_back(
+      {tr3(TrKey3::PresetsLabel), ui::IconId::Preset, packRgb565(150, 90, 205)});
+  dock.activeIndex = static_cast<uint8_t>(modernDockActiveTab());
+  return dock;
+}
+
+bool App::handleModernDockTap(uint16_t x, uint16_t y, uint32_t nowMs) {
+  (void)nowMs;
+  if (!isModernDockScreen()) {
+    return false;
+  }
+  const int dockTop = BoardConfig::DISPLAY_HEIGHT - static_cast<int>(DisplayManager::modernDockHeight());
+  if (static_cast<int>(y) < dockTop) {
+    return false;
+  }
+  const DisplayManager::ModernDock dock = buildModernDock();
+  const size_t n = dock.tabs.size();
+  if (n == 0) {
+    return true;  // Inside the dock strip but nothing to hit — swallow it.
+  }
+  // Mirrors DisplayManager::drawModernDock()'s exact tab-width formula so a
+  // tap lands on the tab actually drawn under the finger.
+  const int margin = 6;
+  const int gap = 4;
+  const int available = BoardConfig::DISPLAY_WIDTH - 2 * margin - static_cast<int>(n - 1) * gap;
+  if (available <= 0) {
+    return true;
+  }
+  const int small = std::max(20, available / (static_cast<int>(n) + 2));
+  const int activeWidth = std::max(small, available - small * static_cast<int>(n - 1));
+  int tabX = margin;
+  for (size_t i = 0; i < n; ++i) {
+    const int w = (i == dock.activeIndex) ? activeWidth : small;
+    if (static_cast<int>(x) >= tabX && static_cast<int>(x) < tabX + w) {
+      const auto tapped = static_cast<ModernDockTab>(i);
+      if (tapped != modernDockActiveTab()) {
+        switch (tapped) {
+          case ModernDockTab::Read:
+            menuScreen_ = MenuScreen::Main;
+            renderMainMenu();
+            break;
+          case ModernDockTab::Settings:
+            openSettings();
+            break;
+          case ModernDockTab::Plugins:
+            openPluginsHome();
+            break;
+          case ModernDockTab::Presets:
+            openPresets();
+            break;
+        }
+      }
+      return true;
+    }
+    tabX += w + gap;
+  }
+  return true;  // Inside the strip, between/past tabs — still swallow it.
+}
+
+bool App::handleLibraryCarouselTap(uint16_t x, uint16_t y, uint32_t nowMs) {
+  (void)x;
+  const int dockH = static_cast<int>(DisplayManager::modernDockHeight());
+  if (static_cast<int>(y) >= BoardConfig::DISPLAY_HEIGHT - dockH) {
+    return false;  // Dock strip — let handleModernDockTap() handle it.
+  }
+  if (bookMenuItems_.size() <= 1) {
+    // Nothing to rotate to (0 or 1 book) — any tap in the content area just
+    // opens the sole book, same as the center-card zone below.
+    selectBookPickerItem(nowMs);
+    return true;
+  }
+
+  // Mirrors DisplayManager::renderLibraryCarousel()'s exact band geometry
+  // so a tap lands on the peek strip/card actually drawn under the finger.
+  const int top = 4;
+  const int contentH = BoardConfig::DISPLAY_HEIGHT - dockH - top - 4;
+  const int peek = std::max(16, contentH / 6);
+  const int centerY = top + peek + 3;
+  const int centerH = std::max(24, contentH - peek * 2 - 6);
+
+  // bookPickerSelectedIndex_ is 1-based (0 is the Back row, never reachable
+  // from the carousel — see openBookPicker()); rowIndex is the 0-based
+  // index into bookPickerBookIndices_ that renderLibraryCarousel() actually
+  // drew as "selected".
+  const size_t bookCount = bookMenuItems_.size() - 1;
+  const size_t rowIndex = bookPickerSelectedIndex_ > 0 ? bookPickerSelectedIndex_ - 1 : 0;
+
+  if (static_cast<int>(y) < top) {
+    return true;  // Small top margin — swallow, not a real miss.
+  }
+  if (static_cast<int>(y) < top + peek) {
+    bookPickerSelectedIndex_ = (rowIndex + bookCount - 1) % bookCount + 1;
+    renderBookPicker();
+    return true;
+  }
+  if (static_cast<int>(y) >= centerY && static_cast<int>(y) < centerY + centerH) {
+    selectBookPickerItem(nowMs);
+    return true;
+  }
+  // Bottom peek strip (or the small gap around it).
+  bookPickerSelectedIndex_ = (rowIndex + 1) % bookCount + 1;
+  renderBookPicker();
+  return true;
 }
 
 bool App::isGridItemArmed(size_t canonicalIndex, uint32_t nowMs) const {
@@ -11397,6 +11590,7 @@ DisplayManager::LibraryItem App::libraryItemForBook(size_t bookIndex) {
   DisplayManager::LibraryItem item;
   item.title = storage_.bookDisplayName(bookIndex);
   item.subtitle = storage_.bookAuthorName(bookIndex);
+  item.progressPercent = 0;
 
   uint8_t percent = 0;
   const bool hasProgress = bookProgressPercent(bookIndex, percent);
@@ -11405,6 +11599,7 @@ DisplayManager::LibraryItem App::libraryItemForBook(size_t bookIndex) {
       item.subtitle += " - ";
     }
     item.subtitle += String(percent) + "%";
+    item.progressPercent = percent;
   }
 
   if (item.subtitle.isEmpty() && usingStorageBook_ && bookIndex == currentBookIndex_) {

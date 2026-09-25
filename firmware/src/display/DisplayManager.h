@@ -73,6 +73,32 @@ class DisplayManager {
   struct LibraryItem {
     String title;
     String subtitle;
+    // 0-100 (0 also covers "no saved progress yet") — only read by the
+    // Modern nav mode's carousel (renderLibraryCarousel()); every other
+    // library rendering path ignores it. No default value: a member
+    // initializer here would make this a non-aggregate under the firmware's
+    // C++ standard, breaking every existing `push_back({title, subtitle})`
+    // call site across App.cpp. Callers that don't care leave it
+    // zero-initialized by that same aggregate-init rule; libraryItemForBook()
+    // sets it explicitly either way.
+    uint8_t progressPercent;
+  };
+
+  // One tab of App::NavMode::Modern's bottom dock bar (see
+  // DisplayManager::drawModernDock()). Mirrors rsvpnano's watch-UI dock:
+  // the active tab expands and shows its label, inactive tabs shrink to a
+  // bare icon in their own accent color. No default member values, same
+  // aggregate-initialization reason as LibraryItem::progressPercent above —
+  // App::buildModernDock() always supplies all three fields anyway.
+  struct DockTab {
+    String label;
+    ui::IconId icon;
+    uint16_t accentColor;  // 0 = use the current focus color
+  };
+
+  struct ModernDock {
+    std::vector<DockTab> tabs;
+    uint8_t activeIndex = 0;
   };
 
   struct Button {
@@ -251,10 +277,25 @@ class DisplayManager {
   void renderLibrary(const std::vector<LibraryItem> &items, size_t selectedIndex);
   void renderTextEntry(const String &title, const String &prompt, const String &value,
                        const String &helperText, const std::vector<Button> &buttons);
+  // `dock`, when non-null, reserves a bottom strip and draws
+  // App::NavMode::Modern's dock bar there (see drawModernDock()) instead of
+  // the usual bottom-centered page dots — the caller (App::renderItemGrid())
+  // is responsible for already having laid its tiles out above that strip.
   void renderButtonGrid(const String &title, const std::vector<Button> &buttons, size_t pageIndex,
                         size_t pageCount, const String &toastText = "",
                         bool showBatteryBadge = true, bool dotsOnLeft = false,
-                        bool prominentTitle = false);
+                        bool prominentTitle = false, const ModernDock *dock = nullptr);
+  // Height in px the Modern dock reserves at the bottom of the screen —
+  // App::renderItemGrid() shrinks its tile-layout area by this much
+  // whenever it's about to pass a non-null dock into renderButtonGrid().
+  static uint16_t modernDockHeight();
+  // Cover-flow style library browser for NavMode::Modern (Screen::Library
+  // in rsvpnano's watch UI): previous/next books peek as thin bars above
+  // and below the current one, which gets a progress ring instead of a
+  // plain subtitle. Every other nav mode keeps using
+  // App::renderItemGridLibrary()'s plain scrollable list.
+  void renderLibraryCarousel(const std::vector<LibraryItem> &items, size_t selectedIndex,
+                             const ModernDock &dock);
   // line1ScalePercent/line2ScalePercent domyślnie 36/28 (dotychczasowy
   // rozmiar) — ekrany kreatora pierwszego uruchomienia proszą o większe
   // wartości, żeby tekst był czytelny dla osób 40+, bez zmiany rozmiaru na
@@ -351,6 +392,16 @@ class DisplayManager {
   // the renderer has no native rounded-rect primitive. radius is clamped to
   // half the shorter side; radius 0 falls back to a plain fillVirtualRect().
   void fillRoundedRect(int x, int y, int w, int h, int radius, uint16_t color);
+  // Bottom navigation strip for NavMode::Modern — see ModernDock. Draws
+  // `tabs.size()` rounded, accent-bordered pills across the full display
+  // width; the active one expands to fit an icon+label, the rest shrink to
+  // an icon-only square in their own accent color.
+  void drawModernDock(const ModernDock &dock);
+  // Ring of short radial ticks (not a filled arc — no native arc primitive)
+  // lit up to `percent` around the circle, centered text readout in the
+  // middle. Used by renderLibraryCarousel() for the selected book's
+  // progress; radius/thickness auto-scale to `rect`.
+  void drawProgressRing(int cx, int cy, int radius, uint8_t percent, uint16_t ringColor);
   void drawBatteryBadge();
   void drawBatteryBadge(int logicalWidth, int logicalHeight);
   void drawPreviousSentenceHint();

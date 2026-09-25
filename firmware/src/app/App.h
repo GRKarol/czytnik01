@@ -711,6 +711,37 @@ class App {
   /// Back buttons are exempt — a confirm step on a pure navigation action
   /// is friction without a safety payoff, so Back always fires immediately.
   bool handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs);
+  /// The 4 top-level destinations of NavMode::Modern's bottom dock bar —
+  /// mirrors rsvpnano's watch-UI dock faces (Read/Settings/Device/Focus),
+  /// substituting our own Plugins/Presets for their Device/Focus tabs since
+  /// we don't have those and do have these. See buildModernDock().
+  enum class ModernDockTab : uint8_t {
+    Read = 0,
+    Settings = 1,
+    Plugins = 2,
+    Presets = 3,
+  };
+  /// True for exactly the screens that show the Modern dock — the 4
+  /// ModernDockTab landing screens plus the library carousel (reached from
+  /// Read). Deep/nested screens (SettingsDisplay, PluginDetail, confirm
+  /// dialogs, ...) keep the old back-button+title header instead, same as
+  /// rsvpnano's own sub-screens (see e.g. their storageEncryption()).
+  bool isModernDockScreen() const;
+  /// Which dock tab reads as "active" for the current menuScreen_ — Main and
+  /// BookPicker both count as Read, matching rsvpnano's
+  /// `active <= Screen::Chapters` grouping.
+  ModernDockTab modernDockActiveTab() const;
+  DisplayManager::ModernDock buildModernDock() const;
+  /// Hit-tests a tap against the dock bar drawn by buildModernDock() (bottom
+  /// DisplayManager::modernDockHeight() px of the screen) and switches
+  /// menuScreen_ to the tapped tab's landing screen. Called before
+  /// handleGridTap()/handleLibraryCarouselTap() so a dock tap can never be
+  /// swallowed by stale grid-tile rects underneath it.
+  bool handleModernDockTap(uint16_t x, uint16_t y, uint32_t nowMs);
+  /// Tap hit-testing for the Modern-mode library carousel (top/center/bottom
+  /// zones — see DisplayManager::renderLibraryCarousel()). Only called when
+  /// menuScreen_ == BookPicker && navMode_ == Modern.
+  bool handleLibraryCarouselTap(uint16_t x, uint16_t y, uint32_t nowMs);
   /// True if `canonicalIndex` on the current menu screen is the armed
   /// (first-tapped, awaiting confirm) grid button and the confirm window
   /// hasn't expired. Shared by handleGridTap() (to decide confirm vs. arm)
