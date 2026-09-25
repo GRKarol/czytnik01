@@ -46,6 +46,10 @@ class App {
     Swipe = 0,
     DPad = 1,
     Buttons = 2,
+    // Same button-grid layout/touch handling as Buttons — only drawButtons()
+    // paints differently (rounded accent-bordered cards instead of square
+    // gray tiles). See DisplayManager::setModernCardStyle().
+    Modern = 3,
   };
 
   App();

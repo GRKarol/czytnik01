@@ -264,6 +264,7 @@ enum class TrKey3 : uint8_t {
   WelcomeAppPairingTitle,
   WelcomeConfigureInAppLine1,
   WelcomeConfigureInAppLine2,
+  ModernLabel,
 };
 
 namespace Translations3 {

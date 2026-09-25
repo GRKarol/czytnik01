@@ -153,6 +153,7 @@ TrKey3.TutorialHelpDesc;W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis.;In 
 TrKey3.ChannelStaging;Testowy;Staging;Pruebas;Test;Testkanal;Testare
 TrKey3.ChannelProduction;Produkcyjny;Production;Produccion;Production;Produktion;Productie
 TrKey3.ButtonsLabel;Przyciski;Buttons;Botones;Boutons;Tasten;Butoane
+TrKey3.ModernLabel;Nowoczesny;Modern;Moderno;Moderne;Modern;Modern
 TrKey3.PercentComplete;ukonczone;complete;completado;termine;abgeschlossen;finalizat
 TrKey3.ReadFromPlace;Czytaj od miejsca;Read from place;Leer desde el punto;Lire depuis l'endroit;Weiterlesen ab Stelle;Citeste de la loc
 TrKey3.DeleteBookLabel;Usun ksiazke;Delete book;Eliminar libro;Supprimer le livre;Buch loeschen;Sterge cartea
@@ -219,6 +220,14 @@ TrKey3.WelcomeLoadingPhrase3;Odzyskaj pasje do czytania;Rediscover your love of 
 TrKey3.WelcomeLoadingBottomLoading;Ladowanie;Loading;Cargando;Chargement;Wird geladen;Se incarca
 TrKey3.WelcomeLoadingBottomDownloading;Pobieranie potrzebnych zasobow;Downloading required resources;Descargando recursos necesarios;Telechargement des ressources necessaires;Erforderliche Ressourcen werden heruntergeladen;Se descarca resursele necesare
 TrKey3.WelcomePowerBackHint;Przycisk zasilania cofa o krok;Power button goes back a step;El boton de encendido retrocede un paso;Le bouton d'alimentation revient en arriere;Netzschalter geht einen Schritt zurueck;Butonul de pornire revine cu un pas
+TrKey3.WifiSkipHint;Opcjonalnie, niezalecane;Optional, not recommended;Opcional, no recomendado;Optionnel, non recommande;Optional, nicht empfohlen;Optional, nerecomandat
+TrKey3.SavePointNameModeColon;Nazwa zapisu: ;Save name: ;Nombre guardado: ;Nom sauvegarde : ;Speichername: ;Nume salvare: 
+TrKey3.SavePointNameCustomOption;Wlasna;Custom;Personalizado;Personnalise;Benutzerdefiniert;Personalizat
+TrKey3.SavePointNameDefaultOption;Domyslna;Default;Predeterminado;Par defaut;Standard;Implicit
+TrKey3.NextLabel;Dalej;Next;Siguiente;Suivant;Weiter;Urmator
+TrKey3.WelcomeAppPairingTitle;Polaczenie z aplikacja;Connect the app;Conectar la app;Connecter l'appli;App verbinden;Conecteaza aplicatia
+TrKey3.WelcomeConfigureInAppLine1;Skonfiguruj w aplikacji;Set up in the app;Configura en la app;Configurer dans l'appli;In der App einrichten;Configureaza in aplicatie
+TrKey3.WelcomeConfigureInAppLine2;lub dodaj ksiazke, jesli chcesz;or add a book if you like;o anade un libro si quieres;ou ajoutez un livre si besoin;oder fuege ein Buch hinzu;sau adauga o carte daca vrei
 UiText.Resume;Wznow;Resume;Reanudar;Reprendre;Weiter;Continua
 UiText.Chapters;Rozdzialy;Chapters;Capitulos;Chapitres;Kapitel;Capitole
 UiText.Library;Biblioteka;Library;Biblioteca;Bibliotheque;Bibliothek;Biblioteca

@@ -767,6 +767,8 @@ App::NavMode navModeFromSetting(uint8_t value) {
       return App::NavMode::DPad;
     case static_cast<uint8_t>(App::NavMode::Swipe):
       return App::NavMode::Swipe;
+    case static_cast<uint8_t>(App::NavMode::Modern):
+      return App::NavMode::Modern;
     case static_cast<uint8_t>(App::NavMode::Buttons):
     default:
       return App::NavMode::Buttons;
@@ -780,6 +782,8 @@ App::NavMode nextNavMode(App::NavMode current) {
     case App::NavMode::Swipe:
       return App::NavMode::DPad;
     case App::NavMode::DPad:
+      return App::NavMode::Modern;
+    case App::NavMode::Modern:
     default:
       return App::NavMode::Buttons;
   }
@@ -3801,6 +3805,7 @@ size_t savePointsTileStartForPage(size_t page) {
 void App::renderItemGrid(const String &title, const std::vector<String> &items,
                          size_t selectedIndex, size_t headerRows, bool showBatteryBadge) {
   applyReaderUiOrientation();
+  display_.setModernCardStyle(navMode_ == NavMode::Modern);
 
   currentGridButtons_.clear();
   currentGridItemIndices_.clear();
@@ -3978,6 +3983,7 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
 void App::renderItemGridLibrary(const std::vector<DisplayManager::LibraryItem> &items,
                                 size_t selectedIndex, const String &title) {
   applyReaderUiOrientation();
+  display_.setModernCardStyle(navMode_ == NavMode::Modern);
 
   currentGridButtons_.clear();
   currentGridItemIndices_.clear();
@@ -4103,7 +4109,7 @@ void App::renderMenuAnyMode(const String &title, const std::vector<String> &item
 
 void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem> &items,
                                    size_t selectedIndex, const String &title) {
-  if (navMode_ == NavMode::Buttons) {
+  if (navMode_ == NavMode::Buttons || navMode_ == NavMode::Modern) {
     renderItemGridLibrary(items, selectedIndex, title);
     return;
   }
@@ -4269,7 +4275,7 @@ void App::annotateSettingsDisplayButton(DisplayManager::Button &button,
       break;
     case kSettingsDisplayNavModeIndex:
       button.kind = DisplayManager::Button::ButtonKind::Cycle;
-      button.cycleCount = 3;
+      button.cycleCount = 4;
       button.cycleState = static_cast<uint8_t>(navMode_);
       break;
     case kSettingsDisplayReaderBatteryIndex:
@@ -8219,6 +8225,8 @@ String App::navModeLabel() const {
       return "D-Pad";
     case NavMode::Buttons:
       return tr3(TrKey3::ButtonsLabel);
+    case NavMode::Modern:
+      return tr3(TrKey3::ModernLabel);
     case NavMode::Swipe:
     default:
       return "Swipe";
@@ -9203,7 +9211,7 @@ void App::selectPluginsActiveItem(uint32_t nowMs) {
 void App::renderPluginsActive() {
   // No battery badge here: this screen is a dense full-width grid and the
   // corner badge visually collides with the tiles.
-  if (navMode_ == NavMode::Buttons) {
+  if (navMode_ == NavMode::Buttons || navMode_ == NavMode::Modern) {
     renderItemGrid("", pluginsActiveMenuItems_, pluginsActiveSelectedIndex_, 0, false);
     return;
   }

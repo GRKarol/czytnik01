@@ -164,6 +164,11 @@ class DisplayManager {
   uint8_t focusColorIndex() const;
   void setDarkMode(bool darkMode);
   void setNightMode(bool nightMode);
+  // Rounded, accent-bordered cards instead of the default square gray tiles
+  // for every grid-based menu screen (main menu, settings, library, ...).
+  // Same grid geometry/touch hit-testing as the default style — only
+  // drawButtons()'s painting changes. See App::NavMode::Modern.
+  void setModernCardStyle(bool enabled);
   void setUiOrientation(BoardConfig::UiOrientation orientation);
   void setUiRotated180(bool rotated180);
   void setTypographyConfig(const TypographyConfig &config);
@@ -342,6 +347,10 @@ class DisplayManager {
   // axis-aligned rects.
   void drawIconLine(int x0, int y0, int x1, int y1, uint16_t color, int thickness = 1);
   void drawFilledCircle(int cx, int cy, int radius, uint16_t color);
+  // Filled rounded rect built from fillVirtualRect() + drawFilledCircle() —
+  // the renderer has no native rounded-rect primitive. radius is clamped to
+  // half the shorter side; radius 0 falls back to a plain fillVirtualRect().
+  void fillRoundedRect(int x, int y, int w, int h, int radius, uint16_t color);
   void drawBatteryBadge();
   void drawBatteryBadge(int logicalWidth, int logicalHeight);
   void drawPreviousSentenceHint();
@@ -375,6 +384,7 @@ class DisplayManager {
   uint8_t focusColorIndex_ = 1;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple
   bool darkMode_ = true;
   bool nightMode_ = false;
+  bool modernCardStyle_ = false;
   BoardConfig::UiOrientation uiOrientation_ =
       BoardConfig::UI_ROTATED_180 ? BoardConfig::UiOrientation::LandscapeFlipped
                                   : BoardConfig::UiOrientation::Landscape;

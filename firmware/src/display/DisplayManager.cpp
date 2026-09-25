@@ -1277,6 +1277,15 @@ void DisplayManager::setNightMode(bool nightMode) {
   lastRenderKey_ = "";
 }
 
+void DisplayManager::setModernCardStyle(bool enabled) {
+  if (modernCardStyle_ == enabled) {
+    return;
+  }
+
+  modernCardStyle_ = enabled;
+  lastRenderKey_ = "";
+}
+
 void DisplayManager::setUiOrientation(BoardConfig::UiOrientation orientation) {
   if (uiOrientation_ == orientation) {
     return;
@@ -3720,6 +3729,24 @@ void DisplayManager::drawFilledCircle(int cx, int cy, int radius, uint16_t color
   }
 }
 
+void DisplayManager::fillRoundedRect(int x, int y, int w, int h, int radius, uint16_t color) {
+  if (w <= 0 || h <= 0) {
+    return;
+  }
+  radius = std::max(0, std::min(radius, std::min(w, h) / 2));
+  if (radius == 0) {
+    fillVirtualRect(x, y, w, h, color);
+    return;
+  }
+  fillVirtualRect(x + radius, y, w - 2 * radius, h, color);
+  fillVirtualRect(x, y + radius, radius, h - 2 * radius, color);
+  fillVirtualRect(x + w - radius, y + radius, radius, h - 2 * radius, color);
+  drawFilledCircle(x + radius, y + radius, radius, color);
+  drawFilledCircle(x + w - radius - 1, y + radius, radius, color);
+  drawFilledCircle(x + radius, y + h - radius - 1, radius, color);
+  drawFilledCircle(x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
 // Minimal vector placeholder glyphs for the built-in IconId set — every
 // shape is built from fillVirtualRect (axis-aligned fills) and
 // drawIconLine (linearly-interpolated strokes), the only 2D primitives
@@ -4025,10 +4052,14 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
     // "did I already tap this by accident?".
     const bool tileActiveTint = button.active && button.kind != Button::ButtonKind::Toggle &&
                                  button.kind != Button::ButtonKind::Cycle;
-    const uint16_t borderColor = button.armed
-                                      ? focusColor()
-                                      : (tileActiveTint ? selectedBarColor()
-                                                        : (button.accent ? focusColor() : dimColor()));
+    // Modern style borders every tile in the accent color (not just the ones
+    // explicitly flagged accent) — that's the whole visual difference from
+    // the default square gray tiles, see DisplayManager::setModernCardStyle.
+    const uint16_t borderColor =
+        button.armed
+            ? focusColor()
+            : (tileActiveTint ? selectedBarColor()
+                               : (modernCardStyle_ || button.accent ? focusColor() : dimColor()));
     uint16_t fillColor = backgroundColor();
     if (button.armed) {
       fillColor = focusColor();
@@ -4036,11 +4067,21 @@ void DisplayManager::drawButtons(const std::vector<Button> &buttons) {
       fillColor = blendOverBackground(borderColor, nightMode_ ? 128 : 40);
     } else if (button.accent) {
       fillColor = blendOverBackground(borderColor, nightMode_ ? 92 : 24);
+    } else if (modernCardStyle_) {
+      fillColor = blendOverBackground(focusColor(), nightMode_ ? 56 : 14);
     }
     const uint16_t labelColor = button.armed ? backgroundColor() : wordColor();
 
-    fillVirtualRect(button.x, button.y, button.width, button.height, borderColor);
-    fillVirtualRect(button.x + 1, button.y + 1, button.width - 2, button.height - 2, fillColor);
+    if (modernCardStyle_) {
+      constexpr int kModernCardRadius = 6;
+      fillRoundedRect(button.x, button.y, button.width, button.height, kModernCardRadius,
+                      borderColor);
+      fillRoundedRect(button.x + 2, button.y + 2, button.width - 4, button.height - 4,
+                      std::max(0, kModernCardRadius - 2), fillColor);
+    } else {
+      fillVirtualRect(button.x, button.y, button.width, button.height, borderColor);
+      fillVirtualRect(button.x + 1, button.y + 1, button.width - 2, button.height - 2, fillColor);
+    }
 
     // Icon-only button (no label): the back-corner arrow and anything else
     // that reads better as a glyph than as text. Nothing else to draw.
@@ -4291,6 +4332,8 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
   renderKey += String(darkMode_ ? 1 : 0);
   renderKey += "|n:";
   renderKey += String(nightMode_ ? 1 : 0);
+  renderKey += "|m:";
+  renderKey += String(modernCardStyle_ ? 1 : 0);
   for (const Button &button : buttons) {
     renderKey += "|";
     renderKey += button.label;

@@ -144,7 +144,7 @@ inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[103][6] = {
+  static const char *const kTable[104][6] = {
       {"Save point added", "Punto guardado agregado", "Point de sauvegarde ajoute", "Lesezeichen hinzugefuegt", "Punct salvat adaugat", "Punkt zapisu dodany"},  // SavePointAdded
       {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zakladke"},  // NameBookmark
       {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazwe:"},  // EnterNamePrompt
@@ -248,6 +248,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Connect the app", "Conectar la app", "Connecter l'appli", "App verbinden", "Conecteaza aplicatia", "Polaczenie z aplikacja"},  // WelcomeAppPairingTitle
       {"Set up in the app", "Configura en la app", "Configurer dans l'appli", "In der App einrichten", "Configureaza in aplicatie", "Skonfiguruj w aplikacji"},  // WelcomeConfigureInAppLine1
       {"or add a book if you like", "o anade un libro si quieres", "ou ajoutez un livre si besoin", "oder fuege ein Buch hinzu", "sau adauga o carte daca vrei", "lub dodaj ksiazke, jesli chcesz"},  // WelcomeConfigureInAppLine2
+      {"Modern", "Moderno", "Moderne", "Modern", "Modern", "Nowoczesny"},  // ModernLabel
   };
   return kTable[keyIndex][langIndex];
 }
