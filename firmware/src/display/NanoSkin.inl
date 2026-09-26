@@ -78,7 +78,63 @@ void DisplayManager::setBatteryState(bool present, uint8_t percent, bool chargin
   batteryCharging_ = charging;
 }
 
-uint16_t DisplayManager::nanoColor(NanoRole role) const {
+// Fixed palettes, colors in NanoRole order (Background, Foreground, Muted,
+// Subtle, Accent, OnAccent, SurfaceMuted, SurfaceActive, Outline,
+// ProgressTrack). Where an rsvpnano theme's accentBar differs from its
+// accent (Nord, Gruvbox, Tokyo Night, Solarized), the bar color is used as
+// the accent: here the accent fills whole tiles and sliders, which the
+// softer bar color carries better than their red focus-letter color.
+namespace {
+
+struct NanoPaletteDef {
+  const char *name;
+  uint16_t colors[10];
+};
+
+constexpr NanoPaletteDef kNanoPalettes[] = {
+    {"Mocha", {0x18E5, 0xCEBE, 0xA579, 0x7C33, 0xF455, 0x1083, 0x3188, 0x422B, 0x5ACE, 0x3188}},  // rsvpnano catppuccin-mocha
+    {"Macchiato", {0x2127, 0xCE9E, 0xA579, 0x8434, 0xEC32, 0x18C4, 0x31C9, 0x4A6C, 0x5B0F, 0x31C9}},  // rsvpnano catppuccin-macchiato
+    {"Frappe", {0x31A8, 0xC69E, 0xA579, 0x8454, 0xE410, 0x2126, 0x422B, 0x52AD, 0x6350, 0x422B}},  // rsvpnano catppuccin-frappe
+    {"Latte", {0xEF9E, 0x4A6D, 0x6B70, 0x8C74, 0xD067, 0xEF9E, 0xCE9B, 0xBE19, 0x9D16, 0xCE9B}},  // rsvpnano catppuccin-latte
+    {"Dracula", {0x2946, 0xFFDE, 0xBDF7, 0x6394, 0xFBD8, 0x2946, 0x422B, 0x6394, 0x6394, 0x422B}},  // rsvpnano dracula
+    {"Nord", {0x29A8, 0xEF7E, 0xDEFD, 0x8518, 0x8E1A, 0x29A8, 0x426B, 0x4AAD, 0x8518, 0x426B}},  // rsvpnano nord
+    {"Gruvbox", {0x2945, 0xEED6, 0xACD0, 0x940E, 0xFDE5, 0x2945, 0x39C6, 0x5248, 0x62EA, 0x39C6}},  // rsvpnano gruvbox-dark
+    {"Tokyo", {0x18C4, 0xC65E, 0x9D39, 0x52F1, 0x7D1E, 0x18C4, 0x2968, 0x3A0C, 0x52F1, 0x2968}},  // rsvpnano tokyo-night
+    {"Solarized", {0x0146, 0xFFBC, 0x9514, 0x84B2, 0x245A, 0x0146, 0x09E9, 0x124A, 0x5B6E, 0x01A8}},  // rsvpnano solarized-dark
+    {"Cream", {0xFFDB, 0x18C2, 0x6B4A, 0x83EC, 0x0373, 0xFFFF, 0xEEF5, 0xDE73, 0x9CAD, 0xDE73}},  // rsvpnano dyslexic
+    {"Sepia", {0xF77B, 0x3965, 0x7B4B, 0x8BCC, 0xB2A5, 0xFFFF, 0xEEF8, 0xDE54, 0xACAF, 0xDE54}},  // ours: warm paper
+    {"Graphite", {0x0000, 0xE73C, 0x8C51, 0x5AEB, 0x4D1F, 0x0000, 0x10A2, 0x2124, 0x39C7, 0x2124}},  // ours: OLED black, grey tiles
+    {"Forest", {0x1924, 0xDF3B, 0x9D93, 0x6C2E, 0x7E2F, 0x1102, 0x2185, 0x3227, 0x4B0A, 0x2185}},  // ours: dark green
+};
+constexpr uint8_t kNanoFixedPaletteCount = sizeof(kNanoPalettes) / sizeof(kNanoPalettes[0]);
+
+}  // namespace
+
+uint8_t DisplayManager::nanoPaletteCount() { return kNanoFixedPaletteCount + 1; }
+
+const char *DisplayManager::nanoPaletteName(uint8_t palette) {
+  if (palette == kNanoPaletteClassic || palette > kNanoFixedPaletteCount) {
+    return "Classic";
+  }
+  return kNanoPalettes[palette - 1].name;
+}
+
+void DisplayManager::setNanoPalette(uint8_t palette, bool ownAccent) {
+  if (palette > kNanoFixedPaletteCount) {
+    palette = kNanoPaletteClassic;
+  }
+  if (palette == nanoPalette_ && ownAccent == nanoOwnAccent_) {
+    return;
+  }
+  nanoPalette_ = palette;
+  nanoOwnAccent_ = ownAccent;
+  lastRenderKey_ = "";
+}
+
+uint16_t DisplayManager::nanoPaletteColor(uint8_t palette, NanoRole role) const {
+  if (palette != kNanoPaletteClassic && palette <= kNanoFixedPaletteCount) {
+    return kNanoPalettes[palette - 1].colors[static_cast<uint8_t>(role)];
+  }
   // Dark = rsvpnano's default theme, Light = their light.toml (background
   // kept at this firmware's softer 0xDEDA instead of pure white, so the
   // surfaces are shifted to stay distinguishable on it), Night = their
@@ -110,6 +166,23 @@ uint16_t DisplayManager::nanoColor(NanoRole role) const {
   return wordColor();
 }
 
+uint16_t DisplayManager::nanoColor(NanoRole role) const {
+  if (nanoOwnAccent_ && nanoPalette_ != kNanoPaletteClassic) {
+    if (role == NanoRole::Accent) {
+      return focusColor();
+    }
+    if (role == NanoRole::OnAccent) {
+      // The highlight colors range from yellow to deep blue: pick black or
+      // white text by the accent's brightness instead of the palette's.
+      const uint16_t accent = focusColor();
+      const uint32_t luma = ((accent >> 11) & 0x1F) * 8 * 299 + ((accent >> 5) & 0x3F) * 4 * 587 +
+                            (accent & 0x1F) * 8 * 114;
+      return luma > 150000U ? 0x0000 : 0xFFFF;
+    }
+  }
+  return nanoPaletteColor(nanoPalette_, role);
+}
+
 uint16_t DisplayManager::nanoBlend(NanoRole role, uint8_t alpha) const {
   const uint16_t fg = nanoColor(role);
   const uint16_t bg = nanoColor(NanoRole::Background);
@@ -122,11 +195,19 @@ uint16_t DisplayManager::nanoBlend(NanoRole role, uint8_t alpha) const {
 
 // ─── Frame ──────────────────────────────────────────────────────────────────
 
+void DisplayManager::nanoClearBackground(int width, int height) {
+  if (virtualFrame_ == nullptr) {
+    return;
+  }
+  const uint16_t background = panelColor(nanoColor(NanoRole::Background));
+  for (int row = 0; row < height; ++row) {
+    std::fill_n(virtualFrame_ + row * kVirtualBufferWidth, width, background);
+  }
+}
+
 void DisplayManager::nanoBeginFrame() {
   nanoResetClip();
-  if (virtualFrame_ != nullptr) {
-    clearVirtualBuffer(kNanoScreenW, kNanoScreenH);
-  }
+  nanoClearBackground(kNanoScreenW, kNanoScreenH);
 }
 
 void DisplayManager::nanoEndFrame() {
@@ -564,6 +645,17 @@ void DisplayManager::nanoIcon(const ui::Rect &rect, NanoIcon icon, uint16_t ink,
       nanoDrawRoundRect(x + 10, y + 10, 8, 8, 2, ink);
       break;
     }
+    case NanoIcon::Palette: {
+      // Painter's palette: a round board with a thumb hole in the lower
+      // right and three paint dots, same 1px, ~18px-box style.
+      nanoDrawCircle(cx, cy, 9, ink);
+      nanoFillCircle(cx + 5, cy + 5, 3, surface);
+      nanoDrawCircle(cx + 5, cy + 5, 2, ink);
+      nanoFillCircle(cx - 4, cy - 3, 2, ink);
+      nanoFillCircle(cx + 1, cy - 5, 2, ink);
+      nanoFillCircle(cx - 4, cy + 3, 2, ink);
+      break;
+    }
     case NanoIcon::None:
     default:
       break;
@@ -696,16 +788,24 @@ void DisplayManager::nanoIconButton(const ui::Rect &rect, NanoIcon icon, bool pr
 }
 
 void DisplayManager::nanoTab(const ui::Rect &rect, const String &text, bool active, NanoIcon icon,
-                             bool pressed, bool badge) {
+                             bool pressed, bool badge, bool markerRight) {
   const uint16_t surface = pressed  ? nanoColor(NanoRole::SurfaceActive)
                            : active ? nanoColor(NanoRole::Background)
                                     : nanoColor(NanoRole::SurfaceMuted);
   nanoFillRect(rect.x, rect.y, rect.w, rect.h, surface);
   nanoDrawRect(rect.x, rect.y, rect.w, rect.h, nanoColor(NanoRole::Outline));
   if (active) {
-    nanoFillRect(rect.x, rect.y + 5, 3, rect.h - 10, nanoColor(NanoRole::Accent));
+    nanoFillRect(markerRight ? rect.x + rect.w - 3 : rect.x, rect.y + 5, 3, rect.h - 10,
+                 nanoColor(NanoRole::Accent));
   }
   const uint16_t ink = nanoColor(active ? NanoRole::Foreground : NanoRole::Muted);
+  if (text.isEmpty()) {
+    nanoIcon(rect, icon, active ? nanoColor(NanoRole::Accent) : ink, surface);
+    if (badge) {
+      nanoFillCircle(rect.x + rect.w - 9, rect.y + 8, 3, nanoColor(NanoRole::Accent));
+    }
+    return;
+  }
   const int iconWidth = icon == NanoIcon::None ? 0 : std::min(26, rect.w / 3);
   if (icon != NanoIcon::None) {
     nanoIcon({static_cast<uint16_t>(rect.x + 7), rect.y, static_cast<uint16_t>(iconWidth), rect.h}, icon,
@@ -783,6 +883,93 @@ void DisplayManager::nanoProgress(const ui::Rect &rect, int value, int minimum, 
   }
 }
 
+void DisplayManager::nanoSlider(const ui::Rect &rect, const String &label, const String &valueText,
+                                int value, int minimum, int maximum, bool pressed, bool dragging) {
+  const int x = rect.x;
+  const int y = rect.y;
+  const int w = rect.w;
+  const int h = rect.h;
+  if (w <= 4 || h <= 4) {
+    return;
+  }
+  const int range = maximum - minimum;
+  value = std::max(minimum, std::min(value, maximum));
+  // Even the minimum keeps a sliver of fill, so the tile never reads as a
+  // plain button.
+  constexpr int kMinFill = 6;
+  const int fill = range > 0 ? kMinFill + (w - kMinFill) * (value - minimum) / range : w;
+
+  const uint16_t surface = nanoColor(pressed || dragging ? NanoRole::SurfaceActive : NanoRole::SurfaceMuted);
+  const uint16_t accent = nanoColor(NanoRole::Accent);
+  nanoFillRoundRect(x, y, w, h, 5, surface);
+  nanoSetClip(x, y, fill, h);
+  nanoFillRoundRect(x, y, w, h, 5, accent);
+  nanoResetClip();
+  nanoDrawRoundRect(x, y, w, h, 5, dragging ? accent : nanoColor(NanoRole::Outline));
+  if (fill > 8 && fill < w - 4) {
+    // Grip at the fill edge: the part a finger drags.
+    nanoFillRect(x + fill - 3, y + h / 2 - 7, 2, 14, nanoColor(NanoRole::OnAccent));
+  }
+
+  // Label left, value right (nanoSetting()'s inline rule), drawn twice:
+  // clipped to the filled and to the empty part, so each half keeps its
+  // contrast.
+  const int textWidth = std::max(0, w - 14);
+  const int labelRequired = nanoTextWidth(label, 2);
+  uint8_t valueSize = 2;
+  int valueRequired = nanoTextWidth(valueText, 2);
+  if (labelRequired + valueRequired + 8 > textWidth) {
+    valueSize = 1;
+    valueRequired = nanoTextWidth(valueText, 1);
+  }
+  const int labelWidth = labelRequired + valueRequired + 8 <= textWidth
+                             ? labelRequired
+                             : std::max(std::min(labelRequired, textWidth / 2), textWidth - valueRequired - 8);
+  const int valueWidth = std::max(0, textWidth - labelWidth - 8);
+  const ui::Rect labelRect(x + 7, y, std::max(0, labelWidth), h);
+  const ui::Rect valueRect(x + w - valueWidth - 7, y, valueWidth, h);
+  const uint8_t labelLines = h >= 32 ? 2 : 1;
+  const uint16_t onAccent = nanoColor(NanoRole::OnAccent);
+  const uint16_t foreground = nanoColor(NanoRole::Foreground);
+  nanoSetClip(x + fill, y, w - fill, h);
+  nanoText(labelRect, label, 2, foreground, NanoAlign::Start, labelLines);
+  nanoText(valueRect, valueText, valueSize, foreground, NanoAlign::End);
+  nanoSetClip(x, y, fill, h);
+  nanoText(labelRect, label, 2, onAccent, NanoAlign::Start, labelLines);
+  nanoText(valueRect, valueText, valueSize, onAccent, NanoAlign::End);
+  nanoResetClip();
+}
+
+void DisplayManager::nanoPaletteChip(const ui::Rect &rect, uint8_t palette, const String &name,
+                                     bool selected, bool pressed) {
+  const int x = rect.x;
+  const int y = rect.y;
+  const int w = rect.w;
+  const int h = rect.h;
+  if (w <= 16 || h <= 16) {
+    return;
+  }
+  const uint16_t background = nanoPaletteColor(palette, NanoRole::Background);
+  const uint16_t surface =
+      nanoPaletteColor(palette, pressed ? NanoRole::SurfaceActive : NanoRole::SurfaceMuted);
+  nanoFillRoundRect(x, y, w, h, 5, background);
+  // Mini tile in the palette's own surface with its accent underline: how
+  // its buttons will look.
+  const int barY = y + h - 11;
+  nanoFillRoundRect(x + 6, barY, w - 12, 7, 3, surface);
+  nanoFillRect(x + 6, barY + 5, (w - 12) * 2 / 5, 2, nanoPaletteColor(palette, NanoRole::Accent));
+  nanoFillCircle(x + w - 12, barY + 3, 2, nanoPaletteColor(palette, NanoRole::Accent));
+  nanoText(ui::Rect(x + 6, y + 2, w - 12, std::max(0, h - 15)), name, 2,
+           nanoPaletteColor(palette, NanoRole::Foreground), NanoAlign::Start);
+  if (selected) {
+    const uint16_t ring = nanoColor(NanoRole::Accent);
+    nanoDrawRoundRect(x, y, w, h, 5, ring);
+    nanoDrawRoundRect(x + 1, y + 1, w - 2, h - 2, 4, ring);
+  } else {
+    nanoDrawRoundRect(x, y, w, h, 5, nanoColor(NanoRole::Outline));
+  }
+}
+
 void DisplayManager::nanoBatteryStack(const ui::Rect &rect) {
   if (!batteryPresent_ && batteryLabel_.isEmpty()) {
     return;
@@ -830,32 +1017,40 @@ void DisplayManager::drawNanoButton(const Button &button) {
                button.label, 2, nanoColor(NanoRole::Muted), NanoAlign::Center);
       nanoText({rect.x, static_cast<uint16_t>(rect.y + 36), rect.w, 40}, valueText, 4,
                nanoColor(NanoRole::Accent), NanoAlign::Center);
+      // Same x range as sliderTrackRectFor() (the touch mapping reads it
+      // back), drawn as a thick bar whose accent fill is the value.
       const ui::Rect track = sliderTrackRectFor(button);
-      const int trackY = track.y + track.h / 2 - 1;
+      constexpr int kBarHeight = 28;
+      const int barY = track.y + track.h / 2 - kBarHeight / 2;
       const int range = static_cast<int>(button.sliderMax) - static_cast<int>(button.sliderMin);
       const int value = std::max(static_cast<int>(button.sliderMin),
                                  std::min(static_cast<int>(button.sliderValue), static_cast<int>(button.sliderMax)));
-      nanoFillRect(track.x, trackY, track.w, 3, nanoColor(NanoRole::ProgressTrack));
+      const int fill = range > 0 ? 8 + (static_cast<int>(track.w) - 8) * (value - button.sliderMin) / range
+                                 : static_cast<int>(track.w);
+      nanoFillRoundRect(track.x, barY, track.w, kBarHeight, 7, nanoColor(NanoRole::SurfaceMuted));
       if (range > 0) {
-        for (int i = 0; i <= 10; ++i) {
-          nanoFillRect(track.x + (static_cast<int>(track.w) - 1) * i / 10, trackY - 2, 1, 7,
+        for (int i = 1; i < 10; ++i) {
+          nanoFillRect(track.x + (static_cast<int>(track.w) - 1) * i / 10, barY + kBarHeight - 7, 1, 4,
                        nanoColor(NanoRole::Outline));
         }
       }
-      const int knobX = track.x + (range > 0 ? (static_cast<int>(track.w) - 1) * (value - button.sliderMin) / range : 0);
-      nanoFillRect(track.x, trackY, knobX - track.x + 1, 3, nanoColor(NanoRole::Accent));
-      nanoFillCircle(knobX, trackY + 1, 8, nanoColor(NanoRole::Accent));
-      nanoDrawCircle(knobX, trackY + 1, 8, nanoColor(NanoRole::OnAccent));
+      nanoSetClip(track.x, barY, fill, kBarHeight);
+      nanoFillRoundRect(track.x, barY, track.w, kBarHeight, 7, nanoColor(NanoRole::Accent));
+      nanoResetClip();
+      nanoDrawRoundRect(track.x, barY, track.w, kBarHeight, 7, nanoColor(NanoRole::Outline));
+      if (fill > 10 && fill < static_cast<int>(track.w) - 4) {
+        nanoFillRect(track.x + fill - 4, barY + 6, 2, kBarHeight - 12, nanoColor(NanoRole::OnAccent));
+      }
       const String minText = hasValueLabels && button.sliderMin < button.sliderValueLabels.size()
                                  ? button.sliderValueLabels[button.sliderMin]
                                  : String(button.sliderMin);
       const String maxText = hasValueLabels && button.sliderMax < button.sliderValueLabels.size()
                                  ? button.sliderValueLabels[button.sliderMax]
                                  : String(button.sliderMax);
-      const uint16_t endY = static_cast<uint16_t>(trackY + 12);
-      nanoText({track.x, endY, static_cast<uint16_t>(track.w / 2), 12}, minText, 1,
+      const uint16_t endY = static_cast<uint16_t>(barY + kBarHeight + 3);
+      nanoText({track.x, endY, static_cast<uint16_t>(track.w / 2), 10}, minText, 1,
                nanoColor(NanoRole::Muted), NanoAlign::Start);
-      nanoText({static_cast<uint16_t>(track.x + track.w / 2), endY, static_cast<uint16_t>(track.w / 2), 12},
+      nanoText({static_cast<uint16_t>(track.x + track.w / 2), endY, static_cast<uint16_t>(track.w / 2), 10},
                maxText, 1, nanoColor(NanoRole::Muted), NanoAlign::End);
       return;
     }

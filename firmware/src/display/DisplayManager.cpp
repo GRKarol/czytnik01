@@ -3681,6 +3681,7 @@ void DisplayManager::renderTextEntry(const String &title, const String &prompt, 
   clearVirtualBuffer(virtualWidth, virtualHeight);
 
   if (modernCardStyle_) {
+    nanoClearBackground(virtualWidth, virtualHeight);
     // rsvpnano keyboard input field: rounded muted surface, caption in 1x
     // muted, the typed value in 2x accent, "_" when empty.
     nanoResetClip();
@@ -4350,6 +4351,8 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
   renderKey += String(nightMode_ ? 1 : 0);
   renderKey += "|m:";
   renderKey += String(modernCardStyle_ ? 1 : 0);
+  renderKey += String(nanoPalette_);
+  renderKey += nanoOwnAccent_ ? "a" : "";
   for (const Button &button : buttons) {
     renderKey += "|";
     renderKey += button.label;
@@ -4400,6 +4403,7 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
     // buttons, battery icon in the top-right corner, no toast bar — the
     // screen's own widgets already show the changed value.
     nanoResetClip();
+    nanoClearBackground(virtualWidth, virtualHeight);
     if (!title.isEmpty()) {
       nanoText({72, 8, static_cast<uint16_t>(virtualWidth - 144), 20}, title, 2,
                nanoColor(NanoRole::Muted), NanoAlign::Center);

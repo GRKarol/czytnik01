@@ -418,6 +418,10 @@ constexpr const char *kPrefReaderFontSize = "font_size";
 constexpr const char *kPrefReaderTypeface = "typeface";
 constexpr const char *kPrefTypographyFocusHighlight = "type_hlt";
 constexpr const char *kPrefFocusColorIndex = "foc_clr";
+// Nano UI Motywy tab (NavMode::Modern only).
+constexpr const char *kPrefNanoPalette = "nano_pal";
+constexpr const char *kPrefNanoOwnAccent = "nano_acc";
+constexpr const char *kPrefNanoLayout = "nano_lay";
 constexpr const char *kPrefLegacyPacingLong = "pace_len";
 constexpr const char *kPrefLegacyPacingComplex = "pace_cpx";
 constexpr const char *kPrefLegacyPacingPunctuation = "pace_pnc";
@@ -981,6 +985,12 @@ void App::begin() {
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
   display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 1));
+  nanoPalette_ = preferences_.getUChar(kPrefNanoPalette, 0);
+  nanoOwnAccent_ = preferences_.getBool(kPrefNanoOwnAccent, false);
+  nanoLayout_ = preferences_.getUChar(kPrefNanoLayout, kNanoLayoutLeft);
+  if (nanoLayout_ >= kNanoLayoutCount) {
+    nanoLayout_ = kNanoLayoutLeft;
+  }
   applyHandednessSettings(0, false);
   applyDisplayPreferences(0, false);
   applyTypographySettings(0, false);
@@ -1930,6 +1940,7 @@ uint8_t App::currentBrightnessPercent() const {
 void App::applyDisplayPreferences(uint32_t nowMs, bool rerender) {
   display_.setDarkMode(darkMode_);
   display_.setNightMode(nightMode_);
+  display_.setNanoPalette(nanoPalette_, nanoOwnAccent_);
   display_.setBrightnessPercent(currentBrightnessPercent());
   display_.setScrollFontSize(scrollFontSize_);
   display_.setScrollLineSpacing(scrollLineSpacing_);
@@ -2104,6 +2115,12 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
   display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 1));
+  nanoPalette_ = preferences_.getUChar(kPrefNanoPalette, 0);
+  nanoOwnAccent_ = preferences_.getBool(kPrefNanoOwnAccent, false);
+  nanoLayout_ = preferences_.getUChar(kPrefNanoLayout, kNanoLayoutLeft);
+  if (nanoLayout_ >= kNanoLayoutCount) {
+    nanoLayout_ = kNanoLayoutLeft;
+  }
 
   reader_.setWpm(preferences_.getUShort(kPrefWpm, reader_.wpm()));
   applyReaderUiOrientation();
@@ -3648,6 +3665,7 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
   } else if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity || menuScreen_ == MenuScreen::DeviceHome ||
+      menuScreen_ == MenuScreen::NanoThemes ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme ||
       menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomeReadingMode) {
@@ -3737,6 +3755,7 @@ void App::moveMenuSelection(int direction) {
   } else if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity || menuScreen_ == MenuScreen::DeviceHome ||
+      menuScreen_ == MenuScreen::NanoThemes ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme ||
       menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomeReadingMode) {
@@ -4791,6 +4810,12 @@ void App::selectSettingsItem(uint32_t nowMs) {
 
   if (menuScreen_ == MenuScreen::DeviceHome) {
     selectDeviceHomeItem(nowMs);
+    return;
+  }
+
+  if (menuScreen_ == MenuScreen::NanoThemes) {
+    menuScreen_ = MenuScreen::Main;
+    renderMainMenu();
     return;
   }
 
@@ -5950,6 +5975,10 @@ void App::rebuildSettingsMenuItems() {
 #endif
   } else if (menuScreen_ == MenuScreen::DeviceHome) {
     rebuildDeviceHomeItems();
+  } else if (menuScreen_ == MenuScreen::NanoThemes) {
+    // Everything on the Motywy tab is a Nano action; Back only exists so
+    // the physical back gesture has a row 0 to land on.
+    settingsMenuItems_.push_back(uiText(UiText::Back));
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::Version)) +
@@ -6132,6 +6161,7 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::SettingsPacing ||
          menuScreen_ == MenuScreen::SettingsConnectivity ||
          menuScreen_ == MenuScreen::DeviceHome ||
+         menuScreen_ == MenuScreen::NanoThemes ||
          menuScreen_ == MenuScreen::SettingsAbout ||
          menuScreen_ == MenuScreen::ScreensaverSettings ||
          menuScreen_ == MenuScreen::WifiSettings ||
@@ -11136,6 +11166,7 @@ void App::renderMenu() {
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
       menuScreen_ == MenuScreen::SettingsConnectivity || menuScreen_ == MenuScreen::DeviceHome ||
+      menuScreen_ == MenuScreen::NanoThemes ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage ||
       menuScreen_ == MenuScreen::WelcomeTheme ||

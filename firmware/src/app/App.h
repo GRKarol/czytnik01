@@ -170,6 +170,9 @@ class App {
     // Nano UI's "Urzadzenie" rail tab (SD card, version, USB, phone sync,
     // Bluetooth, Wi-Fi, updates, tutorial) — only reachable in NavMode::Modern.
     DeviceHome,
+    // Nano UI's "Motywy" rail tab: palette chips, rail layout, own-accent
+    // switch. Also NavMode::Modern only.
+    NanoThemes,
   };
 
   // Which of the three pacing delays the PacingDelayEditor screen is
@@ -725,8 +728,27 @@ class App {
   enum class NanoTab : uint8_t {
     Read,
     Settings,
+    Themes,
     Device,
     Plugins,
+  };
+  // Where the tab rail sits (Motywy tab). Stored in NVS, so only append.
+  enum NanoLayout : uint8_t {
+    kNanoLayoutLeft = 0,
+    kNanoLayoutRight = 1,
+    kNanoLayoutCompact = 2,  // icon-only rail on the left
+    kNanoLayoutCount = 3,
+  };
+  // A setting tile that is also a slider (see nanoSliderSpec()).
+  struct NanoSliderSpec {
+    int minimum = 0;
+    int maximum = 0;
+    int step = 1;
+    int value = 0;
+  };
+  struct NanoSliderTarget {
+    ui::Rect rect;
+    size_t index = 0;
   };
   // True in NavMode::Modern for every menu screen except the first-run
   // wizard/tutorial, which keep their dedicated large-type layouts.
@@ -747,6 +769,20 @@ class App {
   void renderNanoChapters();
   void renderNanoSavePoints();
   void renderNanoBookDetails();
+  void renderNanoThemes();
+  void openNanoThemes();
+  void setNanoTheme(uint8_t palette, bool ownAccent, uint8_t layout);
+  // Copies nanoLayout_ into the Nano geometry helpers (AppNano.inl).
+  void nanoSyncLayout();
+  // Slider tiles: which rows of the current settings screen are numeric
+  // (brightness, speeds, delays, timeouts), their range, and how a dragged
+  // value is shown (nanoSliderSet(): RAM + live effect) and saved
+  // (nanoSliderCommit(): NVS + the same apply step the screen's own editor
+  // runs).
+  bool nanoSliderSpec(size_t index, NanoSliderSpec &spec) const;
+  void nanoSliderSet(size_t index, int value);
+  void nanoSliderCommit(size_t index, uint32_t nowMs);
+  bool handleNanoSliderTouch(const TouchEvent &event, uint32_t nowMs);
   void renderNanoConfirm(const String &title, const std::vector<String> &items, size_t headerRows);
   void renderNanoList(const String &title, const std::vector<String> &items, size_t headerRows,
                       const std::vector<String> &subtitles = {});
@@ -1178,6 +1214,20 @@ class App {
   // of its usual parent.
   bool nanoFontPickerFromRead_ = false;
   bool nanoScreensaverFromSettingsHome_ = false;
+  // Motywy tab (persisted: nano_pal / nano_acc / nano_lay).
+  uint8_t nanoPalette_ = 0;
+  bool nanoOwnAccent_ = false;
+  uint8_t nanoLayout_ = kNanoLayoutLeft;
+  size_t nanoThemePage_ = 0;
+  // Slider tiles of the last Nano list render, and the drag moving one.
+  std::vector<NanoSliderTarget> nanoSliderTargets_;
+  int nanoSliderIndex_ = -1;  // settings row under the finger, -1 = none
+  bool nanoSliderDragging_ = false;
+  int nanoSliderStartValue_ = 0;
+  uint16_t nanoSliderStartX_ = 0;
+  uint16_t nanoSliderStartY_ = 0;
+  uint16_t nanoSliderWidth_ = 1;
+  uint32_t nanoSliderLastRenderMs_ = 0;
   // DeviceHome rows after the two status tiles, in display order — maps a
   // settingsMenuItems_ index to what it does (#if-gated rows make the
   // indices vary between builds).

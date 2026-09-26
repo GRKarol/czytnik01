@@ -274,6 +274,17 @@ enum class TrKey3 : uint8_t {
   NanoSdCard,
   NanoBooksCount,
   NanoNoLibraryItems,
+  NanoThemesTab,
+  NanoPaletteLabel,
+  NanoLayoutSection,
+  NanoLayoutLeft,
+  NanoLayoutRight,
+  NanoLayoutCompact,
+  NanoOwnAccent,
+  NanoPaletteClassic,
+  NanoPaletteCream,
+  NanoPaletteGraphite,
+  NanoPaletteForest,
 };
 
 namespace Translations3 {

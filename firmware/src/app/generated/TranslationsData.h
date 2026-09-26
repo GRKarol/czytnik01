@@ -144,7 +144,7 @@ inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[112][6] = {
+  static const char *const kTable[123][6] = {
       {"Save point added", "Punto guardado agregado", "Point de sauvegarde ajoute", "Lesezeichen hinzugefuegt", "Punct salvat adaugat", "Punkt zapisu dodany"},  // SavePointAdded
       {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zakladke"},  // NameBookmark
       {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazwe:"},  // EnterNamePrompt
@@ -257,6 +257,17 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"SD card", "Tarjeta SD", "Carte SD", "SD-Karte", "Card SD", "Karta SD"},  // NanoSdCard
       {"books", "libros", "livres", "Buecher", "carti", "ksiazek"},  // NanoBooksCount
       {"No books on the SD card", "No hay libros en la tarjeta SD", "Aucun livre sur la carte SD", "Keine Buecher auf der SD-Karte", "Nicio carte pe cardul SD", "Brak ksiazek na karcie SD"},  // NanoNoLibraryItems
+      {"Themes", "Temas", "Themes", "Themen", "Teme", "Motywy"},  // NanoThemesTab
+      {"Palette", "Paleta", "Palette", "Palette", "Paleta", "Paleta"},  // NanoPaletteLabel
+      {"NAVIGATION LAYOUT", "DISPOSICION", "DISPOSITION", "NAVIGATION", "ASEZARE", "UKLAD NAWIGACJI"},  // NanoLayoutSection
+      {"Left", "Izq.", "Gauche", "Links", "Stanga", "Lewy"},  // NanoLayoutLeft
+      {"Right", "Der.", "Droite", "Rechts", "Dreapta", "Prawy"},  // NanoLayoutRight
+      {"Icons", "Iconos", "Icones", "Symbole", "Iconite", "Ikony"},  // NanoLayoutCompact
+      {"My color", "Mi color", "Ma couleur", "Meine Farbe", "Culoarea mea", "Moj kolor"},  // NanoOwnAccent
+      {"Classic", "Clasico", "Classique", "Klassisch", "Clasic", "Klasyczny"},  // NanoPaletteClassic
+      {"Cream", "Crema", "Creme", "Creme", "Crem", "Krem"},  // NanoPaletteCream
+      {"Graphite", "Grafito", "Graphite", "Graphit", "Grafit", "Grafit"},  // NanoPaletteGraphite
+      {"Forest", "Bosque", "Foret", "Wald", "Padure", "Las"},  // NanoPaletteForest
   };
   return kTable[keyIndex][langIndex];
 }

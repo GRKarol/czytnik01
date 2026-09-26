@@ -39,7 +39,13 @@ enum NanoAction : int {
   kNanoReadFonts,
   kNanoSettingsScreensaver,
   kNanoPluginLibrary,
+  kNanoTabThemes,
+  kNanoThemePagePrev,
+  kNanoThemePageNext,
+  kNanoThemeOwnAccent,
   kNanoLaunchPlugin = 100,  // + index into pluginLibrary_.enabledEntries()
+  kNanoThemePalette = 200,  // + palette index
+  kNanoThemeLayout = 300,   // + App::NanoLayout
 };
 
 // DeviceHome rows (App::deviceHomeActions_).
@@ -61,6 +67,8 @@ constexpr int kNanoScreenH = BoardConfig::DISPLAY_HEIGHT;
 // rsvpnano uses 136; 160 lets the Polish tab names ("Ustawienia",
 // "Urzadzenie") stay at 2x next to their icon instead of dropping to 1x.
 constexpr int kNanoRailWidth = 160;
+// Icon-only rail (Motywy > Uklad > Ikony).
+constexpr int kNanoCompactRailWidth = 64;
 constexpr int kNanoContentGap = 12;
 constexpr int kNanoRightInset = 48;
 constexpr int kNanoHeaderHeight = 32;
@@ -68,6 +76,23 @@ constexpr int kNanoBackWidth = 56;
 constexpr int kNanoPageButtonWidth = 36;
 constexpr int kNanoPageLabelWidth = 44;
 constexpr uint32_t kNanoDragFrameMs = 40;
+// Horizontal travel before a touch on a slider tile becomes a drag instead
+// of a tap (the tap still opens the row's own editor or cycles it).
+constexpr int kNanoSliderDragThreshold = 10;
+
+// Current rail geometry — App::nanoSyncLayout() copies App::nanoLayout_ in
+// here before every Nano render, so the free geometry helpers below
+// (content rect, shelf, wheel) follow it without an App pointer.
+int gNanoRailWidth = kNanoRailWidth;
+bool gNanoRailRight = false;
+
+void nanoSyncLayoutGlobals(bool railRight, bool compact) {
+  gNanoRailRight = railRight;
+  gNanoRailWidth = compact ? kNanoCompactRailWidth : kNanoRailWidth;
+}
+
+// x of the power button / battery column (the side opposite the rail).
+int nanoStatusColumnX() { return gNanoRailRight ? 6 : kNanoScreenW - 46; }
 
 ui::Rect nanoRect(int x, int y, int w, int h) {
   ui::Rect rect;
@@ -80,7 +105,11 @@ ui::Rect nanoRect(int x, int y, int w, int h) {
 
 // Content area next to the rail (rsvpnano screens::detail::tabContent()).
 ui::Rect nanoTabContent() {
-  const int x = kNanoRailWidth + kNanoContentGap;
+  if (gNanoRailRight) {
+    return nanoRect(kNanoRightInset, 8, kNanoScreenW - gNanoRailWidth - kNanoContentGap - kNanoRightInset,
+                    kNanoScreenH - 16);
+  }
+  const int x = gNanoRailWidth + kNanoContentGap;
   return nanoRect(x, 8, kNanoScreenW - x - kNanoRightInset, kNanoScreenH - 16);
 }
 
@@ -287,6 +316,7 @@ bool App::nanoRailScreen() const {
     case MenuScreen::SavePointsList:
     case MenuScreen::SettingsHome:
     case MenuScreen::DeviceHome:
+    case MenuScreen::NanoThemes:
     case MenuScreen::PluginsHome:
       return true;
     default:
@@ -305,6 +335,8 @@ App::NanoTab App::nanoActiveTab() const {
     case MenuScreen::TypographyTuning:
     case MenuScreen::TypographyResetConfirm:
       return NanoTab::Settings;
+    case MenuScreen::NanoThemes:
+      return NanoTab::Themes;
     case MenuScreen::DeviceHome:
     case MenuScreen::WifiSettings:
     case MenuScreen::WifiNetworks:
@@ -393,8 +425,10 @@ void App::renderNanoScreen(const String &title, const std::vector<String> &items
   (void)selectedIndex;
   applyReaderUiOrientation();
   display_.setModernCardStyle(true);
+  nanoSyncLayout();
   currentGridButtons_.clear();
   currentGridItemIndices_.clear();
+  nanoSliderTargets_.clear();
   // Paging is Nano's own (header arrows / nanoChangePage()); keep the
   // Buttons-grid swipe pager from acting on these screens.
   gridHeaderRows_ = headerRows;
@@ -416,6 +450,9 @@ void App::renderNanoScreen(const String &title, const std::vector<String> &items
       break;
     case MenuScreen::DeviceHome:
       renderNanoDeviceHome();
+      break;
+    case MenuScreen::NanoThemes:
+      renderNanoThemes();
       break;
     case MenuScreen::PluginsHome:
       renderNanoPluginsHome();
@@ -468,8 +505,10 @@ void App::renderNanoLibraryList(const std::vector<DisplayManager::LibraryItem> &
   }
   applyReaderUiOrientation();
   display_.setModernCardStyle(true);
+  nanoSyncLayout();
   currentGridButtons_.clear();
   currentGridItemIndices_.clear();
+  nanoSliderTargets_.clear();
   gridHeaderRows_ = 0;
   gridHasBack_ = false;
   gridItemsPerPage_ = 1;
@@ -493,9 +532,10 @@ void App::renderNanoRail() {
     NanoTab tab;
   };
   std::vector<TabSpec> tabs;
-  tabs.reserve(4);
+  tabs.reserve(5);
   tabs.push_back({kNanoTabRead, uiText(UiText::Read), NanoIcon::Books, NanoTab::Read});
   tabs.push_back({kNanoTabSettings, uiText(UiText::Settings), NanoIcon::Edit, NanoTab::Settings});
+  tabs.push_back({kNanoTabThemes, tr3(TrKey3::NanoThemesTab), NanoIcon::Palette, NanoTab::Themes});
   tabs.push_back({kNanoTabDevice, tr3(TrKey3::NanoDeviceTab), NanoIcon::Device, NanoTab::Device});
   // Plugins are an advanced-mode feature everywhere else in the UI too.
   if (devModeEnabled()) {
@@ -503,22 +543,29 @@ void App::renderNanoRail() {
   }
 
   const NanoTab active = nanoActiveTab();
+  const bool compact = nanoLayout_ == kNanoLayoutCompact;
+  const int railX = gNanoRailRight ? kNanoScreenW - gNanoRailWidth : 0;
   const int tabHeight = kNanoScreenH / static_cast<int>(tabs.size());
   int y = 0;
   for (size_t i = 0; i < tabs.size(); ++i) {
     const int h = (i + 1 == tabs.size()) ? kNanoScreenH - y : tabHeight;
-    const ui::Rect rect = nanoRect(0, y, kNanoRailWidth, h);
+    const ui::Rect rect = nanoRect(railX, y, gNanoRailWidth, h);
     const int action = kNanoActionBase + tabs[i].action;
     const bool badge = tabs[i].tab == NanoTab::Device && otaUpdatePromptPending_;
-    display_.nanoTab(rect, tabs[i].label, tabs[i].tab == active, tabs[i].icon, nanoPressed(action), badge);
+    display_.nanoTab(rect, compact ? String() : tabs[i].label, tabs[i].tab == active, tabs[i].icon,
+                     nanoPressed(action), badge, gNanoRailRight);
     nanoAddTarget(rect, action, tabs[i].label);
     y += h;
   }
 
-  const ui::Rect power = nanoRect(kNanoScreenW - 46, 4, 36, 36);
+  const ui::Rect power = nanoRect(nanoStatusColumnX(), 4, 36, 36);
   display_.nanoIconButton(power, NanoIcon::Power, nanoPressed(kNanoActionBase + kNanoPowerOff));
   nanoAddTarget(power, kNanoActionBase + kNanoPowerOff);
-  display_.nanoBatteryStack(nanoRect(kNanoScreenW - 46, 48, 36, 28));
+  display_.nanoBatteryStack(nanoRect(nanoStatusColumnX(), 48, 36, 28));
+}
+
+void App::nanoSyncLayout() {
+  nanoSyncLayoutGlobals(nanoLayout_ == kNanoLayoutRight, nanoLayout_ == kNanoLayoutCompact);
 }
 
 // ─── Czytaj (rsvpnano screens::read) ────────────────────────────────────────
@@ -789,6 +836,149 @@ void App::selectDeviceHomeItem(uint32_t nowMs) {
       return;
     default:
       return;
+  }
+}
+
+// ─── Motywy ─────────────────────────────────────────────────────────────────
+// Not in rsvpnano (their themes are TOML files on the SD card, picked from a
+// list). Here: palette chips that preview themselves, the rail layout, and
+// whether a fixed palette keeps its own accent or takes the highlight color.
+
+namespace {
+constexpr int kThemeHeaderHeight = 28;
+constexpr int kThemeChipHeight = 36;
+constexpr int kThemeChipRows = 2;
+constexpr int kThemeGap = 5;
+
+int themeChipColumns(const ui::Rect &content) { return content.w >= 480 ? 4 : 3; }
+}  // namespace
+
+void App::openNanoThemes() {
+  menuScreen_ = MenuScreen::NanoThemes;
+  settingsSelectedIndex_ = 0;
+  nanoSyncLayout();
+  const size_t perPage = static_cast<size_t>(themeChipColumns(nanoTabContent()) * kThemeChipRows);
+  nanoThemePage_ = nanoPalette_ / perPage;
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::setNanoTheme(uint8_t palette, bool ownAccent, uint8_t layout) {
+  if (palette >= DisplayManager::nanoPaletteCount()) {
+    palette = DisplayManager::kNanoPaletteClassic;
+  }
+  if (layout >= kNanoLayoutCount) {
+    layout = kNanoLayoutLeft;
+  }
+  const bool layoutChanged = layout != nanoLayout_;
+  nanoPalette_ = palette;
+  nanoOwnAccent_ = ownAccent;
+  nanoLayout_ = layout;
+  preferences_.putUChar(kPrefNanoPalette, nanoPalette_);
+  preferences_.putBool(kPrefNanoOwnAccent, nanoOwnAccent_);
+  preferences_.putUChar(kPrefNanoLayout, nanoLayout_);
+  display_.setNanoPalette(nanoPalette_, nanoOwnAccent_);
+  Serial.printf("[nano] palette=%s ownAccent=%d layout=%u\n", DisplayManager::nanoPaletteName(nanoPalette_),
+                nanoOwnAccent_ ? 1 : 0, static_cast<unsigned>(nanoLayout_));
+  if (layoutChanged) {
+    // Chip columns follow the content width, so the page holding the
+    // selected palette can move.
+    nanoSyncLayout();
+    const size_t perPage = static_cast<size_t>(themeChipColumns(nanoTabContent()) * kThemeChipRows);
+    nanoThemePage_ = nanoPalette_ / perPage;
+  }
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+void App::renderNanoThemes() {
+  const ui::Rect content = nanoTabContent();
+  const int columns = themeChipColumns(content);
+  const size_t perPage = static_cast<size_t>(columns * kThemeChipRows);
+  const size_t count = DisplayManager::nanoPaletteCount();
+  const size_t pageCount = std::max<size_t>(1, (count + perPage - 1) / perPage);
+  nanoThemePage_ = std::min(nanoThemePage_, pageCount - 1);
+
+  auto paletteName = [this](uint8_t palette) -> String {
+    const String name = DisplayManager::nanoPaletteName(palette);
+    if (palette == DisplayManager::kNanoPaletteClassic) return tr3(TrKey3::NanoPaletteClassic);
+    if (name == "Cream") return tr3(TrKey3::NanoPaletteCream);
+    if (name == "Graphite") return tr3(TrKey3::NanoPaletteGraphite);
+    if (name == "Forest") return tr3(TrKey3::NanoPaletteForest);
+    return name;
+  };
+
+  // Header: "Paleta: <name>" + pager.
+  int titleRight = content.x + content.w;
+  if (pageCount > 1) {
+    const int nextX = content.x + content.w - kNanoPageButtonWidth;
+    const int labelX = nextX - kNanoPageLabelWidth;
+    const int prevX = labelX - kNanoPageButtonWidth;
+    const ui::Rect prev = nanoRect(prevX, content.y, kNanoPageButtonWidth, kThemeHeaderHeight);
+    const ui::Rect next = nanoRect(nextX, content.y, kNanoPageButtonWidth, kThemeHeaderHeight);
+    const bool hasPrev = nanoThemePage_ > 0;
+    const bool hasNext = nanoThemePage_ + 1 < pageCount;
+    display_.nanoButton(prev, "<", hasPrev, NanoIcon::None, 1, "", "",
+                        nanoPressed(kNanoActionBase + kNanoThemePagePrev));
+    display_.nanoButton(next, ">", hasNext, NanoIcon::None, 1, "", "",
+                        nanoPressed(kNanoActionBase + kNanoThemePageNext));
+    if (hasPrev) nanoAddTarget(prev, kNanoActionBase + kNanoThemePagePrev);
+    if (hasNext) nanoAddTarget(next, kNanoActionBase + kNanoThemePageNext);
+    display_.nanoLabel(nanoRect(labelX, content.y, kNanoPageLabelWidth, kThemeHeaderHeight),
+                       String(static_cast<unsigned>(nanoThemePage_ + 1)) + "/" +
+                           String(static_cast<unsigned>(pageCount)),
+                       2, NanoRole::Muted, NanoAlign::Center);
+    titleRight = prevX - 8;
+  }
+  display_.nanoLabel(nanoRect(content.x, content.y, titleRight - content.x, kThemeHeaderHeight),
+                     String(tr3(TrKey3::NanoPaletteLabel)) + ": " + paletteName(nanoPalette_), 2,
+                     NanoRole::Foreground);
+
+  // Palette chips.
+  const int chipsY = content.y + kThemeHeaderHeight + 4;
+  const int chipWidth = (content.w - kThemeGap * (columns - 1)) / columns;
+  const size_t first = nanoThemePage_ * perPage;
+  for (size_t i = 0; i < perPage && first + i < count; ++i) {
+    const uint8_t palette = static_cast<uint8_t>(first + i);
+    const int column = static_cast<int>(i) % columns;
+    const int row = static_cast<int>(i) / columns;
+    const int x = content.x + column * (chipWidth + kThemeGap);
+    const int w = column == columns - 1 ? content.x + content.w - x : chipWidth;
+    const ui::Rect rect = nanoRect(x, chipsY + row * (kThemeChipHeight + kThemeGap), w, kThemeChipHeight);
+    const int action = kNanoActionBase + kNanoThemePalette + palette;
+    const String name = paletteName(palette);
+    display_.nanoPaletteChip(rect, palette, name, palette == nanoPalette_, nanoPressed(action));
+    nanoAddTarget(rect, action, name);
+  }
+
+  // Rail layout (+ own-accent switch for the fixed palettes).
+  const int sectionY = chipsY + kThemeChipRows * kThemeChipHeight + kThemeGap + 3;
+  display_.nanoSeparator(nanoRect(content.x, sectionY, content.w, 12), tr3(TrKey3::NanoLayoutSection));
+  const int rowY = sectionY + 14;
+  const int rowH = content.y + content.h - rowY;
+  const bool showAccent = nanoPalette_ != DisplayManager::kNanoPaletteClassic;
+  const String accentLabel = tr3(TrKey3::NanoOwnAccent);
+  const int accentWidth =
+      showAccent ? std::min(static_cast<int>(content.w) / 2, DisplayManager::nanoTextWidth(accentLabel, 2) + 62) : 0;
+  const int layoutsWidth = content.w - (showAccent ? accentWidth + kThemeGap : 0);
+  const String layoutLabels[kNanoLayoutCount] = {tr3(TrKey3::NanoLayoutLeft), tr3(TrKey3::NanoLayoutRight),
+                                                 tr3(TrKey3::NanoLayoutCompact)};
+  const int segmentWidth = (layoutsWidth - kThemeGap * (kNanoLayoutCount - 1)) / kNanoLayoutCount;
+  for (int i = 0; i < kNanoLayoutCount; ++i) {
+    const int x = content.x + i * (segmentWidth + kThemeGap);
+    const int w = i == kNanoLayoutCount - 1 ? content.x + layoutsWidth - x : segmentWidth;
+    const ui::Rect rect = nanoRect(x, rowY, w, rowH);
+    const int action = kNanoActionBase + kNanoThemeLayout + i;
+    // Selected segment in the solid accent (the "armed" look).
+    display_.nanoButton(rect, layoutLabels[i], true, NanoIcon::None, 1, "", "", nanoPressed(action),
+                        nanoLayout_ == i);
+    nanoAddTarget(rect, action, layoutLabels[i]);
+  }
+  if (showAccent) {
+    const ui::Rect rect = nanoRect(content.x + content.w - accentWidth, rowY, accentWidth, rowH);
+    const int action = kNanoActionBase + kNanoThemeOwnAccent;
+    display_.nanoToggle(rect, accentLabel, nanoOwnAccent_, nanoPressed(action));
+    nanoAddTarget(rect, action, accentLabel);
   }
 }
 
@@ -1339,6 +1529,19 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
       // Enable/disable button under the description.
       rect.y = static_cast<uint16_t>(gridY + 2 * (rowHeight + kGap));
     }
+    NanoSliderSpec slider;
+    String sliderLabel;
+    String sliderValue;
+    if (nanoSliderSpec(canonical, slider) && nanoSplitSetting(item, sliderLabel, sliderValue)) {
+      display_.nanoSlider(rect, sliderLabel, sliderValue, slider.value, slider.minimum, slider.maximum, pressed,
+                          nanoSliderDragging_ && nanoSliderIndex_ == index);
+      NanoSliderTarget target;
+      target.rect = rect;
+      target.index = canonical;
+      nanoSliderTargets_.push_back(target);
+      nanoAddTarget(rect, index, item);
+      continue;
+    }
     if (info.kind == DisplayManager::Button::ButtonKind::Toggle) {
       display_.nanoToggle(rect, info.label, info.active, pressed);
     } else if (canonical < subtitles.size()) {
@@ -1385,6 +1588,14 @@ bool App::nanoChangePage(int delta, bool fromSwipe) {
 }
 
 void App::runNanoAction(int action, uint32_t nowMs) {
+  if (action >= kNanoThemeLayout) {
+    setNanoTheme(nanoPalette_, nanoOwnAccent_, static_cast<uint8_t>(action - kNanoThemeLayout));
+    return;
+  }
+  if (action >= kNanoThemePalette) {
+    setNanoTheme(static_cast<uint8_t>(action - kNanoThemePalette), nanoOwnAccent_, nanoLayout_);
+    return;
+  }
   if (action >= kNanoLaunchPlugin) {
     const auto enabled = pluginLibrary_.enabledEntries();
     const size_t index = static_cast<size_t>(action - kNanoLaunchPlugin);
@@ -1404,6 +1615,21 @@ void App::runNanoAction(int action, uint32_t nowMs) {
       return;
     case kNanoTabDevice:
       openDeviceHome();
+      return;
+    case kNanoTabThemes:
+      openNanoThemes();
+      return;
+    case kNanoThemePagePrev:
+    case kNanoThemePageNext:
+      if (action == kNanoThemePagePrev && nanoThemePage_ > 0) {
+        --nanoThemePage_;
+      } else if (action == kNanoThemePageNext) {
+        ++nanoThemePage_;  // renderNanoThemes() clamps
+      }
+      renderSettings();
+      return;
+    case kNanoThemeOwnAccent:
+      setNanoTheme(nanoPalette_, !nanoOwnAccent_, nanoLayout_);
       return;
     case kNanoTabPlugins:
       openPluginsHome();
@@ -1462,6 +1688,9 @@ void App::returnFromPlugin() {
 // ─── Live-drag screens ──────────────────────────────────────────────────────
 
 bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
+  if (handleNanoSliderTouch(event, nowMs)) {
+    return true;
+  }
   if (menuScreen_ == MenuScreen::BookPicker) {
     const ShelfGeometry g = shelfGeometry();
     const size_t count = bookMenuItems_.size() > 1 ? bookMenuItems_.size() - 1 : 0;
@@ -1614,6 +1843,205 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
     return true;
   }
   return false;
+}
+
+// ─── Slider tiles ───────────────────────────────────────────────────────────
+
+bool App::nanoSliderSpec(size_t index, NanoSliderSpec &spec) const {
+  auto set = [&spec](int minimum, int maximum, int step, int value) {
+    spec.minimum = minimum;
+    spec.maximum = maximum;
+    spec.step = std::max(1, step);
+    spec.value = value;
+    return true;
+  };
+  switch (menuScreen_) {
+    case MenuScreen::SettingsDisplay:
+      if (index == kSettingsDisplayBrightnessIndex) {
+        return set(0, static_cast<int>(kBrightnessLevelCount) - 1, 1, brightnessLevelIndex_);
+      }
+      return false;
+    case MenuScreen::SettingsPacing:
+      if (readerMode_ == ReaderMode::Scroll) {
+        switch (index) {
+          case kSettingsPacingScrollFontSizeIndex:
+            return set(0, 8, 1, scrollFontSize_);
+          case kSettingsPacingScrollLineSpacingIndex:
+            return set(0, 2, 1, scrollLineSpacing_);
+          case kSettingsPacingScrollMarginIndex:
+            return set(0, 2, 1, scrollMargin_);
+          default:
+            return false;
+        }
+      }
+      switch (index) {
+        case kSettingsPacingWpmIndex:
+          return set(kSettingsWpmMin, kSettingsWpmMax, kWpmSliderStepWpm, reader_.wpm());
+        case kSettingsPacingLongWordsIndex:
+          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingLongWordDelayMs_);
+        case kSettingsPacingComplexityIndex:
+          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingComplexWordDelayMs_);
+        case kSettingsPacingPunctuationIndex:
+          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingPunctuationDelayMs_);
+        default:
+          return false;
+      }
+    case MenuScreen::ScreensaverSettings:
+      switch (index) {
+        case kScreensaverSettingsTimeoutIndex:
+          return set(0, kScreensaverTimeoutCount - 1, 1, screensaverTimeoutIndex_);
+        case kScreensaverSettingsAutoOffIndex:
+          return set(0, kScreensaverAutoOffCount - 1, 1, screensaverAutoOffIndex_);
+        case kScreensaverSettingsSleepGuardIndex:
+          return set(0, kScreensaverSleepGuardCount - 1, 1, screensaverSleepGuardIndex_);
+        default:
+          return false;
+      }
+    default:
+      return false;
+  }
+}
+
+void App::nanoSliderSet(size_t index, int value) {
+  switch (menuScreen_) {
+    case MenuScreen::SettingsDisplay:
+      if (index == kSettingsDisplayBrightnessIndex) {
+        brightnessLevelIndex_ = static_cast<uint8_t>(value);
+        // Live: the backlight follows the finger.
+        display_.setBrightnessPercent(currentBrightnessPercent());
+      }
+      return;
+    case MenuScreen::SettingsPacing:
+      if (readerMode_ == ReaderMode::Scroll) {
+        if (index == kSettingsPacingScrollFontSizeIndex) scrollFontSize_ = static_cast<uint8_t>(value);
+        if (index == kSettingsPacingScrollLineSpacingIndex) scrollLineSpacing_ = static_cast<uint8_t>(value);
+        if (index == kSettingsPacingScrollMarginIndex) scrollMargin_ = static_cast<uint8_t>(value);
+        return;
+      }
+      if (index == kSettingsPacingWpmIndex) reader_.setWpm(static_cast<uint16_t>(value));
+      if (index == kSettingsPacingLongWordsIndex) pacingLongWordDelayMs_ = static_cast<uint16_t>(value);
+      if (index == kSettingsPacingComplexityIndex) pacingComplexWordDelayMs_ = static_cast<uint16_t>(value);
+      if (index == kSettingsPacingPunctuationIndex) pacingPunctuationDelayMs_ = static_cast<uint16_t>(value);
+      return;
+    case MenuScreen::ScreensaverSettings:
+      if (index == kScreensaverSettingsTimeoutIndex) screensaverTimeoutIndex_ = static_cast<uint8_t>(value);
+      if (index == kScreensaverSettingsAutoOffIndex) screensaverAutoOffIndex_ = static_cast<uint8_t>(value);
+      if (index == kScreensaverSettingsSleepGuardIndex) screensaverSleepGuardIndex_ = static_cast<uint8_t>(value);
+      return;
+    default:
+      return;
+  }
+}
+
+void App::nanoSliderCommit(size_t index, uint32_t nowMs) {
+  switch (menuScreen_) {
+    case MenuScreen::SettingsDisplay:
+      if (index == kSettingsDisplayBrightnessIndex) {
+        preferences_.putUChar(kPrefBrightness, brightnessLevelIndex_);
+        applyDisplayPreferences(nowMs, false);
+        Serial.printf("[display] brightness level %u (%u%%)\n", static_cast<unsigned>(brightnessLevelIndex_ + 1),
+                      static_cast<unsigned>(currentBrightnessPercent()));
+      }
+      return;
+    case MenuScreen::SettingsPacing:
+      if (readerMode_ == ReaderMode::Scroll) {
+        preferences_.putUChar(kPrefScrollFontSize, scrollFontSize_);
+        preferences_.putUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
+        preferences_.putUChar(kPrefScrollMargin, scrollMargin_);
+        display_.setScrollFontSize(scrollFontSize_);
+        display_.setScrollLineSpacing(scrollLineSpacing_);
+        display_.setScrollMargin(scrollMargin_);
+        return;
+      }
+      if (index == kSettingsPacingWpmIndex) {
+        preferences_.putUShort(kPrefWpm, reader_.wpm());
+        Serial.printf("[settings] WPM=%u\n", reader_.wpm());
+        return;
+      }
+      preferences_.putUShort(kPrefPacingLongMs, pacingLongWordDelayMs_);
+      preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
+      preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
+      applyPacingSettings();
+      return;
+    case MenuScreen::ScreensaverSettings:
+      preferences_.putUChar(kPrefScreensaverTimeout, screensaverTimeoutIndex_);
+      preferences_.putUChar(kPrefScreensaverAutoOff, screensaverAutoOffIndex_);
+      preferences_.putUChar(kPrefScreensaverSleepGuard, screensaverSleepGuardIndex_);
+      return;
+    default:
+      return;
+  }
+}
+
+bool App::handleNanoSliderTouch(const TouchEvent &event, uint32_t nowMs) {
+  if (event.phase == TouchPhase::Start) {
+    nanoSliderIndex_ = -1;
+    nanoSliderDragging_ = false;
+    for (const NanoSliderTarget &target : nanoSliderTargets_) {
+      NanoSliderSpec spec;
+      if (target.rect.contains(event.x, event.y) && nanoSliderSpec(target.index, spec)) {
+        nanoSliderIndex_ = static_cast<int>(target.index);
+        nanoSliderStartValue_ = spec.value;
+        nanoSliderStartX_ = event.x;
+        nanoSliderStartY_ = event.y;
+        nanoSliderWidth_ = std::max<uint16_t>(1, target.rect.w);
+        break;
+      }
+    }
+    // Not consumed: the generic handler still records the start, so a tap
+    // stays a tap (opens the row's editor / cycles it).
+    return false;
+  }
+  if (nanoSliderIndex_ < 0) {
+    return false;
+  }
+  const size_t index = static_cast<size_t>(nanoSliderIndex_);
+  const int dx = static_cast<int>(event.x) - nanoSliderStartX_;
+  const int dy = static_cast<int>(event.y) - nanoSliderStartY_;
+  if (!nanoSliderDragging_) {
+    if (std::abs(dx) > kNanoSliderDragThreshold && std::abs(dx) > std::abs(dy)) {
+      nanoSliderDragging_ = true;
+      pausedTouch_.active = false;  // the generic tap/swipe handling sits this one out
+    } else {
+      if (event.phase == TouchPhase::End) {
+        nanoSliderIndex_ = -1;
+      }
+      return false;
+    }
+  }
+
+  NanoSliderSpec spec;
+  if (!nanoSliderSpec(index, spec)) {
+    nanoSliderIndex_ = -1;
+    nanoSliderDragging_ = false;
+    return true;
+  }
+  // Relative drag: the fill edge moves as far as the finger does, so
+  // touching the tile never makes the value jump.
+  const int range = spec.maximum - spec.minimum;
+  int value = nanoSliderStartValue_ + static_cast<int>(static_cast<int64_t>(dx) * range / nanoSliderWidth_);
+  value = std::max(spec.minimum, std::min(value, spec.maximum));
+  value = spec.minimum + ((value - spec.minimum + spec.step / 2) / spec.step) * spec.step;
+  value = std::max(spec.minimum, std::min(value, spec.maximum));
+  if (value != spec.value) {
+    nanoSliderSet(index, value);
+  }
+
+  if (event.phase == TouchPhase::Move) {
+    if (nowMs - nanoSliderLastRenderMs_ >= kNanoDragFrameMs) {
+      nanoSliderLastRenderMs_ = nowMs;
+      rebuildSettingsMenuItems();
+      renderSettings();
+    }
+    return true;
+  }
+
+  nanoSliderCommit(index, nowMs);
+  nanoSliderIndex_ = -1;
+  nanoSliderDragging_ = false;
+  rebuildSettingsMenuItems();
+  renderSettings();
+  return true;
 }
 
 bool App::batteryChargingNow() const {

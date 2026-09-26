@@ -162,6 +162,17 @@ TrKey3.NanoNoBook;Wybierz ksiazke;Choose a book;Elige un libro;Choisissez un liv
 TrKey3.NanoSdCard;Karta SD;SD card;Tarjeta SD;Carte SD;SD-Karte;Card SD
 TrKey3.NanoBooksCount;ksiazek;books;libros;livres;Buecher;carti
 TrKey3.NanoNoLibraryItems;Brak ksiazek na karcie SD;No books on the SD card;No hay libros en la tarjeta SD;Aucun livre sur la carte SD;Keine Buecher auf der SD-Karte;Nicio carte pe cardul SD
+TrKey3.NanoThemesTab;Motywy;Themes;Temas;Themes;Themen;Teme
+TrKey3.NanoPaletteLabel;Paleta;Palette;Paleta;Palette;Palette;Paleta
+TrKey3.NanoLayoutSection;UKLAD NAWIGACJI;NAVIGATION LAYOUT;DISPOSICION;DISPOSITION;NAVIGATION;ASEZARE
+TrKey3.NanoLayoutLeft;Lewy;Left;Izq.;Gauche;Links;Stanga
+TrKey3.NanoLayoutRight;Prawy;Right;Der.;Droite;Rechts;Dreapta
+TrKey3.NanoLayoutCompact;Ikony;Icons;Iconos;Icones;Symbole;Iconite
+TrKey3.NanoOwnAccent;Moj kolor;My color;Mi color;Ma couleur;Meine Farbe;Culoarea mea
+TrKey3.NanoPaletteClassic;Klasyczny;Classic;Clasico;Classique;Klassisch;Clasic
+TrKey3.NanoPaletteCream;Krem;Cream;Crema;Creme;Creme;Crem
+TrKey3.NanoPaletteGraphite;Grafit;Graphite;Grafito;Graphite;Graphit;Grafit
+TrKey3.NanoPaletteForest;Las;Forest;Bosque;Foret;Wald;Padure
 TrKey3.PercentComplete;ukonczone;complete;completado;termine;abgeschlossen;finalizat
 TrKey3.ReadFromPlace;Czytaj od miejsca;Read from place;Leer desde el punto;Lire depuis l'endroit;Weiterlesen ab Stelle;Citeste de la loc
 TrKey3.DeleteBookLabel;Usun ksiazke;Delete book;Eliminar libro;Supprimer le livre;Buch loeschen;Sterge cartea

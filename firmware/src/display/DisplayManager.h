@@ -120,6 +120,7 @@ class DisplayManager {
     Hourglass,
     Power,
     Apps,
+    Palette,
   };
 
   struct Button {
@@ -219,6 +220,19 @@ class DisplayManager {
   // editors, keyboard) — same geometry and hit-testing, only drawButtons()
   // and the surrounding chrome paint in the Nano style. See NanoRole.
   void setModernCardStyle(bool enabled);
+  // Nano skin palette (Motywy tab). 0 = Classic: follows the Ciemny/Jasny/
+  // Nocny theme and the highlight color like the rest of the firmware; the
+  // others are fixed color sets (rsvpnano's themes/*.toml plus a few of
+  // ours). `ownAccent` swaps a fixed palette's accent for the user's
+  // highlight color. Only Nano-skin drawing reads this — the reading
+  // screen keeps the Classic colors.
+  static constexpr uint8_t kNanoPaletteClassic = 0;
+  static uint8_t nanoPaletteCount();
+  // English/brand name; App localizes the few that aren't proper names.
+  static const char *nanoPaletteName(uint8_t palette);
+  void setNanoPalette(uint8_t palette, bool ownAccent);
+  uint8_t nanoPalette() const { return nanoPalette_; }
+  bool nanoOwnAccent() const { return nanoOwnAccent_; }
   void setUiOrientation(BoardConfig::UiOrientation orientation);
   void setUiRotated180(bool rotated180);
   void setTypographyConfig(const TypographyConfig &config);
@@ -313,6 +327,9 @@ class DisplayManager {
   // Nano frame and nothing else has drawn in between.
   void nanoEndFrame();
   uint16_t nanoColor(NanoRole role) const;
+  // `role` of an arbitrary palette (theme chips preview palettes that are
+  // not active yet).
+  uint16_t nanoPaletteColor(uint8_t palette, NanoRole role) const;
   uint16_t nanoBlend(NanoRole role, uint8_t alpha) const;
   // Advance width / line height of the 6x9 UI font at `size` (1-4).
   static int nanoTextWidth(const String &text, uint8_t size);
@@ -353,12 +370,24 @@ class DisplayManager {
   void nanoIconButton(const ui::Rect &rect, NanoIcon icon, bool pressed = false);
   // Left-rail navigation tab. `badge` adds a small accent dot (pending
   // firmware update on the Device tab).
+  // Empty `text` = icon-only tab (compact rail). `markerRight` puts the
+  // active-tab accent bar on the right edge (rail docked on the right).
   void nanoTab(const ui::Rect &rect, const String &text, bool active, NanoIcon icon,
-               bool pressed = false, bool badge = false);
+               bool pressed = false, bool badge = false, bool markerRight = false);
   void nanoSetting(const ui::Rect &rect, const String &label, const String &value,
                    bool inlineLayout, bool pressed = false);
   void nanoToggle(const ui::Rect &rect, const String &label, bool on, bool pressed = false);
   void nanoProgress(const ui::Rect &rect, int value, int minimum, int maximum);
+  // Setting tile that doubles as a slider: the accent fill grows from the
+  // left edge to show where `value` sits between minimum and maximum; label
+  // and value flip to the on-accent color where the fill runs under them.
+  // `dragging` = a finger is moving the value right now.
+  void nanoSlider(const ui::Rect &rect, const String &label, const String &valueText, int value,
+                  int minimum, int maximum, bool pressed = false, bool dragging = false);
+  // Palette preview for the Motywy tab: the tile is painted in `palette`'s
+  // own background/text/accent, ringed in the active accent when selected.
+  void nanoPaletteChip(const ui::Rect &rect, uint8_t palette, const String &name, bool selected,
+                       bool pressed = false);
   // Battery icon with the percent label stacked under it — the rail
   // screens' right-hand column, under the power button.
   void nanoBatteryStack(const ui::Rect &rect);
@@ -466,6 +495,9 @@ class DisplayManager {
   void nanoCircleHelper(int x0, int y0, int r, uint8_t corners, uint16_t color);
   void nanoFillCircleHelper(int x0, int y0, int r, uint8_t corners, int delta, uint16_t color);
   void nanoDrawGlyph(int x, int y, uint8_t code, uint8_t size, uint16_t color);
+  // Fills the whole frame with the Nano background (palette-aware; the
+  // generic clearVirtualBuffer() uses the reader's background).
+  void nanoClearBackground(int width, int height);
   void drawBatteryBadge();
   void drawBatteryBadge(int logicalWidth, int logicalHeight);
   void drawPreviousSentenceHint();
@@ -500,6 +532,8 @@ class DisplayManager {
   bool darkMode_ = true;
   bool nightMode_ = false;
   bool modernCardStyle_ = false;
+  uint8_t nanoPalette_ = kNanoPaletteClassic;
+  bool nanoOwnAccent_ = false;
   BoardConfig::UiOrientation uiOrientation_ =
       BoardConfig::UI_ROTATED_180 ? BoardConfig::UiOrientation::LandscapeFlipped
                                   : BoardConfig::UiOrientation::Landscape;
