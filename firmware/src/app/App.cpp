@@ -102,6 +102,10 @@ constexpr uint32_t kArmedConfirmWindowMs = 2500;
 // actually runs — short enough to feel instant, long enough to register as
 // "yes, that tap landed" before the screen changes underneath it.
 constexpr uint32_t kPressFlashMs = 140;
+// Grid tap targets at or above this canonical index are Nano UI actions
+// (tabs, pager, shortcut tiles), run by App::runNanoAction() in
+// AppNano.inl instead of the screen's select*Item() handler.
+constexpr int kNanoActionBase = 10000;
 // Minimum gap between two fires of the SAME grid button on the SAME
 // screen — see lastFiredGridItemIndex_ in App.h for why this exists
 // (capacitive-touch contact bounce reads as two quick taps from one
@@ -1135,7 +1139,7 @@ void App::update(uint32_t nowMs) {
       display_.renderStatus("Plugin", errMsg ? errMsg : "Plugin error", "");
       delay(2000);
       pluginLoader_.unload();
-      openPluginsActive();
+      returnFromPlugin();
       return;
     }
 
@@ -1151,7 +1155,7 @@ void App::update(uint32_t nowMs) {
     if (powerButton_.wasReleasedEvent()) {
       Serial.println("[plugin] power button pressed — unloading plugin");
       pluginLoader_.unload();
-      openPluginsActive();
+      returnFromPlugin();
       return;
     }
 
@@ -2346,6 +2350,10 @@ bool App::updateBatteryStatus(uint32_t nowMs, bool force) {
     return false;
   }
 
+  // Nano UI's battery icon (fill level + charging bolt) reads these raw
+  // values; the text badge below keeps using the formatted label.
+  display_.setBatteryState(batteryPresent_, batteryDisplayedPercent_, batteryChargingNow());
+
   const String nextLabel = currentBatteryLabel();
   if (nextLabel == batteryLabel_) {
     return false;
@@ -3142,6 +3150,11 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     handleTypographyValueEditorTouch(event, nowMs);
     return;
   }
+  // Nano UI bookshelf / chapter wheel follow the finger live, so they also
+  // need every Move, not just the End the machine below forwards.
+  if (nanoUiActive() && handleNanoTouch(event, nowMs)) {
+    return;
+  }
 
   if (event.phase == TouchPhase::Start) {
     pausedTouch_.active = true;
@@ -3297,19 +3310,16 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
-  // Modern dock bar / library carousel: neither lives in currentGridButtons_
-  // (the dock overlays every dock-tab screen; the carousel replaces the grid
-  // entirely on BookPicker), so both need first refusal on a plain tap,
-  // before handleGridTap() below hit-tests against possibly-stale rects.
-  if (navMode_ == NavMode::Modern && absDeltaX <= static_cast<int>(kTapSlopPx) &&
-      absDeltaY <= static_cast<int>(kTapSlopPx)) {
-    if (menuScreen_ == MenuScreen::BookPicker &&
-        handleLibraryCarouselTap(event.x, event.y, nowMs)) {
-      return;
+  // Nano UI: taps go through handleGridTap() below like the Buttons grid
+  // (every tab, pager arrow and tile is in currentGridButtons_); a
+  // horizontal swipe turns the page, same as the header arrows.
+  if (nanoUiActive() && (absDeltaX > static_cast<int>(kTapSlopPx) ||
+                         absDeltaY > static_cast<int>(kTapSlopPx))) {
+    if (absDeltaX >= static_cast<int>(kSwipeThresholdPx) &&
+        absDeltaX > absDeltaY + static_cast<int>(kAxisBiasPx)) {
+      nanoChangePage(deltaX < 0 ? 1 : -1, true);
     }
-    if (handleModernDockTap(event.x, event.y, nowMs)) {
-      return;
-    }
+    return;
   }
 
   // Immediate-mode button grid: tap directly hits whichever button is
@@ -3637,7 +3647,7 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
     itemCount = settingsMenuItems_.size();
   } else if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
-      menuScreen_ == MenuScreen::SettingsConnectivity ||
+      menuScreen_ == MenuScreen::SettingsConnectivity || menuScreen_ == MenuScreen::DeviceHome ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme ||
       menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomeReadingMode) {
@@ -3726,7 +3736,7 @@ void App::moveMenuSelection(int direction) {
     Serial.printf("[presets] selected=%s\n", settingsMenuItems_[presetsSelectedIndex_].c_str());
   } else if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
-      menuScreen_ == MenuScreen::SettingsConnectivity ||
+      menuScreen_ == MenuScreen::SettingsConnectivity || menuScreen_ == MenuScreen::DeviceHome ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage || menuScreen_ == MenuScreen::WelcomeTheme ||
       menuScreen_ == MenuScreen::WelcomeHighlightColor || menuScreen_ == MenuScreen::WelcomeReadingMode) {
@@ -3819,6 +3829,10 @@ size_t savePointsTileStartForPage(size_t page) {
 
 void App::renderItemGrid(const String &title, const std::vector<String> &items,
                          size_t selectedIndex, size_t headerRows, bool showBatteryBadge) {
+  if (nanoUiActive()) {
+    renderNanoScreen(title, items, selectedIndex, headerRows);
+    return;
+  }
   applyReaderUiOrientation();
   display_.setModernCardStyle(navMode_ == NavMode::Modern);
 
@@ -3909,10 +3923,7 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
   constexpr uint16_t kAreaY = 32;
   constexpr uint16_t kGap = 4;
   const uint16_t areaW = static_cast<uint16_t>(BoardConfig::DISPLAY_WIDTH - 2 * kAreaX);
-  const bool showModernDock = isModernDockScreen();
-  const uint16_t bottomReserve = showModernDock
-                                     ? DisplayManager::modernDockHeight()
-                                     : ((pageCount > 1 && !gridPagesVertically_) ? 10 : 2);
+  const uint16_t bottomReserve = (pageCount > 1 && !gridPagesVertically_) ? 10 : 2;
   const uint16_t areaH =
       static_cast<uint16_t>(BoardConfig::DISPLAY_HEIGHT - kAreaY - bottomReserve);
 
@@ -3994,10 +4005,8 @@ void App::renderItemGrid(const String &title, const std::vector<String> &items,
                               menuScreen_ == MenuScreen::WelcomeTheme ||
                               menuScreen_ == MenuScreen::WelcomeHighlightColor ||
                               menuScreen_ == MenuScreen::WelcomeReadingMode;
-  const DisplayManager::ModernDock dock = showModernDock ? buildModernDock() : DisplayManager::ModernDock{};
   display_.renderButtonGrid(title, currentGridButtons_, page, pageCount, activeGridToastText(millis()),
-                            showBatteryBadge, gridPagesVertically_, prominentTitle,
-                            showModernDock ? &dock : nullptr);
+                            showBatteryBadge, gridPagesVertically_, prominentTitle);
 }
 
 void App::renderItemGridLibrary(const std::vector<DisplayManager::LibraryItem> &items,
@@ -4129,23 +4138,8 @@ void App::renderMenuAnyMode(const String &title, const std::vector<String> &item
 
 void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem> &items,
                                    size_t selectedIndex, const String &title) {
-  // Cover-flow carousel instead of the plain title+subtitle grid — only for
-  // the actual Library screen; WifiNetworks reuses this same function but
-  // is a deep settings screen, not a dock-tab hub, so it keeps the old
-  // header+grid chrome even in Modern mode (see isModernDockScreen()).
-  if (navMode_ == NavMode::Modern && menuScreen_ == MenuScreen::BookPicker) {
-    applyReaderUiOrientation();
-    display_.setModernCardStyle(true);
-    currentGridButtons_.clear();
-    currentGridItemIndices_.clear();
-    // items[0] is always the Back/Skip row (see openBookPicker()) — the
-    // carousel has no such row, back navigation happens through the dock.
-    std::vector<DisplayManager::LibraryItem> carouselItems;
-    if (items.size() > 1) {
-      carouselItems.assign(items.begin() + 1, items.end());
-    }
-    const size_t carouselSelected = selectedIndex > 0 ? selectedIndex - 1 : 0;
-    display_.renderLibraryCarousel(carouselItems, carouselSelected, buildModernDock());
+  if (nanoUiActive()) {
+    renderNanoLibraryList(items, selectedIndex, title);
     return;
   }
 
@@ -4172,159 +4166,6 @@ void App::renderMenuAnyModeLibrary(const std::vector<DisplayManager::LibraryItem
   }
 }
 
-namespace {
-constexpr uint16_t packRgb565(uint8_t r, uint8_t g, uint8_t b) {
-  return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
-}
-}  // namespace
-
-bool App::isModernDockScreen() const {
-  if (navMode_ != NavMode::Modern) {
-    return false;
-  }
-  switch (menuScreen_) {
-    case MenuScreen::Main:
-    case MenuScreen::BookPicker:
-    case MenuScreen::SettingsHome:
-    case MenuScreen::PluginsHome:
-    case MenuScreen::Presets:
-      return true;
-    default:
-      return false;
-  }
-}
-
-App::ModernDockTab App::modernDockActiveTab() const {
-  switch (menuScreen_) {
-    case MenuScreen::SettingsHome:
-      return ModernDockTab::Settings;
-    case MenuScreen::PluginsHome:
-      return ModernDockTab::Plugins;
-    case MenuScreen::Presets:
-      return ModernDockTab::Presets;
-    default:
-      return ModernDockTab::Read;
-  }
-}
-
-DisplayManager::ModernDock App::buildModernDock() const {
-  DisplayManager::ModernDock dock;
-  dock.tabs.reserve(4);
-  // Stable face colors (not the current focus color) so the dock reads the
-  // same regardless of the user's chosen highlight color — same reasoning
-  // as rsvpnano's own dock, see their ScreenCommon.cpp comment. Read (0)
-  // is the exception: it stays tied to focusColor() (accentColor left 0),
-  // since it's the "home" tab and should match the rest of the reading UI.
-  dock.tabs.push_back({uiText(UiText::Read), ui::IconId::Book, 0});
-  dock.tabs.push_back(
-      {uiText(UiText::Settings), ui::IconId::Settings, packRgb565(190, 130, 32)});
-  dock.tabs.push_back(
-      {uiText(UiText::Plugins), ui::IconId::Plugin, packRgb565(70, 132, 205)});
-  dock.tabs.push_back(
-      {tr3(TrKey3::PresetsLabel), ui::IconId::Preset, packRgb565(150, 90, 205)});
-  dock.activeIndex = static_cast<uint8_t>(modernDockActiveTab());
-  return dock;
-}
-
-bool App::handleModernDockTap(uint16_t x, uint16_t y, uint32_t nowMs) {
-  (void)nowMs;
-  if (!isModernDockScreen()) {
-    return false;
-  }
-  const int dockTop = BoardConfig::DISPLAY_HEIGHT - static_cast<int>(DisplayManager::modernDockHeight());
-  if (static_cast<int>(y) < dockTop) {
-    return false;
-  }
-  const DisplayManager::ModernDock dock = buildModernDock();
-  const size_t n = dock.tabs.size();
-  if (n == 0) {
-    return true;  // Inside the dock strip but nothing to hit — swallow it.
-  }
-  // Mirrors DisplayManager::drawModernDock()'s exact tab-width formula so a
-  // tap lands on the tab actually drawn under the finger.
-  const int margin = 6;
-  const int gap = 4;
-  const int available = BoardConfig::DISPLAY_WIDTH - 2 * margin - static_cast<int>(n - 1) * gap;
-  if (available <= 0) {
-    return true;
-  }
-  const int small = std::max(20, available / (static_cast<int>(n) + 2));
-  const int activeWidth = std::max(small, available - small * static_cast<int>(n - 1));
-  int tabX = margin;
-  for (size_t i = 0; i < n; ++i) {
-    const int w = (i == dock.activeIndex) ? activeWidth : small;
-    if (static_cast<int>(x) >= tabX && static_cast<int>(x) < tabX + w) {
-      const auto tapped = static_cast<ModernDockTab>(i);
-      if (tapped != modernDockActiveTab()) {
-        switch (tapped) {
-          case ModernDockTab::Read:
-            menuScreen_ = MenuScreen::Main;
-            renderMainMenu();
-            break;
-          case ModernDockTab::Settings:
-            openSettings();
-            break;
-          case ModernDockTab::Plugins:
-            openPluginsHome();
-            break;
-          case ModernDockTab::Presets:
-            openPresets();
-            break;
-        }
-      }
-      return true;
-    }
-    tabX += w + gap;
-  }
-  return true;  // Inside the strip, between/past tabs — still swallow it.
-}
-
-bool App::handleLibraryCarouselTap(uint16_t x, uint16_t y, uint32_t nowMs) {
-  (void)x;
-  const int dockH = static_cast<int>(DisplayManager::modernDockHeight());
-  if (static_cast<int>(y) >= BoardConfig::DISPLAY_HEIGHT - dockH) {
-    return false;  // Dock strip — let handleModernDockTap() handle it.
-  }
-  if (bookMenuItems_.size() <= 1) {
-    // Nothing to rotate to (0 or 1 book) — any tap in the content area just
-    // opens the sole book, same as the center-card zone below.
-    selectBookPickerItem(nowMs);
-    return true;
-  }
-
-  // Mirrors DisplayManager::renderLibraryCarousel()'s exact band geometry
-  // so a tap lands on the peek strip/card actually drawn under the finger.
-  const int top = 4;
-  const int contentH = BoardConfig::DISPLAY_HEIGHT - dockH - top - 4;
-  const int peek = std::max(16, contentH / 6);
-  const int centerY = top + peek + 3;
-  const int centerH = std::max(24, contentH - peek * 2 - 6);
-
-  // bookPickerSelectedIndex_ is 1-based (0 is the Back row, never reachable
-  // from the carousel — see openBookPicker()); rowIndex is the 0-based
-  // index into bookPickerBookIndices_ that renderLibraryCarousel() actually
-  // drew as "selected".
-  const size_t bookCount = bookMenuItems_.size() - 1;
-  const size_t rowIndex = bookPickerSelectedIndex_ > 0 ? bookPickerSelectedIndex_ - 1 : 0;
-
-  if (static_cast<int>(y) < top) {
-    return true;  // Small top margin — swallow, not a real miss.
-  }
-  if (static_cast<int>(y) < top + peek) {
-    bookPickerSelectedIndex_ = (rowIndex + bookCount - 1) % bookCount + 1;
-    renderBookPicker();
-    return true;
-  }
-  if (static_cast<int>(y) >= centerY && static_cast<int>(y) < centerY + centerH) {
-    selectBookPickerItem(nowMs);
-    return true;
-  }
-  // Bottom peek strip (or the small gap around it).
-  bookPickerSelectedIndex_ = (rowIndex + 1) % bookCount + 1;
-  renderBookPicker();
-  return true;
-}
-
 bool App::isGridItemArmed(size_t canonicalIndex, uint32_t nowMs) const {
   return armedGridItemIndex_ >= 0 && armedGridScreen_ == menuScreen_ &&
          static_cast<size_t>(armedGridItemIndex_) == canonicalIndex &&
@@ -4342,7 +4183,12 @@ void App::firePendingGridFlash(uint32_t nowMs) {
       nowMs < pendingFlashFireAtMs_) {
     return;
   }
+  const int flashed = pendingFlashItemIndex_;
   pendingFlashItemIndex_ = -1;
+  if (flashed >= kNanoActionBase) {
+    runNanoAction(flashed - kNanoActionBase, nowMs);
+    return;
+  }
   selectMenuItem(nowMs);
 }
 
@@ -4943,6 +4789,11 @@ void App::selectSettingsItem(uint32_t nowMs) {
     return;
   }
 
+  if (menuScreen_ == MenuScreen::DeviceHome) {
+    selectDeviceHomeItem(nowMs);
+    return;
+  }
+
   if (menuScreen_ == MenuScreen::SettingsHome) {
     switch (settingsSelectedIndex_) {
       case kSettingsBackIndex:
@@ -5287,6 +5138,11 @@ void App::selectWifiSettingsItem(uint32_t nowMs) {
 
   switch (settingsSelectedIndex_) {
     case kSettingsBackIndex:
+      // Nano UI opens Wi-Fi from the Urzadzenie tab.
+      if (navMode_ == NavMode::Modern) {
+        openDeviceHome();
+        return;
+      }
       // W trybie podstawowym pozycji "Wi-Fi zaawansowane" nie ma na liście
       // (Wi-Fi otwiera się wtedy z Łączności), więc wracamy na Łączność —
       // inaczej kursor wskazywałby indeks poza listą.
@@ -5995,6 +5851,11 @@ void App::selectTypographyFontPickerItem(uint32_t nowMs) {
       openWelcomeReadingMode();
       return;
     }
+    if (nanoFontPickerFromRead_) {
+      menuScreen_ = MenuScreen::Main;
+      renderMainMenu();
+      return;
+    }
     menuScreen_ = MenuScreen::TypographyTuning;
     renderTypographyTuning();
     return;
@@ -6019,6 +5880,12 @@ void App::selectTypographyFontPickerItem(uint32_t nowMs) {
     return;
   }
 
+  if (nanoFontPickerFromRead_) {
+    // Stay on the picker so the next face is one tap away; the Nano list
+    // marks the one just chosen.
+    renderMenu();
+    return;
+  }
   menuScreen_ = MenuScreen::TypographyTuning;
   renderTypographyTuning();
 }
@@ -6081,6 +5948,8 @@ void App::rebuildSettingsMenuItems() {
     // 4. Kopiuj przez USB
     settingsMenuItems_.push_back(uiText(UiText::UsbTransfer));
 #endif
+  } else if (menuScreen_ == MenuScreen::DeviceHome) {
+    rebuildDeviceHomeItems();
   } else if (menuScreen_ == MenuScreen::SettingsAbout) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(tr(TrKey::Version)) +
@@ -6252,7 +6121,7 @@ void App::setDevModeEnabled(bool enabled) {
   preferences_.putBool(kPrefDevMode, enabled);
   if (state_ == AppState::Menu &&
       (menuScreen_ == MenuScreen::WifiSettings || menuScreen_ == MenuScreen::SettingsHome ||
-       menuScreen_ == MenuScreen::SettingsAbout)) {
+       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::DeviceHome)) {
     rebuildSettingsMenuItems();
   }
 }
@@ -6262,6 +6131,7 @@ bool App::isSettingsListScreen() const {
          menuScreen_ == MenuScreen::SettingsDisplay ||
          menuScreen_ == MenuScreen::SettingsPacing ||
          menuScreen_ == MenuScreen::SettingsConnectivity ||
+         menuScreen_ == MenuScreen::DeviceHome ||
          menuScreen_ == MenuScreen::SettingsAbout ||
          menuScreen_ == MenuScreen::ScreensaverSettings ||
          menuScreen_ == MenuScreen::WifiSettings ||
@@ -9726,8 +9596,7 @@ void App::openSdCardRepairConfirm() {
 void App::selectSdCardRepairConfirmItem(uint32_t nowMs) {
   if (sdCardRepairConfirmSelectedIndex_ != SdCardRepairConfirmYes) {
     Serial.println("[sd-check] folder repair declined");
-    menuScreen_ = MenuScreen::Main;
-    renderMenu();
+    returnFromSdCardTool();
     return;
   }
 
@@ -9844,6 +9713,16 @@ void App::exitCompanionSync(uint32_t nowMs) {
   setState(AppState::Paused, nowMs);
 }
 
+void App::returnFromSdCardTool() {
+  // Nano UI starts the check from the Urzadzenie tab's SD tile.
+  if (navMode_ == NavMode::Modern) {
+    openDeviceHome();
+    return;
+  }
+  menuScreen_ = MenuScreen::Main;
+  renderMenu();
+}
+
 void App::runSdCardCheck(uint32_t nowMs) {
   (void)nowMs;
   Serial.println("[app] running SD card check");
@@ -9864,8 +9743,7 @@ void App::runSdCardCheck(uint32_t nowMs) {
   display_.renderStatus("SD check", result.summary, detail);
   delay(2600);
 
-  menuScreen_ = MenuScreen::Main;
-  renderMenu();
+  returnFromSdCardTool();
 }
 
 void App::runSdCardRepair(uint32_t nowMs) {
@@ -9875,8 +9753,7 @@ void App::runSdCardRepair(uint32_t nowMs) {
   if (!repaired) {
     display_.renderStatus("SD", tr2(TrKey2::FolderRepairFailed), tr2(TrKey2::FormatFat32));
     delay(2600);
-    menuScreen_ = MenuScreen::Main;
-    renderMenu();
+    returnFromSdCardTool();
     return;
   }
 
@@ -9897,8 +9774,7 @@ void App::runSdCardRepair(uint32_t nowMs) {
   display_.renderStatus("SD check", result.summary, detail);
   delay(2600);
 
-  menuScreen_ = MenuScreen::Main;
-  renderMenu();
+  returnFromSdCardTool();
 }
 
 void App::enterUsbTransfer(uint32_t nowMs) {
@@ -10658,6 +10534,10 @@ void App::openScreensaverSettings() {
 void App::selectScreensaverSettingsItem(uint32_t nowMs) {
   switch (settingsSelectedIndex_) {
     case kScreensaverSettingsBackIndex:
+      if (nanoScreensaverFromSettingsHome_) {
+        openSettings();
+        return;
+      }
       settingsSelectedIndex_ = kSettingsDisplayScreensaverIndex;
       menuScreen_ = MenuScreen::SettingsDisplay;
       rebuildSettingsMenuItems();
@@ -11255,7 +11135,7 @@ void App::renderMenu() {
 
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
-      menuScreen_ == MenuScreen::SettingsConnectivity ||
+      menuScreen_ == MenuScreen::SettingsConnectivity || menuScreen_ == MenuScreen::DeviceHome ||
       menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::ScreensaverSettings ||
       menuScreen_ == MenuScreen::WelcomeLanguage ||
       menuScreen_ == MenuScreen::WelcomeTheme ||
@@ -12443,3 +12323,5 @@ void App::handleStorageStatus(void *context, const char *title, const char *line
   static_cast<App *>(context)->renderStorageStatus(title, line1, line2, progressPercent);
   delay(0);
 }
+
+#include "AppNano.inl"

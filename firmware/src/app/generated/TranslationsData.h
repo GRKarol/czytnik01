@@ -144,7 +144,7 @@ inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[104][6] = {
+  static const char *const kTable[112][6] = {
       {"Save point added", "Punto guardado agregado", "Point de sauvegarde ajoute", "Lesezeichen hinzugefuegt", "Punct salvat adaugat", "Punkt zapisu dodany"},  // SavePointAdded
       {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zakladke"},  // NameBookmark
       {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazwe:"},  // EnterNamePrompt
@@ -249,6 +249,14 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Set up in the app", "Configura en la app", "Configurer dans l'appli", "In der App einrichten", "Configureaza in aplicatie", "Skonfiguruj w aplikacji"},  // WelcomeConfigureInAppLine1
       {"or add a book if you like", "o anade un libro si quieres", "ou ajoutez un livre si besoin", "oder fuege ein Buch hinzu", "sau adauga o carte daca vrei", "lub dodaj ksiazke, jesli chcesz"},  // WelcomeConfigureInAppLine2
       {"Modern", "Moderno", "Moderne", "Modern", "Modern", "Nowoczesny"},  // ModernLabel
+      {"Device", "Dispositivo", "Appareil", "Geraet", "Dispozitiv", "Urzadzenie"},  // NanoDeviceTab
+      {"READING", "LECTURA", "LECTURE", "LESEN", "CITIRE", "CZYTANIE"},  // NanoReadingSection
+      {"SYSTEM", "SISTEMA", "SYSTEME", "SYSTEM", "SISTEM", "SYSTEM"},  // NanoSystemSection
+      {"Unknown author", "Autor desconocido", "Auteur inconnu", "Unbekannter Autor", "Autor necunoscut", "Nieznany autor"},  // NanoUnknownAuthor
+      {"Choose a book", "Elige un libro", "Choisissez un livre", "Buch waehlen", "Alege o carte", "Wybierz ksiazke"},  // NanoNoBook
+      {"SD card", "Tarjeta SD", "Carte SD", "SD-Karte", "Card SD", "Karta SD"},  // NanoSdCard
+      {"books", "libros", "livres", "Buecher", "carti", "ksiazek"},  // NanoBooksCount
+      {"No books on the SD card", "No hay libros en la tarjeta SD", "Aucun livre sur la carte SD", "Keine Buecher auf der SD-Karte", "Nicio carte pe cardul SD", "Brak ksiazek na karcie SD"},  // NanoNoLibraryItems
   };
   return kTable[keyIndex][langIndex];
 }

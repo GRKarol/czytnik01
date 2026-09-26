@@ -46,9 +46,8 @@ class App {
     Swipe = 0,
     DPad = 1,
     Buttons = 2,
-    // Same button-grid layout/touch handling as Buttons — only drawButtons()
-    // paints differently (rounded accent-bordered cards instead of square
-    // gray tiles). See DisplayManager::setModernCardStyle().
+    // rsvpnano's UI: left tab rail, flat tiles, bookshelf library, chapter
+    // wheel — see the "Nano UI" section below and app/AppNano.inl.
     Modern = 3,
   };
 
@@ -168,6 +167,9 @@ class App {
     PresetsDeleteConfirm,
     PacingDelayEditor,
     WpmEditor,
+    // Nano UI's "Urzadzenie" rail tab (SD card, version, USB, phone sync,
+    // Bluetooth, Wi-Fi, updates, tutorial) — only reachable in NavMode::Modern.
+    DeviceHome,
   };
 
   // Which of the three pacing delays the PacingDelayEditor screen is
@@ -711,37 +713,70 @@ class App {
   /// Back buttons are exempt — a confirm step on a pure navigation action
   /// is friction without a safety payoff, so Back always fires immediately.
   bool handleGridTap(uint16_t x, uint16_t y, uint32_t nowMs);
-  /// The 4 top-level destinations of NavMode::Modern's bottom dock bar —
-  /// mirrors rsvpnano's watch-UI dock faces (Read/Settings/Device/Focus),
-  /// substituting our own Plugins/Presets for their Device/Focus tabs since
-  /// we don't have those and do have these. See buildModernDock().
-  enum class ModernDockTab : uint8_t {
-    Read = 0,
-    Settings = 1,
-    Plugins = 2,
-    Presets = 3,
+  // ─── Nano UI (NavMode::Modern) ───────────────────────────────────────────
+  // rsvpnano's "regular" presentation for this panel: a left rail of
+  // top-level tabs (Czytaj / Ustawienia / Urzadzenie / Pluginy), power button
+  // and battery in the right-hand column, content in between; nested screens
+  // take the full width under a "<<" header. Every screen still runs on the
+  // MenuScreen state machine and the existing select*Item() handlers —
+  // app/AppNano.inl only replaces how the menu renderers lay out and paint,
+  // and adds the rail, paging, bookshelf and chapter-wheel interactions. The
+  // reading screen itself is not touched.
+  enum class NanoTab : uint8_t {
+    Read,
+    Settings,
+    Device,
+    Plugins,
   };
-  /// True for exactly the screens that show the Modern dock — the 4
-  /// ModernDockTab landing screens plus the library carousel (reached from
-  /// Read). Deep/nested screens (SettingsDisplay, PluginDetail, confirm
-  /// dialogs, ...) keep the old back-button+title header instead, same as
-  /// rsvpnano's own sub-screens (see e.g. their storageEncryption()).
-  bool isModernDockScreen() const;
-  /// Which dock tab reads as "active" for the current menuScreen_ — Main and
-  /// BookPicker both count as Read, matching rsvpnano's
-  /// `active <= Screen::Chapters` grouping.
-  ModernDockTab modernDockActiveTab() const;
-  DisplayManager::ModernDock buildModernDock() const;
-  /// Hit-tests a tap against the dock bar drawn by buildModernDock() (bottom
-  /// DisplayManager::modernDockHeight() px of the screen) and switches
-  /// menuScreen_ to the tapped tab's landing screen. Called before
-  /// handleGridTap()/handleLibraryCarouselTap() so a dock tap can never be
-  /// swallowed by stale grid-tile rects underneath it.
-  bool handleModernDockTap(uint16_t x, uint16_t y, uint32_t nowMs);
-  /// Tap hit-testing for the Modern-mode library carousel (top/center/bottom
-  /// zones — see DisplayManager::renderLibraryCarousel()). Only called when
-  /// menuScreen_ == BookPicker && navMode_ == Modern.
-  bool handleLibraryCarouselTap(uint16_t x, uint16_t y, uint32_t nowMs);
+  // True in NavMode::Modern for every menu screen except the first-run
+  // wizard/tutorial, which keep their dedicated large-type layouts.
+  bool nanoUiActive() const;
+  // Screens drawn with the tab rail (top level of each tab).
+  bool nanoRailScreen() const;
+  NanoTab nanoActiveTab() const;
+  void renderNanoScreen(const String &title, const std::vector<String> &items, size_t selectedIndex,
+                        size_t headerRows);
+  void renderNanoLibraryList(const std::vector<DisplayManager::LibraryItem> &items,
+                             size_t selectedIndex, const String &title);
+  void renderNanoRail();
+  void renderNanoRead();
+  void renderNanoSettingsHome();
+  void renderNanoDeviceHome();
+  void renderNanoPluginsHome();
+  void renderNanoShelf();
+  void renderNanoChapters();
+  void renderNanoSavePoints();
+  void renderNanoBookDetails();
+  void renderNanoConfirm(const String &title, const std::vector<String> &items, size_t headerRows);
+  void renderNanoList(const String &title, const std::vector<String> &items, size_t headerRows,
+                      const std::vector<String> &subtitles = {});
+  String nanoScreenTitle() const;
+  // Registers a tap target in currentGridButtons_ so handleGridTap() hits
+  // it with the usual flash/debounce/destructive-confirm behaviour.
+  // canonicalIndex >= kNanoActionBase (App.cpp) is a Nano-only action,
+  // dispatched by runNanoAction() instead of the screen's select handler.
+  void nanoAddTarget(const ui::Rect &rect, int canonicalIndex, const String &label = "",
+                     ui::IconId icon = ui::IconId::None);
+  bool nanoPressed(int canonicalIndex) const;
+  bool nanoArmed(int canonicalIndex) const;
+  // Live-drag screens (bookshelf, chapter wheel) — called for every touch
+  // phase before the generic menu gesture handling. True = consumed.
+  bool handleNanoTouch(const TouchEvent &event, uint32_t nowMs);
+  void runNanoAction(int action, uint32_t nowMs);
+  // Moves the current Nano list to the previous/next page. True if the
+  // screen has more than one page (the gesture is consumed either way).
+  bool nanoChangePage(int delta, bool fromSwipe);
+  void openDeviceHome();
+  void rebuildDeviceHomeItems();
+  void selectDeviceHomeItem(uint32_t nowMs);
+  // Back target for plugin exit: the Plugins tab in the Nano UI, the
+  // active-plugins list otherwise.
+  void returnFromPlugin();
+  // Where the SD check / folder repair lands when done: the Urzadzenie tab
+  // in the Nano UI, the main menu otherwise.
+  void returnFromSdCardTool();
+  bool batteryChargingNow() const;
+
   /// True if `canonicalIndex` on the current menu screen is the armed
   /// (first-tapped, awaiting confirm) grid button and the confirm window
   /// hasn't expired. Shared by handleGridTap() (to decide confirm vs. arm)
@@ -1113,6 +1148,40 @@ class App {
   // string means nothing is pending.
   String pendingToastText_;
   uint32_t toastVisibleUntilMs_ = 0;
+  // ── Nano UI state (see app/AppNano.inl) ──
+  // Bookshelf: horizontal scroll offset of the spine strip and the drag that
+  // is moving it (rsvpnano LibraryScreen's offset_/dragging_/moved_).
+  int32_t nanoShelfOffset_ = 0;
+  int32_t nanoShelfDragStartOffset_ = 0;
+  uint16_t nanoShelfDragStartX_ = 0;
+  uint16_t nanoShelfDragStartY_ = 0;
+  bool nanoShelfDragging_ = false;
+  // Touch that started on the title strip under the shelf (opens details).
+  bool nanoShelfDetailTouch_ = false;
+  bool nanoShelfMoved_ = false;
+  uint32_t nanoShelfLastDragRenderMs_ = 0;
+  // Chapter wheel: centered row, sub-row offset while dragging, drag origin
+  // (rsvpnano ChaptersScreen's centeredIndex_/offset_/dragStart*).
+  size_t nanoWheelCentered_ = 0;
+  int16_t nanoWheelOffset_ = 0;
+  size_t nanoWheelDragStartIndex_ = 0;
+  uint16_t nanoWheelDragStartY_ = 0;
+  bool nanoWheelDragging_ = false;
+  bool nanoWheelMoved_ = false;
+  uint32_t nanoWheelLastDragRenderMs_ = 0;
+  // Paging of the last Nano list render: the page follows the selected item
+  // (like the Buttons grid), and nanoPageFirstIndex_[p] is the selection
+  // that shows page p — what the header arrows and horizontal swipes set.
+  size_t nanoPage_ = 0;
+  std::vector<size_t> nanoPageFirstIndex_;
+  // Where a shared sub-screen returns to when a Nano tab opened it instead
+  // of its usual parent.
+  bool nanoFontPickerFromRead_ = false;
+  bool nanoScreensaverFromSettingsHome_ = false;
+  // DeviceHome rows after the two status tiles, in display order — maps a
+  // settingsMenuItems_ index to what it does (#if-gated rows make the
+  // indices vary between builds).
+  std::vector<uint8_t> deviceHomeActions_;
   MenuScreen menuScreen_ = MenuScreen::Main;
   MenuScreen restartConfirmReturnScreen_ = MenuScreen::Main;
   QueueHandle_t otaCheckQueue_ = nullptr;

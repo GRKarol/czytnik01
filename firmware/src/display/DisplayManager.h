@@ -74,7 +74,7 @@ class DisplayManager {
     String title;
     String subtitle;
     // 0-100 (0 also covers "no saved progress yet") — only read by the
-    // Modern nav mode's carousel (renderLibraryCarousel()); every other
+    // Modern nav mode's bookshelf (App::renderNanoLibrary()); every other
     // library rendering path ignores it. No default value: a member
     // initializer here would make this a non-aggregate under the firmware's
     // C++ standard, breaking every existing `push_back({title, subtitle})`
@@ -84,21 +84,42 @@ class DisplayManager {
     uint8_t progressPercent;
   };
 
-  // One tab of App::NavMode::Modern's bottom dock bar (see
-  // DisplayManager::drawModernDock()). Mirrors rsvpnano's watch-UI dock:
-  // the active tab expands and shows its label, inactive tabs shrink to a
-  // bare icon in their own accent color. No default member values, same
-  // aggregate-initialization reason as LibraryItem::progressPercent above —
-  // App::buildModernDock() always supplies all three fields anyway.
-  struct DockTab {
-    String label;
-    ui::IconId icon;
-    uint16_t accentColor;  // 0 = use the current focus color
+  // ─── Nano skin (App::NavMode::Modern) ────────────────────────────────────
+  // rsvpnano's "regular" presentation for this exact 640x172 panel (their
+  // src/ui/Ui.cpp, Controls.cpp and Icons.cpp) redrawn on the virtual frame:
+  // flat rounded tiles with a hairline outline and an accent underline, the
+  // X11 6x9 pixel font scaled 1-4x, one accent color. App lays every screen
+  // out and does all hit-testing; these functions only paint. A screen is
+  // drawn between nanoBeginFrame() and nanoEndFrame().
+  enum class NanoRole : uint8_t {
+    Background,
+    Foreground,
+    Muted,
+    Subtle,
+    Accent,
+    OnAccent,
+    SurfaceMuted,
+    SurfaceActive,
+    Outline,
+    ProgressTrack,
   };
 
-  struct ModernDock {
-    std::vector<DockTab> tabs;
-    uint8_t activeIndex = 0;
+  enum class NanoAlign : uint8_t {
+    Start,
+    Center,
+    End,
+  };
+
+  enum class NanoIcon : uint8_t {
+    None,
+    Bookmark,
+    Books,
+    Edit,
+    Device,
+    Language,
+    Hourglass,
+    Power,
+    Apps,
   };
 
   struct Button {
@@ -185,15 +206,18 @@ class DisplayManager {
 
   bool begin();
   void setBatteryLabel(const String &label);
+  // Raw battery reading for the Nano skin's battery icon (fill level +
+  // charging bolt); the text badge keeps using setBatteryLabel().
+  void setBatteryState(bool present, uint8_t percent, bool charging);
   void setBrightnessPercent(uint8_t percent);
   void setFocusColorIndex(uint8_t index);
   uint8_t focusColorIndex() const;
   void setDarkMode(bool darkMode);
   void setNightMode(bool nightMode);
-  // Rounded, accent-bordered cards instead of the default square gray tiles
-  // for every grid-based menu screen (main menu, settings, library, ...).
-  // Same grid geometry/touch hit-testing as the default style — only
-  // drawButtons()'s painting changes. See App::NavMode::Modern.
+  // Nano skin for the screens App still draws through the generic
+  // Button-list renderers (renderButtonGrid()/renderTextEntry(): slider
+  // editors, keyboard) — same geometry and hit-testing, only drawButtons()
+  // and the surrounding chrome paint in the Nano style. See NanoRole.
   void setModernCardStyle(bool enabled);
   void setUiOrientation(BoardConfig::UiOrientation orientation);
   void setUiRotated180(bool rotated180);
@@ -277,25 +301,67 @@ class DisplayManager {
   void renderLibrary(const std::vector<LibraryItem> &items, size_t selectedIndex);
   void renderTextEntry(const String &title, const String &prompt, const String &value,
                        const String &helperText, const std::vector<Button> &buttons);
-  // `dock`, when non-null, reserves a bottom strip and draws
-  // App::NavMode::Modern's dock bar there (see drawModernDock()) instead of
-  // the usual bottom-centered page dots — the caller (App::renderItemGrid())
-  // is responsible for already having laid its tiles out above that strip.
   void renderButtonGrid(const String &title, const std::vector<Button> &buttons, size_t pageIndex,
                         size_t pageCount, const String &toastText = "",
                         bool showBatteryBadge = true, bool dotsOnLeft = false,
-                        bool prominentTitle = false, const ModernDock *dock = nullptr);
-  // Height in px the Modern dock reserves at the bottom of the screen —
-  // App::renderItemGrid() shrinks its tile-layout area by this much
-  // whenever it's about to pass a non-null dock into renderButtonGrid().
-  static uint16_t modernDockHeight();
-  // Cover-flow style library browser for NavMode::Modern (Screen::Library
-  // in rsvpnano's watch UI): previous/next books peek as thin bars above
-  // and below the current one, which gets a progress ring instead of a
-  // plain subtitle. Every other nav mode keeps using
-  // App::renderItemGridLibrary()'s plain scrollable list.
-  void renderLibraryCarousel(const std::vector<LibraryItem> &items, size_t selectedIndex,
-                             const ModernDock &dock);
+                        bool prominentTitle = false);
+
+  // ─── Nano skin primitives and widgets (see NanoRole above) ──────────────
+  // Clears the frame to the background color.
+  void nanoBeginFrame();
+  // Pushes the frame to the panel, unless it is pixel-identical to the last
+  // Nano frame and nothing else has drawn in between.
+  void nanoEndFrame();
+  uint16_t nanoColor(NanoRole role) const;
+  uint16_t nanoBlend(NanoRole role, uint8_t alpha) const;
+  // Advance width / line height of the 6x9 UI font at `size` (1-4).
+  static int nanoTextWidth(const String &text, uint8_t size);
+  static int nanoLineHeight(uint8_t size);
+  // Every primitive below clips to this rect (default: whole screen).
+  void nanoSetClip(int x, int y, int w, int h);
+  void nanoResetClip();
+  void nanoFillRect(int x, int y, int w, int h, uint16_t color);
+  void nanoDrawRect(int x, int y, int w, int h, uint16_t color);
+  void nanoFillRoundRect(int x, int y, int w, int h, int radius, uint16_t color);
+  void nanoDrawRoundRect(int x, int y, int w, int h, int radius, uint16_t color);
+  void nanoDrawLine(int x0, int y0, int x1, int y1, uint16_t color);
+  void nanoFillCircle(int cx, int cy, int radius, uint16_t color);
+  void nanoDrawCircle(int cx, int cy, int radius, uint16_t color);
+  void nanoFillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t color);
+  // rsvpnano's text layout: shrinks from `size` until the text fits in
+  // `maxLines` (max 2) lines of the rect, splits at a space, ends a line
+  // that still doesn't fit with "...", centers the block vertically.
+  void nanoText(const ui::Rect &rect, const String &text, uint8_t size, uint16_t color,
+                NanoAlign align = NanoAlign::Start, uint8_t maxLines = 1);
+  // The classic 5x7 glyph set, 1x, clipped — used for book-spine lettering.
+  void nanoSmallGlyph(int x, int y, char c, uint16_t color);
+  void nanoIcon(const ui::Rect &rect, NanoIcon icon, uint16_t ink, uint16_t surface);
+  void nanoBatteryIcon(int x, int y, int w, int h, uint8_t percent, bool charging, uint16_t ink,
+                       uint16_t surface);
+
+  void nanoLabel(const ui::Rect &rect, const String &text, uint8_t size, NanoRole role,
+                 NanoAlign align = NanoAlign::Start, uint8_t maxLines = 1);
+  void nanoSeparator(const ui::Rect &rect, const String &text);
+  // `pressed` is the short tap flash, `armed` the red "tap again to
+  // confirm" state of destructive rows. `previewTypeface` draws the label
+  // in that reader typeface instead of the pixel font (font picker).
+  void nanoButton(const ui::Rect &rect, const String &text, bool enabled = true,
+                  NanoIcon icon = NanoIcon::None, uint8_t textLines = 1,
+                  const String &detailLeft = "", const String &detailRight = "",
+                  bool pressed = false, bool armed = false,
+                  ReaderTypeface previewTypeface = ReaderTypeface::Count);
+  void nanoIconButton(const ui::Rect &rect, NanoIcon icon, bool pressed = false);
+  // Left-rail navigation tab. `badge` adds a small accent dot (pending
+  // firmware update on the Device tab).
+  void nanoTab(const ui::Rect &rect, const String &text, bool active, NanoIcon icon,
+               bool pressed = false, bool badge = false);
+  void nanoSetting(const ui::Rect &rect, const String &label, const String &value,
+                   bool inlineLayout, bool pressed = false);
+  void nanoToggle(const ui::Rect &rect, const String &label, bool on, bool pressed = false);
+  void nanoProgress(const ui::Rect &rect, int value, int minimum, int maximum);
+  // Battery icon with the percent label stacked under it — the rail
+  // screens' right-hand column, under the power button.
+  void nanoBatteryStack(const ui::Rect &rect);
   // line1ScalePercent/line2ScalePercent domyślnie 36/28 (dotychczasowy
   // rozmiar) — ekrany kreatora pierwszego uruchomienia proszą o większe
   // wartości, żeby tekst był czytelny dla osób 40+, bez zmiany rozmiaru na
@@ -392,16 +458,14 @@ class DisplayManager {
   // the renderer has no native rounded-rect primitive. radius is clamped to
   // half the shorter side; radius 0 falls back to a plain fillVirtualRect().
   void fillRoundedRect(int x, int y, int w, int h, int radius, uint16_t color);
-  // Bottom navigation strip for NavMode::Modern — see ModernDock. Draws
-  // `tabs.size()` rounded, accent-bordered pills across the full display
-  // width; the active one expands to fit an icon+label, the rest shrink to
-  // an icon-only square in their own accent color.
-  void drawModernDock(const ModernDock &dock);
-  // Ring of short radial ticks (not a filled arc — no native arc primitive)
-  // lit up to `percent` around the circle, centered text readout in the
-  // middle. Used by renderLibraryCarousel() for the selected book's
-  // progress; radius/thickness auto-scale to `rect`.
-  void drawProgressRing(int cx, int cy, int radius, uint8_t percent, uint16_t ringColor);
+  // Nano-skin painting of one generic Button (drawButtons() delegates here
+  // while modernCardStyle_ is set).
+  void drawNanoButton(const Button &button);
+  void nanoSpan(int x, int y, int w, uint16_t color);
+  void nanoPixel(int x, int y, uint16_t color);
+  void nanoCircleHelper(int x0, int y0, int r, uint8_t corners, uint16_t color);
+  void nanoFillCircleHelper(int x0, int y0, int r, uint8_t corners, int delta, uint16_t color);
+  void nanoDrawGlyph(int x, int y, uint8_t code, uint8_t size, uint16_t color);
   void drawBatteryBadge();
   void drawBatteryBadge(int logicalWidth, int logicalHeight);
   void drawPreviousSentenceHint();
@@ -442,6 +506,18 @@ class DisplayManager {
   bool tickerPlaybackFrameActive_ = false;
   String lastRenderKey_;
   String batteryLabel_;
+  bool batteryPresent_ = false;
+  uint8_t batteryPercent_ = 0;
+  bool batteryCharging_ = false;
+  // Incremented by every drawBitmap() — nanoEndFrame() may only skip an
+  // unchanged frame if nothing else reached the panel since it last flushed.
+  uint32_t panelWriteCount_ = 0;
+  uint32_t nanoFrameHash_ = 0;
+  uint32_t nanoFramePanelWrites_ = 0;
+  int nanoClipX0_ = 0;
+  int nanoClipY0_ = 0;
+  int nanoClipX1_ = 0;
+  int nanoClipY1_ = 0;
   // Word-wrap is comparatively expensive (String concatenation in a loop)
   // and renderArticleReader() must return the fresh total-line count on
   // every call (even when lastRenderKey_ skips the redraw), so the wrap

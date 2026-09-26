@@ -265,6 +265,15 @@ enum class TrKey3 : uint8_t {
   WelcomeConfigureInAppLine1,
   WelcomeConfigureInAppLine2,
   ModernLabel,
+  // ─── Nano UI (NavMode::Modern) ──────────────────────────────────────────
+  NanoDeviceTab,
+  NanoReadingSection,
+  NanoSystemSection,
+  NanoUnknownAuthor,
+  NanoNoBook,
+  NanoSdCard,
+  NanoBooksCount,
+  NanoNoLibraryItems,
 };
 
 namespace Translations3 {

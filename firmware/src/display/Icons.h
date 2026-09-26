@@ -25,11 +25,6 @@ enum class IconId : uint8_t {
   Record,
   Stop,
   Eye,
-  // Dock icons for App::NavMode::Modern's bottom navigation bar (see
-  // DisplayManager::drawModernDock()) — no existing glyph fit "device
-  // hub" or "saved preset" well enough to reuse.
-  Device,
-  Preset,
 };
 
 }  // namespace ui

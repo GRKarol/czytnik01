@@ -20,6 +20,15 @@ struct Rect {
   uint16_t w = 0;
   uint16_t h = 0;
 
+  Rect() = default;
+  // Signed inputs so layout math can go negative without wrapping; anything
+  // below zero clamps to 0 (an off-screen edge, an empty width).
+  Rect(int px, int py, int pw, int ph)
+      : x(static_cast<uint16_t>(std::max(0, px))),
+        y(static_cast<uint16_t>(std::max(0, py))),
+        w(static_cast<uint16_t>(std::max(0, pw))),
+        h(static_cast<uint16_t>(std::max(0, ph))) {}
+
   bool contains(uint16_t px, uint16_t py) const {
     return px >= x && px < x + w && py >= y && py < y + h;
   }

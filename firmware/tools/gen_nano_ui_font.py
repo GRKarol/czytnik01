@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Generates src/display/NanoUiFont.h from rsvpnano's u8g2 X11 "Fixed 6x9" UI font.
+
+The source font (public domain, see its header) is u8g2-compressed and
+indexed by Unicode codepoint. The firmware stores text in a single-byte
+encoding (src/text/LatinText.h), so this decodes every glyph into a plain
+6x9 bitmap and re-indexes the table by that storage byte. Usage:
+
+    python tools/gen_nano_ui_font.py <path/to/rsvpnano/src/fonts/UiFont6x9.h>
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+LATIN_TEXT = ROOT / "src" / "text" / "LatinText.h"
+OUTPUT = ROOT / "src" / "display" / "NanoUiFont.h"
+CELL_W, CELL_H, ASCENT = 6, 9, 7
+
+
+def c_string_bytes(source: str) -> bytes:
+    body = source[source.index("=") + 1:source.rindex(";")]
+    out = bytearray()
+    for piece in re.findall(r'"((?:[^"\\]|\\.)*)"', body, re.S):
+        i = 0
+        while i < len(piece):
+            ch = piece[i]
+            if ch != "\\":
+                out.append(ord(ch))
+                i += 1
+                continue
+            nxt = piece[i + 1]
+            if nxt in "01234567":
+                j = i + 1
+                while j < len(piece) and j < i + 4 and piece[j] in "01234567":
+                    j += 1
+                out.append(int(piece[i + 1:j], 8))
+                i = j
+            else:
+                out.append({"n": 10, "t": 9, "r": 13, "\\": 92, '"': 34, "'": 39, "?": 63}[nxt])
+                i += 2
+    return bytes(out)
+
+
+class Bits:
+    def __init__(self, data, pos):
+        self.data, self.pos, self.bit = data, pos, 0
+
+    def u(self, cnt):
+        val = self.data[self.pos] >> self.bit
+        end = self.bit + cnt
+        if end >= 8:
+            self.pos += 1
+            val |= self.data[self.pos] << (8 - self.bit)
+            end -= 8
+        self.bit = end
+        return val & ((1 << cnt) - 1)
+
+    def s(self, cnt):
+        return self.u(cnt) - (1 << (cnt - 1))
+
+
+def decode_font(font: bytes):
+    hdr = font[:23]
+    bp0, bp1, bw, bh, bx, by, bd = hdr[2:9]
+    start_A = (hdr[17] << 8) | hdr[18]
+    start_a = (hdr[19] << 8) | hdr[20]
+    start_u = (hdr[21] << 8) | hdr[22]
+    glyphs = {}
+
+    def decode(pos, code):
+        b = Bits(font, pos)
+        w, h, x, y = b.u(bw), b.u(bh), b.s(bx), b.s(by)
+        b.s(bd)
+        rows = [0] * CELL_H
+        if w:
+            px, py = 0, 0
+            def run(n, on):
+                nonlocal px, py
+                for _ in range(n):
+                    if on and py < h:
+                        cx, cy = x + px, ASCENT - (h + y) + py
+                        if 0 <= cx < CELL_W and 0 <= cy < CELL_H:
+                            rows[cy] |= 1 << (CELL_W - 1 - cx)
+                    px += 1
+                    if px >= w:
+                        px, py = 0, py + 1
+            while True:
+                a, c = b.u(bp0), b.u(bp1)
+                while True:
+                    run(a, False)
+                    run(c, True)
+                    if b.u(1) == 0:
+                        break
+                if py >= h:
+                    break
+        glyphs[code] = rows
+
+    pos = 23
+    while font[pos + 1] != 0:
+        decode(pos + 2, font[pos])
+        pos += font[pos + 1]
+    # Unicode section: a lookup table of (offset, last encoding) words whose
+    # first offset points at the first glyph block; glyphs are contiguous
+    # after that, each prefixed by a 16-bit encoding and an 8-bit size.
+    pos = 23 + start_u
+    pos += (font[pos] << 8) | font[pos + 1]
+    while pos + 2 < len(font):
+        code = (font[pos] << 8) | font[pos + 1]
+        if code == 0:
+            break
+        decode(pos + 3, code)
+        pos += font[pos + 2]
+    return glyphs
+
+
+def storage_map():
+    text = LATIN_TEXT.read_text(encoding="utf-8")
+    block = text[text.index("customSlotForCodepoint"):text.index("directStorageByteForCodepoint")]
+    mapping = {}
+    for cp, slot in re.findall(r"case 0x([0-9A-Fa-f]+):\s*slot = 0x([0-9A-Fa-f]+);", block):
+        mapping[int(slot, 16)] = int(cp, 16)
+    repurposed = set(int(v, 16) for v in re.findall(
+        r"case 0x([0-9A-Fa-f]+):",
+        text[text.index("isRepurposedLatin1Byte"):text.index("customSlotForCodepoint")]))
+    for byte in range(0xA1, 0x100):
+        if byte not in repurposed and byte not in mapping:
+            mapping[byte] = byte
+    for byte in range(32, 127):
+        mapping[byte] = byte
+    return mapping
+
+
+def main():
+    source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+    glyphs = decode_font(c_string_bytes(source))
+    mapping = storage_map()
+    table, missing = [], []
+    for byte in range(256):
+        cp = mapping.get(byte)
+        rows = glyphs.get(cp) if cp is not None else None
+        if cp is not None and rows is None:
+            missing.append(hex(cp))
+        table.append(rows or [0] * CELL_H)
+    lines = [
+        "#pragma once",
+        "",
+        "// AUTO-GENERATED by tools/gen_nano_ui_font.py -- do not edit by hand.",
+        "// X11 Misc-Fixed 6x9 (public domain), taken from rsvpnano's UI font and",
+        "// re-indexed by the firmware's single-byte text encoding (text/LatinText.h).",
+        "// One entry per storage byte, 9 rows, bit 5 = leftmost of 6 columns.",
+        "",
+        "#include <stdint.h>",
+        "",
+        f"constexpr int kNanoUiGlyphWidth = {CELL_W};",
+        f"constexpr int kNanoUiGlyphHeight = {CELL_H};",
+        "",
+        "constexpr uint8_t kNanoUiFont[256][kNanoUiGlyphHeight] = {",
+    ]
+    for byte, rows in enumerate(table):
+        lines.append("    {" + ", ".join(f"0x{r:02X}" for r in rows) + f"}},  // 0x{byte:02X}")
+    lines.append("};")
+    OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {OUTPUT} ({len(glyphs)} source glyphs), missing: {missing}")
+
+
+if __name__ == "__main__":
+    main()

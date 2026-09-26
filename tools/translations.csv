@@ -154,6 +154,14 @@ TrKey3.ChannelStaging;Testowy;Staging;Pruebas;Test;Testkanal;Testare
 TrKey3.ChannelProduction;Produkcyjny;Production;Produccion;Production;Produktion;Productie
 TrKey3.ButtonsLabel;Przyciski;Buttons;Botones;Boutons;Tasten;Butoane
 TrKey3.ModernLabel;Nowoczesny;Modern;Moderno;Moderne;Modern;Modern
+TrKey3.NanoDeviceTab;Urzadzenie;Device;Dispositivo;Appareil;Geraet;Dispozitiv
+TrKey3.NanoReadingSection;CZYTANIE;READING;LECTURA;LECTURE;LESEN;CITIRE
+TrKey3.NanoSystemSection;SYSTEM;SYSTEM;SISTEMA;SYSTEME;SYSTEM;SISTEM
+TrKey3.NanoUnknownAuthor;Nieznany autor;Unknown author;Autor desconocido;Auteur inconnu;Unbekannter Autor;Autor necunoscut
+TrKey3.NanoNoBook;Wybierz ksiazke;Choose a book;Elige un libro;Choisissez un livre;Buch waehlen;Alege o carte
+TrKey3.NanoSdCard;Karta SD;SD card;Tarjeta SD;Carte SD;SD-Karte;Card SD
+TrKey3.NanoBooksCount;ksiazek;books;libros;livres;Buecher;carti
+TrKey3.NanoNoLibraryItems;Brak ksiazek na karcie SD;No books on the SD card;No hay libros en la tarjeta SD;Aucun livre sur la carte SD;Keine Buecher auf der SD-Karte;Nicio carte pe cardul SD
 TrKey3.PercentComplete;ukonczone;complete;completado;termine;abgeschlossen;finalizat
 TrKey3.ReadFromPlace;Czytaj od miejsca;Read from place;Leer desde el punto;Lire depuis l'endroit;Weiterlesen ab Stelle;Citeste de la loc
 TrKey3.DeleteBookLabel;Usun ksiazke;Delete book;Eliminar libro;Supprimer le livre;Buch loeschen;Sterge cartea
