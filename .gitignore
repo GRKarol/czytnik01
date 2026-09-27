@@ -38,3 +38,4 @@ pliki_bota/
 # APK signing secrets — never commit
 android/keystore.properties
 *.keystore
+.tmp_scripts/

@@ -319,6 +319,8 @@ class App {
   void openMainMenu(uint32_t nowMs);
   void cycleBrightness();
   void cycleThemeMode(uint32_t nowMs);
+  // 0 dark, 1 light, 2 night (Motywy > Czytanie).
+  void setReaderTheme(uint8_t theme, uint32_t nowMs);
   void cycleUiLanguage(uint32_t nowMs);
   void cycleReaderMode(uint32_t nowMs);
   void cycleHandednessMode(uint32_t nowMs);
@@ -336,6 +338,9 @@ class App {
   // the Atkinson fallback for the rest of the session.
   void maybeRetryTypographyFontLoad(uint32_t nowMs);
   uint8_t currentBrightnessPercent() const;
+  // Smooth brightness setting (percent); also keeps the old 5-step index in
+  // sync for the companion API.
+  void setBrightnessSetting(uint8_t percent, bool persist);
   bool updateBatteryStatus(uint32_t nowMs, bool force = false);
   void handleBatteryProtection(uint32_t nowMs);
   void showLowBatteryWarning(uint32_t nowMs);
@@ -748,8 +753,9 @@ class App {
   enum NanoLayout : uint8_t {
     kNanoLayoutLeft = 0,
     kNanoLayoutRight = 1,
-    kNanoLayoutCompact = 2,  // icon-only rail on the left
-    kNanoLayoutCount = 3,
+    kNanoLayoutCompact = 2,       // icon-only rail on the left
+    kNanoLayoutCompactRight = 3,  // icon-only rail on the right
+    kNanoLayoutCount = 4,
   };
   // A setting tile that is also a slider (see nanoSliderSpec()).
   struct NanoSliderSpec {
@@ -799,6 +805,8 @@ class App {
   void renderNanoList(const String &title, const std::vector<String> &items, size_t headerRows,
                       const std::vector<String> &subtitles = {});
   String nanoScreenTitle() const;
+  // Rows of the current list the Nano UI leaves out (moved elsewhere).
+  bool nanoHiddenRow(size_t canonical) const;
   // Registers a tap target in currentGridButtons_ so handleGridTap() hits
   // it with the usual flash/debounce/destructive-confirm behaviour.
   // canonicalIndex >= kNanoActionBase (App.cpp) is a Nano-only action,
@@ -862,6 +870,9 @@ class App {
   // custom names are on (then the keyboard only for "Wlasna nazwa").
   void beginSavePointNaming(uint32_t nowMs);
   void renderSavePointNameChoice();
+  // Motywy > Czytanie > Kolor litery: full palette for the focus letter.
+  void openFocusColorPicker(uint32_t nowMs);
+  void renderFocusColorPicker();
   // Charger detection from the cell voltage (no status pin on this board).
   // True when the charging state flipped (indicator needs a repaint).
   bool updateChargeProbe(uint32_t nowMs);
@@ -1130,6 +1141,7 @@ class App {
   size_t sdCardRepairConfirmSelectedIndex_ = 0;
   size_t updateConfirmSelectedIndex_ = 0;
   uint8_t brightnessLevelIndex_ = 4;
+  uint8_t brightnessPercentSetting_ = 100;
   uint8_t readerFontSizeIndex_ = 0;
   uint8_t scrollFontSize_ = 4;
   uint8_t scrollLineSpacing_ = 1;
@@ -1263,6 +1275,9 @@ class App {
   // that shows page p — what the header arrows and horizontal swipes set.
   size_t nanoPage_ = 0;
   std::vector<size_t> nanoPageFirstIndex_;
+  // A list whose page is kept apart from its selection (font picker).
+  int nanoListPage_ = -1;
+  MenuScreen nanoListPageScreen_ = MenuScreen::Main;
   // Where a shared sub-screen returns to when a Nano tab opened it instead
   // of its usual parent.
   bool nanoFontPickerFromRead_ = false;
@@ -1490,7 +1505,9 @@ class App {
   UiLanguage uiLanguage_ = UiLanguage::English;
   ReaderMode readerMode_ = ReaderMode::Rsvp;
   HandednessMode handednessMode_ = HandednessMode::Right;
-  NavMode navMode_ = NavMode::Buttons;
+  // Official (NavMode::Modern) is the default; the other three are only
+  // offered in advanced mode.
+  NavMode navMode_ = NavMode::Modern;
   DisplayManager::TypographyConfig typographyConfig_;
   bool typographyFontRetryPending_ = false;
   uint32_t typographyFontRetryLastAttemptMs_ = 0;

@@ -159,6 +159,32 @@ void runUpdateScreens(DisplayManager &d, void (*dump)(const DisplayManager &, co
     paintChoice(d, sink, v);
   });
 
+  frame("u_colors", [&] {
+    ColorPickerView v;
+    v.header.backId = 0;
+    v.header.title = "Kolor litery";
+    const uint8_t hues[12][3] = {{235, 30, 40},  {250, 120, 20}, {250, 185, 20}, {245, 230, 30},
+                                 {150, 220, 30}, {30, 200, 70},  {20, 190, 160}, {30, 180, 240},
+                                 {20, 80, 255},  {100, 60, 240}, {170, 50, 235}, {240, 50, 150}};
+    auto rgb = [](int r, int g, int b) { return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)); };
+    for (int row = 0; row < 3; ++row) {
+      for (int h = 0; h < 12; ++h) {
+        int r = hues[h][0], g = hues[h][1], b = hues[h][2];
+        if (row == 1) { r += (255 - r) * 45 / 100; g += (255 - g) * 45 / 100; b += (255 - b) * 45 / 100; }
+        if (row == 2) { r = r * 62 / 100; g = g * 62 / 100; b = b * 62 / 100; }
+        ColorPickerView::Swatch s;
+        s.id = row * 12 + h + 1;
+        s.color = rgb(r, g, b);
+        s.selected = row == 0 && h == 8;
+        v.swatches.push_back(s);
+      }
+    }
+    v.previewBackground = 0;
+    v.previewWord = 0xFFFF;
+    v.previewFocus = rgb(20, 80, 255);
+    paintColorPicker(d, sink, v);
+  });
+
   // Battery indicator styles, charging and not, in the rail footer size.
   frame("u_battery", [&] {
     for (int style = 0; style < 4; ++style) {

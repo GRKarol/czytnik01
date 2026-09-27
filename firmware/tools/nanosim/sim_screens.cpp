@@ -121,17 +121,16 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
       paintSections(d, sink, tabContent(), sections);
     });
 
-    for (int section = 0; section < 3; ++section) {
+    for (int section = 0; section < 4; ++section) {
       frame("themes" + std::to_string(section) + suffix, 2, [&] {
         ThemesView v;
         v.section = section;
-        v.segmentIds[0] = 30;
-        v.segmentIds[1] = 31;
-        v.segmentIds[2] = 32;
-        v.segmentLabels[0] = "Kolory";
-        v.segmentLabels[1] = "Czcionka";
-        v.segmentLabels[2] = pl("Uk~lad");
-        const char *names[] = {"Klasyczny", "Mocha", "Macchiato", "Frappe", "Latte", "Dracula", "Nord",
+        const char *segs[] = {"Menu", "Czytanie", "Czcionka", ""};
+        for (int i = 0; i < 4; ++i) {
+          v.segmentIds[i] = 30 + i;
+          v.segmentLabels[i] = i == 3 ? pl("Uk~lad") : String(segs[i]);
+        }
+        const char *names[] = {"Jak czytanie", "Mocha", "Macchiato", "Frappe", "Latte", "Dracula", "Nord",
                                "Gruvbox", "Tokyo", "Solarized", "Krem", "Sepia", "Grafit", "Las"};
         for (uint8_t p = 0; p < 14; ++p) {
           ThemesView::PaletteChip chip;
@@ -141,9 +140,20 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
           chip.selected = p == 0;
           v.palettes.push_back(chip);
         }
-        v.ownAccentId = 60;
-        v.ownAccentLabel = pl("M~oj kolor");
-        v.ownAccentOn = true;
+        const char *themes[] = {"Ciemny", "Jasny", "Nocny"};
+        for (uint8_t t = 0; t < 3; ++t) {
+          ThemesView::ReadingChip chip;
+          chip.id = 50 + t;
+          chip.theme = t;
+          chip.name = themes[t];
+          chip.selected = t == 0;
+          v.readingThemes.push_back(chip);
+        }
+        v.letterColorId = 55;
+        v.letterColorLabel = "Kolor litery";
+        v.letterColorName = "Niebieski";
+        v.letterColor = 0x001F;
+        v.readingHint = pl("Paleta menu \"Jak czytanie\" te~z bierze te kolory");
         ThemesView::FontChip follow;
         follow.id = 70;
         follow.family = 4;
@@ -159,16 +169,17 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
           chip.selected = f == 0;
           v.fonts.push_back(chip);
         }
-        const char *layouts[] = {"Z lewej", "Z prawej", "Same ikony"};
-        for (uint8_t l = 0; l < 3; ++l) {
+        for (int type = 0; type < 2; ++type) {
           ThemesView::LayoutChip chip;
-          chip.id = 80 + l;
-          chip.layout = l;
-          chip.name = layouts[l];
-          chip.selected = l == 0;
+          chip.id = 80 + type;
+          chip.compact = type == 0;
+          chip.selected = type == 1;
+          chip.railRight = false;
+          chip.name = type == 0 ? "Same ikony" : "Ikony + napisy";
+          chip.detail = chip.selected ? String("Z lewej") : pl("Dotknij, by wybra~c");
           v.layouts.push_back(chip);
         }
-        v.layoutHint = pl("Gdzie stoi pasek zak~ladek");
+        v.layoutHint = pl("Dotknij wybranego jeszcze raz: pasek przejdzie na drug~a stron~e");
         paintThemes(d, sink, v);
       });
     }

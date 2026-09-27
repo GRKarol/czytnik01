@@ -153,7 +153,7 @@ TrKey3.TutorialHelpDesc;W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis.;In 
 TrKey3.ChannelStaging;Testowy;Staging;Pruebas;Test;Testkanal;Testare
 TrKey3.ChannelProduction;Produkcyjny;Production;Produccion;Production;Produktion;Productie
 TrKey3.ButtonsLabel;Przyciski;Buttons;Botones;Boutons;Tasten;Butoane
-TrKey3.ModernLabel;Nowoczesny;Modern;Moderno;Moderne;Modern;Modern
+TrKey3.ModernLabel;Official;Official;Official;Official;Official;Official
 TrKey3.NanoDeviceTab;Urządzenie;Device;Dispositivo;Appareil;Geraet;Dispozitiv
 TrKey3.NanoReadingSection;Czytanie;READING;LECTURA;LECTURE;LESEN;CITIRE
 TrKey3.NanoSystemSection;System;SYSTEM;SISTEMA;SYSTEME;SYSTEM;SISTEM
@@ -169,7 +169,7 @@ TrKey3.NanoLayoutLeft;Lewy;Left;Izq.;Gauche;Links;Stanga
 TrKey3.NanoLayoutRight;Prawy;Right;Der.;Droite;Rechts;Dreapta
 TrKey3.NanoLayoutCompact;Ikony;Icons;Iconos;Icones;Symbole;Iconite
 TrKey3.NanoOwnAccent;Mój kolor;My color;Mi color;Ma couleur;Meine Farbe;Culoarea mea
-TrKey3.NanoPaletteClassic;Klasyczny;Classic;Clasico;Classique;Klassisch;Clasic
+TrKey3.NanoPaletteClassic;Jak czytanie;Like reading;Como lectura;Comme la lecture;Wie Lesen;Ca la citire
 TrKey3.NanoPaletteCream;Krem;Cream;Crema;Creme;Creme;Crem
 TrKey3.NanoPaletteGraphite;Grafit;Graphite;Grafito;Graphite;Graphit;Grafit
 TrKey3.NanoPaletteForest;Las;Forest;Bosque;Foret;Wald;Padure
@@ -372,3 +372,13 @@ TrKey4.BookmarkNameDefault;Domyślna nazwa;Default name;Nombre por defecto;Nom p
 TrKey4.BookmarkNameCustom;Własna nazwa;Custom name;Nombre propio;Nom personnalisé;Eigener Name;Nume propriu
 TrKey4.BookmarkNameCustomDetail;Wpisz na klawiaturze;Type it on the keyboard;Escríbelo con el teclado;Tapez-le au clavier;Über die Tastatur eingeben;Scrie-l la tastatură
 TrKey4.PanelGoToHint;Dotknij paska u góry, by przejść do miejsca;Tap the top bar to jump to a place;Toca la barra superior para saltar;Touchez la barre du haut pour sauter;Obere Leiste antippen, um zu springen;Atinge bara de sus pentru a sări
+TrKey4.MenuSection;Menu;Menu;Menú;Menu;Menü;Meniu
+TrKey4.LetterColorTitle;Kolor litery;Letter color;Color de letra;Couleur lettre;Buchstabenfarbe;Culoare literă
+TrKey4.ColorCustom;Własny;Custom;Propio;Perso;Eigene;Propriu
+TrKey4.ReadingThemeHint;Paleta menu „Jak czytanie” też bierze te kolory;The "Like reading" menu palette uses these too;La paleta "Como lectura" también los usa;La palette « Comme la lecture » les utilise aussi;Die Menüpalette "Wie Lesen" nutzt sie auch;Paleta „Ca la citire” le folosește și ea
+TrKey4.LayoutIconsOnly;Same ikony;Icons only;Solo iconos;Icônes seules;Nur Symbole;Doar pictograme
+TrKey4.LayoutIconsLabels;Ikony + napisy;Icons + labels;Iconos + texto;Icônes + texte;Symbole + Text;Pictograme + text
+TrKey4.LayoutSideLeft;Z lewej;Left;Izquierda;À gauche;Links;Stânga
+TrKey4.LayoutSideRight;Z prawej;Right;Derecha;À droite;Rechts;Dreapta
+TrKey4.LayoutTapToPick;Dotknij, by wybrać;Tap to pick;Toca para elegir;Touchez pour choisir;Tippen zum Wählen;Atinge pentru a alege
+TrKey4.LayoutTapAgainHint;Dotknij wybranego jeszcze raz: pasek przejdzie na drugą stronę;Tap the selected one again: the bar moves to the other side;Toca de nuevo el elegido: la barra cambia de lado;Touchez à nouveau : la barre change de côté;Erneut tippen: die Leiste wechselt die Seite;Atinge din nou: bara trece pe cealaltă parte

@@ -1249,10 +1249,53 @@ void DisplayManager::setBrightnessPercent(uint8_t percent) {
 }
 
 void DisplayManager::setFocusColorIndex(uint8_t index) {
+  if (index == kFocusColorCustom) {
+    focusColorIndex_ = kFocusColorCustom;
+    return;
+  }
   if (index >= kFocusColorCount) {
     index = 0;
   }
   focusColorIndex_ = index;
+  lastRenderKey_ = "";
+}
+
+void DisplayManager::setCustomFocusColor(uint16_t color) {
+  customFocusColor_ = color;
+  focusColorIndex_ = kFocusColorCustom;
+  lastRenderKey_ = "";
+}
+
+uint16_t DisplayManager::presetFocusColor(uint8_t index) {
+  return kFocusColorPalette[index < kFocusColorCount ? index : 0];
+}
+
+uint8_t DisplayManager::presetFocusColorCount() { return static_cast<uint8_t>(kFocusColorCount); }
+
+void DisplayManager::readerThemeColors(uint8_t theme, uint16_t &background, uint16_t &word,
+                                       uint16_t &focus) const {
+  // theme: 0 dark, 1 light, 2 night -- the same colors the reading screen
+  // uses (backgroundColor()/wordColor()/focusColor()).
+  const bool night = theme == 2;
+  background = theme == 1 ? kLightBackgroundColor : kTrueBlack;
+  word = night ? kNightWordColor : (theme == 1 ? kLightWordColor : kDarkWordColor);
+  focus = focusColorFor(night);
+}
+
+uint16_t DisplayManager::focusColorFor(bool night) const {
+  if (focusColorIndex_ == kFocusColorCustom) {
+    if (!night) {
+      return customFocusColor_;
+    }
+    // Night: the same hue at ~70 %, like the dimmed presets.
+    const uint16_t c = customFocusColor_;
+    const uint16_t r = static_cast<uint16_t>(((c >> 11) & 0x1F) * 7 / 10);
+    const uint16_t g = static_cast<uint16_t>(((c >> 5) & 0x3F) * 7 / 10);
+    const uint16_t b = static_cast<uint16_t>((c & 0x1F) * 7 / 10);
+    return static_cast<uint16_t>((r << 11) | (g << 5) | b);
+  }
+  const uint8_t idx = focusColorIndex_ < kFocusColorCount ? focusColorIndex_ : 0;
+  return night ? kNightFocusColorPalette[idx] : kFocusColorPalette[idx];
 }
 
 uint8_t DisplayManager::focusColorIndex() const { return focusColorIndex_; }
@@ -1536,13 +1579,7 @@ uint16_t DisplayManager::wordColor() const {
   return darkMode_ ? kDarkWordColor : kLightWordColor;
 }
 
-uint16_t DisplayManager::focusColor() const {
-  const uint8_t idx = focusColorIndex_ < kFocusColorCount ? focusColorIndex_ : 0;
-  if (nightMode_) {
-    return kNightFocusColorPalette[idx];
-  }
-  return kFocusColorPalette[idx];
-}
+uint16_t DisplayManager::focusColor() const { return focusColorFor(nightMode_); }
 
 uint16_t DisplayManager::dimColor() const {
   if (nightMode_) {
@@ -1559,7 +1596,7 @@ uint16_t DisplayManager::footerColor() const {
 }
 
 uint16_t DisplayManager::selectedBarColor() const {
-  return nightMode_ ? focusColor() : kFocusColorPalette[focusColorIndex_ < kFocusColorCount ? focusColorIndex_ : 0];
+  return focusColor();
 }
 
 uint16_t DisplayManager::focusTimerBreakColor() const {

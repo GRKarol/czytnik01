@@ -2153,6 +2153,8 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
       return false;
     }
     preferences_.putUChar(kPrefBrightness, static_cast<uint8_t>(intValue));
+    // The reader derives its smooth percent from the index when this is gone.
+    preferences_.remove("bright_pct");
   }
   if (readJsonBool(body, "darkMode", boolValue)) {
     preferences_.putBool(kPrefDarkMode, boolValue);

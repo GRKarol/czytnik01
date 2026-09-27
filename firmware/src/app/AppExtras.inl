@@ -16,9 +16,40 @@ enum ExtraAction : int {
   kExtraGoToRead,
   kExtraBookmarkDefault,
   kExtraBookmarkCustom,
+  kExtraColorSwatch = kExtraActionBase + 100,  // + swatch index
 };
 
 constexpr size_t kGoToWordsPerPage = 250;
+
+// Letter-color palette: 12 hues around the wheel, a light and a deep row.
+constexpr size_t kLetterColorHues = 12;
+constexpr size_t kLetterColorSwatchCount = kLetterColorHues * 3;
+constexpr uint8_t kLetterColorHueRgb[kLetterColorHues][3] = {
+    {235, 30, 40},   {250, 120, 20}, {250, 185, 20}, {245, 230, 30}, {150, 220, 30},  {30, 200, 70},
+    {20, 190, 160},  {30, 180, 240}, {20, 80, 255},  {100, 60, 240}, {170, 50, 235}, {240, 50, 150},
+};
+
+uint16_t letterColorRgb565(int r, int g, int b) {
+  r = std::max(0, std::min(255, r));
+  g = std::max(0, std::min(255, g));
+  b = std::max(0, std::min(255, b));
+  return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+}
+
+uint16_t letterColorSwatch(size_t index) {
+  const size_t hue = index % kLetterColorHues;
+  const size_t row = index / kLetterColorHues;
+  const int r = kLetterColorHueRgb[hue][0];
+  const int g = kLetterColorHueRgb[hue][1];
+  const int b = kLetterColorHueRgb[hue][2];
+  if (row == 1) {  // light: 45 % toward white
+    return letterColorRgb565(r + (255 - r) * 45 / 100, g + (255 - g) * 45 / 100, b + (255 - b) * 45 / 100);
+  }
+  if (row == 2) {  // deep: 62 % brightness
+    return letterColorRgb565(r * 62 / 100, g * 62 / 100, b * 62 / 100);
+  }
+  return letterColorRgb565(r, g, b);
+}
 
 }  // namespace
 
@@ -26,6 +57,7 @@ bool App::isExtraScreen() const {
   switch (menuScreen_) {
     case MenuScreen::GoToPosition:
     case MenuScreen::SavePointNameChoice:
+    case MenuScreen::FocusColorPicker:
       return true;
     default:
       return false;
@@ -58,6 +90,9 @@ bool App::renderExtraScreen() {
     case MenuScreen::SavePointNameChoice:
       renderSavePointNameChoice();
       break;
+    case MenuScreen::FocusColorPicker:
+      renderFocusColorPicker();
+      break;
     default:
       break;
   }
@@ -85,6 +120,10 @@ void App::extraScreenBack(uint32_t nowMs) {
       }
       openSavePointsList();
       return;
+    case MenuScreen::FocusColorPicker:
+      nanoThemeSection_ = 1;  // back to Motywy > Czytanie
+      openNanoThemes();
+      return;
     default:
       menuScreen_ = MenuScreen::Main;
       renderMenu();
@@ -93,6 +132,16 @@ void App::extraScreenBack(uint32_t nowMs) {
 }
 
 void App::runExtraAction(int action, uint32_t nowMs) {
+  if (action >= kExtraColorSwatch && action < kExtraColorSwatch + static_cast<int>(kLetterColorSwatchCount)) {
+    const uint16_t color = letterColorSwatch(static_cast<size_t>(action - kExtraColorSwatch));
+    display_.setCustomFocusColor(color);
+    preferences_.putUChar(kPrefFocusColorIndex, DisplayManager::kFocusColorCustom);
+    preferences_.putUShort(kPrefFocusColorRgb, color);
+    Serial.printf("[display] letter color=0x%04X\n", static_cast<unsigned>(color));
+    applyDisplayPreferences(nowMs, false);
+    renderMenu();
+    return;
+  }
   if (action >= kExtraGoToSegment && action < kExtraGoToSegment + 3) {
     goToSegment_ = static_cast<uint8_t>(action - kExtraGoToSegment);
     if (goToSegment_ == 2 && chapterMarkers_.empty()) {
@@ -333,4 +382,36 @@ void App::renderSavePointNameChoice() {
   NanoSinkAdapter sink(*this);
   sink.zeroIsBack = true;
   nano::paintChoice(display_, sink, view);
+}
+
+// ─── Kolor litery ───────────────────────────────────────────────────────────
+
+void App::openFocusColorPicker(uint32_t nowMs) {
+  menuScreen_ = MenuScreen::FocusColorPicker;
+  if (state_ != AppState::Menu) {
+    setState(AppState::Menu, nowMs);
+  } else {
+    renderMenu();
+  }
+}
+
+void App::renderFocusColorPicker() {
+  nano::ColorPickerView view;
+  view.header.backId = 0;
+  view.header.title = tr4(TrKey4::LetterColorTitle);
+  view.columns = static_cast<int>(kLetterColorHues);
+  view.rows = 3;
+  const uint16_t current = display_.focusColorFor(false);
+  for (size_t i = 0; i < kLetterColorSwatchCount; ++i) {
+    nano::ColorPickerView::Swatch swatch;
+    swatch.id = kNanoActionBase + kExtraColorSwatch + static_cast<int>(i);
+    swatch.color = letterColorSwatch(i);
+    swatch.selected = display_.focusColorIndex() == DisplayManager::kFocusColorCustom && swatch.color == current;
+    view.swatches.push_back(swatch);
+  }
+  const uint8_t theme = nightMode_ ? 2 : (darkMode_ ? 0 : 1);
+  display_.readerThemeColors(theme, view.previewBackground, view.previewWord, view.previewFocus);
+  NanoSinkAdapter sink(*this);
+  sink.zeroIsBack = true;
+  nano::paintColorPicker(display_, sink, view);
 }

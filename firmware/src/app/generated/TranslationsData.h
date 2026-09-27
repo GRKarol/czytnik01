@@ -248,7 +248,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Connect the app", "Conectar la app", "Connecter l'appli", "App verbinden", "Conecteaza aplicatia", "Po\x83""\x97""czenie z aplikacj\x97"""},  // WelcomeAppPairingTitle
       {"Set up in the app", "Configura en la app", "Configurer dans l'appli", "In der App einrichten", "Configureaza in aplicatie", "Skonfiguruj w aplikacji"},  // WelcomeConfigureInAppLine1
       {"or add a book if you like", "o anade un libro si quieres", "ou ajoutez un livre si besoin", "oder fuege ein Buch hinzu", "sau adauga o carte daca vrei", "lub dodaj ksi\x97""\xB5""k\x99"", je\x9F""li chcesz"},  // WelcomeConfigureInAppLine2
-      {"Modern", "Moderno", "Moderne", "Modern", "Modern", "Nowoczesny"},  // ModernLabel
+      {"Official", "Official", "Official", "Official", "Official", "Official"},  // ModernLabel
       {"Device", "Dispositivo", "Appareil", "Geraet", "Dispozitiv", "Urz\x97""dzenie"},  // NanoDeviceTab
       {"READING", "LECTURA", "LECTURE", "LESEN", "CITIRE", "Czytanie"},  // NanoReadingSection
       {"SYSTEM", "SISTEMA", "SYSTEME", "SYSTEM", "SISTEM", "System"},  // NanoSystemSection
@@ -264,7 +264,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Right", "Der.", "Droite", "Rechts", "Dreapta", "Prawy"},  // NanoLayoutRight
       {"Icons", "Iconos", "Icones", "Symbole", "Iconite", "Ikony"},  // NanoLayoutCompact
       {"My color", "Mi color", "Ma couleur", "Meine Farbe", "Culoarea mea", "M\xF3""j kolor"},  // NanoOwnAccent
-      {"Classic", "Clasico", "Classique", "Klassisch", "Clasic", "Klasyczny"},  // NanoPaletteClassic
+      {"Like reading", "Como lectura", "Comme la lecture", "Wie Lesen", "Ca la citire", "Jak czytanie"},  // NanoPaletteClassic
       {"Cream", "Crema", "Creme", "Creme", "Crem", "Krem"},  // NanoPaletteCream
       {"Graphite", "Grafito", "Graphite", "Graphit", "Grafit", "Grafit"},  // NanoPaletteGraphite
       {"Forest", "Bosque", "Foret", "Wald", "Padure", "Las"},  // NanoPaletteForest
@@ -300,7 +300,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[18][6] = {
+  static const char *const kTable[28][6] = {
       {"Battery indicator: ", "Indicador de bater\xED""a: ", "Indicateur batterie : ", "Akkuanzeige: ", "Indicator baterie: ", "Wska\xB3""nik baterii: "},  // BatteryStyleColon
       {"Icon + %", "Icono + %", "Ic\xF4""ne + %", "Symbol + %", "Pictogram\x8B"" + %", "Ikona + %"},  // BatteryStyleIconPercent
       {"Number in icon", "N\xFA""mero en icono", "Chiffre dans l'ic\xF4""ne", "Zahl im Symbol", "Num\x8B""r \xEE""n pictogram\x8B""", "Liczba w ikonie"},  // BatteryStyleNumberInIcon
@@ -319,6 +319,16 @@ inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Custom name", "Nombre propio", "Nom personnalis\xE9""", "Eigener Name", "Nume propriu", "W\x83""asna nazwa"},  // BookmarkNameCustom
       {"Type it on the keyboard", "Escr\xED""belo con el teclado", "Tapez-le au clavier", "\xDC""ber die Tastatur eingeben", "Scrie-l la tastatur\x8B""", "Wpisz na klawiaturze"},  // BookmarkNameCustomDetail
       {"Tap the top bar to jump to a place", "Toca la barra superior para saltar", "Touchez la barre du haut pour sauter", "Obere Leiste antippen, um zu springen", "Atinge bara de sus pentru a s\x8B""ri", "Dotknij paska u g\xF3""ry, by przej\x9F""\x9B"" do miejsca"},  // PanelGoToHint
+      {"Menu", "Men\xFA""", "Menu", "Men\xFC""", "Meniu", "Menu"},  // MenuSection
+      {"Letter color", "Color de letra", "Couleur lettre", "Buchstabenfarbe", "Culoare liter\x8B""", "Kolor litery"},  // LetterColorTitle
+      {"Custom", "Propio", "Perso", "Eigene", "Propriu", "W\x83""asny"},  // ColorCustom
+      {"The \"Like reading\" menu palette uses these too", "La paleta \"Como lectura\" tambi\xE9""n los usa", "La palette \x3F"" Comme la lecture \x3F"" les utilise aussi", "Die Men\xFC""palette \"Wie Lesen\" nutzt sie auch", "Paleta \x3F""Ca la citire\x3F"" le folose\x8D""te \x8D""i ea", "Paleta menu \x3F""Jak czytanie\x3F"" te\xB5"" bierze te kolory"},  // ReadingThemeHint
+      {"Icons only", "Solo iconos", "Ic\xF4""nes seules", "Nur Symbole", "Doar pictograme", "Same ikony"},  // LayoutIconsOnly
+      {"Icons + labels", "Iconos + texto", "Ic\xF4""nes + texte", "Symbole + Text", "Pictograme + text", "Ikony + napisy"},  // LayoutIconsLabels
+      {"Left", "Izquierda", "\xC0"" gauche", "Links", "St\xE2""nga", "Z lewej"},  // LayoutSideLeft
+      {"Right", "Derecha", "\xC0"" droite", "Rechts", "Dreapta", "Z prawej"},  // LayoutSideRight
+      {"Tap to pick", "Toca para elegir", "Touchez pour choisir", "Tippen zum W\xE4""hlen", "Atinge pentru a alege", "Dotknij, by wybra\x9B"""},  // LayoutTapToPick
+      {"Tap the selected one again: the bar moves to the other side", "Toca de nuevo el elegido: la barra cambia de lado", "Touchez \xE0"" nouveau : la barre change de c\xF4""t\xE9""", "Erneut tippen: die Leiste wechselt die Seite", "Atinge din nou: bara trece pe cealalt\x8B"" parte", "Dotknij wybranego jeszcze raz: pasek przejdzie na drug\x97"" stron\x99"""},  // LayoutTapAgainHint
   };
   return kTable[keyIndex][langIndex];
 }

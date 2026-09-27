@@ -134,9 +134,10 @@ void paintSections(DisplayManager &d, Sink &sink, const Rect &area, const std::v
 // ── Motywy ──
 
 struct ThemesView {
-  int section = 0;  // 0 colors, 1 font, 2 layout
-  int segmentIds[3] = {kNoTarget, kNoTarget, kNoTarget};
-  String segmentLabels[3];
+  int section = 0;  // 0 menu colors, 1 reading, 2 font, 3 layout
+  static constexpr int kSections = 4;
+  int segmentIds[kSections] = {kNoTarget, kNoTarget, kNoTarget, kNoTarget};
+  String segmentLabels[kSections];
   struct PaletteChip {
     int id = kNoTarget;
     uint8_t palette = 0;
@@ -147,6 +148,19 @@ struct ThemesView {
   int ownAccentId = kNoTarget;  // kNoTarget = hide the switch
   String ownAccentLabel;
   bool ownAccentOn = false;
+  // Reading: the three reading themes and the letter color.
+  struct ReadingChip {
+    int id = kNoTarget;
+    uint8_t theme = 0;  // 0 dark, 1 light, 2 night
+    String name;
+    bool selected = false;
+  };
+  std::vector<ReadingChip> readingThemes;
+  int letterColorId = kNoTarget;
+  String letterColorLabel;
+  String letterColorName;
+  uint16_t letterColor = 0;
+  String readingHint;
   struct FontChip {
     int id = kNoTarget;
     uint8_t family = 0;
@@ -155,10 +169,14 @@ struct ThemesView {
     bool selected = false;
   };
   std::vector<FontChip> fonts;
+  // Layout: two chips (icons only / icons + labels); tapping the selected
+  // one again moves the rail to the other side.
   struct LayoutChip {
     int id = kNoTarget;
-    uint8_t layout = 0;
+    bool compact = false;
+    bool railRight = false;
     String name;
+    String detail;
     bool selected = false;
   };
   std::vector<LayoutChip> layouts;
@@ -355,5 +373,24 @@ struct ChoiceView {
   std::vector<Option> options;  // 2 or 3
 };
 void paintChoice(DisplayManager &d, Sink &sink, const ChoiceView &view);
+
+// ── Kolor litery (palette) ──
+
+struct ColorPickerView {
+  Header header;
+  int columns = 12;
+  int rows = 3;
+  struct Swatch {
+    int id = kNoTarget;
+    uint16_t color = 0;
+    bool selected = false;
+  };
+  std::vector<Swatch> swatches;
+  // Preview word in the reading colors with the chosen letter color.
+  uint16_t previewBackground = 0;
+  uint16_t previewWord = 0xFFFF;
+  uint16_t previewFocus = 0x001F;
+};
+void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view);
 
 }  // namespace nano

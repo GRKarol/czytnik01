@@ -208,6 +208,9 @@ constexpr uint32_t kChapterTransitionMs = 1400;
 constexpr uint8_t kBrightnessLevels[] = {55, 65, 78, 90, 100};
 constexpr uint8_t kNightBrightnessLevels[] = {45, 52, 58, 65, 72};
 constexpr size_t kBrightnessLevelCount = sizeof(kBrightnessLevels) / sizeof(kBrightnessLevels[0]);
+// Smooth slider range. Night mode runs the same setting at ~72 % of it
+// (the old night presets were 45-72 against 55-100).
+constexpr uint8_t kBrightnessMinPercent = 20;
 
 namespace {
 
@@ -397,6 +400,7 @@ constexpr const char *kPrefBookPath = "book";
 constexpr const char *kPrefLegacyWordIndex = "word";
 constexpr const char *kPrefWpm = "wpm";
 constexpr const char *kPrefBrightness = "bright";
+constexpr const char *kPrefBrightnessPercent = "bright_pct";
 constexpr const char *kPrefDarkMode = "dark";
 constexpr const char *kPrefNightMode = "night";
 constexpr const char *kPrefUiLanguage = "ui_lang";
@@ -421,6 +425,7 @@ constexpr const char *kPrefReaderFontSize = "font_size";
 constexpr const char *kPrefReaderTypeface = "typeface";
 constexpr const char *kPrefTypographyFocusHighlight = "type_hlt";
 constexpr const char *kPrefFocusColorIndex = "foc_clr";
+constexpr const char *kPrefFocusColorRgb = "foc_rgb";  // with foc_clr = DisplayManager::kFocusColorCustom
 // Nano UI Motywy tab (NavMode::Modern only).
 constexpr const char *kPrefNanoPalette = "nano_pal";
 constexpr const char *kPrefNanoOwnAccent = "nano_acc";
@@ -790,15 +795,15 @@ App::NavMode navModeFromSetting(uint8_t value) {
 
 App::NavMode nextNavMode(App::NavMode current) {
   switch (navModeFromSetting(static_cast<uint8_t>(current))) {
+    case App::NavMode::Modern:
+      return App::NavMode::Buttons;
     case App::NavMode::Buttons:
       return App::NavMode::Swipe;
     case App::NavMode::Swipe:
       return App::NavMode::DPad;
     case App::NavMode::DPad:
-      return App::NavMode::Modern;
-    case App::NavMode::Modern:
     default:
-      return App::NavMode::Buttons;
+      return App::NavMode::Modern;
   }
 }
 
@@ -877,6 +882,13 @@ void App::begin() {
   if (brightnessLevelIndex_ >= kBrightnessLevelCount) {
     brightnessLevelIndex_ = kBrightnessLevelCount - 1;
   }
+  // Smooth brightness (slider, 1 % steps). Absent = derive from the old
+  // 5-step index (first boot after the update, or the companion app just
+  // set an index and dropped the percent).
+  brightnessPercentSetting_ = preferences_.getUChar(kPrefBrightnessPercent, 0);
+  if (brightnessPercentSetting_ < kBrightnessMinPercent || brightnessPercentSetting_ > 100) {
+    brightnessPercentSetting_ = kBrightnessLevels[brightnessLevelIndex_];
+  }
   phantomWordsEnabled_ = preferences_.getBool(kPrefPhantomWords, phantomWordsEnabled_);
   readerBatteryVisibleWhilePlaying_ =
       preferences_.getBool(kPrefReaderBatteryVisible, readerBatteryVisibleWhilePlaying_);
@@ -891,6 +903,9 @@ void App::begin() {
   {
     navMode_ = navModeFromSetting(
         preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_)));
+    if (!devModeEnabled()) {
+      navMode_ = NavMode::Modern;  // legacy modes are advanced-only
+    }
   }
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
@@ -989,6 +1004,9 @@ void App::begin() {
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
   display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 1));
+  if (display_.focusColorIndex() == DisplayManager::kFocusColorCustom) {
+    display_.setCustomFocusColor(preferences_.getUShort(kPrefFocusColorRgb, 0x001F));
+  }
   nanoPalette_ = preferences_.getUChar(kPrefNanoPalette, 0);
   nanoOwnAccent_ = preferences_.getBool(kPrefNanoOwnAccent, false);
   nanoLayout_ = preferences_.getUChar(kPrefNanoLayout, kNanoLayoutLeft);
@@ -1943,8 +1961,26 @@ void App::openMainMenu(uint32_t nowMs) {
 }
 
 uint8_t App::currentBrightnessPercent() const {
-  return nightMode_ ? kNightBrightnessLevels[brightnessLevelIndex_]
-                    : kBrightnessLevels[brightnessLevelIndex_];
+  const uint8_t percent = std::max<uint8_t>(kBrightnessMinPercent, std::min<uint8_t>(100, brightnessPercentSetting_));
+  return nightMode_ ? static_cast<uint8_t>(std::max(18, percent * 72 / 100)) : percent;
+}
+
+void App::setBrightnessSetting(uint8_t percent, bool persist) {
+  brightnessPercentSetting_ = std::max<uint8_t>(kBrightnessMinPercent, std::min<uint8_t>(100, percent));
+  // Keep the 5-step index (companion app, older firmware) on the nearest step.
+  uint8_t nearest = 0;
+  for (uint8_t i = 1; i < kBrightnessLevelCount; ++i) {
+    if (std::abs(static_cast<int>(kBrightnessLevels[i]) - brightnessPercentSetting_) <
+        std::abs(static_cast<int>(kBrightnessLevels[nearest]) - brightnessPercentSetting_)) {
+      nearest = i;
+    }
+  }
+  brightnessLevelIndex_ = nearest;
+  display_.setBrightnessPercent(currentBrightnessPercent());
+  if (persist) {
+    preferences_.putUChar(kPrefBrightnessPercent, brightnessPercentSetting_);
+    preferences_.putUChar(kPrefBrightness, brightnessLevelIndex_);
+  }
 }
 
 void App::applyDisplayPreferences(uint32_t nowMs, bool rerender) {
@@ -2006,6 +2042,13 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   if (brightnessLevelIndex_ >= kBrightnessLevelCount) {
     brightnessLevelIndex_ = kBrightnessLevelCount - 1;
   }
+  // Smooth brightness (slider, 1 % steps). Absent = derive from the old
+  // 5-step index (first boot after the update, or the companion app just
+  // set an index and dropped the percent).
+  brightnessPercentSetting_ = preferences_.getUChar(kPrefBrightnessPercent, 0);
+  if (brightnessPercentSetting_ < kBrightnessMinPercent || brightnessPercentSetting_ > 100) {
+    brightnessPercentSetting_ = kBrightnessLevels[brightnessLevelIndex_];
+  }
   phantomWordsEnabled_ = preferences_.getBool(kPrefPhantomWords, phantomWordsEnabled_);
   readerBatteryVisibleWhilePlaying_ =
       preferences_.getBool(kPrefReaderBatteryVisible, readerBatteryVisibleWhilePlaying_);
@@ -2020,6 +2063,9 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   {
     navMode_ = navModeFromSetting(
         preferences_.getUChar(kPrefNavMode, static_cast<uint8_t>(navMode_)));
+    if (!devModeEnabled()) {
+      navMode_ = NavMode::Modern;  // legacy modes are advanced-only
+    }
   }
   uiLanguage_ =
       Localization::sanitizeLanguage(preferences_.getUChar(
@@ -2124,6 +2170,9 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
   nightMode_ = preferences_.getBool(kPrefNightMode, nightMode_);
   display_.setFocusColorIndex(preferences_.getUChar(kPrefFocusColorIndex, 1));
+  if (display_.focusColorIndex() == DisplayManager::kFocusColorCustom) {
+    display_.setCustomFocusColor(preferences_.getUShort(kPrefFocusColorRgb, 0x001F));
+  }
   nanoPalette_ = preferences_.getUChar(kPrefNanoPalette, 0);
   nanoOwnAccent_ = preferences_.getBool(kPrefNanoOwnAccent, false);
   nanoLayout_ = preferences_.getUChar(kPrefNanoLayout, kNanoLayoutLeft);
@@ -2222,14 +2271,21 @@ void App::maybeRetryTypographyFontLoad(uint32_t nowMs) {
 }
 
 void App::cycleBrightness() {
-  brightnessLevelIndex_ = static_cast<uint8_t>((brightnessLevelIndex_ + 1) % kBrightnessLevelCount);
-  preferences_.putUChar(kPrefBrightness, brightnessLevelIndex_);
-  const uint8_t percent = currentBrightnessPercent();
-  Serial.printf("[display] brightness level %u/%u (%u%%)\n",
-                static_cast<unsigned int>(brightnessLevelIndex_ + 1),
-                static_cast<unsigned int>(kBrightnessLevelCount),
-                static_cast<unsigned int>(percent));
+  // Button shortcut: 20 % steps, wrapping from full back to the dimmest.
+  const int next = brightnessPercentSetting_ >= 100 ? kBrightnessMinPercent
+                                                    : std::min(100, (brightnessPercentSetting_ / 20 + 1) * 20);
+  setBrightnessSetting(static_cast<uint8_t>(next), true);
+  Serial.printf("[display] brightness %u%%\n", static_cast<unsigned int>(currentBrightnessPercent()));
   applyDisplayPreferences(millis());
+}
+
+void App::setReaderTheme(uint8_t theme, uint32_t nowMs) {
+  darkMode_ = theme != 1;
+  nightMode_ = theme == 2;
+  preferences_.putBool(kPrefDarkMode, darkMode_);
+  preferences_.putBool(kPrefNightMode, nightMode_);
+  Serial.printf("[display] theme=%s\n", themeModeLabel().c_str());
+  applyDisplayPreferences(nowMs);
 }
 
 void App::cycleThemeMode(uint32_t nowMs) {
@@ -5920,6 +5976,7 @@ void App::openTypographyFontPicker() {
   }
 
   typographyFontPickerSelectedIndex_ = currentSelection;
+  nanoListPage_ = -1;  // open on the page of the face in use
   menuScreen_ = MenuScreen::TypographyFontPicker;
   renderTypographyFontPicker();
 }
@@ -6077,7 +6134,7 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back(String(uiText(UiText::Theme)) + ": " + themeModeLabel());
     settingsMenuItems_.push_back(uiText(UiText::Brightness) + ": " +
-                                 String(currentBrightnessPercent()) + "%");
+                                 String(brightnessPercentSetting_) + "%");
     settingsMenuItems_.push_back(String(tr(TrKey::ReaderHand)) + handednessLabel());
     settingsMenuItems_.push_back(String(tr4(TrKey4::BatteryStyleColon)) + batteryStyleLabel());
     settingsMenuItems_.push_back(String(tr(TrKey::FooterLabel)) +
@@ -6202,6 +6259,11 @@ String App::firmwareVersionLabel() const { return otaUpdater_.currentVersion(); 
 
 void App::setDevModeEnabled(bool enabled) {
   preferences_.putBool(kPrefDevMode, enabled);
+  if (!enabled && navMode_ != NavMode::Modern) {
+    // Leaving advanced mode takes the legacy navigation modes with it.
+    navMode_ = NavMode::Modern;
+    preferences_.putUChar(kPrefNavMode, static_cast<uint8_t>(navMode_));
+  }
   if (state_ == AppState::Menu &&
       (menuScreen_ == MenuScreen::WifiSettings || menuScreen_ == MenuScreen::SettingsHome ||
        menuScreen_ == MenuScreen::SettingsAbout || menuScreen_ == MenuScreen::DeviceHome)) {
@@ -8267,6 +8329,7 @@ String App::focusHighlightLabel() const {
 
 String App::focusColorLabel() const {
   switch (display_.focusColorIndex()) {
+    case DisplayManager::kFocusColorCustom: return tr4(TrKey4::ColorCustom);
     case 0: return tr3(TrKey3::ColorRed);
     case 1: return tr3(TrKey3::ColorBlue);
     case 2: return tr3(TrKey3::ColorGreen);
@@ -8278,7 +8341,8 @@ String App::focusColorLabel() const {
 }
 
 void App::cycleFocusColor(uint32_t nowMs) {
-  uint8_t next = display_.focusColorIndex() + 1;
+  const uint8_t index = display_.focusColorIndex();
+  uint8_t next = index == DisplayManager::kFocusColorCustom ? 0 : index + 1;
   if (next >= 6) next = 0;
   display_.setFocusColorIndex(next);
   preferences_.putUChar(kPrefFocusColorIndex, next);
@@ -8706,6 +8770,7 @@ void App::openBookDetails(size_t bookIndex, uint32_t nowMs) {
   bookDetailsMenuItems_.push_back(uiText(UiText::Chapters));
   bookDetailsMenuItems_.push_back(uiText(UiText::RestartBook));
   bookDetailsMenuItems_.push_back(tr3(TrKey3::DeleteBookLabel));
+  bookDetailsMenuItems_.push_back(tr4(TrKey4::GoToTitle));  // 7
 
   bookDetailsSelectedIndex_ = 3;  // "Czytaj od miejsca"
   menuScreen_ = MenuScreen::BookDetails;
@@ -8762,6 +8827,16 @@ void App::selectBookDetailsItem(uint32_t nowMs) {
       return;
     case 6:  // Delete book
       openBookDeleteConfirm(nowMs);
+      return;
+    case 7:  // Przejdz do
+      saveReadingPosition(true);
+      if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
+        display_.renderStatus(tr3(TrKey3::ErrorLabel), storage_.bookDisplayName(bookDetailsBookIndex_), "");
+        delay(1400);
+        renderBookDetails();
+        return;
+      }
+      openGoToPosition(true, nowMs);
       return;
     default:
       return;

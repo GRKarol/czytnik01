@@ -334,6 +334,16 @@ enum class TrKey4 : uint8_t {
   BookmarkNameCustom,
   BookmarkNameCustomDetail,
   PanelGoToHint,
+  MenuSection,
+  LetterColorTitle,
+  ColorCustom,
+  ReadingThemeHint,
+  LayoutIconsOnly,
+  LayoutIconsLabels,
+  LayoutSideLeft,
+  LayoutSideRight,
+  LayoutTapToPick,
+  LayoutTapAgainHint,
 };
 
 namespace Translations3 {

@@ -1717,8 +1717,8 @@ void DisplayManager::nanoFontChip(const ui::Rect &rect, uint8_t family, const St
   }
 }
 
-void DisplayManager::nanoLayoutChip(const ui::Rect &rect, uint8_t layout, const String &name, bool selected,
-                                    bool pressed) {
+void DisplayManager::nanoLayoutChip(const ui::Rect &rect, bool compact, bool railRight, const String &name,
+                                    const String &detail, bool selected, bool pressed) {
   const uint16_t surface = nanoColor(pressed ? NanoRole::SurfaceActive : NanoRole::SurfaceMuted);
   if (selected) {
     nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, kNanoRadius, nanoColor(NanoRole::Accent));
@@ -1726,26 +1726,111 @@ void DisplayManager::nanoLayoutChip(const ui::Rect &rect, uint8_t layout, const 
   } else {
     nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, kNanoRadius, surface);
   }
-  // Mini screen: 64x24 with the rail where this layout puts it.
-  const int sw = 64;
-  const int sh = 26;
+  // Mini screen with the rail where this layout puts it.
+  const int sw = std::min(120, static_cast<int>(rect.w) - 40);
+  const int sh = 40;
   const int sx = rect.x + (static_cast<int>(rect.w) - sw) / 2;
-  const int sy = rect.y + 8;
+  const int sy = rect.y + 10;
   const uint16_t screen = nanoColor(NanoRole::Background);
   const uint16_t rail = nanoColor(NanoRole::ProgressTrack);
   const uint16_t accent = nanoColor(NanoRole::Accent);
-  nanoFillRoundRect(sx, sy, sw, sh, 4, screen);
-  const int railW = layout == 2 ? 8 : 18;
-  const int railX = layout == 1 ? sx + sw - railW : sx;
-  nanoFillRoundRect(railX, sy, railW, sh, 3, rail);
-  nanoFillRect(railX + (layout == 1 ? railW - 3 : 1), sy + 5, 2, 5, accent);
-  const int contentX = layout == 1 ? sx + 4 : railX + railW + 4;
-  const int contentW = sw - railW - 8;
-  nanoFillRoundRect(contentX, sy + 4, contentW, 8, 2, rail);
-  nanoFillRoundRect(contentX, sy + 15, contentW / 2 - 1, 7, 2, rail);
-  nanoFillRoundRect(contentX + contentW / 2 + 1, sy + 15, contentW / 2 - 1, 7, 2, rail);
-  nanoText(ui::Rect(rect.x + 6, sy + sh + 2, rect.w - 12, rect.y + rect.h - (sy + sh + 2)), name, 2,
-           nanoColor(NanoRole::Foreground), NanoAlign::Center);
+  const uint16_t ink = nanoColor(NanoRole::Muted);
+  nanoFillRoundRect(sx, sy, sw, sh, 5, screen);
+  const int railW = compact ? 14 : 38;
+  const int railX = railRight ? sx + sw - railW : sx;
+  nanoFillRoundRect(railX, sy, railW, sh, 4, rail);
+  for (int i = 0; i < 3; ++i) {
+    const int ty = sy + 6 + i * 11;
+    nanoFillRect(railX + 4, ty, 5, 5, i == 0 ? accent : ink);
+    if (!compact) {
+      nanoFillRect(railX + 12, ty + 1, railW - 17, 3, i == 0 ? accent : ink);
+    }
+  }
+  const int contentX = railRight ? sx + 5 : railX + railW + 5;
+  const int contentW = sw - railW - 10;
+  nanoFillRoundRect(contentX, sy + 6, contentW, 12, 3, rail);
+  nanoFillRoundRect(contentX, sy + 22, contentW / 2 - 2, 12, 3, rail);
+  nanoFillRoundRect(contentX + contentW / 2 + 2, sy + 22, contentW / 2 - 2, 12, 3, rail);
+  if (selected) {
+    // "Tap again": a swap arrow in the corner, the rail changes sides.
+    const int cx = rect.x + rect.w - 20;
+    const int cy = rect.y + 18;
+    nanoFillCircle(cx, cy, 11, accent);
+    const uint16_t on = nanoColor(NanoRole::OnAccent);
+    nanoFillRect(cx - 6, cy - 3, 12, 2, on);
+    nanoFillTriangle(cx + 7, cy - 2, cx + 3, cy - 6, cx + 3, cy + 2, on);
+    nanoFillRect(cx - 6, cy + 3, 12, 2, on);
+    nanoFillTriangle(cx - 7, cy + 4, cx - 3, cy, cx - 3, cy + 8, on);
+  }
+  const int textY = sy + sh + 4;
+  const int nameH = nanoLineHeight(2);
+  nanoText(ui::Rect(rect.x + 6, textY, rect.w - 12, nameH), name, 2, nanoColor(NanoRole::Foreground),
+           NanoAlign::Center);
+  if (!detail.isEmpty()) {
+    nanoText(ui::Rect(rect.x + 6, textY + nameH - 2, rect.w - 12, nanoLineHeight(1)), detail, 1,
+             selected ? nanoReadable(accent, surface) : nanoColor(NanoRole::Muted), NanoAlign::Center);
+  }
+}
+
+void DisplayManager::nanoReadingThemeChip(const ui::Rect &rect, uint8_t theme, const String &name, bool selected,
+                                          bool pressed) {
+  uint16_t background = 0;
+  uint16_t word = 0;
+  uint16_t focus = 0;
+  readerThemeColors(theme, background, word, focus);
+  const int x = rect.x;
+  const int y = rect.y;
+  const int w = rect.w;
+  const int h = rect.h;
+  if (selected) {
+    nanoFillRoundRect(x, y, w, h, kNanoRadius, nanoColor(NanoRole::Accent));
+    nanoFillRoundRect(x + 3, y + 3, w - 6, h - 6, kNanoRadius - 2, background);
+  } else {
+    nanoFillRoundRect(x, y, w, h, kNanoRadius, pressed ? nanoColor(NanoRole::SurfaceActive) : background);
+    nanoDrawRoundRect(x, y, w, h, kNanoRadius, nanoColor(NanoRole::SurfaceActive));
+    if (pressed) {
+      nanoFillRoundRect(x + 3, y + 3, w - 6, h - 6, kNanoRadius - 2, background);
+    }
+  }
+  // A word as the reading screen draws it: focus letter in the letter
+  // color, anchor ticks above and below.
+  const ReaderTypeface face = currentReaderTypeface();
+  const int baseHeight = std::max(1, baseGlyphHeightForTypeface(face));
+  const int wordAreaH = h - 26;
+  uint8_t scale = static_cast<uint8_t>(std::max(12, std::min(60, (wordAreaH - 16) * 100 / baseHeight)));
+  const String left = "czy";
+  const String mid = "t";
+  const String right = "aj";
+  while (scale > 12 && nanoTypefaceTextWidth(left + mid + right, scale) > w - 24) {
+    scale = static_cast<uint8_t>(scale - 2);
+  }
+  const int textH = scaledPercentDimension(baseHeight, scale);
+  const int wl = nanoTypefaceTextWidth(left, scale);
+  const int wm = nanoTypefaceTextWidth(mid, scale);
+  const int wr = nanoTypefaceTextWidth(right, scale);
+  const int total = wl + wm + wr;
+  const int tx = x + (w - total) / 2;
+  const int ty = y + 6 + (wordAreaH - textH) / 2;
+  nanoSetClip(x + 3, y + 3, w - 6, h - 6);
+  nanoTypefaceText(tx, ty, left, word, scale);
+  nanoTypefaceText(tx + wl, ty, mid, focus, scale);
+  nanoTypefaceText(tx + wl + wm, ty, right, word, scale);
+  const int ax = tx + wl + wm / 2;
+  nanoFillRect(ax, ty - 7, 2, 5, focus);
+  nanoFillRect(ax, ty + textH + 2, 2, 5, focus);
+  nanoResetClip();
+  nanoText(ui::Rect(x + 6, y + h - 24, w - 12, 20), name, 2, nanoMix565(background, word, 190), NanoAlign::Center);
+}
+
+void DisplayManager::nanoColorSwatch(const ui::Rect &rect, uint16_t color, bool selected, bool pressed) {
+  const int inset = pressed ? 3 : 1;
+  if (selected) {
+    nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, 8, nanoColor(NanoRole::Foreground));
+    nanoFillRoundRect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6, 6, nanoColor(NanoRole::Background));
+    nanoFillRoundRect(rect.x + 5, rect.y + 5, rect.w - 10, rect.h - 10, 5, color);
+    return;
+  }
+  nanoFillRoundRect(rect.x + inset, rect.y + inset, rect.w - inset * 2, rect.h - inset * 2, 7, color);
 }
 
 // ─── Generic Button painting (Nano skin) ────────────────────────────────────

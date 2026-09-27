@@ -252,6 +252,18 @@ class DisplayManager {
   void setBrightnessPercent(uint8_t percent);
   void setFocusColorIndex(uint8_t index);
   uint8_t focusColorIndex() const;
+  // Letter color picked from the full palette (Motywy > Czytanie > Kolor
+  // litery): focusColorIndex() then reads kFocusColorCustom.
+  static constexpr uint8_t kFocusColorCustom = 0xFE;
+  void setCustomFocusColor(uint16_t color);
+  uint16_t customFocusColor() const { return customFocusColor_; }
+  static uint16_t presetFocusColor(uint8_t index);
+  static uint8_t presetFocusColorCount();
+  // Reading-screen colors of a theme (0 dark, 1 light, 2 night) with the
+  // current letter color, for theme previews.
+  void readerThemeColors(uint8_t theme, uint16_t &background, uint16_t &word, uint16_t &focus) const;
+  // Letter color as the day or the night theme draws it.
+  uint16_t focusColorFor(bool night) const;
   void setDarkMode(bool darkMode);
   void setNightMode(bool nightMode);
   // Nano skin for the screens App still draws through the generic
@@ -481,9 +493,17 @@ class DisplayManager {
   // UI-font preview for Motywy > Czcionka: the name set in that family.
   void nanoFontChip(const ui::Rect &rect, uint8_t family, const String &name, const String &sample,
                     bool selected, bool pressed = false);
-  // Rail layout preview for Motywy > Uklad: a tiny sketch of the screen.
-  void nanoLayoutChip(const ui::Rect &rect, uint8_t layout, const String &name, bool selected,
-                      bool pressed = false);
+  // Rail layout preview for Motywy > Uklad: a sketch of the screen with the
+  // rail (icons only or icons + labels) on the chosen side. `selected`
+  // adds the swap badge (tapping again moves the rail to the other side).
+  void nanoLayoutChip(const ui::Rect &rect, bool compact, bool railRight, const String &name,
+                      const String &detail, bool selected, bool pressed = false);
+  // Reading theme preview (0 dark, 1 light, 2 night): a word in that
+  // theme's colors with the focus letter, as the reading screen shows it.
+  void nanoReadingThemeChip(const ui::Rect &rect, uint8_t theme, const String &name, bool selected,
+                            bool pressed = false);
+  // One color of the letter-color palette.
+  void nanoColorSwatch(const ui::Rect &rect, uint16_t color, bool selected, bool pressed = false);
   // Battery icon with the percent label stacked under it.
   void nanoBatteryStack(const ui::Rect &rect);
   // Battery icon and percent side by side, centered in `rect` (rail footer).
@@ -652,7 +672,8 @@ class DisplayManager {
   size_t txBufferBytes_ = 0;
   bool initialized_ = false;
   uint8_t brightnessPercent_ = 100;
-  uint8_t focusColorIndex_ = 1;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple
+  uint8_t focusColorIndex_ = 1;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple, kFocusColorCustom
+  uint16_t customFocusColor_ = 0x001F;
   bool darkMode_ = true;
   bool nightMode_ = false;
   bool modernCardStyle_ = false;

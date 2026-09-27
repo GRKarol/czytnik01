@@ -49,6 +49,9 @@ enum NanoAction : int {
   kNanoThemeLayout = 300,    // + App::NanoLayout
   kNanoThemeSection = 400,   // + 0 colors / 1 font / 2 layout
   kNanoThemeFont = 500,      // + 0 follow the reading font, + 1 + family
+  kNanoThemeReading = 600,   // + 0 dark / 1 light / 2 night reading theme
+  kNanoThemeLetterColor = 610,
+  kNanoThemeLayoutType = 620,  // + 0 icons only / 1 icons + labels
 };
 
 // DeviceHome rows (App::deviceHomeActions_).
@@ -516,8 +519,8 @@ void App::renderNanoRail() {
 
 void App::nanoSyncLayout() {
   nano::Layout &layout = nano::layout();
-  layout.railRight = nanoLayout_ == kNanoLayoutRight;
-  layout.compact = nanoLayout_ == kNanoLayoutCompact;
+  layout.railRight = nanoLayout_ == kNanoLayoutRight || nanoLayout_ == kNanoLayoutCompactRight;
+  layout.compact = nanoLayout_ == kNanoLayoutCompact || nanoLayout_ == kNanoLayoutCompactRight;
   std::vector<String> labels;
   for (const nano::RailTab &tab : nanoRailTabs()) {
     labels.push_back(tab.label);
@@ -826,10 +829,10 @@ void App::renderNanoThemes() {
   };
 
   nano::ThemesView view;
-  view.section = std::min<int>(nanoThemeSection_, 2);
-  const String segmentLabels[3] = {tr3(TrKey3::NanoColorsSection), tr3(TrKey3::NanoFontSection),
-                                   tr3(TrKey3::NanoLayoutTab)};
-  for (int i = 0; i < 3; ++i) {
+  view.section = std::min<int>(nanoThemeSection_, nano::ThemesView::kSections - 1);
+  const String segmentLabels[nano::ThemesView::kSections] = {tr4(TrKey4::MenuSection), tr3(TrKey3::NanoReadingSection),
+                                                             tr3(TrKey3::NanoFontSection), tr3(TrKey3::NanoLayoutTab)};
+  for (int i = 0; i < nano::ThemesView::kSections; ++i) {
     view.segmentIds[i] = kNanoActionBase + kNanoThemeSection + i;
     view.segmentLabels[i] = segmentLabels[i];
   }
@@ -843,14 +846,32 @@ void App::renderNanoThemes() {
       chip.selected = palette == nanoPalette_;
       view.palettes.push_back(chip);
     }
-    // Classic already uses the highlight color; the switch only matters
-    // for the fixed palettes.
+    // "Jak czytanie" already uses the letter color; the switch only
+    // matters for the fixed palettes.
     if (nanoPalette_ != DisplayManager::kNanoPaletteClassic) {
       view.ownAccentId = kNanoActionBase + kNanoThemeOwnAccent;
       view.ownAccentLabel = tr3(TrKey3::NanoOwnAccent);
       view.ownAccentOn = nanoOwnAccent_;
     }
   } else if (view.section == 1) {
+    const uint8_t current = nightMode_ ? 2 : (darkMode_ ? 0 : 1);
+    const String names[3] = {uiText(UiText::Dark), uiText(UiText::Light), uiText(UiText::Night)};
+    for (uint8_t theme = 0; theme < 3; ++theme) {
+      nano::ThemesView::ReadingChip chip;
+      chip.id = kNanoActionBase + kNanoThemeReading + theme;
+      chip.theme = theme;
+      chip.name = names[theme];
+      chip.selected = theme == current;
+      view.readingThemes.push_back(chip);
+    }
+    view.letterColorId = kNanoActionBase + kNanoThemeLetterColor;
+    view.letterColorLabel = tr4(TrKey4::LetterColorTitle);
+    view.letterColorName = focusColorLabel();
+    view.letterColor = display_.focusColorFor(nightMode_);
+    if (nanoPalette_ == DisplayManager::kNanoPaletteClassic) {
+      view.readingHint = tr4(TrKey4::ReadingThemeHint);
+    }
+  } else if (view.section == 2) {
     nano::ThemesView::FontChip follow;
     follow.id = kNanoActionBase + kNanoThemeFont;
     follow.family = nanoFamilyForTypeface(typographyConfig_.typeface);
@@ -868,17 +889,20 @@ void App::renderNanoThemes() {
       view.fonts.push_back(chip);
     }
   } else {
-    const String names[kNanoLayoutCount] = {tr3(TrKey3::NanoLayoutLeft), tr3(TrKey3::NanoLayoutRight),
-                                            tr3(TrKey3::NanoLayoutCompact)};
-    for (uint8_t layout = 0; layout < kNanoLayoutCount; ++layout) {
+    const bool compact = nanoLayout_ == kNanoLayoutCompact || nanoLayout_ == kNanoLayoutCompactRight;
+    const bool right = nanoLayout_ == kNanoLayoutRight || nanoLayout_ == kNanoLayoutCompactRight;
+    const String side = right ? tr4(TrKey4::LayoutSideRight) : tr4(TrKey4::LayoutSideLeft);
+    for (int type = 0; type < 2; ++type) {
       nano::ThemesView::LayoutChip chip;
-      chip.id = kNanoActionBase + kNanoThemeLayout + layout;
-      chip.layout = layout;
-      chip.name = names[layout];
-      chip.selected = layout == nanoLayout_;
+      chip.id = kNanoActionBase + kNanoThemeLayoutType + type;
+      chip.compact = type == 0;
+      chip.selected = chip.compact == compact;
+      chip.railRight = right;
+      chip.name = chip.compact ? tr4(TrKey4::LayoutIconsOnly) : tr4(TrKey4::LayoutIconsLabels);
+      chip.detail = chip.selected ? side : String(tr4(TrKey4::LayoutTapToPick));
       view.layouts.push_back(chip);
     }
-    view.layoutHint = tr3(TrKey3::NanoLayoutHint);
+    view.layoutHint = tr4(TrKey4::LayoutTapAgainHint);
   }
   NanoSinkAdapter sink(*this);
   nano::paintThemes(display_, sink, view);
@@ -1183,9 +1207,10 @@ void App::renderNanoBookDetails() {
   bookProgressPercent(bookDetailsBookIndex_, percent);
   view.percent = percent;
   view.percentLabel = String(static_cast<unsigned>(percent)) + "%";
-  // bookDetailsMenuItems_[3..6] = read on / chapters / restart / delete.
-  const NanoIcon icons[] = {NanoIcon::Play, NanoIcon::List, NanoIcon::Restart, NanoIcon::Trash};
-  for (size_t i = 0; i < 4; ++i) {
+  // bookDetailsMenuItems_[3..7] = read on / chapters / restart / delete /
+  // go to.
+  const NanoIcon icons[] = {NanoIcon::Play, NanoIcon::List, NanoIcon::Restart, NanoIcon::Trash, NanoIcon::Target};
+  for (size_t i = 0; i < 5; ++i) {
     const size_t index = 3 + i;
     if (index >= bookDetailsMenuItems_.size()) {
       break;
@@ -1263,7 +1288,16 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
   const size_t actionable = items.size() > headerRows ? items.size() - headerRows : 0;
   const bool hasBack = actionable > 0 && items[headerRows] == uiText(UiText::Back);
   const size_t firstTile = hasBack ? 1 : 0;
-  const size_t tileCount = actionable > firstTile ? actionable - firstTile : 0;
+  // Rows this screen shows in the Nano UI (some settings live on another
+  // tab here, see nanoHiddenRow()).
+  std::vector<size_t> visible;
+  visible.reserve(actionable);
+  for (size_t i = firstTile; i < actionable; ++i) {
+    if (!nanoHiddenRow(i)) {
+      visible.push_back(i);
+    }
+  }
+  const size_t tileCount = visible.size();
 
   // Two columns of setting rows when the items carry values ("Motyw:
   // Ciemny"), three columns of plain buttons otherwise (two next to the rail).
@@ -1275,11 +1309,19 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
   const int columns = detailScreen ? 1 : (settingsLike || rail) ? 2 : 3;
   const size_t perPage = static_cast<size_t>(columns * kNanoListRows);
   const size_t pageCount = std::max<size_t>(1, (tileCount + perPage - 1) / perPage);
-  const size_t selectedTile = selected > firstTile ? selected - firstTile : 0;
-  const size_t page = std::min(selectedTile / perPage, pageCount - 1);
+  size_t selectedTile = 0;
+  for (size_t v = 0; v < visible.size(); ++v) {
+    if (visible[v] <= selected) {
+      selectedTile = v;
+    }
+  }
+  // Paging the font picker must not move its selection (that is the face
+  // in use); its page is kept on its own.
+  const bool ownPage = nanoListPageScreen_ == menuScreen_ && nanoListPage_ >= 0;
+  const size_t page = std::min(ownPage ? static_cast<size_t>(nanoListPage_) : selectedTile / perPage, pageCount - 1);
   nanoPage_ = page;
   for (size_t p = 0; p < pageCount; ++p) {
-    nanoPageFirstIndex_.push_back(firstTile + p * perPage);
+    nanoPageFirstIndex_.push_back(p * perPage < visible.size() ? visible[p * perPage] : firstTile);
   }
 
   nano::ListView view;
@@ -1295,7 +1337,7 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
 
   const size_t pageStart = page * perPage;
   for (size_t i = 0; i < perPage && pageStart + i < tileCount; ++i) {
-    const size_t canonical = firstTile + pageStart + i;
+    const size_t canonical = visible[pageStart + i];
     const String &text = items[headerRows + canonical];
     const int index = static_cast<int>(canonical);
     nano::ListItem item;
@@ -1360,7 +1402,9 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
         item.typeface = info.previewTypeface;
         // Font picker: the selection always equals the active face (set on
         // open, moved by the tap that applies a face), so mark it.
-        item.marked = menuScreen_ == MenuScreen::TypographyFontPicker && canonical == selected;
+        item.marked = menuScreen_ == MenuScreen::TypographyFontPicker &&
+                      canonical < typographyFontPickerTypefaceForIndex_.size() &&
+                      typographyFontPickerTypefaceForIndex_[canonical] == typographyConfig_.typeface;
         if (nanoIsDeleteLabel(text)) {
           item.icon = NanoIcon::Trash;
         }
@@ -1376,6 +1420,21 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
   nano::paintList(display_, sink, view);
 }
 
+bool App::nanoHiddenRow(size_t canonical) const {
+  if (menuScreen_ == MenuScreen::SettingsDisplay) {
+    // Reading theme and letter color moved to Motywy > Czytanie (one place
+    // for everything that changes how things look).
+    if (canonical == kSettingsDisplayThemeIndex || canonical == kSettingsDisplayFocusColorIndex) {
+      return true;
+    }
+    // The legacy navigation modes are an advanced-mode option.
+    if (canonical == kSettingsDisplayNavModeIndex && !const_cast<App *>(this)->devModeEnabled()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ─── Actions ────────────────────────────────────────────────────────────────
 
 bool App::nanoChangePage(int delta, bool fromSwipe) {
@@ -1384,6 +1443,15 @@ bool App::nanoChangePage(int delta, bool fromSwipe) {
   }
   const int target = std::max(0, std::min(static_cast<int>(nanoPageFirstIndex_.size()) - 1,
                                           static_cast<int>(nanoPage_) + delta));
+  if (static_cast<size_t>(target) != nanoPage_ && menuScreen_ == MenuScreen::TypographyFontPicker) {
+    nanoListPageScreen_ = menuScreen_;
+    nanoListPage_ = target;
+    if (fromSwipe) {
+      lastGridPageChangeAtMs_ = millis();
+    }
+    renderMenu();
+    return true;
+  }
   if (static_cast<size_t>(target) != nanoPage_) {
     size_t itemCount = 0;
     size_t *selected = currentMenuSelectedIndexPtr(itemCount);
@@ -1404,13 +1472,35 @@ void App::runNanoAction(int action, uint32_t nowMs) {
     runExtraAction(action, nowMs);
     return;
   }
+  if (action >= kNanoThemeLayoutType) {
+    // Same type again = the rail goes to the other side; the other type
+    // keeps the current side.
+    const bool compact = action - kNanoThemeLayoutType == 0;
+    const bool wasCompact = nanoLayout_ == kNanoLayoutCompact || nanoLayout_ == kNanoLayoutCompactRight;
+    bool right = nanoLayout_ == kNanoLayoutRight || nanoLayout_ == kNanoLayoutCompactRight;
+    if (compact == wasCompact) {
+      right = !right;
+    }
+    const uint8_t layout = compact ? (right ? kNanoLayoutCompactRight : kNanoLayoutCompact)
+                                   : (right ? kNanoLayoutRight : kNanoLayoutLeft);
+    setNanoTheme(nanoPalette_, nanoOwnAccent_, layout);
+    return;
+  }
+  if (action >= kNanoThemeLetterColor) {
+    openFocusColorPicker(nowMs);
+    return;
+  }
+  if (action >= kNanoThemeReading) {
+    setReaderTheme(static_cast<uint8_t>(action - kNanoThemeReading), nowMs);
+    return;
+  }
   if (action >= kNanoThemeFont) {
     const int family = action - kNanoThemeFont - 1;
     setNanoUiFontChoice(family < 0 ? kNanoUiFontFollowReader : static_cast<uint8_t>(family));
     return;
   }
   if (action >= kNanoThemeSection) {
-    nanoThemeSection_ = static_cast<uint8_t>(std::min(2, action - kNanoThemeSection));
+    nanoThemeSection_ = static_cast<uint8_t>(std::min(nano::ThemesView::kSections - 1, action - kNanoThemeSection));
     renderSettings();
     return;
   }
@@ -1861,7 +1951,7 @@ bool App::nanoSliderSpec(size_t index, NanoSliderSpec &spec) const {
   switch (menuScreen_) {
     case MenuScreen::SettingsDisplay:
       if (index == kSettingsDisplayBrightnessIndex) {
-        return set(0, static_cast<int>(kBrightnessLevelCount) - 1, 1, brightnessLevelIndex_);
+        return set(kBrightnessMinPercent, 100, 1, brightnessPercentSetting_);
       }
       return false;
     case MenuScreen::SettingsPacing:
@@ -1909,9 +1999,8 @@ void App::nanoSliderSet(size_t index, int value) {
   switch (menuScreen_) {
     case MenuScreen::SettingsDisplay:
       if (index == kSettingsDisplayBrightnessIndex) {
-        brightnessLevelIndex_ = static_cast<uint8_t>(value);
         // Live: the backlight follows the finger.
-        display_.setBrightnessPercent(currentBrightnessPercent());
+        setBrightnessSetting(static_cast<uint8_t>(value), false);
       }
       return;
     case MenuScreen::SettingsPacing:
@@ -1940,10 +2029,9 @@ void App::nanoSliderCommit(size_t index, uint32_t nowMs) {
   switch (menuScreen_) {
     case MenuScreen::SettingsDisplay:
       if (index == kSettingsDisplayBrightnessIndex) {
-        preferences_.putUChar(kPrefBrightness, brightnessLevelIndex_);
+        setBrightnessSetting(brightnessPercentSetting_, true);
         applyDisplayPreferences(nowMs, false);
-        Serial.printf("[display] brightness level %u (%u%%)\n", static_cast<unsigned>(brightnessLevelIndex_ + 1),
-                      static_cast<unsigned>(currentBrightnessPercent()));
+        Serial.printf("[display] brightness %u%%\n", static_cast<unsigned>(currentBrightnessPercent()));
       }
       return;
     case MenuScreen::SettingsPacing:

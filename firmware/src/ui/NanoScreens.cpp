@@ -275,19 +275,22 @@ void paintSections(DisplayManager &d, Sink &sink, const Rect &area, const std::v
 void paintThemes(DisplayManager &d, Sink &sink, const ThemesView &view) {
   const Rect content = tabContent();
   // Segmented control.
+  constexpr int count = ThemesView::kSections;
   const Rect segments(content.x, content.y, content.w, 30);
   d.nanoFillRoundRect(segments.x, segments.y, segments.w, segments.h, 15, d.nanoColor(Role::SurfaceMuted));
-  const int segmentW = segments.w / 3;
-  for (int i = 0; i < 3; ++i) {
+  const int segmentW = segments.w / count;
+  for (int i = 0; i < count; ++i) {
     const int x = segments.x + i * segmentW;
-    const Rect rect(x, segments.y, i == 2 ? right(segments) - x : segmentW, segments.h);
+    const Rect rect(x, segments.y, i == count - 1 ? right(segments) - x : segmentW, segments.h);
     const bool active = view.section == i;
     if (active) {
       d.nanoFillRoundRect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6, 12, d.nanoColor(Role::Accent));
     } else if (sink.pressed(view.segmentIds[i])) {
       d.nanoFillRoundRect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6, 12, d.nanoColor(Role::SurfaceActive));
     }
-    d.nanoText(rect, view.segmentLabels[i], 2, d.nanoColor(active ? Role::OnAccent : Role::Foreground), Align::Center);
+    const uint8_t size = DisplayManager::nanoTextWidth(view.segmentLabels[i], 2) <= static_cast<int>(rect.w) - 12 ? 2 : 1;
+    d.nanoText(rect, view.segmentLabels[i], size, d.nanoColor(active ? Role::OnAccent : Role::Foreground),
+               Align::Center);
     addTarget(sink, rect, view.segmentIds[i]);
   }
 
@@ -317,6 +320,37 @@ void paintThemes(DisplayManager &d, Sink &sink, const ThemesView &view) {
       addTarget(sink, rect, view.ownAccentId);
     }
   } else if (view.section == 1) {
+    const int hintH = view.readingHint.isEmpty() ? 0 : 18;
+    const Rect row(body.x, body.y, body.w, body.h - hintH);
+    const int themes = static_cast<int>(view.readingThemes.size());
+    const int colorW = 124;
+    const int themesW = row.w - (view.letterColorId != kNoTarget ? colorW + kGap : 0);
+    const int cellW = themes > 0 ? (themesW - kGap * (themes - 1)) / themes : themesW;
+    for (int i = 0; i < themes; ++i) {
+      const auto &chip = view.readingThemes[static_cast<size_t>(i)];
+      const int x = row.x + i * (cellW + kGap);
+      const Rect rect(x, row.y, i == themes - 1 ? row.x + themesW - x : cellW, row.h);
+      d.nanoReadingThemeChip(rect, chip.theme, chip.name, chip.selected, sink.pressed(chip.id));
+      addTarget(sink, rect, chip.id);
+    }
+    if (view.letterColorId != kNoTarget) {
+      const Rect rect(right(row) - colorW, row.y, colorW, row.h);
+      const bool pressed = sink.pressed(view.letterColorId);
+      d.nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, 8,
+                          d.nanoColor(pressed ? Role::SurfaceActive : Role::SurfaceMuted));
+      const int cy = rect.y + rect.h / 2 - 14;
+      d.nanoFillCircle(rect.x + rect.w / 2, cy, 13, view.letterColor);
+      d.nanoText(Rect(rect.x + 6, cy + 17, rect.w - 12, 20), view.letterColorLabel, 2, d.nanoColor(Role::Foreground),
+                 Align::Center);
+      d.nanoText(Rect(rect.x + 6, cy + 35, rect.w - 12, 16), view.letterColorName, 1, d.nanoColor(Role::Muted),
+                 Align::Center);
+      addTarget(sink, rect, view.letterColorId);
+    }
+    if (hintH > 0) {
+      d.nanoLabel(Rect(body.x, bottom(body) - hintH + 2, body.w, hintH - 2), view.readingHint, 1, Role::Muted,
+                  Align::Center);
+    }
+  } else if (view.section == 2) {
     constexpr int kColumns = 4;
     constexpr int kRows = 2;
     const int cellW = (body.w - kGap * (kColumns - 1)) / kColumns;
@@ -331,19 +365,20 @@ void paintThemes(DisplayManager &d, Sink &sink, const ThemesView &view) {
       addTarget(sink, rect, chip.id);
     }
   } else {
-    const int hintH = view.layoutHint.isEmpty() ? 0 : 22;
+    const int hintH = view.layoutHint.isEmpty() ? 0 : 18;
     const Rect row(body.x, body.y, body.w, body.h - hintH);
-    const int count = static_cast<int>(view.layouts.size());
-    const int cellW = count > 0 ? (row.w - kGap * (count - 1)) / count : row.w;
-    for (int i = 0; i < count; ++i) {
+    const int n = static_cast<int>(view.layouts.size());
+    const int cellW = n > 0 ? (row.w - kGap * (n - 1)) / n : row.w;
+    for (int i = 0; i < n; ++i) {
       const int x = row.x + i * (cellW + kGap);
-      const Rect rect(x, row.y, i == count - 1 ? right(row) - x : cellW, row.h);
+      const Rect rect(x, row.y, i == n - 1 ? right(row) - x : cellW, row.h);
       const auto &chip = view.layouts[static_cast<size_t>(i)];
-      d.nanoLayoutChip(rect, chip.layout, chip.name, chip.selected, sink.pressed(chip.id));
+      d.nanoLayoutChip(rect, chip.compact, chip.railRight, chip.name, chip.detail, chip.selected,
+                       sink.pressed(chip.id));
       addTarget(sink, rect, chip.id);
     }
     if (hintH > 0) {
-      d.nanoLabel(Rect(body.x, bottom(body) - hintH + 4, body.w, hintH - 4), view.layoutHint, 1, Role::Muted,
+      d.nanoLabel(Rect(body.x, bottom(body) - hintH + 2, body.w, hintH - 2), view.layoutHint, 1, Role::Muted,
                   Align::Center);
     }
   }
@@ -682,7 +717,8 @@ void paintBookDetails(DisplayManager &d, Sink &sink, const BookDetailsView &view
   d.nanoLabel(Rect(right(area) - percentW, top, percentW, 18), view.percentLabel, 1, Role::Accent, Align::End);
   d.nanoProgress(Rect(area.x, top + 22, area.w, 5), view.percent, 0, 100);
   const int gridY = top + 36;
-  paintTileGrid(d, sink, Rect(area.x, gridY, area.w, bottom(area) - gridY), view.actions, 2, 2);
+  const int columns = view.actions.size() > 4 ? 3 : 2;
+  paintTileGrid(d, sink, Rect(area.x, gridY, area.w, bottom(area) - gridY), view.actions, columns, 2);
 }
 
 // ─── Confirm ────────────────────────────────────────────────────────────────
@@ -904,6 +940,48 @@ void paintChoice(DisplayManager &d, Sink &sink, const ChoiceView &view) {
     const Rect rect(x, top, i == count - 1 ? right(area) - x : cellW, bottom(area) - top);
     d.nanoTile(rect, option.label, option.icon, option.detail, sink.pressed(option.id), option.accent);
     addTarget(sink, rect, option.id);
+  }
+}
+
+// ─── Kolor litery ───────────────────────────────────────────────────────────
+
+void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view) {
+  const Rect area = fullContent();
+  // Header with a live preview of the choice on the right, in the reading
+  // colors.
+  const int previewW = 176;
+  paintHeader(d, sink, Rect(area.x, area.y, area.w - previewW - kGap, kHeaderH), view.header);
+  const Rect preview(right(area) - previewW, area.y, previewW, kHeaderH);
+  d.nanoFillRoundRect(preview.x, preview.y, preview.w, preview.h, 8, view.previewBackground);
+  const String left = "prze";
+  const String mid = "c";
+  const String rest = "zytam";
+  constexpr uint8_t kScale = 48;
+  const int wl = d.nanoTypefaceTextWidth(left, kScale);
+  const int wm = d.nanoTypefaceTextWidth(mid, kScale);
+  const int wr = d.nanoTypefaceTextWidth(rest, kScale);
+  const int tx = preview.x + (preview.w - wl - wm - wr) / 2;
+  const int ty = preview.y + 6;
+  d.nanoSetClip(preview.x, preview.y, preview.w, preview.h);
+  d.nanoTypefaceText(tx, ty, left, view.previewWord, kScale);
+  d.nanoTypefaceText(tx + wl, ty, mid, view.previewFocus, kScale);
+  d.nanoTypefaceText(tx + wl + wm, ty, rest, view.previewWord, kScale);
+  d.nanoResetClip();
+
+  const Rect grid(area.x, area.y + kHeaderH + 8, area.w, area.h - kHeaderH - 8);
+  const int columns = std::max(1, view.columns);
+  const int rows = std::max(1, view.rows);
+  const int gap = 5;
+  const int cellW = (grid.w - gap * (columns - 1)) / columns;
+  const int cellH = (grid.h - gap * (rows - 1)) / rows;
+  for (size_t i = 0; i < view.swatches.size() && i < static_cast<size_t>(columns * rows); ++i) {
+    const int column = static_cast<int>(i) % columns;
+    const int row = static_cast<int>(i) / columns;
+    const int x = grid.x + column * (cellW + gap);
+    const Rect rect(x, grid.y + row * (cellH + gap), column == columns - 1 ? right(grid) - x : cellW, cellH);
+    const auto &swatch = view.swatches[i];
+    d.nanoColorSwatch(rect, swatch.color, swatch.selected, sink.pressed(swatch.id));
+    addTarget(sink, rect, swatch.id);
   }
 }
 
