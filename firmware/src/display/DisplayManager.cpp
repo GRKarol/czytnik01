@@ -3292,6 +3292,12 @@ void DisplayManager::renderMenu(const std::vector<String> &items, size_t selecte
   if (selectedIndex >= items.size()) {
     selectedIndex = items.size() - 1;
   }
+  if (modernCardStyle_) {
+    if (initialized_) {
+      renderNanoMenuList(items, selectedIndex);
+    }
+    return;
+  }
 
   String renderKey = "menuv|";
   renderKey += String(selectedIndex);
@@ -3682,24 +3688,22 @@ void DisplayManager::renderTextEntry(const String &title, const String &prompt, 
 
   if (modernCardStyle_) {
     nanoClearBackground(virtualWidth, virtualHeight);
-    // rsvpnano keyboard input field: rounded muted surface, caption in 1x
-    // muted, the typed value in 2x accent, "_" when empty.
+    // Keyboard input field: rounded surface, caption small and muted, the
+    // typed text in the accent -- its end stays visible while typing.
     nanoResetClip();
-    const uint16_t surface = nanoColor(NanoRole::SurfaceMuted);
-    nanoFillRoundRect(fieldX, 2, fieldWidth, fieldY + fieldHeight - 2, 5, surface);
-    nanoDrawRoundRect(fieldX, 2, fieldWidth, fieldY + fieldHeight - 2, 5, nanoColor(NanoRole::Outline));
+    const int fieldBottom = fieldY + fieldHeight;
+    nanoFillRoundRect(fieldX, 2, fieldWidth, fieldBottom - 2, 8, nanoColor(NanoRole::SurfaceMuted));
+    const int captionH = headerText.isEmpty() ? 0 : nanoLineHeight(1) - 2;
     if (!headerText.isEmpty()) {
-      nanoText({static_cast<uint16_t>(fieldX + 6), 4, static_cast<uint16_t>(fieldWidth - 12), 9}, headerText, 1,
-               nanoColor(NanoRole::Muted));
+      nanoText(ui::Rect(fieldX + 10, 3, fieldWidth - 20, captionH), headerText, 1, nanoColor(NanoRole::Muted));
     }
-    const int visibleChars = std::max(1, (fieldWidth - 12) / 12);
-    String shown = value.isEmpty() ? (prompt.isEmpty() ? String("_") : prompt) : value;
-    if (static_cast<int>(shown.length()) > visibleChars) {
-      shown = shown.substring(shown.length() - visibleChars);
+    String shown = value.isEmpty() ? (prompt.isEmpty() ? String("_") : prompt) : value + "_";
+    const int maxWidth = fieldWidth - 20;
+    while (shown.length() > 1 && nanoTextWidth(shown, 2) > maxWidth) {
+      shown.remove(0, 1);
     }
-    nanoText({static_cast<uint16_t>(fieldX + 6), static_cast<uint16_t>(headerText.isEmpty() ? 2 : 13),
-              static_cast<uint16_t>(fieldWidth - 12), static_cast<uint16_t>(fieldY + fieldHeight - (headerText.isEmpty() ? 2 : 13))},
-             shown, 2, nanoColor(value.isEmpty() ? NanoRole::Muted : NanoRole::Accent));
+    nanoText(ui::Rect(fieldX + 10, 2 + captionH, maxWidth, fieldBottom - 2 - captionH), shown, 2,
+             nanoColor(value.isEmpty() ? NanoRole::Muted : NanoRole::Accent));
     drawButtons(buttons);
     flushScaledFrame(scale, virtualWidth, virtualHeight);
     return;
@@ -4405,17 +4409,27 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
     nanoResetClip();
     nanoClearBackground(virtualWidth, virtualHeight);
     if (!title.isEmpty()) {
-      nanoText({72, 8, static_cast<uint16_t>(virtualWidth - 144), 20}, title, 2,
-               nanoColor(NanoRole::Muted), NanoAlign::Center);
+      nanoText(ui::Rect(72, 2, virtualWidth - 172, 18), title, 1, nanoColor(NanoRole::Muted), NanoAlign::Center);
     }
     drawButtons(buttons);
     if (pageCount > 1) {
-      nanoText({0, static_cast<uint16_t>(virtualHeight - 12), static_cast<uint16_t>(virtualWidth), 10},
-               String(static_cast<unsigned>(pageIndex + 1)) + "/" + String(static_cast<unsigned>(pageCount)), 1,
+      nanoText(ui::Rect(0, virtualHeight - 16, virtualWidth, 14),
+               String(static_cast<unsigned>(pageIndex + 1)) + " / " + String(static_cast<unsigned>(pageCount)), 1,
                nanoColor(NanoRole::Muted), NanoAlign::Center);
     }
+    // The battery sits in the top-right corner only when no button is
+    // drawn there (plugin screens fill the whole panel).
+    const ui::Rect batteryRect(virtualWidth - 92, 0, 88, 20);
+    for (const Button &button : buttons) {
+      const bool overlaps = button.x < batteryRect.x + batteryRect.w && button.x + button.width > batteryRect.x &&
+                            button.y < batteryRect.y + batteryRect.h && button.y + button.height > batteryRect.y;
+      if (overlaps && button.width > 2 && button.height > 2) {
+        showBatteryBadge = false;
+        break;
+      }
+    }
     if (showBatteryBadge) {
-      nanoBatteryStack({static_cast<uint16_t>(virtualWidth - 42), 6, 36, 30});
+      nanoBatteryInline(ui::Rect(virtualWidth - 92, 0, 88, 20));
     }
     flushScaledFrame(scale, virtualWidth, virtualHeight);
     return;
@@ -4520,6 +4534,12 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
 void DisplayManager::renderStatus(const String &title, const String &line1, const String &line2,
                                   uint8_t line1ScalePercentRequested,
                                   uint8_t line2ScalePercentRequested) {
+  if (modernCardStyle_) {
+    if (initialized_) {
+      renderNanoStatusScreen(title, line1, line2, -1);
+    }
+    return;
+  }
   const String renderKey = "status|" + title + "|" + line1 + "|" + line2 + "|b:" +
                            batteryLabel_ + "|d:" + String(darkMode_ ? 1 : 0) + "|n:" +
                            String(nightMode_ ? 1 : 0) + "|s1:" +
@@ -4568,6 +4588,10 @@ void DisplayManager::renderStatusWithQr(const String &title, const String &line1
                                         const bool *qrData, uint8_t qrSize, const String &hint,
                                         const String &cornerHint) {
   if (!initialized_ || qrData == nullptr || qrSize == 0) {
+    return;
+  }
+  if (modernCardStyle_) {
+    renderNanoQrScreen(title, line1, qrData, qrSize, hint, cornerHint);
     return;
   }
 
@@ -4697,6 +4721,12 @@ void DisplayManager::renderProgress(const String &title, const String &line1, co
                                     int progressPercent, uint8_t line1ScalePercentRequested,
                                     uint8_t line2ScalePercentRequested) {
   progressPercent = std::max(-1, std::min(100, progressPercent));
+  if (modernCardStyle_) {
+    if (initialized_) {
+      renderNanoStatusScreen(title, line1, line2, progressPercent);
+    }
+    return;
+  }
   const String renderKey =
       "progress|" + title + "|" + line1 + "|" + line2 + "|" + String(progressPercent) +
       "|b:" + batteryLabel_ + "|d:" + String(darkMode_ ? 1 : 0) + "|n:" +
@@ -4847,6 +4877,10 @@ void DisplayManager::renderFocusTimerScreen(const String &mode, const String &ge
   const int virtualWidth = logicalWidth();
   const int virtualHeight = logicalHeight();
   const bool portrait = isPortraitOrientation(uiOrientation_);
+  if (modernCardStyle_ && !portrait && initialized_) {
+    renderNanoFocusTimer(mode, timer, instruction, progressPercent, breakAccent);
+    return;
+  }
   const bool timerRunning = progressPercent >= 0;
 
   String renderKey = "timer|";

@@ -8,26 +8,26 @@ namespace TranslationsData {
 
 inline const char *trKeyLookup(uint8_t keyIndex, uint8_t langIndex) {
   static const char *const kTable[72][6] = {
-      {"Loading book", "Cargando libro", "Chargement du livre", "Buch laden", "Se incarca cartea", "Wczytywanie ksiazki"},  // LoadingBook
-      {"Preparing SD", "Preparando SD", "Preparation SD", "SD vorbereiten", "Pregatire SD", "Przygotowuje SD"},  // PreparingSD
-      {"Eject when done", "Expulsar al terminar", "Ejecter une fois fini", "Auswerfen wenn fertig", "Scoate cand e gata", "Wysun po skonczeniu"},  // EjectWhenDone
+      {"Loading book", "Cargando libro", "Chargement du livre", "Buch laden", "Se incarca cartea", "Wczytywanie ksi\x97""\xB5""ki"},  // LoadingBook
+      {"Preparing SD", "Preparando SD", "Preparation SD", "SD vorbereiten", "Pregatire SD", "Przygotowuj\x99"" SD"},  // PreparingSD
+      {"Eject when done", "Expulsar al terminar", "Ejecter une fois fini", "Auswerfen wenn fertig", "Scoate cand e gata", "Wysu\x9D"" po sko\x9D""czeniu"},  // EjectWhenDone
       {"LOW BATTERY", "BATERIA BAJA", "BATTERIE FAIBLE", "AKKU SCHWACH", "BATERIE SLABA", "NISKA BATERIA"},  // LowBattery
-      {"Powering off", "Apagando", "Extinction", "Ausschalten", "Se opreste", "Wylaczam"},  // PoweringOff
-      {" charge soon", " cargue pronto", " rechargez bientot", " bald laden", " incarcati curand", " naladuj wkrotce"},  // ChargeSoon
-      {"% remaining", "% restante", "% restant", "% verbleibend", "% ramas", "% zostalo"},  // Remaining
-      {"Connectivity", "Conectividad", "Connectivite", "Verbindungen", "Conectivitate", "Polaczenia"},  // Connectivity
+      {"Powering off", "Apagando", "Extinction", "Ausschalten", "Se opreste", "Wy\x83""\x97""czam"},  // PoweringOff
+      {" charge soon", " cargue pronto", " rechargez bientot", " bald laden", " incarcati curand", " na\x83""aduj wkr\xF3""tce"},  // ChargeSoon
+      {"% remaining", "% restante", "% restant", "% verbleibend", "% ramas", "% zosta\x83""o"},  // Remaining
+      {"Connectivity", "Conectividad", "Connectivite", "Verbindungen", "Conectivitate", "Po\x83""\x97""czenia"},  // Connectivity
       {"About / Help", "Informacion", "Informations", "Info / Hilfe", "Informatii", "Informacje"},  // AboutHelp
       {"Wi-Fi (advanced)", "Wi-Fi (avanzado)", "Wi-Fi (avance)", "Wi-Fi (erweitert)", "Wi-Fi (avansat)", "Wi-Fi (zaaw.)"},  // WifiAdvanced
       {"Phone sync: ", "Sync movil: ", "Sync tel.: ", "Handy-Sync: ", "Sync telefon: ", "Sync z tel.: "},  // PhoneSync
-      {"    (turn on to see Wi-Fi code)", "    (active para ver codigo Wi-Fi)", "    (activer pour voir code Wi-Fi)", "    (einschalten fuer Wi-Fi-Code)", "    (porniti pt. cod Wi-Fi)", "    (wlacz aby zobaczyc kod Wi-Fi)"},  // TurnOnToSeeWifi
+      {"    (turn on to see Wi-Fi code)", "    (active para ver codigo Wi-Fi)", "    (activer pour voir code Wi-Fi)", "    (einschalten fuer Wi-Fi-Code)", "    (porniti pt. cod Wi-Fi)", "    (w\x83""\x97""cz, aby zobaczy\x9B"" kod Wi-Fi)"},  // TurnOnToSeeWifi
       {"Home Wi-Fi: ", "Wi-Fi hogar: ", "Wi-Fi maison: ", "Heim-Wi-Fi: ", "Wi-Fi acasa: ", "Wi-Fi domowe: "},  // HomeWifi
       {"Not set", "Sin config.", "Non defini", "Nicht gesetzt", "Nesetat", "Brak"},  // NotSet
-      {"CONNECTED", "CONECTADO", "CONNECTE", "VERBUNDEN", "CONECTAT", "POLACZONY"},  // Connected
+      {"CONNECTED", "CONECTADO", "CONNECTE", "VERBUNDEN", "CONECTAT", "PO\x82""\x96""CZONY"},  // Connected
       {"Version: ", "Version: ", "Version : ", "Version: ", "Versiune: ", "Wersja: "},  // Version
       {"Brand: Flower (Czytnik01)", "Marca: Flower (Czytnik01)", "Marque: Flower (Czytnik01)", "Marke: Flower (Czytnik01)", "Marca: Flower (Czytnik01)", "Marka: Flower (Czytnik01)"},  // BrandLabel
       {"Phone app: grkarol.github.io/czytnik01/app", "App movil: grkarol.github.io/czytnik01/app", "App tel.: grkarol.github.io/czytnik01/app", "Handy-App: grkarol.github.io/czytnik01/app", "Aplicatie: grkarol.github.io/czytnik01/app", "Aplikacja: grkarol.github.io/czytnik01/app"},  // PhoneAppLabel
-      {"Developer mode: ON (turn off)", "Modo dev: ON (desactivar)", "Mode dev: ON (desactiver)", "Dev-Modus: AN (ausschalten)", "Mod dev: ON (dezactiveaza)", "Tryb dev: WL (wylacz)"},  // DevModeOn
-      {"Reader hand: ", "Mano: ", "Main: ", "Hand: ", "Mana: ", "Dlon: "},  // ReaderHand
+      {"Developer mode: ON (turn off)", "Modo dev: ON (desactivar)", "Mode dev: ON (desactiver)", "Dev-Modus: AN (ausschalten)", "Mod dev: ON (dezactiveaza)", "Tryb dev: W\x82"" (wy\x83""\x97""cz)"},  // DevModeOn
+      {"Reader hand: ", "Mano: ", "Main: ", "Hand: ", "Mana: ", "D\x83""o\x9D"": "},  // ReaderHand
       {"Footer label: ", "Pie: ", "Pied: ", "Fusszeile: ", "Subsol: ", "Stopka: "},  // FooterLabel
       {"Battery label: ", "Bateria: ", "Batterie: ", "Akku: ", "Baterie: ", "Bateria: "},  // BatteryLabel
       {"Screensaver: ", "Salvapant.: ", "Ecran veille: ", "Bildschirmsch.: ", "Screensaver: ", "Wygaszacz: "},  // Screensaver
@@ -36,41 +36,41 @@ inline const char *trKeyLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Reading percent: ", "Porcent. en lect.: ", "Pourcent. en lect.: ", "Prozent beim Lesen: ", "Procent in citire: ", "Procent w czyt.: "},  // ReadingPercent
       {"Pause behaviour: ", "Pausa: ", "Pause: ", "Pause: ", "Pauza: ", "Pauza: "},  // PauseBehaviour
       {"Base speed: ", "Velocidad: ", "Vitesse: ", "Tempo: ", "Viteza: ", "Tempo: "},  // BaseSpeed
-      {"Network: ", "Red: ", "Reseau: ", "Netzwerk: ", "Retea: ", "Siec: "},  // Network
-      {"Choose network", "Elegir red", "Choisir reseau", "Netzwerk waehlen", "Alege retea", "Wybierz siec"},  // ChooseNetwork
-      {"Forget network", "Olvidar red", "Oublier reseau", "Netzwerk vergessen", "Uita reteaua", "Zapomnij siec"},  // ForgetNetwork
+      {"Network: ", "Red: ", "Reseau: ", "Netzwerk: ", "Retea: ", "Sie\x9B"": "},  // Network
+      {"Choose network", "Elegir red", "Choisir reseau", "Netzwerk waehlen", "Alege retea", "Wybierz sie\x9B"""},  // ChooseNetwork
+      {"Forget network", "Olvidar red", "Oublier reseau", "Netzwerk vergessen", "Uita reteaua", "Zapomnij sie\x9B"""},  // ForgetNetwork
       {"Firmware update", "Actualizar firmware", "Mise a jour firmware", "Firmware-Update", "Actualizare firmware", "Aktualizacja firmware"},  // FirmwareUpdate
       {"Instant", "Instantaneo", "Instantane", "Sofort", "Instant", "Natychm."},  // Instant
       {"Sentence", "Oracion", "Phrase", "Satz", "Propozitie", "Zdanie"},  // Sentence
       {"Left", "Izquierda", "Gauche", "Links", "Stanga", "Lewa"},  // LeftHand
       {"Right", "Derecha", "Droite", "Rechts", "Dreapta", "Prawa"},  // RightHand
       {"Chapter time", "Tiempo cap.", "Temps chap.", "Kapitelzeit", "Timp capitol", "Czas rozdz."},  // ChapterTime
-      {"Book time", "Tiempo libro", "Temps livre", "Buchzeit", "Timp carte", "Czas ksiazki"},  // BookTime
+      {"Book time", "Tiempo libro", "Temps livre", "Buchzeit", "Timp carte", "Czas ksi\x97""\xB5""ki"},  // BookTime
       {"Percent read", "Porcentaje", "Pourcentage", "Prozent", "Procent", "Procent"},  // PercentRead
       {"Time remaining", "Tiempo restante", "Temps restant", "Restzeit", "Timp ramas", "Czas pracy"},  // TimeRemaining
-      {"Voltage", "Voltaje", "Tension", "Spannung", "Tensiune", "Napiecie"},  // Voltage
+      {"Voltage", "Voltaje", "Tension", "Spannung", "Tensiune", "Napi\x99""cie"},  // Voltage
       {"Percentage", "Porcentaje", "Pourcentage", "Prozent", "Procent", "Procent"},  // Percentage
       {"Maze", "Laberinto", "Labyrinthe", "Labyrinth", "Labirint", "Labirynt"},  // Maze
-      {"Screen off", "Apagar pant.", "Ecran eteint", "Bildschirm aus", "Ecran oprit", "Wylacz"},  // ScreenOff
-      {"Life", "Vida", "Vie", "Leben", "Viata", "Zycie"},  // Life
-      {"Starting Wi-Fi", "Iniciando Wi-Fi", "Demarrage Wi-Fi", "Wi-Fi starten", "Pornire Wi-Fi", "Wlaczam Wi-Fi"},  // StartingWifi
-      {"Could not start", "No se pudo iniciar", "Echec demarrage", "Start fehlgeschlagen", "Nu s-a putut porni", "Nie udalo sie"},  // CouldNotStart
+      {"Screen off", "Apagar pant.", "Ecran eteint", "Bildschirm aus", "Ecran oprit", "Wy\x83""\x97""cz"},  // ScreenOff
+      {"Life", "Vida", "Vie", "Leben", "Viata", "\xB4""ycie"},  // Life
+      {"Starting Wi-Fi", "Iniciando Wi-Fi", "Demarrage Wi-Fi", "Wi-Fi starten", "Pornire Wi-Fi", "W\x83""\x97""czam Wi-Fi"},  // StartingWifi
+      {"Could not start", "No se pudo iniciar", "Echec demarrage", "Start fehlgeschlagen", "Nu s-a putut porni", "Nie uda\x83""o si\x99"""},  // CouldNotStart
       {"Returning", "Volviendo", "Retour", "Zurueck", "Revenire", "Wracam"},  // Returning
-      {"Stopping", "Deteniendo", "Arret", "Stoppen", "Se opreste", "Zatrzymuje"},  // Stopping
+      {"Stopping", "Deteniendo", "Arret", "Stoppen", "Se opreste", "Zatrzymuj\x99"""},  // Stopping
       {"Please wait", "Espere", "Patientez", "Bitte warten", "Asteptati", "Czekaj"},  // PleaseWait
       {"Wi-Fi not set", "Wi-Fi no config.", "Wi-Fi non defini", "Wi-Fi nicht gesetzt", "Wi-Fi nesetat", "Brak Wi-Fi"},  // WifiNotSet
       {"Settings -> Wi-Fi", "Ajustes -> Wi-Fi", "Reglages -> Wi-Fi", "Optionen -> Wi-Fi", "Setari -> Wi-Fi", "Ustawienia -> Wi-Fi"},  // SettingsWifi
-      {"Restarting", "Reiniciando", "Redemarrage", "Neustart", "Repornire", "Restartuje"},  // Restarting
+      {"Restarting", "Reiniciando", "Redemarrage", "Neustart", "Repornire", "Restartuj\x99"""},  // Restarting
       {"On", "Si", "Oui", "Ja", "Da", "Tak"},  // Yes
       {"Off", "No", "Non", "Nein", "Nu", "Nie"},  // No
       {"Timeout: ", "Tiempo: ", "Delai: ", "Wartezeit: ", "Timp: ", "Czas wygaszacza: "},  // ScreensaverTimeout
-      {"Auto power-off: ", "Auto-apagar: ", "Auto-eteindre: ", "Auto-aus: ", "Auto-oprire: ", "Auto-wylacz: "},  // ScreensaverAutoOff
+      {"Auto power-off: ", "Auto-apagar: ", "Auto-eteindre: ", "Auto-aus: ", "Auto-oprire: ", "Auto-wy\x83""\x97""cz: "},  // ScreensaverAutoOff
       {"Sleep guard: ", "Protec. sueno: ", "Protec. sommeil: ", "Schlafschutz: ", "Protectie somn: ", "Ochrona snu: "},  // ScreensaverSleepGuard
       {"Style: ", "Estilo: ", "Style: ", "Stil: ", "Stil: ", "Styl: "},  // ScreensaverStyle
-      {">> Preview <<", ">> Vista previa <<", ">> Apercu <<", ">> Vorschau <<", ">> Previz. <<", ">> Podglad <<"},  // ScreensaverPreview
+      {">> Preview <<", ">> Vista previa <<", ">> Apercu <<", ">> Vorschau <<", ">> Previz. <<", ">> Podgl\x97""d <<"},  // ScreensaverPreview
       {"Stars", "Estrellas", "Etoiles", "Sterne", "Stele", "Gwiazdy"},  // Stars
       {"Matrix", "Matrix", "Matrix", "Matrix", "Matrix", "Matrix"},  // MatrixRain
-      {"Press button to wake", "Pulsa un boton para despertar", "Appuyez pour reveiller", "Taste drucken zum Aufwecken", "Apasa un buton pt. trezire", "Nacisnij przycisk by wybudzic"},  // ScreensaverHint
+      {"Press button to wake", "Pulsa un boton para despertar", "Appuyez pour reveiller", "Taste drucken zum Aufwecken", "Apasa un buton pt. trezire", "Naci\x9F""nij przycisk, by wybudzi\x9B"""},  // ScreensaverHint
       {"1 min", "1 min", "1 min", "1 Min", "1 min", "1 min"},  // Minutes1
       {"2 min", "2 min", "2 min", "2 Min", "2 min", "2 min"},  // Minutes2
       {"3 min", "3 min", "3 min", "3 Min", "3 min", "3 min"},  // Minutes3
@@ -86,69 +86,69 @@ inline const char *trKeyLookup(uint8_t keyIndex, uint8_t langIndex) {
 
 inline const char *trKey2Lookup(uint8_t keyIndex, uint8_t langIndex) {
   static const char *const kTable[53][6] = {
-      {"Books", "Libros", "Livres", "Buecher", "Carti", "Ksiazki"},  // Books
-      {"Articles", "Articulos", "Articles", "Artikel", "Articole", "Artykuly"},  // Articles
+      {"Books", "Libros", "Livres", "Buecher", "Carti", "Ksi\x97""\xB5""ki"},  // Books
+      {"Articles", "Articulos", "Articles", "Artikel", "Articole", "Artyku\x83""y"},  // Articles
       {"Focus Timer", "Temporizador", "Minuteur", "Fokus-Timer", "Cronometru", "Klepsydra"},  // FocusTimer
-      {"SD card check", "Verificar SD", "Verifier carte SD", "SD-Karte pruefen", "Verificare card SD", "Sprawdz karte SD"},  // SdCardCheck
-      {"RSS feeds", "Fuentes RSS", "Flux RSS", "RSS-Feeds", "Fluxuri RSS", "Kanaly RSS"},  // RssFeeds
+      {"SD card check", "Verificar SD", "Verifier carte SD", "SD-Karte pruefen", "Verificare card SD", "Sprawd\xB3"" kart\x99"" SD"},  // SdCardCheck
+      {"RSS feeds", "Fuentes RSS", "Flux RSS", "RSS-Feeds", "Fluxuri RSS", "Kana\x83""y RSS"},  // RssFeeds
       {"Companion sync", "Sync con movil", "Sync telephone", "Handy-Sync", "Sync telefon", "Sync z telefonem"},  // CompanionSync
-      {"Repair folders?", "Reparar carpetas?", "Reparer dossiers?", "Ordner reparieren?", "Repara foldere?", "Naprawic foldery?"},  // RepairFolders
+      {"Repair folders?", "Reparar carpetas?", "Reparer dossiers?", "Ordner reparieren?", "Repara foldere?", "Naprawi\x9B"" foldery?"},  // RepairFolders
       {"Not now", "Ahora no", "Pas maintenant", "Nicht jetzt", "Nu acum", "Nie teraz"},  // NotNow
-      {"Create folders", "Crear carpetas", "Creer dossiers", "Ordner erstellen", "Creeaza foldere", "Utworz foldery"},  // CreateFolders
-      {"Update available", "Actualizacion disponible", "Mise a jour disponible", "Update verfuegbar", "Actualizare disponibila", "Dostepna aktualizacja"},  // UpdateAvailable
-      {"Skip for now", "Omitir", "Ignorer", "Ueberspringen", "Sari peste", "Pomin"},  // SkipForNow
+      {"Create folders", "Crear carpetas", "Creer dossiers", "Ordner erstellen", "Creeaza foldere", "Utw\xF3""rz foldery"},  // CreateFolders
+      {"Update available", "Actualizacion disponible", "Mise a jour disponible", "Update verfuegbar", "Actualizare disponibila", "Dost\x99""pna aktualizacja"},  // UpdateAvailable
+      {"Skip for now", "Omitir", "Ignorer", "Ueberspringen", "Sari peste", "Pomi\x9D"""},  // SkipForNow
       {"Update", "Actualizar", "Mettre a jour", "Aktualisieren", "Actualizeaza", "Aktualizuj"},  // Update
-      {"Credentials cleared", "Credenciales borradas", "Identifiants effaces", "Zugangsdaten geloescht", "Credentiale sterse", "Dane usuniete"},  // CredentialsCleared
+      {"Credentials cleared", "Credenciales borradas", "Identifiants effaces", "Zugangsdaten geloescht", "Credentiale sterse", "Dane usuni\x99""te"},  // CredentialsCleared
       {"No networks found", "Sin redes", "Aucun reseau", "Keine Netzwerke", "Nicio retea gasita", "Brak sieci"},  // NoNetworksFound
-      {"Network saved", "Red guardada", "Reseau enregistre", "Netzwerk gespeichert", "Retea salvata", "Siec zapisana"},  // NetworkSaved
-      {"Password required", "Contrasena requerida", "Mot de passe requis", "Passwort erforderlich", "Parola necesara", "Wymagane haslo"},  // PasswordRequired
-      {"Connecting...", "Conectando...", "Connexion...", "Verbinde...", "Se conecteaza...", "Laczenie..."},  // ConnectingToNetwork
-      {"Could not connect. Check the password.", "No se pudo conectar. Revisa la contrasena.", "Echec de connexion. Verifiez le mot de passe.", "Verbindung fehlgeschlagen. Passwort pruefen.", "Conectare esuata. Verifica parola.", "Nie udalo sie polaczyc. Sprawdz haslo."},  // ConnectFailedCheckPassword
-      {"Reset to default", "Restablecido", "Reinitialise", "Zurueckgesetzt", "Resetat la implicit", "Przywrocono domyslne"},  // ResetToDefault
+      {"Network saved", "Red guardada", "Reseau enregistre", "Netzwerk gespeichert", "Retea salvata", "Sie\x9B"" zapisana"},  // NetworkSaved
+      {"Password required", "Contrasena requerida", "Mot de passe requis", "Passwort erforderlich", "Parola necesara", "Wymagane has\x83""o"},  // PasswordRequired
+      {"Connecting...", "Conectando...", "Connexion...", "Verbinde...", "Se conecteaza...", "\x82""\x97""czenie..."},  // ConnectingToNetwork
+      {"Could not connect. Check the password.", "No se pudo conectar. Revisa la contrasena.", "Echec de connexion. Verifiez le mot de passe.", "Verbindung fehlgeschlagen. Passwort pruefen.", "Conectare esuata. Verifica parola.", "Nie uda\x83""o si\x99"" po\x83""\x97""czy\x9B"". Sprawd\xB3"" has\x83""o."},  // ConnectFailedCheckPassword
+      {"Reset to default", "Restablecido", "Reinitialise", "Zurueckgesetzt", "Resetat la implicit", "Przywr\xF3""cono domy\x9F""lne"},  // ResetToDefault
       {"Owner saved", "Guardado", "Enregistre", "Gespeichert", "Salvat", "Zapisano"},  // OwnerSaved
-      {"Checking feeds", "Verificando fuentes", "Verification flux", "Feeds pruefen", "Verificare fluxuri", "Sprawdzam kanaly"},  // CheckingFeeds
+      {"Checking feeds", "Verificando fuentes", "Verification flux", "Feeds pruefen", "Verificare fluxuri", "Sprawdzam kana\x83""y"},  // CheckingFeeds
       {"Starting", "Iniciando", "Demarrage", "Starten", "Pornire", "Uruchamiam"},  // Starting
-      {"Folders missing", "Faltan carpetas", "Dossiers manquants", "Ordner fehlen", "Foldere lipsa", "Brak folderow"},  // FoldersMissing
-      {"Confirm repair", "Confirmar reparacion", "Confirmer reparation", "Reparatur bestaetigen", "Confirma repararea", "Potwierdz naprawe"},  // ConfirmRepair
+      {"Folders missing", "Faltan carpetas", "Dossiers manquants", "Ordner fehlen", "Foldere lipsa", "Brak folder\xF3""w"},  // FoldersMissing
+      {"Confirm repair", "Confirmar reparacion", "Confirmer reparation", "Reparatur bestaetigen", "Confirma repararea", "Potwierd\xB3"" napraw\x99"""},  // ConfirmRepair
       {"Repairing folders", "Reparando carpetas", "Reparation dossiers", "Ordner reparieren", "Reparare foldere", "Naprawiam foldery"},  // RepairingFolders
       {"Folder repair failed", "Reparacion fallida", "Reparation echouee", "Reparatur fehlgeschlagen", "Reparare esuata", "Naprawa nieudana"},  // FolderRepairFailed
       {"Format FAT32 MBR", "Formatear FAT32 MBR", "Formater FAT32 MBR", "FAT32 MBR formatieren", "Formateaza FAT32 MBR", "Sformatuj FAT32 MBR"},  // FormatFat32
       {"Folders repaired", "Carpetas reparadas", "Dossiers repares", "Ordner repariert", "Foldere reparate", "Foldery naprawione"},  // FoldersRepaired
-      {"Checking card", "Verificando tarjeta", "Verification carte", "Karte pruefen", "Verificare card", "Sprawdzam karte"},  // CheckingCard
+      {"Checking card", "Verificando tarjeta", "Verification carte", "Karte pruefen", "Verificare card", "Sprawdzam kart\x99"""},  // CheckingCard
       {"SD not ready", "SD no lista", "SD non prete", "SD nicht bereit", "SD nu e gata", "SD niegotowa"},  // SdNotReady
-      {"Copy books now", "Copie libros ahora", "Copiez livres", "Buecher kopieren", "Copiati cartile", "Kopiuj ksiazki"},  // CopyBooksNow
-      {"Eject then hold PWR", "Expulsar, mantener PWR", "Ejecter puis maintenir PWR", "Auswerfen, PWR halten", "Scoate si tine PWR", "Wysun i przytrzymaj PWR"},  // EjectThenHoldPwr
+      {"Copy books now", "Copie libros ahora", "Copiez livres", "Buecher kopieren", "Copiati cartile", "Kopiuj ksi\x97""\xB5""ki"},  // CopyBooksNow
+      {"Eject then hold PWR", "Expulsar, mantener PWR", "Ejecter puis maintenir PWR", "Auswerfen, PWR halten", "Scoate si tine PWR", "Wysu\x9D"" i przytrzymaj PWR"},  // EjectThenHoldPwr
       {"Remounting SD", "Remontando SD", "Remontage SD", "SD neu einbinden", "Remontare SD", "Ponowne montowanie SD"},  // RemountingSd
-      {"Release PWR", "Suelte PWR", "Relacher PWR", "PWR loslassen", "Elibereaza PWR", "Pusc PWR"},  // ReleasePwr
-      {"Hold PWR to start", "Mantenga PWR para iniciar", "Maintenir PWR pour demarrer", "PWR halten zum Starten", "Tine PWR pt. pornire", "Przytrzymaj PWR aby wlaczyc"},  // HoldPwrToStart
+      {"Release PWR", "Suelte PWR", "Relacher PWR", "PWR loslassen", "Elibereaza PWR", "Pu\x9F""\x9B"" PWR"},  // ReleasePwr
+      {"Hold PWR to start", "Mantenga PWR para iniciar", "Maintenir PWR pour demarrer", "PWR halten zum Starten", "Tine PWR pt. pornire", "Przytrzymaj PWR, aby w\x83""\x97""czy\x9B"""},  // HoldPwrToStart
       {"Function library", "Biblioteca de funciones", "Bibliotheque de fonctions", "Funktionsbibliothek", "Biblioteca de functii", "Biblioteka funkcji"},  // PluginLibrary
       {"[installed]", "[instalado]", "[installe]", "[installiert]", "[instalat]", "[zainstalowany]"},  // PluginInstalled
       {"Install: ", "Instalar: ", "Installer: ", "Installieren: ", "Instaleaza: ", "Zainstaluj: "},  // PluginInstall
-      {"Remove: ", "Quitar: ", "Retirer: ", "Entfernen: ", "Elimina: ", "Usun: "},  // PluginRemove
+      {"Remove: ", "Quitar: ", "Retirer: ", "Entfernen: ", "Elimina: ", "Usu\x9D"": "},  // PluginRemove
       {"Built-in", "Integrado", "Integre", "Eingebaut", "Integrat", "Wbudowany"},  // PluginBuiltIn
-      {"Cannot remove", "No se puede quitar", "Impossible de retirer", "Kann nicht entfernt werden", "Nu se poate elimina", "Nie mozna usunac"},  // PluginCannotRemove
+      {"Cannot remove", "No se puede quitar", "Impossible de retirer", "Kann nicht entfernt werden", "Nu se poate elimina", "Nie mo\xB5""na usun\x97""\x9B"""},  // PluginCannotRemove
       {"Installing...", "Instalando...", "Installation...", "Installiere...", "Se instaleaza...", "Instalowanie..."},  // PluginInstalling
       {"Removing...", "Quitando...", "Retrait...", "Entferne...", "Se elimina...", "Usuwanie..."},  // PluginRemoving
-      {"Restarting...", "Reiniciando...", "Redemarrage...", "Neustart...", "Repornire...", "Restart za chwile..."},  // PluginRestartRequired
+      {"Restarting...", "Reiniciando...", "Redemarrage...", "Neustart...", "Repornire...", "Restart za chwil\x99""..."},  // PluginRestartRequired
       {"Wi-Fi required", "Wi-Fi requerido", "Wi-Fi requis", "Wi-Fi erforderlich", "Wi-Fi necesar", "Wymagane Wi-Fi"},  // PluginNoWifi
-      {"Download failed", "Error de descarga", "Erreur de telechargement", "Download fehlgeschlagen", "Eroare descarcare", "Blad pobierania"},  // PluginFetchFailed
+      {"Download failed", "Error de descarga", "Erreur de telechargement", "Download fehlgeschlagen", "Eroare descarcare", "B\x83""\x97""d pobierania"},  // PluginFetchFailed
       {"Install failed", "Instalacion fallida", "Echec installation", "Installation fehlgeschlagen", "Instalare esuata", "Instalacja nieudana"},  // PluginInstallFailed
       {"Remove failed", "Error al quitar", "Echec du retrait", "Entfernen fehlgeschlagen", "Eliminare esuata", "Usuwanie nieudane"},  // PluginRemoveFailed
       {"Launch", "Ejecutar", "Lancer", "Starten", "Lanseaza", "Uruchom"},  // PluginLaunch
       {"Downloading...", "Descargando...", "Telechargement...", "Herunterladen...", "Descarca...", "Pobieranie..."},  // PluginDownloading
       {"Fetching list...", "Obteniendo lista...", "Chargement liste...", "Liste laden...", "Incarcare lista...", "Pobieranie listy..."},  // PluginFetchingRegistry
       {"[update]", "[actualizar]", "[mise a jour]", "[aktualisieren]", "[actualizare]", "[aktualizacja]"},  // PluginUpdate
-      {"Coming soon", "Disponible pronto", "Bientot disponible", "Bald verfuegbar", "Disponibil curand", "Wkrotce dostepny"},  // PluginNotYetAvailable
+      {"Coming soon", "Disponible pronto", "Bientot disponible", "Bald verfuegbar", "Disponibil curand", "Wkr\xF3""tce dost\x99""pny"},  // PluginNotYetAvailable
   };
   return kTable[keyIndex][langIndex];
 }
 
 inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[123][6] = {
+  static const char *const kTable[150][6] = {
       {"Save point added", "Punto guardado agregado", "Point de sauvegarde ajoute", "Lesezeichen hinzugefuegt", "Punct salvat adaugat", "Punkt zapisu dodany"},  // SavePointAdded
-      {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zakladke"},  // NameBookmark
-      {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazwe:"},  // EnterNamePrompt
-      {"Bookmark added", "Marcador agregado", "Signet ajoute", "Lesezeichen hinzugefuegt", "Marcaj adaugat", "Zakladka dodana"},  // BookmarkAdded
+      {"Name bookmark", "Nombra el marcador", "Nommer le signet", "Lesezeichen benennen", "Numeste marcaj", "Nazwij zak\x83""adk\x99"""},  // NameBookmark
+      {"Enter name:", "Escribe nombre:", "Entrez le nom :", "Namen eingeben:", "Introdu numele:", "Wpisz nazw\x99"":"},  // EnterNamePrompt
+      {"Bookmark added", "Marcador agregado", "Signet ajoute", "Lesezeichen hinzugefuegt", "Marcaj adaugat", "Zak\x83""adka dodana"},  // BookmarkAdded
       {"Reading", "Lectura", "Lecture", "Lesen", "Citire", "Czytanie"},  // ReadingSettings
       {"Advanced mode: ", "Modo avanzado: ", "Mode avance : ", "Erweiterter Modus: ", "Mod avansat: ", "Tryb zaawansowany: "},  // AdvancedModeColon
       {"Presets", "Preajustes", "Prereglages", "Voreinstellungen", "Presetari", "Presety"},  // PresetsLabel
@@ -156,143 +156,170 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Red", "Rojo", "Rouge", "Rot", "Rosu", "Czerwony"},  // ColorRed
       {"Blue", "Azul", "Bleu", "Blau", "Albastru", "Niebieski"},  // ColorBlue
       {"Green", "Verde", "Vert", "Gruen", "Verde", "Zielony"},  // ColorGreen
-      {"Yellow", "Amarillo", "Jaune", "Gelb", "Galben", "Zolty"},  // ColorYellow
-      {"Orange", "Naranja", "Orange", "Orange", "Portocaliu", "Pomaranczowy"},  // ColorOrange
+      {"Yellow", "Amarillo", "Jaune", "Gelb", "Galben", "\xB4""\xF3""\x83""ty"},  // ColorYellow
+      {"Orange", "Naranja", "Orange", "Orange", "Portocaliu", "Pomara\x9D""czowy"},  // ColorOrange
       {"Purple", "Morado", "Violet", "Violett", "Violet", "Fioletowy"},  // ColorPurple
       {"Save btn: ", "Boton guardar: ", "Bouton sauveg. : ", "Speicherbtn.: ", "Buton salvare:", "Przycisk zapisu: "},  // SaveBtnColon
       {"Focus color: ", "Color letra: ", "Couleur lettre : ", "Buchstabenfarbe: ", "Culoare litera:", "Kolor litery: "},  // FocusColorColon
       {"Help (?): ", "Ayuda (?): ", "Aide (?) : ", "Hilfe (?): ", "Ajutor (?):", "Pomoc (?): "},  // HelpQColon
       {"Navigation: ", "Navegacion: ", "Navigation : ", "Navigation: ", "Navigare:", "Nawigacja: "},  // NavigationColon
-      {"Words one at a time. ORP letter guides your eye.", "Palabras una por una. La letra ORP guia tu vista.", "Mots un par un. La lettre ORP guide votre regard.", "Woerter eins nach dem anderen. Der ORP-Buchstabe fuehrt den Blick.", "Cuvinte unul cate unul. Litera ORP iti ghideaza privirea.", "Slowa jedno po drugim. Litera ORP kieruje wzrok."},  // TutorialRsvpDesc
+      {"Words one at a time. ORP letter guides your eye.", "Palabras una por una. La letra ORP guia tu vista.", "Mots un par un. La lettre ORP guide votre regard.", "Woerter eins nach dem anderen. Der ORP-Buchstabe fuehrt den Blick.", "Cuvinte unul cate unul. Litera ORP iti ghideaza privirea.", "S\x83""owa jedno po drugim. Litera ORP kieruje wzrok."},  // TutorialRsvpDesc
       {"Speed", "Velocidad", "Vitesse", "Tempo", "Viteza", "Tempo"},  // SpeedLabel
-      {"Hold + up/down: change speed.", "Manten + arriba/abajo: cambia velocidad.", "Maintenir + haut/bas : change la vitesse.", "Halten + hoch/runter: Tempo aendern.", "Tine apasat + sus/jos: schimba viteza.", "Przytrzymaj + gora/dol: zmiana predkosci."},  // TutorialSpeedDesc
+      {"Hold + up/down: change speed.", "Manten + arriba/abajo: cambia velocidad.", "Maintenir + haut/bas : change la vitesse.", "Halten + hoch/runter: Tempo aendern.", "Tine apasat + sus/jos: schimba viteza.", "Przytrzymaj + g\xF3""ra/d\xF3""\x83"": zmiana pr\x99""dko\x9F""ci."},  // TutorialSpeedDesc
       {"Pause", "Pausa", "Pause", "Pause", "Pauza", "Pauza"},  // PauseLabel
-      {"Tap screen to pause/resume.", "Toca la pantalla para pausar/reanudar.", "Touchez l'ecran pour pause/reprise.", "Bildschirm beruehren zum Pausieren/Fortsetzen.", "Atinge ecranul pentru pauza/reluare.", "Dotknij ekranu by pauzowac/wznowic."},  // TutorialPauseDesc
+      {"Tap screen to pause/resume.", "Toca la pantalla para pausar/reanudar.", "Touchez l'ecran pour pause/reprise.", "Bildschirm beruehren zum Pausieren/Fortsetzen.", "Atinge ecranul pentru pauza/reluare.", "Dotknij ekranu, by pauzowa\x9B""/wznowi\x9B""."},  // TutorialPauseDesc
       {"Side button opens the menu.", "El boton lateral abre el menu.", "Le bouton lateral ouvre le menu.", "Seitentaste oeffnet das Menue.", "Butonul lateral deschide meniul.", "Przycisk z boku otwiera menu."},  // TutorialMenuDesc
       {"Help ?", "Ayuda ?", "Aide ?", "Hilfe ?", "Ajutor ?", "Pomoc ?"},  // HelpQLabel
       {"In Display/Pacing settings: side button shows info.", "En Pantalla/Ritmo: el boton lateral muestra info.", "Dans Affichage/Rythme : le bouton lateral affiche des infos.", "In Anzeige/Tempo: Seitentaste zeigt Infos.", "In Afisaj/Ritm: butonul lateral arata info.", "W ustaw. Ekran/Tempo: boczny przycisk pokazuje opis."},  // TutorialHelpDesc
       {"Staging", "Pruebas", "Test", "Testkanal", "Testare", "Testowy"},  // ChannelStaging
       {"Production", "Produccion", "Production", "Produktion", "Productie", "Produkcyjny"},  // ChannelProduction
       {"Buttons", "Botones", "Boutons", "Tasten", "Butoane", "Przyciski"},  // ButtonsLabel
-      {"complete", "completado", "termine", "abgeschlossen", "finalizat", "ukonczone"},  // PercentComplete
+      {"complete", "completado", "termine", "abgeschlossen", "finalizat", "uko\x9D""czone"},  // PercentComplete
       {"Read from place", "Leer desde el punto", "Lire depuis l'endroit", "Weiterlesen ab Stelle", "Citeste de la loc", "Czytaj od miejsca"},  // ReadFromPlace
-      {"Delete book", "Eliminar libro", "Supprimer le livre", "Buch loeschen", "Sterge cartea", "Usun ksiazke"},  // DeleteBookLabel
-      {"Error", "Error", "Erreur", "Fehler", "Eroare", "Blad"},  // ErrorLabel
-      {"Delete: ", "Eliminar: ", "Supprimer : ", "Loeschen: ", "Sterge: ", "Usunac: "},  // DeleteConfirmColon
-      {"No, go back", "No, volver", "Non, retour", "Nein, zurueck", "Nu, inapoi", "Nie, wroc"},  // NoGoBack
-      {"Yes, delete", "Si, eliminar", "Oui, supprimer", "Ja, loeschen", "Da, sterge", "Tak, usun"},  // YesDelete
-      {"Deleted", "Eliminado", "Supprime", "Geloescht", "Sters", "Usunieto"},  // DeletedLabel
-      {"Cannot delete", "No se puede eliminar", "Impossible de supprimer", "Loeschen nicht moeglich", "Nu se poate sterge", "Nie mozna usunac"},  // CannotDelete
+      {"Delete book", "Eliminar libro", "Supprimer le livre", "Buch loeschen", "Sterge cartea", "Usu\x9D"" ksi\x97""\xB5""k\x99"""},  // DeleteBookLabel
+      {"Error", "Error", "Erreur", "Fehler", "Eroare", "B\x83""\x97""d"},  // ErrorLabel
+      {"Delete: ", "Eliminar: ", "Supprimer : ", "Loeschen: ", "Sterge: ", "Usun\x97""\x9B"": "},  // DeleteConfirmColon
+      {"No, go back", "No, volver", "Non, retour", "Nein, zurueck", "Nu, inapoi", "Nie, wr\xF3""\x9B"""},  // NoGoBack
+      {"Yes, delete", "Si, eliminar", "Oui, supprimer", "Ja, loeschen", "Da, sterge", "Tak, usu\x9D"""},  // YesDelete
+      {"Deleted", "Eliminado", "Supprime", "Geloescht", "Sters", "Usuni\x99""to"},  // DeletedLabel
+      {"Cannot delete", "No se puede eliminar", "Impossible de supprimer", "Loeschen nicht moeglich", "Nu se poate sterge", "Nie mo\xB5""na usun\x97""\x9B"""},  // CannotDelete
       {"+ Add save point", "+ Agregar punto", "+ Ajouter un point", "+ Speicherpunkt hinzu.", "+ Adauga punct", "+ Dodaj punkt zapisu"},  // AddSavePoint
-      {"Delete ", "Eliminar ", "Supprimer ", "Loeschen ", "Sterge ", "Usun "},  // DeleteSpace
-      {"Open a book first", "Primero abre un libro", "Ouvrez d'abord un livre", "Zuerst ein Buch oeffnen", "Deschide mai intai o carte", "Najpierw otworz ksiazke"},  // OpenBookFirst
-      {"Book not found", "Libro no encontrado", "Livre introuvable", "Buch nicht gefunden", "Cartea nu a fost gasita", "Ksiazka nie znaleziona"},  // BookNotFound
-      {"Cannot open", "No se puede abrir", "Impossible d'ouvrir", "Oeffnen nicht moeglich", "Nu se poate deschide", "Nie mozna otworzyc"},  // CannotOpen
+      {"Delete ", "Eliminar ", "Supprimer ", "Loeschen ", "Sterge ", "Usu\x9D"" "},  // DeleteSpace
+      {"Open a book first", "Primero abre un libro", "Ouvrez d'abord un livre", "Zuerst ein Buch oeffnen", "Deschide mai intai o carte", "Najpierw otw\xF3""rz ksi\x97""\xB5""k\x99"""},  // OpenBookFirst
+      {"Book not found", "Libro no encontrado", "Livre introuvable", "Buch nicht gefunden", "Cartea nu a fost gasita", "Ksi\x97""\xB5""ka nie znaleziona"},  // BookNotFound
+      {"Cannot open", "No se puede abrir", "Impossible d'ouvrir", "Oeffnen nicht moeglich", "Nu se poate deschide", "Nie mo\xB5""na otworzy\x9B"""},  // CannotOpen
       {"Active", "Activos", "Actifs", "Aktiv", "Active", "Aktywne"},  // ActivePlugins
-      {"No active plugins", "Sin plugins activos", "Aucun plugin actif", "Keine aktiven Plugins", "Niciun plugin activ", "Brak aktywnych pluginow"},  // NoActivePlugins
-      {" [enabled]", " [activado]", " [active]", " [aktiviert]", " [activat]", " [wlaczony]"},  // PluginEnabledTag
-      {" [disabled]", " [desactivado]", " [desactive]", " [deaktiviert]", " [dezactivat]", " [wylaczony]"},  // PluginDisabledTag
-      {"Disable", "Desactivar", "Desactiver", "Deaktivieren", "Dezactiveaza", "Wylacz"},  // DisablePlugin
-      {"Enable", "Activar", "Activer", "Aktivieren", "Activeaza", "Wlacz"},  // EnablePlugin
+      {"No active plugins", "Sin plugins activos", "Aucun plugin actif", "Keine aktiven Plugins", "Niciun plugin activ", "Brak aktywnych plugin\xF3""w"},  // NoActivePlugins
+      {" [enabled]", " [activado]", " [active]", " [aktiviert]", " [activat]", " [w\x83""\x97""czony]"},  // PluginEnabledTag
+      {" [disabled]", " [desactivado]", " [desactive]", " [deaktiviert]", " [dezactivat]", " [wy\x83""\x97""czony]"},  // PluginDisabledTag
+      {"Disable", "Desactivar", "Desactiver", "Deaktivieren", "Dezactiveaza", "Wy\x83""\x97""cz"},  // DisablePlugin
+      {"Enable", "Activar", "Activer", "Aktivieren", "Activeaza", "W\x83""\x97""cz"},  // EnablePlugin
       {"+ Save Current", "+ Guardar actual", "+ Enregistrer actuel", "+ Aktuelles speichern", "+ Salveaza actualul", "+ Zapisz obecne"},  // SaveCurrentPreset
-      {"(Limit 10 reached)", "(Limite de 10 alcanzado)", "(Limite de 10 atteinte)", "(Limit von 10 erreicht)", "(Limita de 10 atinsa)", "(Limit 10 osiagniety)"},  // PresetLimitReachedParen
+      {"(Limit 10 reached)", "(Limite de 10 alcanzado)", "(Limite de 10 atteinte)", "(Limit von 10 erreicht)", "(Limita de 10 atinsa)", "(Limit 10 osi\x97""gni\x99""ty)"},  // PresetLimitReachedParen
       {"Preset Name", "Nombre del preajuste", "Nom du preregl.", "Preset-Name", "Nume preset", "Nazwa presetu"},  // PresetNameLabel
-      {"Invalid name", "Nombre invalido", "Nom invalide", "Ungueltiger Name", "Nume invalid", "Nieprawidlowa nazwa"},  // InvalidName
+      {"Invalid name", "Nombre invalido", "Nom invalide", "Ungueltiger Name", "Nume invalid", "Nieprawid\x83""owa nazwa"},  // InvalidName
       {"Saved", "Guardado", "Enregistre", "Gespeichert", "Salvat", "Zapisano"},  // SavedLabel
-      {"Limit reached", "Limite alcanzado", "Limite atteinte", "Limit erreicht", "Limita atinsa", "Limit osiagniety"},  // LimitReachedShort
-      {"SD card error", "Error de tarjeta SD", "Erreur carte SD", "SD-Kartenfehler", "Eroare card SD", "Blad karty SD"},  // SdCardErrorLabel
+      {"Limit reached", "Limite alcanzado", "Limite atteinte", "Limit erreicht", "Limita atinsa", "Limit osi\x97""gni\x99""ty"},  // LimitReachedShort
+      {"SD card error", "Error de tarjeta SD", "Erreur carte SD", "SD-Kartenfehler", "Eroare card SD", "B\x83""\x97""d karty SD"},  // SdCardErrorLabel
       {"Loaded", "Cargado", "Charge", "Geladen", "Incarcat", "Wczytano"},  // LoadedLabel
-      {"Error loading preset", "Error al cargar el preajuste", "Erreur de chargement du preregl.", "Fehler beim Laden des Presets", "Eroare la incarcarea presetului", "Blad wczytywania presetu"},  // PresetLoadError
+      {"Error loading preset", "Error al cargar el preajuste", "Erreur de chargement du preregl.", "Fehler beim Laden des Presets", "Eroare la incarcarea presetului", "B\x83""\x97""d wczytywania presetu"},  // PresetLoadError
       {"Apply: ", "Aplicar: ", "Appliquer : ", "Anwenden: ", "Aplica: ", "Zastosuj: "},  // ApplyColon
-      {"Delete: ", "Eliminar: ", "Supprimer : ", "Loeschen: ", "Sterge: ", "Usun: "},  // DeletePresetColon
-      {"Delete failed", "Error al eliminar", "Echec de la suppression", "Loeschen fehlgeschlagen", "Stergere esuata", "Blad usuwania"},  // PresetDeleteFailed
-      {"< Back | Wi-Fi", "< Volver | Wi-Fi", "< Retour | Wi-Fi", "< Zurueck | Wi-Fi", "< Inapoi | Wi-Fi", "< Wroc | Wi-Fi"},  // BackWifiHeader
-      {"< Back | Sync", "< Volver | Sync", "< Retour | Sync", "< Zurueck | Sync", "< Inapoi | Sync", "< Wroc | Sync"},  // BackSyncHeader
-      {"USB | Tap = back", "USB | Toca = volver", "USB | Touchez = retour", "USB | Tippen = zurueck", "USB | Atinge = inapoi", "USB | Tap = wroc"},  // UsbBackHint
-      {"Connect USB cable", "Conecta el cable USB", "Branchez le cable USB", "USB-Kabel anschliessen", "Conecteaza cablul USB", "Podlacz kabel USB"},  // ConnectUsbCable
+      {"Delete: ", "Eliminar: ", "Supprimer : ", "Loeschen: ", "Sterge: ", "Usu\x9D"": "},  // DeletePresetColon
+      {"Delete failed", "Error al eliminar", "Echec de la suppression", "Loeschen fehlgeschlagen", "Stergere esuata", "B\x83""\x97""d usuwania"},  // PresetDeleteFailed
+      {"< Back | Wi-Fi", "< Volver | Wi-Fi", "< Retour | Wi-Fi", "< Zurueck | Wi-Fi", "< Inapoi | Wi-Fi", "< Wr\xF3""\x9B"" | Wi-Fi"},  // BackWifiHeader
+      {"< Back | Sync", "< Volver | Sync", "< Retour | Sync", "< Zurueck | Sync", "< Inapoi | Sync", "< Wr\xF3""\x9B"" | Sync"},  // BackSyncHeader
+      {"USB | Tap = back", "USB | Toca = volver", "USB | Touchez = retour", "USB | Tippen = zurueck", "USB | Atinge = inapoi", "USB | Tap = wr\xF3""\x9B"""},  // UsbBackHint
+      {"Connect USB cable", "Conecta el cable USB", "Branchez le cable USB", "USB-Kabel anschliessen", "Conecteaza cablul USB", "Pod\x83""\x97""cz kabel USB"},  // ConnectUsbCable
       {"SD visible on phone/PC", "SD visible en telefono/PC", "SD visible sur telephone/PC", "SD sichtbar auf Handy/PC", "SD vizibil pe telefon/PC", "SD widoczna na telefonie/PC"},  // SdVisibleOnPhone
-      {"Vol -", "Vol -", "Vol -", "Lst -", "Vol -", "Gl -"},  // VolumeDown
-      {"Vol +", "Vol +", "Vol +", "Lst +", "Vol +", "Gl +"},  // VolumeUp
+      {"Vol -", "Vol -", "Vol -", "Lst -", "Vol -", "G\x83"" -"},  // VolumeDown
+      {"Vol +", "Vol +", "Vol +", "Lst +", "Vol +", "G\x83"" +"},  // VolumeUp
       {"Position", "Posicion", "Position", "Position", "Pozitie", "Pozycja"},  // PositionLabel
-      {"Vol", "Vol", "Vol", "Lst", "Vol", "Gl"},  // VolumeAbbrev
-      {"Choose your language", "Elige tu idioma", "Choisissez votre langue", "Waehle deine Sprache", "Alege limba", "Wybierz jezyk"},  // WelcomeLanguageTitle
+      {"Vol", "Vol", "Vol", "Lst", "Vol", "G\x83"""},  // VolumeAbbrev
+      {"Choose your language", "Elige tu idioma", "Choisissez votre langue", "Waehle deine Sprache", "Alege limba", "Wybierz j\x99""zyk"},  // WelcomeLanguageTitle
       {"Choose your theme", "Elige tu tema", "Choisissez votre theme", "Waehle dein Design", "Alege tema", "Wybierz motyw"},  // WelcomeThemeTitle
-      {"Choose your highlight colour", "Elige el color de resaltado", "Choisissez la couleur de surbrillance", "Waehle die Hervorhebungsfarbe", "Alege culoarea de evidentiere", "Wybierz kolor podswietlenia"},  // WelcomeHighlightColorTitle
+      {"Choose your highlight colour", "Elige el color de resaltado", "Choisissez la couleur de surbrillance", "Waehle die Hervorhebungsfarbe", "Alege culoarea de evidentiere", "Wybierz kolor pod\x9F""wietlenia"},  // WelcomeHighlightColorTitle
       {"Super!", "Genial!", "Super !", "Super!", "Super!", "Super!"},  // WelcomeSuperTitle
-      {"Let's set up your device!", "Configuremos tu dispositivo!", "Configurons votre appareil !", "Richten wir dein Geraet ein!", "Sa configuram dispozitivul tau!", "Skonfigurujmy Twoje urzadzenie!"},  // WelcomeConfigureTitle
-      {"Choose a typeface!", "Elige una tipografia!", "Choisissez une police !", "Waehle eine Schriftart!", "Alege un font!", "Wybierz czcionke!"},  // WelcomeChooseFontTitle
-      {"Choose how you read!", "Elige como leer!", "Choisissez votre mode de lecture !", "Waehle deine Lesart!", "Alege modul de citire!", "Wybierz sposob czytania!"},  // WelcomeReadingModeTitle
+      {"Let's set up your device!", "Configuremos tu dispositivo!", "Configurons votre appareil !", "Richten wir dein Geraet ein!", "Sa configuram dispozitivul tau!", "Skonfigurujmy Twoje urz\x97""dzenie!"},  // WelcomeConfigureTitle
+      {"Choose a typeface!", "Elige una tipografia!", "Choisissez une police !", "Waehle eine Schriftart!", "Alege un font!", "Wybierz czcionk\x99""!"},  // WelcomeChooseFontTitle
+      {"Choose how you read!", "Elige como leer!", "Choisissez votre mode de lecture !", "Waehle deine Lesart!", "Alege modul de citire!", "Wybierz spos\xF3""b czytania!"},  // WelcomeReadingModeTitle
       {"Scrolling page", "Pagina con desplazamiento", "Page defilante", "Scroll-Ansicht", "Pagina cu defilare", "Przewijanie strony"},  // WelcomeReadingModeScrollRow
-      {"Preview RSVP", "Vista previa RSVP", "Apercu RSVP", "RSVP-Vorschau", "Previzualizare RSVP", "Podglad RSVP"},  // WelcomePreviewRsvpRow
-      {"Preview scrolling", "Vista previa de desplazamiento", "Apercu du defilement", "Scroll-Vorschau", "Previzualizare defilare", "Podglad przewijania"},  // WelcomePreviewScrollRow
-      {"This is what RSVP reading looks like", "Asi se ve la lectura RSVP", "Voici a quoi ressemble la lecture RSVP", "So sieht RSVP-Lesen aus", "Asa arata citirea RSVP", "Tak wyglada czytanie RSVP"},  // WelcomePreviewRsvpLine
-      {"Text scrolls line by line, like in a normal book.", "El texto se desplaza linea por linea, como en un libro normal.", "Le texte defile ligne par ligne, comme dans un livre normal.", "Der Text scrollt zeilenweise, wie in einem normalen Buch.", "Textul deruleaza rand cu rand, ca intr-o carte normala.", "Tekst przewija sie linia po linii, tak jak w zwyklej ksiazce."},  // WelcomePreviewScrollBody
-      {"Scrolling page - preview", "Pagina con desplazamiento - vista previa", "Page defilante - apercu", "Scroll-Ansicht - Vorschau", "Pagina cu defilare - previzualizare", "Przewijanie strony - podglad"},  // WelcomeReadingModeScrollLabel
-      {"Tap to go back", "Toca para volver", "Touchez pour revenir", "Zum Zurueckgehen tippen", "Atinge pentru a te intoarce", "Dotknij, aby wrocic"},  // WelcomeTapToGoBack
-      {"Connect your reader to your phone!", "Conecta tu lector a tu telefono!", "Connectez votre liseuse a votre telephone !", "Verbinde deinen Reader mit deinem Handy!", "Conecteaza cititorul la telefon!", "Polacz czytnik z telefonem!"},  // WelcomeConnectTitle
-      {"Scan and download the Flower app", "Escanea y descarga la app Flower", "Scannez et telechargez l'appli Flower", "Scannen und Flower-App herunterladen", "Scaneaza si descarca aplicatia Flower", "Zeskanuj i pobierz aplikacje Flower"},  // WelcomeConnectLine1
-      {"Waiting for connection... tap to skip", "Esperando conexion... toca para omitir", "En attente de connexion... touchez pour ignorer", "Warte auf Verbindung... zum Ueberspringen tippen", "Se asteapta conexiunea... atinge pentru a sari peste", "Oczekiwanie na polaczenie... dotknij, aby pominac"},  // WelcomeConnectHintWaiting
-      {"Connected! Tap Next", "Conectado! Toca Siguiente", "Connecte ! Touchez Suivant", "Verbunden! Auf Weiter tippen", "Conectat! Atinge Urmatorul", "Polaczono! Dotknij Dalej"},  // WelcomeConnectHintConnected
-      {"Almost done! What shall we read today?", "Casi listo! Que leemos hoy?", "Presque termine ! Que lisons-nous aujourd'hui ?", "Fast fertig! Was lesen wir heute?", "Aproape gata! Ce citim azi?", "Prawie gotowe! Co dzis czytamy?"},  // WelcomeBookPickerTitle
+      {"Preview RSVP", "Vista previa RSVP", "Apercu RSVP", "RSVP-Vorschau", "Previzualizare RSVP", "Podgl\x97""d RSVP"},  // WelcomePreviewRsvpRow
+      {"Preview scrolling", "Vista previa de desplazamiento", "Apercu du defilement", "Scroll-Vorschau", "Previzualizare defilare", "Podgl\x97""d przewijania"},  // WelcomePreviewScrollRow
+      {"This is what RSVP reading looks like", "Asi se ve la lectura RSVP", "Voici a quoi ressemble la lecture RSVP", "So sieht RSVP-Lesen aus", "Asa arata citirea RSVP", "Tak wygl\x97""da czytanie RSVP"},  // WelcomePreviewRsvpLine
+      {"Text scrolls line by line, like in a normal book.", "El texto se desplaza linea por linea, como en un libro normal.", "Le texte defile ligne par ligne, comme dans un livre normal.", "Der Text scrollt zeilenweise, wie in einem normalen Buch.", "Textul deruleaza rand cu rand, ca intr-o carte normala.", "Tekst przewija si\x99"" linia po linii, tak jak w zwyk\x83""ej ksi\x97""\xB5""ce."},  // WelcomePreviewScrollBody
+      {"Scrolling page - preview", "Pagina con desplazamiento - vista previa", "Page defilante - apercu", "Scroll-Ansicht - Vorschau", "Pagina cu defilare - previzualizare", "Przewijanie strony - podgl\x97""d"},  // WelcomeReadingModeScrollLabel
+      {"Tap to go back", "Toca para volver", "Touchez pour revenir", "Zum Zurueckgehen tippen", "Atinge pentru a te intoarce", "Dotknij, aby wr\xF3""ci\x9B"""},  // WelcomeTapToGoBack
+      {"Connect your reader to your phone!", "Conecta tu lector a tu telefono!", "Connectez votre liseuse a votre telephone !", "Verbinde deinen Reader mit deinem Handy!", "Conecteaza cititorul la telefon!", "Po\x83""\x97""cz czytnik z telefonem!"},  // WelcomeConnectTitle
+      {"Scan and download the Flower app", "Escanea y descarga la app Flower", "Scannez et telechargez l'appli Flower", "Scannen und Flower-App herunterladen", "Scaneaza si descarca aplicatia Flower", "Zeskanuj i pobierz aplikacj\x99"" Flower"},  // WelcomeConnectLine1
+      {"Waiting for connection... tap to skip", "Esperando conexion... toca para omitir", "En attente de connexion... touchez pour ignorer", "Warte auf Verbindung... zum Ueberspringen tippen", "Se asteapta conexiunea... atinge pentru a sari peste", "Oczekiwanie na po\x83""\x97""czenie... dotknij, aby pomin\x97""\x9B"""},  // WelcomeConnectHintWaiting
+      {"Connected! Tap Next", "Conectado! Toca Siguiente", "Connecte ! Touchez Suivant", "Verbunden! Auf Weiter tippen", "Conectat! Atinge Urmatorul", "Po\x83""\x97""czono! Dotknij Dalej"},  // WelcomeConnectHintConnected
+      {"Almost done! What shall we read today?", "Casi listo! Que leemos hoy?", "Presque termine ! Que lisons-nous aujourd'hui ?", "Fast fertig! Was lesen wir heute?", "Aproape gata! Ce citim azi?", "Prawie gotowe! Co dzi\x9F"" czytamy?"},  // WelcomeBookPickerTitle
       {"Recover your Flow state", "Recupera tu estado de Flow", "Retrouvez votre etat de Flow", "Erlange deinen Flow-Zustand zurueck", "Recupereaza-ti starea de Flow", "Odzyskaj stan Flow"},  // WelcomeLoadingPhrase1
-      {"Read your favourite book", "Lee tu libro favorito", "Lisez votre livre prefere", "Lies dein Lieblingsbuch", "Citeste-ti cartea preferata", "Przeczytaj ulubiona ksiazke"},  // WelcomeLoadingPhrase2
-      {"Rediscover your love of reading", "Recupera tu pasion por la lectura", "Retrouvez votre passion pour la lecture", "Entdecke deine Lesefreude neu", "Redescopera-ti pasiunea pentru citit", "Odzyskaj pasje do czytania"},  // WelcomeLoadingPhrase3
-      {"Loading", "Cargando", "Chargement", "Wird geladen", "Se incarca", "Ladowanie"},  // WelcomeLoadingBottomLoading
-      {"Downloading required resources", "Descargando recursos necesarios", "Telechargement des ressources necessaires", "Erforderliche Ressourcen werden heruntergeladen", "Se descarca resursele necesare", "Pobieranie potrzebnych zasobow"},  // WelcomeLoadingBottomDownloading
+      {"Read your favourite book", "Lee tu libro favorito", "Lisez votre livre prefere", "Lies dein Lieblingsbuch", "Citeste-ti cartea preferata", "Przeczytaj ulubion\x97"" ksi\x97""\xB5""k\x99"""},  // WelcomeLoadingPhrase2
+      {"Rediscover your love of reading", "Recupera tu pasion por la lectura", "Retrouvez votre passion pour la lecture", "Entdecke deine Lesefreude neu", "Redescopera-ti pasiunea pentru citit", "Odzyskaj pasj\x99"" do czytania"},  // WelcomeLoadingPhrase3
+      {"Loading", "Cargando", "Chargement", "Wird geladen", "Se incarca", "\x82""adowanie"},  // WelcomeLoadingBottomLoading
+      {"Downloading required resources", "Descargando recursos necesarios", "Telechargement des ressources necessaires", "Erforderliche Ressourcen werden heruntergeladen", "Se descarca resursele necesare", "Pobieranie potrzebnych zasob\xF3""w"},  // WelcomeLoadingBottomDownloading
       {"Power button goes back a step", "El boton de encendido retrocede un paso", "Le bouton d'alimentation revient en arriere", "Netzschalter geht einen Schritt zurueck", "Butonul de pornire revine cu un pas", "Przycisk zasilania cofa o krok"},  // WelcomePowerBackHint
       {"Optional, not recommended", "Opcional, no recomendado", "Optionnel, non recommande", "Optional, nicht empfohlen", "Optional, nerecomandat", "Opcjonalnie, niezalecane"},  // WifiSkipHint
       {"Save name: ", "Nombre guardado: ", "Nom sauvegarde : ", "Speichername: ", "Nume salvare: ", "Nazwa zapisu: "},  // SavePointNameModeColon
-      {"Custom", "Personalizado", "Personnalise", "Benutzerdefiniert", "Personalizat", "Wlasna"},  // SavePointNameCustomOption
-      {"Default", "Predeterminado", "Par defaut", "Standard", "Implicit", "Domyslna"},  // SavePointNameDefaultOption
+      {"Custom", "Personalizado", "Personnalise", "Benutzerdefiniert", "Personalizat", "W\x83""asna"},  // SavePointNameCustomOption
+      {"Default", "Predeterminado", "Par defaut", "Standard", "Implicit", "Domy\x9F""lna"},  // SavePointNameDefaultOption
       {"Next", "Siguiente", "Suivant", "Weiter", "Urmator", "Dalej"},  // NextLabel
-      {"Connect the app", "Conectar la app", "Connecter l'appli", "App verbinden", "Conecteaza aplicatia", "Polaczenie z aplikacja"},  // WelcomeAppPairingTitle
+      {"Connect the app", "Conectar la app", "Connecter l'appli", "App verbinden", "Conecteaza aplicatia", "Po\x83""\x97""czenie z aplikacj\x97"""},  // WelcomeAppPairingTitle
       {"Set up in the app", "Configura en la app", "Configurer dans l'appli", "In der App einrichten", "Configureaza in aplicatie", "Skonfiguruj w aplikacji"},  // WelcomeConfigureInAppLine1
-      {"or add a book if you like", "o anade un libro si quieres", "ou ajoutez un livre si besoin", "oder fuege ein Buch hinzu", "sau adauga o carte daca vrei", "lub dodaj ksiazke, jesli chcesz"},  // WelcomeConfigureInAppLine2
+      {"or add a book if you like", "o anade un libro si quieres", "ou ajoutez un livre si besoin", "oder fuege ein Buch hinzu", "sau adauga o carte daca vrei", "lub dodaj ksi\x97""\xB5""k\x99"", je\x9F""li chcesz"},  // WelcomeConfigureInAppLine2
       {"Modern", "Moderno", "Moderne", "Modern", "Modern", "Nowoczesny"},  // ModernLabel
-      {"Device", "Dispositivo", "Appareil", "Geraet", "Dispozitiv", "Urzadzenie"},  // NanoDeviceTab
-      {"READING", "LECTURA", "LECTURE", "LESEN", "CITIRE", "CZYTANIE"},  // NanoReadingSection
-      {"SYSTEM", "SISTEMA", "SYSTEME", "SYSTEM", "SISTEM", "SYSTEM"},  // NanoSystemSection
+      {"Device", "Dispositivo", "Appareil", "Geraet", "Dispozitiv", "Urz\x97""dzenie"},  // NanoDeviceTab
+      {"READING", "LECTURA", "LECTURE", "LESEN", "CITIRE", "Czytanie"},  // NanoReadingSection
+      {"SYSTEM", "SISTEMA", "SYSTEME", "SYSTEM", "SISTEM", "System"},  // NanoSystemSection
       {"Unknown author", "Autor desconocido", "Auteur inconnu", "Unbekannter Autor", "Autor necunoscut", "Nieznany autor"},  // NanoUnknownAuthor
-      {"Choose a book", "Elige un libro", "Choisissez un livre", "Buch waehlen", "Alege o carte", "Wybierz ksiazke"},  // NanoNoBook
+      {"Choose a book", "Elige un libro", "Choisissez un livre", "Buch waehlen", "Alege o carte", "Wybierz ksi\x97""\xB5""k\x99"""},  // NanoNoBook
       {"SD card", "Tarjeta SD", "Carte SD", "SD-Karte", "Card SD", "Karta SD"},  // NanoSdCard
-      {"books", "libros", "livres", "Buecher", "carti", "ksiazek"},  // NanoBooksCount
-      {"No books on the SD card", "No hay libros en la tarjeta SD", "Aucun livre sur la carte SD", "Keine Buecher auf der SD-Karte", "Nicio carte pe cardul SD", "Brak ksiazek na karcie SD"},  // NanoNoLibraryItems
+      {"books", "libros", "livres", "Buecher", "carti", "ksi\x97""\xB5""ek"},  // NanoBooksCount
+      {"No books on the SD card", "No hay libros en la tarjeta SD", "Aucun livre sur la carte SD", "Keine Buecher auf der SD-Karte", "Nicio carte pe cardul SD", "Brak ksi\x97""\xB5""ek na karcie SD"},  // NanoNoLibraryItems
       {"Themes", "Temas", "Themes", "Themen", "Teme", "Motywy"},  // NanoThemesTab
       {"Palette", "Paleta", "Palette", "Palette", "Paleta", "Paleta"},  // NanoPaletteLabel
-      {"NAVIGATION LAYOUT", "DISPOSICION", "DISPOSITION", "NAVIGATION", "ASEZARE", "UKLAD NAWIGACJI"},  // NanoLayoutSection
+      {"NAVIGATION LAYOUT", "DISPOSICION", "DISPOSITION", "NAVIGATION", "ASEZARE", "Uk\x83""ad nawigacji"},  // NanoLayoutSection
       {"Left", "Izq.", "Gauche", "Links", "Stanga", "Lewy"},  // NanoLayoutLeft
       {"Right", "Der.", "Droite", "Rechts", "Dreapta", "Prawy"},  // NanoLayoutRight
       {"Icons", "Iconos", "Icones", "Symbole", "Iconite", "Ikony"},  // NanoLayoutCompact
-      {"My color", "Mi color", "Ma couleur", "Meine Farbe", "Culoarea mea", "Moj kolor"},  // NanoOwnAccent
+      {"My color", "Mi color", "Ma couleur", "Meine Farbe", "Culoarea mea", "M\xF3""j kolor"},  // NanoOwnAccent
       {"Classic", "Clasico", "Classique", "Klassisch", "Clasic", "Klasyczny"},  // NanoPaletteClassic
       {"Cream", "Crema", "Creme", "Creme", "Crem", "Krem"},  // NanoPaletteCream
       {"Graphite", "Grafito", "Graphite", "Graphit", "Grafit", "Grafit"},  // NanoPaletteGraphite
       {"Forest", "Bosque", "Foret", "Wald", "Padure", "Las"},  // NanoPaletteForest
+      {"Colors", "Colores", "Couleurs", "Farben", "Culori", "Kolory"},  // NanoColorsSection
+      {"Font", "Fuente", "Police", "Schrift", "Font", "Czcionka"},  // NanoFontSection
+      {"As reading", "Como lectura", "Comme lecture", "Wie Lesen", "Ca la citire", "Jak czytanie"},  // NanoFollowReader
+      {"Where the tab bar sits", "Posici\xF3""n de la barra", "Position de la barre", "Position der Leiste", "Pozi\x8F""ia barei", "Gdzie stoi pasek zak\x83""adek"},  // NanoLayoutHint
+      {"Tap to keep reading", "Toca para seguir", "Touchez pour continuer", "Tippen zum Weiterlesen", "Atinge pentru a continua", "Dotknij, by czyta\x9B"" dalej"},  // NanoResumeHint
+      {"Open the library and pick a book", "Abre la biblioteca y elige un libro", "Ouvrez la biblioth\xE8""que", "Bibliothek \xF6""ffnen, Buch w\xE4""hlen", "Deschide biblioteca", "Otw\xF3""rz bibliotek\x99"" i wybierz ksi\x97""\xB5""k\x99"""},  // NanoPickBookHint
+      {"Menu", "Men\xFA""", "Menu", "Men\xFC""", "Meniu", "Menu"},  // NanoMenuLabel
+      {"Hold to read  -  swipe sideways to scrub", "Mant\xE9""n para leer  -  desliza para mover", "Maintenez pour lire  -  glissez pour naviguer", "Halten zum Lesen  -  wischen zum Spulen", "\x8E""ine ap\x8B""sat pentru citire", "Przytrzymaj, by czyta\x9B""  -  przesu\x9D"" w bok, by przewija\x9B"""},  // NanoPanelHint
+      {"Recently read", "Recientes", "R\xE9""cents", "Zuletzt gelesen", "Recente", "Ostatnio czytane"},  // NanoSortRecent
+      {"Title A-Z", "T\xED""tulo A-Z", "Titre A-Z", "Titel A-Z", "Titlu A-Z", "Tytu\x83"" A-Z"},  // NanoSortTitle
+      {"Author A-Z", "Autor A-Z", "Auteur A-Z", "Autor A-Z", "Autor A-Z", "Autor A-Z"},  // NanoSortAuthor
+      {"Progress", "Progreso", "Progression", "Fortschritt", "Progres", "Post\x99""p"},  // NanoSortProgress
+      {"Phone app", "App m\xF3""vil", "Appli", "Handy-App", "Aplica\x8F""ie", "Aplikacja"},  // NanoAppTile
+      {"Power off", "Apagar", "\xC9""teindre", "Ausschalten", "Opre\x8D""te", "Wy\x83""\x97""cz"},  // NanoPowerOffTile
+      {"On", "Activado", "Activ\xE9""", "An", "Pornit", "W\x83""\x97""czony"},  // NanoOnState
+      {"Off", "Desactivado", "D\xE9""sactiv\xE9""", "Aus", "Oprit", "Wy\x83""\x97""czony"},  // NanoOffState
+      {"File transfer", "Transferir archivos", "Transfert de fichiers", "Datei\xFC""bertragung", "Transfer fi\x8D""iere", "Przesy\x83""anie plik\xF3""w"},  // NanoTransferFiles
+      {"Finish", "Terminar", "Terminer", "Beenden", "Termin\x8B""", "Zako\x9D""cz"},  // NanoStopSync
+      {"Scan the code in the Flower app or join this network", "Escanea el c\xF3""digo en la app Flower", "Scannez le code dans l'appli Flower", "Code in der Flower-App scannen", "Scaneaz\x8B"" codul \xEE""n aplica\x8F""ia Flower", "Zeskanuj kod w aplikacji Flower albo po\x83""\x97""cz telefon z t\x97"" sieci\x97"""},  // NanoScanHint
+      {"Version", "Versi\xF3""n", "Version", "Version", "Versiune", "Wersja"},  // NanoVersionTile
+      {"available", "disponibles", "disponibles", "verf\xFC""gbar", "disponibile", "dost\x99""pne"},  // NanoAvailable
+      {"Connected", "Conectado", "Connect\xE9""", "Verbunden", "Conectat", "Po\x83""\x97""czony"},  // NanoConnectedState
+      {"Quick brown fox", "Ping\xFC""ino \xF1""and\xFA""", "Gar\xE7""on d\xE9""j\xE0""", "Gr\xF6""\xDF""e \xDC""bung", "\x8C""tiin\x8F""\x8B"" \x8F""ar\x8B""", "Za\xB5""\xF3""\x83""\x9B"" g\x99""\x9F""l\x97"" ja\xB3""\x9D"""},  // NanoFontSample
+      {"WPM", "PPM", "MPM", "WPM", "CPM", "WPM"},  // NanoWpmUnit
+      {"Show all", "Ver todo", "Tout afficher", "Alle zeigen", "Arat\x8B"" tot", "Poka\xB5"" wszystko"},  // NanoShowAll
+      {"Speed & pauses", "Velocidad y pausas", "Vitesse et pauses", "Tempo & Pausen", "Viteza si pauze", "Tempo i pauzy"},  // NanoPacingTile
+      {"Layout", "Dise\xF1""o", "Disposition", "Layout", "Aspect", "Uk\x83""ad"},  // NanoLayoutTab
   };
   return kTable[keyIndex][langIndex];
 }
 
 inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
   static const char *const kTable[65][6] = {
-      {"Resume", "Reanudar", "Reprendre", "Weiter", "Continua", "Wznow"},  // Resume
-      {"Chapters", "Capitulos", "Chapitres", "Kapitel", "Capitole", "Rozdzialy"},  // Chapters
+      {"Resume", "Reanudar", "Reprendre", "Weiter", "Continua", "Wzn\xF3""w"},  // Resume
+      {"Chapters", "Capitulos", "Chapitres", "Kapitel", "Capitole", "Rozdzia\x83""y"},  // Chapters
       {"Library", "Biblioteca", "Bibliotheque", "Bibliothek", "Biblioteca", "Biblioteka"},  // Library
       {"Settings", "Ajustes", "Reglages", "Optionen", "Setari", "Ustawienia"},  // Settings
       {"USB transfer", "USB", "USB", "USB", "USB", "USB"},  // UsbTransfer
-      {"Power off", "Apagar", "Eteindre", "Ausschalten", "Oprire", "Wylacz"},  // PowerOff
+      {"Power off", "Apagar", "Eteindre", "Ausschalten", "Oprire", "Wy\x83""\x97""cz"},  // PowerOff
       {"Read", "Leer", "Lire", "Lesen", "Citeste", "Czytaj"},  // Read
       {"Save points", "Puntos guardados", "Points de sauveg.", "Lesezeichen", "Puncte salvate", "Punkty zapisu"},  // SavePoints
       {"Plugins", "Plugins", "Plugins", "Plugins", "Pluginuri", "Pluginy"},  // Plugins
-      {"Back", "Atras", "Retour", "Zuruck", "Inapoi", "Wroc"},  // Back
+      {"Back", "Atras", "Retour", "Zuruck", "Inapoi", "Wr\xF3""\x9B"""},  // Back
       {"Display", "Pantalla", "Affichage", "Anzeige", "Afisaj", "Ekran"},  // Display
       {"Typography tune", "Tipografia", "Typographie", "Typografie", "Tipografie", "Typografia"},  // TypographyTune
-      {"Word pacing", "Ritmo lectura", "Rythme mots", "Lesetempo", "Ritm cuvinte", "Tempo slow"},  // WordPacing
+      {"Word pacing", "Ritmo lectura", "Rythme mots", "Lesetempo", "Ritm cuvinte", "Tempo s\x83""\xF3""w"},  // WordPacing
       {"Theme", "Tema", "Theme", "Thema", "Tema", "Motyw"},  // Theme
-      {"Brightness", "Brillo", "Luminosite", "Helligkeit", "Luminoz.", "Jasnosc"},  // Brightness
-      {"Language", "Idioma", "Langue", "Sprache", "Limba", "Jezyk"},  // Language
+      {"Brightness", "Brillo", "Luminosite", "Helligkeit", "Luminoz.", "Jasno\x9F""\x9B"""},  // Brightness
+      {"Language", "Idioma", "Langue", "Sprache", "Limba", "J\x99""zyk"},  // Language
       {"Reading mode", "Modo lectura", "Mode lecture", "Lesemodus", "Mod citire", "Tryb czyt."},  // ReadingMode
-      {"Long words", "Palabras largas", "Mots longs", "Lange Worter", "Cuvinte lungi", "Dlugie slowa"},  // LongWords
-      {"Complexity", "Complejidad", "Complexite", "Komplexitat", "Complexitate", "Zlozonosc"},  // Complexity
+      {"Long words", "Palabras largas", "Mots longs", "Lange Worter", "Cuvinte lungi", "D\x83""ugie s\x83""owa"},  // LongWords
+      {"Complexity", "Complejidad", "Complexite", "Komplexitat", "Complexitate", "Z\x83""o\xB5""ono\x9F""\x9B"""},  // Complexity
       {"Punctuation", "Puntuacion", "Ponctuation", "Zeichen", "Punctuatie", "Interpunk."},  // Punctuation
       {"Reset pacing", "Restablecer ritmo", "Reinit. rythme", "Tempo zuruck", "Reset ritm", "Reset tempa"},  // ResetPacing
       {"Night", "Noche", "Nuit", "Nacht", "Noapte", "Noc"},  // Night
@@ -301,44 +328,44 @@ inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"On", "Si", "Oui", "Ein", "Pornit", "Tak"},  // On
       {"Off", "No", "Non", "Aus", "Oprit", "Nie"},  // Off
       {"Font size", "Tamano", "Taille", "Schriftgrad", "Marime", "Rozmiar"},  // FontSize
-      {"Typeface", "Fuente", "Police", "Schriftart", "Font", "Kroj"},  // Typeface
-      {"Phantom words", "Palabras fantasma", "Mots fantomes", "Phantomworter", "Cuvinte fantoma", "Slowa widma"},  // PhantomWords
+      {"Typeface", "Fuente", "Police", "Schriftart", "Font", "Kr\xF3""j"},  // Typeface
+      {"Phantom words", "Palabras fantasma", "Mots fantomes", "Phantomworter", "Cuvinte fantoma", "S\x83""owa widma"},  // PhantomWords
       {"Red highlight", "Rojo", "Accent rouge", "Rotfokus", "Accent rosu", "Czerwony"},  // RedHighlight
-      {"Tracking", "Espaciado", "Espacement", "Laufweite", "Spatiere", "Odstepy"},  // Tracking
+      {"Tracking", "Espaciado", "Espacement", "Laufweite", "Spatiere", "Odst\x99""py"},  // Tracking
       {"Anchor", "Ancla", "Ancre", "Anker", "Ancora", "Kotwica"},  // Anchor
       {"Guide width", "Ancho guia", "Largeur guide", "Guidebreite", "Latime ghid", "Szer. guide"},  // GuideWidth
       {"Guide gap", "Hueco guia", "Ecart guide", "Guidespalt", "Spatiu ghid", "Przerwa guide"},  // GuideGap
       {"Reset", "Restablecer", "Reinit.", "Zurucksetzen", "Resetare", "Reset"},  // Reset
       {"Typography", "Tipografia", "Typographie", "Typografie", "Tipografie", "Typografia"},  // Typography
-      {"tap to exit", "toca salir", "toucher sortie", "tippen zum Ende", "atinge iesire", "dotknij wyjscie"},  // TapToExit
+      {"tap to exit", "toca salir", "toucher sortie", "tippen zum Ende", "atinge iesire", "dotknij wyj\x9F""cie"},  // TapToExit
       {"tap to reset", "toca reiniciar", "toucher reinit.", "tippen zum Reset", "atinge reset", "dotknij reset"},  // TapToReset
-      {"Tap change  L/R sample", "Toca cambiar L/R muestra", "Touchez change  G/D echant.", "Tippen aendern  L/R Probe", "Atinge schimba  S/D proba", "Dotknij zmien  L/R probka"},  // TapChangeSample
-      {"Tap exit  L/R sample", "Toca salir L/R muestra", "Touchez sortie  G/D echant.", "Tippen zuruck  L/R Probe", "Atinge iesi  S/D proba", "Dotknij wyjdz  L/R probka"},  // TapExitSample
-      {"Tap toggle  L/R sample", "Toca alternar L/R muestra", "Touchez option  G/D echant.", "Tippen schalten  L/R Probe", "Atinge comuta  S/D proba", "Dotknij przel.  L/R probka"},  // TapToggleSample
-      {"Tap cycle  L/R sample", "Toca ciclo L/R muestra", "Touchez cycle  G/D echant.", "Tippen wechseln  L/R Probe", "Atinge ciclu  S/D proba", "Dotknij cykl  L/R probka"},  // TapCycleSample
-      {"Current book", "Libro actual", "Livre actuel", "Aktuelles Buch", "Cartea curenta", "Biezaca ksiazka"},  // CurrentBook
+      {"Tap change  L/R sample", "Toca cambiar L/R muestra", "Touchez change  G/D echant.", "Tippen aendern  L/R Probe", "Atinge schimba  S/D proba", "Dotknij zmie\x9D""  L/R pr\xF3""bka"},  // TapChangeSample
+      {"Tap exit  L/R sample", "Toca salir L/R muestra", "Touchez sortie  G/D echant.", "Tippen zuruck  L/R Probe", "Atinge iesi  S/D proba", "Dotknij wyjd\xB3""  L/R pr\xF3""bka"},  // TapExitSample
+      {"Tap toggle  L/R sample", "Toca alternar L/R muestra", "Touchez option  G/D echant.", "Tippen schalten  L/R Probe", "Atinge comuta  S/D proba", "Dotknij prze\x83"".  L/R pr\xF3""bka"},  // TapToggleSample
+      {"Tap cycle  L/R sample", "Toca ciclo L/R muestra", "Touchez cycle  G/D echant.", "Tippen wechseln  L/R Probe", "Atinge ciclu  S/D proba", "Dotknij cykl  L/R pr\xF3""bka"},  // TapCycleSample
+      {"Current book", "Libro actual", "Livre actuel", "Aktuelles Buch", "Cartea curenta", "Bie\xB5""\x97""ca ksi\x97""\xB5""ka"},  // CurrentBook
       {"Start", "Inicio", "Debut", "Start", "Inceput", "Start"},  // Start
-      {"Start of book", "Inicio del libro", "Debut du livre", "Buchanfang", "Inceputul cartii", "Poczatek ksiazki"},  // StartOfBook
-      {"Restart book", "Reiniciar libro", "Relancer livre", "Buch neu", "Reporneste cartea", "Restart ksiazki"},  // RestartBook
+      {"Start of book", "Inicio del libro", "Debut du livre", "Buchanfang", "Inceputul cartii", "Pocz\x97""tek ksi\x97""\xB5""ki"},  // StartOfBook
+      {"Restart book", "Reiniciar libro", "Relancer livre", "Buch neu", "Reporneste cartea", "Restart ksi\x97""\xB5""ki"},  // RestartBook
       {"Are you sure?", "Seguro?", "Confirmer ?", "Sicher?", "Sigur?", "Na pewno?"},  // AreYouSure
       {"No, keep place", "No, conservar", "Non, garder", "Nein, merken", "Nu, pastreaza", "Nie, zostaw"},  // NoKeepPlace
       {"Yes, restart", "Si, reiniciar", "Oui, relancer", "Ja, neu", "Da, reporneste", "Tak, restart"},  // YesRestart
-      {"Reset typography?", "Restablecer tipografia?", "Reinitialiser la typo ?", "Typografie zuruecksetzen?", "Resetare tipografie?", "Zresetowac typografie?"},  // ResetTypographyQuestion
+      {"Reset typography?", "Restablecer tipografia?", "Reinitialiser la typo ?", "Typografie zuruecksetzen?", "Resetare tipografie?", "Zresetowa\x9B"" typografi\x99""?"},  // ResetTypographyQuestion
       {"No, keep settings", "No, mantener", "Non, garder", "Nein, behalten", "Nu, pastreaza", "Nie, zostaw"},  // NoKeepSettings
       {"Yes, reset", "Si, restablecer", "Oui, reinitialiser", "Ja, zuruecksetzen", "Da, reseteaza", "Tak, resetuj"},  // YesReset
-      {"No samples", "Sin muestras", "Aucun exemple", "Keine Proben", "Fara probe", "Brak probek"},  // NoSamples
-      {"Large", "Grande", "Grand", "Gross", "Mare", "Duzy"},  // Large
-      {"Medium", "Mediano", "Moyen", "Mittel", "Mediu", "Sredni"},  // Medium
-      {"Small", "Pequeno", "Petit", "Klein", "Mic", "Maly"},  // Small
+      {"No samples", "Sin muestras", "Aucun exemple", "Keine Proben", "Fara probe", "Brak pr\xF3""bek"},  // NoSamples
+      {"Large", "Grande", "Grand", "Gross", "Mare", "Du\xB5""y"},  // Large
+      {"Medium", "Mediano", "Moyen", "Mittel", "Mediu", "\x9E""redni"},  // Medium
+      {"Small", "Pequeno", "Petit", "Klein", "Mic", "Ma\x83""y"},  // Small
       {"Standard", "Estandar", "Standard", "Standard", "Standard", "Standard"},  // Standard
       {"RSVP", "RSVP", "RSVP", "RSVP", "RSVP", "RSVP"},  // RsvpMode
       {"Page scroll", "Scroll pagina", "Defilement page", "Seiten-Scroll", "Derulare pagina", "Scroll strony"},  // ScrollMode
-      {"Time estimate", "Tiempo restante", "Temps restant", "Restzeit", "Timp ramas", "Pozostaly czas"},  // TimeEstimate
-      {"Accurate", "Preciso", "Precis", "Genau", "Exact", "Dokladny"},  // TimeEstimateAccurate
+      {"Time estimate", "Tiempo restante", "Temps restant", "Restzeit", "Timp ramas", "Pozosta\x83""y czas"},  // TimeEstimate
+      {"Accurate", "Preciso", "Precis", "Genau", "Exact", "Dok\x83""adny"},  // TimeEstimateAccurate
       {"Fast", "Rapido", "Rapide", "Schnell", "Rapid", "Szybki"},  // TimeEstimateFast
       {"Line spacing", "Interlineado", "Interligne", "Zeilenabst.", "Spatiere", "Interlinia"},  // ScrollLineSpacing
       {"Margins", "Margenes", "Marges", "Raender", "Margini", "Marginesy"},  // ScrollMargins
-      {"Swipe  L/R: more settings", "Desliza  I/D: mas ajustes", "Glissez  G/D : plus de reglages", "Wischen  L/R: mehr Einstellungen", "Gliseaza  S/D: mai multe setari", "Przesun  L/R: wiecej ustawien"},  // SwipeMoreSettings
+      {"Swipe  L/R: more settings", "Desliza  I/D: mas ajustes", "Glissez  G/D : plus de reglages", "Wischen  L/R: mehr Einstellungen", "Gliseaza  S/D: mai multe setari", "Przesu\x9D""  L/R: wi\x99""cej ustawie\x9D"""},  // SwipeMoreSettings
   };
   return kTable[keyIndex][langIndex];
 }
@@ -348,17 +375,17 @@ inline const char *dictStrLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Record", "Grabar", "Enregistrer", "Aufnehmen", "Inregistreaza", "Nagraj"},  // Record
       {"Library", "Biblioteca", "Bibliotheque", "Bibliothek", "Biblioteca", "Biblioteka"},  // Library
       {"LIBRARY", "BIBLIOTECA", "BIBLIOTHEQUE", "BIBLIOTHEK", "BIBLIOTECA", "BIBLIOTEKA"},  // LibraryTitle
-      {"No recordings", "Sin grabaciones", "Aucun enregistrement", "Keine Aufnahmen", "Nicio inregistrare", "Brak nagran"},  // NoRecordings
-      {"Tap to go back", "Toca para volver", "Touchez pour revenir", "Tippen zum Zurueckgehen", "Atinge pentru a reveni", "Dotknij, aby wrocic"},  // TapToGoBack
-      {"Rename", "Renombrar", "Renommer", "Umbenennen", "Redenumeste", "Zmien nazwe"},  // Rename
+      {"No recordings", "Sin grabaciones", "Aucun enregistrement", "Keine Aufnahmen", "Nicio inregistrare", "Brak nagra\x9D"""},  // NoRecordings
+      {"Tap to go back", "Toca para volver", "Touchez pour revenir", "Tippen zum Zurueckgehen", "Atinge pentru a reveni", "Dotknij, aby wr\xF3""ci\x9B"""},  // TapToGoBack
+      {"Rename", "Renombrar", "Renommer", "Umbenennen", "Redenumeste", "Zmie\x9D"" nazw\x99"""},  // Rename
       {"Save", "Guardar", "Enregistrer", "Speichern", "Salveaza", "Zapisz"},  // Save
-      {"<- Backspace", "<- Borrar", "<- Effacer", "<- Loeschen", "<- Sterge", "<- Usun znak"},  // Backspace
+      {"<- Backspace", "<- Borrar", "<- Effacer", "<- Loeschen", "<- Sterge", "<- Usu\x9D"" znak"},  // Backspace
       {"Cancel", "Cancelar", "Annuler", "Abbrechen", "Anuleaza", "Anuluj"},  // Cancel
-      {"Delete", "Eliminar", "Supprimer", "Loeschen", "Sterge", "Usun"},  // Delete
-      {"ERROR", "ERROR", "ERREUR", "FEHLER", "EROARE", "BLAD"},  // ErrorTitle
-      {"Mic unavailable", "Microfono no disponible", "Micro indisponible", "Mikrofon nicht verfuegbar", "Microfon indisponibil", "Mikrofon niedostepny"},  // MicUnavailable
-      {"Recording failed", "Grabacion fallida", "Enregistrement echoue", "Aufnahme fehlgeschlagen", "Inregistrare esuata", "Nagrywanie nie powiodlo sie"},  // RecordingFailed
-      {"Try again", "Intentalo de nuevo", "Reessayez", "Erneut versuchen", "Incearca din nou", "Sprobuj ponownie"},  // TryAgain
+      {"Delete", "Eliminar", "Supprimer", "Loeschen", "Sterge", "Usu\x9D"""},  // Delete
+      {"ERROR", "ERROR", "ERREUR", "FEHLER", "EROARE", "B\x82""\x96""D"},  // ErrorTitle
+      {"Mic unavailable", "Microfono no disponible", "Micro indisponible", "Mikrofon nicht verfuegbar", "Microfon indisponibil", "Mikrofon niedost\x99""pny"},  // MicUnavailable
+      {"Recording failed", "Grabacion fallida", "Enregistrement echoue", "Aufnahme fehlgeschlagen", "Inregistrare esuata", "Nagrywanie nie powiod\x83""o si\x99"""},  // RecordingFailed
+      {"Try again", "Intentalo de nuevo", "Reessayez", "Erneut versuchen", "Incearca din nou", "Spr\xF3""buj ponownie"},  // TryAgain
       {"Lvl", "Niv", "Niv", "Peg", "Niv", "Pzm"},  // PeakAbbrev
   };
   return kTable[keyIndex][langIndex];

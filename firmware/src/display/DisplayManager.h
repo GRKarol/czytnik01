@@ -85,12 +85,12 @@ class DisplayManager {
   };
 
   // ─── Nano skin (App::NavMode::Modern) ────────────────────────────────────
-  // rsvpnano's "regular" presentation for this exact 640x172 panel (their
-  // src/ui/Ui.cpp, Controls.cpp and Icons.cpp) redrawn on the virtual frame:
-  // flat rounded tiles with a hairline outline and an accent underline, the
-  // X11 6x9 pixel font scaled 1-4x, one accent color. App lays every screen
-  // out and does all hit-testing; these functions only paint. A screen is
-  // drawn between nanoBeginFrame() and nanoEndFrame().
+  // Modern UI for this 640x172 panel, grown out of rsvpnano's "regular"
+  // layout: flat rounded tiles, a tab rail, one accent color, and
+  // proportional anti-aliased UI fonts (display/NanoUiFonts.h, picked in
+  // Motywy). App lays every screen out and does all hit-testing; these
+  // functions only paint. A screen is drawn between nanoBeginFrame() and
+  // nanoEndFrame().
   enum class NanoRole : uint8_t {
     Background,
     Foreground,
@@ -121,6 +121,31 @@ class DisplayManager {
     Power,
     Apps,
     Palette,
+    ChevronLeft,
+    ChevronRight,
+    Play,
+    Pause,
+    Plus,
+    Minus,
+    List,
+    Trash,
+    Record,
+    Stop,
+    Wifi,
+    Bluetooth,
+    Usb,
+    Phone,
+    SdCard,
+    Info,
+    Download,
+    Sort,
+    Check,
+    Font,
+    Help,
+    Sun,
+    Sliders,
+    Book,
+    Restart,
   };
 
   struct Button {
@@ -331,9 +356,23 @@ class DisplayManager {
   // not active yet).
   uint16_t nanoPaletteColor(uint8_t palette, NanoRole role) const;
   uint16_t nanoBlend(NanoRole role, uint8_t alpha) const;
-  // Advance width / line height of the 6x9 UI font at `size` (1-4).
+  // UI font family (index into kNanoUiFamilies, NanoUiFonts.h).
+  static uint8_t nanoUiFontCount();
+  static const char *nanoUiFontName(uint8_t family);
+  void setNanoUiFont(uint8_t family);
+  uint8_t nanoUiFont() const;
+  // Text metrics of the active UI font. `size` 1 = small, 2 = body,
+  // 3 and 4 = large (one strike each, see NanoUiFonts.h).
   static int nanoTextWidth(const String &text, uint8_t size);
   static int nanoLineHeight(uint8_t size);
+  static int nanoCapHeight(uint8_t size);
+  // `text` cut to `maxWidth` px with a trailing ellipsis (unchanged when it
+  // already fits).
+  static String nanoFitText(const String &text, int maxWidth, uint8_t size);
+  // Logical frame (landscape, RGB565 byte-swapped as the panel takes it) --
+  // for the serial screenshot command and tools/nanosim.
+  const uint16_t *frameBuffer() const { return virtualFrame_; }
+  static int frameStride();
   // Every primitive below clips to this rect (default: whole screen).
   void nanoSetClip(int x, int y, int w, int h);
   void nanoResetClip();
@@ -345,11 +384,28 @@ class DisplayManager {
   void nanoFillCircle(int cx, int cy, int radius, uint16_t color);
   void nanoDrawCircle(int cx, int cy, int radius, uint16_t color);
   void nanoFillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t color);
-  // rsvpnano's text layout: shrinks from `size` until the text fits in
-  // `maxLines` (max 2) lines of the rect, splits at a space, ends a line
-  // that still doesn't fit with "...", centers the block vertically.
+  // Wraps `text` at spaces into at most `maxLines` (1-3) lines of the rect
+  // and ends the last one with an ellipsis if the rest doesn't fit -- never
+  // shrinks the type (only when the rect is too short for even one line of
+  // `size`). The block is centered vertically on the cap height, so a line
+  // sits optically in the middle of a button.
   void nanoText(const ui::Rect &rect, const String &text, uint8_t size, uint16_t color,
                 NanoAlign align = NanoAlign::Start, uint8_t maxLines = 1);
+  // Same, in a specific UI font family (font chips preview themselves).
+  void nanoTextInFamily(const ui::Rect &rect, const String &text, uint8_t family, uint8_t size,
+                        uint16_t color, NanoAlign align = NanoAlign::Start);
+  // Text in a reader typeface (anti-aliased onto whatever is underneath),
+  // `y` = top of the glyph box. Count = the active reading typeface.
+  void nanoTypefaceText(int x, int y, const String &text, uint16_t color, uint8_t scalePercent,
+                        ReaderTypeface typeface = ReaderTypeface::Count);
+  int nanoTypefaceTextWidth(const String &text, uint8_t scalePercent,
+                            ReaderTypeface typeface = ReaderTypeface::Count) const;
+  // The reading position as the reader will show it: the current word with
+  // its focus letter in the accent, anchored where the reading screen
+  // anchors it, the neighbouring words dimmed. `area` spans the full width
+  // so the word doesn't jump when reading starts.
+  void nanoReaderPreview(const ui::Rect &area, const String &before, const String &word,
+                         const String &after);
   // The classic 5x7 glyph set, 1x, clipped — used for book-spine lettering.
   void nanoSmallGlyph(int x, int y, char c, uint16_t color);
   void nanoIcon(const ui::Rect &rect, NanoIcon icon, uint16_t ink, uint16_t surface);
@@ -368,6 +424,15 @@ class DisplayManager {
                   bool pressed = false, bool armed = false,
                   ReaderTypeface previewTypeface = ReaderTypeface::Count);
   void nanoIconButton(const ui::Rect &rect, NanoIcon icon, bool pressed = false);
+  // Icon over a label (launcher tile). `detail` = small second line (state,
+  // count). `accent` fills the tile with the accent (primary action).
+  void nanoTile(const ui::Rect &rect, const String &label, NanoIcon icon, const String &detail = "",
+                bool pressed = false, bool accent = false, bool enabled = true);
+  // Rounded pill (sort switch, pager, filter): optional leading icon.
+  void nanoPill(const ui::Rect &rect, const String &text, NanoIcon icon = NanoIcon::None,
+                bool pressed = false, bool active = false);
+  // Rail backdrop behind the tabs.
+  void nanoRailBackground(const ui::Rect &rect);
   // Left-rail navigation tab. `badge` adds a small accent dot (pending
   // firmware update on the Device tab).
   // Empty `text` = icon-only tab (compact rail). `markerRight` puts the
@@ -388,9 +453,16 @@ class DisplayManager {
   // own background/text/accent, ringed in the active accent when selected.
   void nanoPaletteChip(const ui::Rect &rect, uint8_t palette, const String &name, bool selected,
                        bool pressed = false);
-  // Battery icon with the percent label stacked under it — the rail
-  // screens' right-hand column, under the power button.
+  // UI-font preview for Motywy > Czcionka: the name set in that family.
+  void nanoFontChip(const ui::Rect &rect, uint8_t family, const String &name, const String &sample,
+                    bool selected, bool pressed = false);
+  // Rail layout preview for Motywy > Uklad: a tiny sketch of the screen.
+  void nanoLayoutChip(const ui::Rect &rect, uint8_t layout, const String &name, bool selected,
+                      bool pressed = false);
+  // Battery icon with the percent label stacked under it.
   void nanoBatteryStack(const ui::Rect &rect);
+  // Battery icon and percent side by side, centered in `rect` (rail footer).
+  void nanoBatteryInline(const ui::Rect &rect, bool iconOnly = false);
   // line1ScalePercent/line2ScalePercent domyślnie 36/28 (dotychczasowy
   // rozmiar) — ekrany kreatora pierwszego uruchomienia proszą o większe
   // wartości, żeby tekst był czytelny dla osób 40+, bez zmiany rozmiaru na
@@ -403,6 +475,9 @@ class DisplayManager {
   // dolnym rogu (np. "Dalej") — używane przez kreator, żeby dać dotykowe
   // wyjście z ekranu QR bez zostawiania całego ekranu jako jeden wielki
   // przycisk "dalej" (patrz App::renderWelcomeConnect()).
+  // Tap target of renderStatusWithQr()'s `cornerHint` button (depends on
+  // the skin, so callers hit-test what is actually drawn).
+  ui::Rect qrCornerButtonRect() const;
   void renderStatusWithQr(const String &title, const String &line1, const bool *qrData,
                           uint8_t qrSize, const String &hint = "Scan to connect",
                           const String &cornerHint = "");
@@ -494,7 +569,26 @@ class DisplayManager {
   void nanoPixel(int x, int y, uint16_t color);
   void nanoCircleHelper(int x0, int y0, int r, uint8_t corners, uint16_t color);
   void nanoFillCircleHelper(int x0, int y0, int r, uint8_t corners, int delta, uint16_t color);
-  void nanoDrawGlyph(int x, int y, uint8_t code, uint8_t size, uint16_t color);
+  // `alpha` 0-255 of `color` over the pixel already in the frame.
+  void nanoBlendPixel(int x, int y, uint16_t color, uint8_t alpha);
+  void nanoThickLine(int x0, int y0, int x1, int y1, uint16_t color);
+  // One line of UI text in `family`/`strike`, pen starting at x, baseline y.
+  void nanoDrawRun(int x, int baseline, const String &text, uint8_t family, uint8_t strike,
+                   uint16_t color);
+  void nanoTextWithFamily(const ui::Rect &rect, const String &text, uint8_t family, uint8_t size,
+                          uint16_t color, NanoAlign align, uint8_t maxLines);
+  void nanoTypefaceGlyph(int x, int y, char c, uint16_t color, uint8_t scalePercent,
+                         ReaderTypeface typeface);
+  // Nano-skin versions of the full-screen status/progress/QR/menu renderers
+  // (used while modernCardStyle_ is on, i.e. in the Modern nav mode).
+  void renderNanoStatusScreen(const String &title, const String &line1, const String &line2,
+                              int progressPercent);
+  void renderNanoQrScreen(const String &title, const String &line1, const bool *qrData,
+                          uint8_t qrSize, const String &hint, const String &cornerHint);
+  void renderNanoMenuList(const std::vector<String> &items, size_t selectedIndex);
+  void renderNanoFocusTimer(const String &mode, const String &timer, const String &instruction,
+                            int progressPercent, bool breakAccent);
+  void nanoGenericIcon(ui::IconId id, const ui::Rect &rect, uint16_t ink, uint16_t surface);
   // Fills the whole frame with the Nano background (palette-aware; the
   // generic clearVirtualBuffer() uses the reader's background).
   void nanoClearBackground(int width, int height);
@@ -534,6 +628,7 @@ class DisplayManager {
   bool modernCardStyle_ = false;
   uint8_t nanoPalette_ = kNanoPaletteClassic;
   bool nanoOwnAccent_ = false;
+  uint8_t nanoUiFont_ = 0;
   BoardConfig::UiOrientation uiOrientation_ =
       BoardConfig::UI_ROTATED_180 ? BoardConfig::UiOrientation::LandscapeFlipped
                                   : BoardConfig::UiOrientation::Landscape;

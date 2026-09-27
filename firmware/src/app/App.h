@@ -23,12 +23,17 @@
 #include "storage/StorageManager.h"
 #include "ble/BleApi.h"
 #include "sync/CompanionSyncManager.h"
+#include "ui/NanoScreens.h"
 #include "ui/TouchGesture.h"
 #include "ui/UiGrid.h"
 #include "update/OtaUpdater.h"
 #include "usb/UsbMassStorageManager.h"
 
+struct NanoSinkAdapter;
+
 class App {
+  friend struct NanoSinkAdapter;
+
   friend class BleApi;
 
  public:
@@ -802,8 +807,29 @@ class App {
   // Moves the current Nano list to the previous/next page. True if the
   // screen has more than one page (the gesture is consumed either way).
   bool nanoChangePage(int delta, bool fromSwipe);
+  // Reader panel: the Paused screen in the Modern mode (current word,
+  // speed stepper, Start). Reading itself keeps the classic screen.
+  bool nanoReaderPanelActive() const;
+  void renderNanoReaderPanel();
+  // Rail tabs for the current mode (labels also size the rail).
+  std::vector<nano::RailTab> nanoRailTabs();
+  // Taps on the panel's bottom bar; true = consumed.
+  bool handleNanoReaderPanelTouch(const TouchEvent &event, uint32_t nowMs);
+  void runNanoReaderPanelAction(int action, uint32_t nowMs);
+  // Save point at the current reading position (reader's ribbon button).
+  void quickSavePointFromReader(uint32_t nowMs);
+  // UI font: nanoUiFontChoice_ (a family, or follow the reading typeface)
+  // resolved and pushed to the display.
+  uint8_t nanoResolvedUiFont() const;
+  void applyNanoUiFont();
+  void setNanoUiFontChoice(uint8_t choice);
+  // Library order (persisted): recent / title / author / progress.
+  void sortLibraryIndices(std::vector<size_t> &indices);
+  String librarySortLabel() const;
   void openDeviceHome();
   void rebuildDeviceHomeItems();
+  // Wi-Fi sync screen (QR + network), skin-aware.
+  void renderCompanionSyncScreen();
   void selectDeviceHomeItem(uint32_t nowMs);
   // Back target for plugin exit: the Plugins tab in the Nano UI, the
   // active-plugins list otherwise.
@@ -1219,6 +1245,26 @@ class App {
   bool nanoOwnAccent_ = false;
   uint8_t nanoLayout_ = kNanoLayoutLeft;
   size_t nanoThemePage_ = 0;
+  uint8_t nanoThemeSection_ = 0;  // Motywy: 0 colors, 1 font, 2 layout
+  // Motywy > Czcionka (persisted: nano_font). kNanoUiFontFollowReader =
+  // the family closest to the reading typeface.
+  static constexpr uint8_t kNanoUiFontFollowReader = 0xFF;
+  uint8_t nanoUiFontChoice_ = kNanoUiFontFollowReader;
+  // Biblioteka order (persisted: lib_sort), see sortLibraryIndices().
+  uint8_t librarySort_ = 0;
+  // Reader panel touch that started on its bottom bar.
+  bool nanoPanelBarTouch_ = false;
+  // Reader panel tap targets of the last render, the one under the finger
+  // and the one drawn pressed (-1 = none).
+  std::vector<std::pair<ui::Rect, int>> nanoPanelTargets_;
+  int nanoPanelTouchAction_ = -1;
+  int nanoPanelPressedAction_ = -1;
+  // Chapter wheel opened from the reader panel: Back returns there.
+  bool nanoChaptersFromPanel_ = false;
+  // Companion sync: when it started, and whether the current touch began
+  // inside it (a release without a start there is noise, not a tap).
+  uint32_t companionSyncEnteredMs_ = 0;
+  bool companionSyncTouchStarted_ = false;
   // Slider tiles of the last Nano list render, and the drag moving one.
   std::vector<NanoSliderTarget> nanoSliderTargets_;
   int nanoSliderIndex_ = -1;  // settings row under the finger, -1 = none

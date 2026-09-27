@@ -1,14 +1,14 @@
-// Nano UI — NavMode::Modern's port of rsvpnano's "regular" presentation
-// (their src/ui/screens/regular/*.cpp, the layout they ship for this same
-// 640x172 Waveshare panel).
+// Nano UI — NavMode::Modern: rsvpnano's "regular" presentation for this
+// 640x172 panel (tab rail, flat tiles, bookshelf, chapter wheel) plus our
+// own screens (Motywy, Urzadzenie, the reader panel before reading).
 //
 // Included at the bottom of App.cpp instead of compiled on its own: it
 // shares that file's anonymous-namespace index constants (kSettingsHome*,
 // kPressFlashMs, storedOrFallbackLabel(), ...). Screens keep running on the
 // MenuScreen state machine and the existing select*Item() handlers; this
-// file only decides layout and painting, and adds the interactions rsvpnano
-// has and the Buttons grid doesn't (tab rail, header paging, bookshelf drag,
-// chapter wheel). DisplayManager's Nano skin (display/NanoSkin.inl) paints.
+// file builds a view for each screen and hands it to ui/NanoScreens.cpp,
+// which lays it out and paints it with DisplayManager's Nano skin
+// (display/NanoSkin.inl). The same painters run in tools/nanosim.
 
 #if RSVP_USB_TRANSFER_ENABLED && CONFIG_TINYUSB_MSC_ENABLED && !ARDUINO_USB_MODE
 #include <tusb.h>
@@ -43,9 +43,12 @@ enum NanoAction : int {
   kNanoThemePagePrev,
   kNanoThemePageNext,
   kNanoThemeOwnAccent,
-  kNanoLaunchPlugin = 100,  // + index into pluginLibrary_.enabledEntries()
-  kNanoThemePalette = 200,  // + palette index
-  kNanoThemeLayout = 300,   // + App::NanoLayout
+  kNanoLibrarySort,
+  kNanoLaunchPlugin = 100,   // + index into pluginLibrary_.enabledEntries()
+  kNanoThemePalette = 200,   // + palette index
+  kNanoThemeLayout = 300,    // + App::NanoLayout
+  kNanoThemeSection = 400,   // + 0 colors / 1 font / 2 layout
+  kNanoThemeFont = 500,      // + 0 follow the reading font, + 1 + family
 };
 
 // DeviceHome rows (App::deviceHomeActions_).
@@ -60,61 +63,34 @@ enum DeviceHomeAction : uint8_t {
   kDeviceWifi,
   kDeviceFirmware,
   kDeviceTutorial,
+  kDevicePowerOff,
 };
 
-constexpr int kNanoScreenW = BoardConfig::DISPLAY_WIDTH;
-constexpr int kNanoScreenH = BoardConfig::DISPLAY_HEIGHT;
-// rsvpnano uses 136; 160 lets the Polish tab names ("Ustawienia",
-// "Urzadzenie") stay at 2x next to their icon instead of dropping to 1x.
-constexpr int kNanoRailWidth = 160;
-// Icon-only rail (Motywy > Uklad > Ikony).
-constexpr int kNanoCompactRailWidth = 64;
-constexpr int kNanoContentGap = 12;
-constexpr int kNanoRightInset = 48;
-constexpr int kNanoHeaderHeight = 32;
-constexpr int kNanoBackWidth = 56;
-constexpr int kNanoPageButtonWidth = 36;
-constexpr int kNanoPageLabelWidth = 44;
+// Reader panel buttons (not menu items: the panel lives in Paused).
+enum NanoPanelAction : int {
+  kPanelMenu = 1,
+  kPanelChapters,
+  kPanelBookmark,
+  kPanelWpmMinus,
+  kPanelWpmPlus,
+  kPanelStart,
+};
+
+// Library order (NVS lib_sort).
+enum LibrarySort : uint8_t {
+  kLibrarySortRecent = 0,
+  kLibrarySortTitle,
+  kLibrarySortAuthor,
+  kLibrarySortProgress,
+  kLibrarySortCount,
+};
+
 constexpr uint32_t kNanoDragFrameMs = 40;
 // Horizontal travel before a touch on a slider tile becomes a drag instead
 // of a tap (the tap still opens the row's own editor or cycles it).
 constexpr int kNanoSliderDragThreshold = 10;
-
-// Current rail geometry — App::nanoSyncLayout() copies App::nanoLayout_ in
-// here before every Nano render, so the free geometry helpers below
-// (content rect, shelf, wheel) follow it without an App pointer.
-int gNanoRailWidth = kNanoRailWidth;
-bool gNanoRailRight = false;
-
-void nanoSyncLayoutGlobals(bool railRight, bool compact) {
-  gNanoRailRight = railRight;
-  gNanoRailWidth = compact ? kNanoCompactRailWidth : kNanoRailWidth;
-}
-
-// x of the power button / battery column (the side opposite the rail).
-int nanoStatusColumnX() { return gNanoRailRight ? 6 : kNanoScreenW - 46; }
-
-ui::Rect nanoRect(int x, int y, int w, int h) {
-  ui::Rect rect;
-  rect.x = static_cast<uint16_t>(std::max(0, x));
-  rect.y = static_cast<uint16_t>(std::max(0, y));
-  rect.w = static_cast<uint16_t>(std::max(0, w));
-  rect.h = static_cast<uint16_t>(std::max(0, h));
-  return rect;
-}
-
-// Content area next to the rail (rsvpnano screens::detail::tabContent()).
-ui::Rect nanoTabContent() {
-  if (gNanoRailRight) {
-    return nanoRect(kNanoRightInset, 8, kNanoScreenW - gNanoRailWidth - kNanoContentGap - kNanoRightInset,
-                    kNanoScreenH - 16);
-  }
-  const int x = gNanoRailWidth + kNanoContentGap;
-  return nanoRect(x, 8, kNanoScreenW - x - kNanoRightInset, kNanoScreenH - 16);
-}
-
-// Full-width content for nested screens (screens::detail::content()).
-ui::Rect nanoFullContent() { return nanoRect(8, 8, kNanoScreenW - 16, kNanoScreenH - 16); }
+// Lists: rows per page.
+constexpr int kNanoListRows = 3;
 
 // "Tryb zaawansowany: " -> "Tryb zaawansowany".
 String nanoStripColon(const String &text) {
@@ -142,134 +118,105 @@ bool nanoSplitSetting(const String &item, String &label, String &value) {
   return true;
 }
 
-// ── Bookshelf geometry (rsvpnano screens::LibraryScreen, regular) ──
-constexpr int kShelfDetailHeight = 43;
-constexpr int kShelfDetailGap = 2;
-constexpr int kShelfGap = 5;
-constexpr int kShelfSpineBaseWidth = 29;
-constexpr int kShelfSpineWidthStep = 2;
-constexpr int kShelfSpinePeriod = 4;
-constexpr int kShelfDragThreshold = 20;
-constexpr int kShelfCycleWidth = kShelfSpinePeriod * (kShelfSpineBaseWidth + kShelfGap) +
-                                 kShelfSpineWidthStep * kShelfSpinePeriod * (kShelfSpinePeriod - 1) / 2;
-
-constexpr int shelfSpineWidth(size_t index) {
-  return kShelfSpineBaseWidth + kShelfSpineWidthStep * static_cast<int>(index % kShelfSpinePeriod);
+bool nanoIsDeleteLabel(const String &label) {
+  return label.startsWith("Usu") || label.startsWith("Delete") || label.startsWith("Eliminar") ||
+         label.startsWith("Supprimer") || label.startsWith("Loeschen") || label.startsWith("Sterge");
 }
 
-// Single return statement: the build is C++11, where constexpr bodies can't
-// hold local variables.
-constexpr int32_t shelfSpineLeft(size_t index) {
-  return static_cast<int32_t>(index / kShelfSpinePeriod) * kShelfCycleWidth +
-         static_cast<int32_t>(index % kShelfSpinePeriod) * (kShelfSpineBaseWidth + kShelfGap) +
-         kShelfSpineWidthStep * static_cast<int32_t>(index % kShelfSpinePeriod) *
-             (static_cast<int32_t>(index % kShelfSpinePeriod) - 1) / 2;
-}
-
-static_assert(shelfSpineLeft(4) == kShelfCycleWidth, "shelf spine cycle");
-
-size_t shelfSpineIndexAt(int32_t contentX, size_t count) {
-  if (count == 0 || contentX <= 0) {
-    return 0;
-  }
-  const size_t cycle = static_cast<size_t>(contentX / kShelfCycleWidth);
-  const int32_t within = contentX % kShelfCycleWidth;
-  const size_t offset = within >= shelfSpineLeft(3)   ? 3
-                        : within >= shelfSpineLeft(2) ? 2
-                        : within >= shelfSpineLeft(1) ? 1
-                                                      : 0;
-  return std::min(count - 1, cycle * kShelfSpinePeriod + offset);
-}
-
-uint16_t shelfSpineColor(size_t index) {
+// Cover of the current book on the Czytaj card: a stable color per book.
+uint16_t nanoCoverColor(const String &key) {
   constexpr uint16_t kColors[] = {0x99E3, 0x1AF5, 0x0B6A, 0x7B98, 0x4490, 0xB4CD, 0x9A49, 0x32FA};
-  return kColors[index % 8];
-}
-
-int shelfSpineHeight(const String &title, size_t index) {
-  return std::min(110, 84 + static_cast<int>(std::min<size_t>(title.length(), 24)) / 2 +
-                           static_cast<int>((index * 5) % 17));
-}
-
-struct ShelfGeometry {
-  ui::Rect viewport;
-  ui::Rect detail;
-  int marker = 0;
-};
-
-ShelfGeometry shelfGeometry() {
-  const ui::Rect content = nanoTabContent();
-  ShelfGeometry g;
-  const int detailY = content.y + content.h - kShelfDetailHeight;
-  g.viewport = nanoRect(content.x, content.y, content.w, detailY - kShelfDetailGap - content.y);
-  g.detail = nanoRect(content.x, detailY, content.w, kShelfDetailHeight);
-  g.marker = g.viewport.x + g.viewport.w / 2;
-  return g;
-}
-
-int32_t shelfClampOffset(size_t count, int32_t offset, int viewportWidth) {
-  if (count == 0) {
-    return 0;
+  uint32_t hash = 2166136261u;
+  for (size_t i = 0; i < key.length(); ++i) {
+    hash = (hash ^ static_cast<uint8_t>(key[i])) * 16777619u;
   }
-  const size_t last = count - 1;
-  const int32_t lastCenter = shelfSpineLeft(last) + shelfSpineWidth(last) / 2;
-  const int32_t firstCenter = shelfSpineWidth(0) / 2;
-  return std::max(viewportWidth / 2 - lastCenter, std::min(offset, viewportWidth / 2 - firstCenter));
+  return kColors[hash % 8];
 }
 
-int32_t shelfCenteredOffset(size_t count, size_t index, int viewportWidth) {
-  if (count == 0) {
-    return 0;
-  }
-  index = std::min(index, count - 1);
-  return shelfClampOffset(count, viewportWidth / 2 - shelfSpineLeft(index) - shelfSpineWidth(index) / 2,
-                          viewportWidth);
-}
-
-size_t shelfNearest(size_t count, int32_t offset, int markerX, int viewportX) {
-  if (count == 0) {
-    return 0;
-  }
-  const int32_t contentX = markerX - viewportX - offset;
-  const size_t candidate = shelfSpineIndexAt(contentX, count);
-  const size_t first = candidate == 0 ? 0 : candidate - 1;
-  const size_t last = std::min(count - 1, candidate + 1);
-  size_t best = first;
-  int32_t bestDistance = INT32_MAX;
-  for (size_t i = first; i <= last; ++i) {
-    const int32_t center = viewportX + shelfSpineLeft(i) + shelfSpineWidth(i) / 2 + offset;
-    const int32_t distance = std::abs(center - markerX);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = i;
+// Up to two capitals from the first words of a title ("Pan Tadeusz" ->
+// "PT"), Polish letters folded to ASCII for the cover.
+String nanoInitials(const String &title) {
+  String out;
+  bool wordStart = true;
+  for (size_t i = 0; i < title.length() && out.length() < 2; ++i) {
+    uint8_t value = LatinText::byteValue(title[i]);
+    if (value >= 0x80 || value < 0x20) {
+      value = LatinText::fallbackAsciiByte(value);
     }
+    const char c = static_cast<char>(value);
+    const bool letter = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+    if (letter && wordStart) {
+      out += static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+    }
+    wordStart = !letter;
   }
-  return best;
+  return out.isEmpty() ? String("?") : out;
 }
 
-// ── Chapter wheel geometry (rsvpnano screens::ChaptersScreen, regular) ──
-constexpr int kWheelRowStep = 30;
-constexpr int kWheelDragThreshold = 6;
-
-int wheelRowCenter(const ui::Rect &viewport, int row, int offset) {
-  const int raw = row * kWheelRowStep + offset;
-  const int magnitude = std::min(std::abs(raw), static_cast<int>(viewport.h));
-  return viewport.y + viewport.h / 2 + raw * (2 * viewport.h - magnitude) / (2 * viewport.h);
+NanoIcon nanoPluginIcon(const String &id) {
+  if (id == "dictaphone") return NanoIcon::Record;
+  if (id == "focus-timer") return NanoIcon::Hourglass;
+  if (id == "rss") return NanoIcon::List;
+  return NanoIcon::Apps;
 }
 
-constexpr int wheelRowHeight(bool centered) { return centered ? 28 : 18; }
-
-bool wheelRowVisible(const ui::Rect &viewport, int y, int height) {
-  return y - height / 2 >= viewport.y && y + height / 2 <= viewport.y + viewport.h;
-}
-
-ui::Rect wheelViewport() {
-  const ui::Rect content = nanoTabContent();
-  return nanoRect(content.x, content.y + kNanoHeaderHeight + 4, content.w,
-                  content.h - kNanoHeaderHeight - 4);
+// Reading typeface -> the UI family closest to it (Motywy > Czcionka >
+// "Jak czytanie"). Every book face we ship is a serif except these two.
+uint8_t nanoFamilyForTypeface(DisplayManager::ReaderTypeface typeface) {
+  switch (typeface) {
+    case DisplayManager::ReaderTypeface::AtkinsonHyperlegible:
+      return 2;  // Atkinson
+    case DisplayManager::ReaderTypeface::OpenDyslexic:
+      return 5;  // OpenDyslexic
+    default:
+      return 4;  // Literata
+  }
 }
 
 }  // namespace
+
+// nano::Sink for menu screens: targets go into currentGridButtons_ (the
+// usual handleGridTap() flash/debounce/destructive-confirm path), sliders
+// into nanoSliderTargets_. `labels` are the screen's items by canonical
+// index — handleGridTap() reads a target's label to decide whether it needs
+// the two-tap confirm, and index 0 is Back on every screen that has one.
+struct NanoSinkAdapter : nano::Sink {
+  App &app;
+  const std::vector<String> *labels = nullptr;
+  size_t labelOffset = 0;
+  bool zeroIsBack = false;
+
+  explicit NanoSinkAdapter(App &owner) : app(owner) {}
+
+  void target(const ui::Rect &rect, int id) override {
+    String label;
+    if (labels != nullptr && id >= 0 && id < kNanoActionBase &&
+        static_cast<size_t>(id) + labelOffset < labels->size()) {
+      label = (*labels)[static_cast<size_t>(id) + labelOffset];
+    }
+    app.nanoAddTarget(rect, id, label, id == 0 && zeroIsBack ? ui::IconId::Back : ui::IconId::None);
+  }
+  bool pressed(int id) const override { return app.nanoPressed(id); }
+  bool armed(int id) const override { return app.nanoArmed(id); }
+  void slider(const ui::Rect &rect, int id) override {
+    if (id < 0) {
+      return;
+    }
+    App::NanoSliderTarget target;
+    target.rect = rect;
+    target.index = static_cast<size_t>(id);
+    app.nanoSliderTargets_.push_back(target);
+  }
+};
+
+// Reader panel sink: its own target list, pressed state from the panel.
+struct NanoPanelSink : nano::Sink {
+  std::vector<std::pair<ui::Rect, int>> &targets;
+  int pressedId;
+  NanoPanelSink(std::vector<std::pair<ui::Rect, int>> &out, int pressed) : targets(out), pressedId(pressed) {}
+  void target(const ui::Rect &rect, int id) override { targets.push_back({rect, id}); }
+  bool pressed(int id) const override { return id >= 0 && id == pressedId; }
+};
 
 // ─── Mode / screen classification ───────────────────────────────────────────
 
@@ -440,6 +387,11 @@ void App::renderNanoScreen(const String &title, const std::vector<String> &items
   nanoPage_ = 0;
   nanoPageFirstIndex_.clear();
 
+  NanoSinkAdapter sink(*this);
+  sink.labels = &items;
+  sink.labelOffset = headerRows;
+  sink.zeroIsBack = items.size() > headerRows && items[headerRows] == uiText(UiText::Back);
+
   display_.nanoBeginFrame();
   switch (menuScreen_) {
     case MenuScreen::Main:
@@ -522,161 +474,138 @@ void App::renderNanoLibraryList(const std::vector<DisplayManager::LibraryItem> &
   display_.nanoEndFrame();
 }
 
-// ─── Rail (rsvpnano screens::detail::navigation) ────────────────────────────
+// ─── Rail ───────────────────────────────────────────────────────────────────
 
-void App::renderNanoRail() {
-  struct TabSpec {
-    int action;
-    String label;
-    NanoIcon icon;
-    NanoTab tab;
-  };
-  std::vector<TabSpec> tabs;
+std::vector<nano::RailTab> App::nanoRailTabs() {
+  std::vector<nano::RailTab> tabs;
   tabs.reserve(5);
-  tabs.push_back({kNanoTabRead, uiText(UiText::Read), NanoIcon::Books, NanoTab::Read});
-  tabs.push_back({kNanoTabSettings, uiText(UiText::Settings), NanoIcon::Edit, NanoTab::Settings});
-  tabs.push_back({kNanoTabThemes, tr3(TrKey3::NanoThemesTab), NanoIcon::Palette, NanoTab::Themes});
-  tabs.push_back({kNanoTabDevice, tr3(TrKey3::NanoDeviceTab), NanoIcon::Device, NanoTab::Device});
+  auto add = [&tabs](int action, const String &label, NanoIcon icon) {
+    nano::RailTab tab;
+    tab.id = kNanoActionBase + action;
+    tab.label = label;
+    tab.icon = icon;
+    tabs.push_back(tab);
+  };
+  add(kNanoTabRead, uiText(UiText::Read), NanoIcon::Books);
+  add(kNanoTabSettings, uiText(UiText::Settings), NanoIcon::Sliders);
+  add(kNanoTabThemes, tr3(TrKey3::NanoThemesTab), NanoIcon::Palette);
+  add(kNanoTabDevice, tr3(TrKey3::NanoDeviceTab), NanoIcon::Device);
   // Plugins are an advanced-mode feature everywhere else in the UI too.
   if (devModeEnabled()) {
-    tabs.push_back({kNanoTabPlugins, uiText(UiText::Plugins), NanoIcon::Apps, NanoTab::Plugins});
+    add(kNanoTabPlugins, uiText(UiText::Plugins), NanoIcon::Apps);
   }
+  return tabs;
+}
 
+void App::renderNanoRail() {
+  std::vector<nano::RailTab> tabs = nanoRailTabs();
   const NanoTab active = nanoActiveTab();
-  const bool compact = nanoLayout_ == kNanoLayoutCompact;
-  const int railX = gNanoRailRight ? kNanoScreenW - gNanoRailWidth : 0;
-  const int tabHeight = kNanoScreenH / static_cast<int>(tabs.size());
-  int y = 0;
-  for (size_t i = 0; i < tabs.size(); ++i) {
-    const int h = (i + 1 == tabs.size()) ? kNanoScreenH - y : tabHeight;
-    const ui::Rect rect = nanoRect(railX, y, gNanoRailWidth, h);
-    const int action = kNanoActionBase + tabs[i].action;
-    const bool badge = tabs[i].tab == NanoTab::Device && otaUpdatePromptPending_;
-    display_.nanoTab(rect, compact ? String() : tabs[i].label, tabs[i].tab == active, tabs[i].icon,
-                     nanoPressed(action), badge, gNanoRailRight);
-    nanoAddTarget(rect, action, tabs[i].label);
-    y += h;
+  const NanoTab order[] = {NanoTab::Read, NanoTab::Settings, NanoTab::Themes, NanoTab::Device, NanoTab::Plugins};
+  for (size_t i = 0; i < tabs.size() && i < 5; ++i) {
+    tabs[i].active = order[i] == active;
+    tabs[i].badge = order[i] == NanoTab::Device && otaUpdatePromptPending_;
   }
-
-  const ui::Rect power = nanoRect(nanoStatusColumnX(), 4, 36, 36);
-  display_.nanoIconButton(power, NanoIcon::Power, nanoPressed(kNanoActionBase + kNanoPowerOff));
-  nanoAddTarget(power, kNanoActionBase + kNanoPowerOff);
-  display_.nanoBatteryStack(nanoRect(nanoStatusColumnX(), 48, 36, 28));
+  NanoSinkAdapter sink(*this);
+  nano::paintRail(display_, sink, tabs);
 }
 
 void App::nanoSyncLayout() {
-  nanoSyncLayoutGlobals(nanoLayout_ == kNanoLayoutRight, nanoLayout_ == kNanoLayoutCompact);
+  nano::Layout &layout = nano::layout();
+  layout.railRight = nanoLayout_ == kNanoLayoutRight;
+  layout.compact = nanoLayout_ == kNanoLayoutCompact;
+  std::vector<String> labels;
+  for (const nano::RailTab &tab : nanoRailTabs()) {
+    labels.push_back(tab.label);
+  }
+  layout.railWidth = nano::railWidthFor(labels);
 }
 
-// ─── Czytaj (rsvpnano screens::read) ────────────────────────────────────────
+// ─── Czytaj ─────────────────────────────────────────────────────────────────
 
 void App::renderNanoRead() {
   nanoFontPickerFromRead_ = false;
-  const ui::Rect area = nanoTabContent();
-  constexpr int kHeaderHeight = 64;
-  constexpr int kHeaderActionSize = 40;
-  constexpr int kHeaderGap = 8;
-  constexpr int kRowGap = 18;
-
-  String title = tr3(TrKey3::NanoNoBook);
-  String author;
-  String progress;
-  if (usingStorageBook_) {
-    title = storage_.bookDisplayName(currentBookIndex_);
-    author = storage_.bookAuthorName(currentBookIndex_);
-    if (author.isEmpty()) {
-      author = tr3(TrKey3::NanoUnknownAuthor);
+  nano::ReadHome view;
+  view.hasBook = usingStorageBook_;
+  view.resumeId = kNanoActionBase + kNanoReadResume;
+  view.fontsId = kNanoActionBase + kNanoReadFonts;
+  view.fontsLabel = uiText(UiText::Typeface);
+  if (view.hasBook) {
+    view.title = storage_.bookDisplayName(currentBookIndex_);
+    view.author = storage_.bookAuthorName(currentBookIndex_);
+    if (view.author.isEmpty()) {
+      view.author = tr3(TrKey3::NanoUnknownAuthor);
     }
-    progress = String(static_cast<unsigned>(readingProgressPercent())) + "%";
+    view.progressPercent = readingProgressPercent();
+    view.progressLabel = String(static_cast<unsigned>(view.progressPercent)) + "%";
+    view.coverColor = nanoCoverColor(currentBookPath_);
+    view.coverInitials = nanoInitials(view.title);
+    view.hint = tr3(TrKey3::NanoResumeHint);
+  } else {
+    view.title = tr3(TrKey3::NanoNoBook);
+    view.hint = tr3(TrKey3::NanoPickBookHint);
   }
 
-  const ui::Rect resume =
-      nanoRect(area.x, area.y, area.w - kHeaderActionSize - kHeaderGap, kHeaderHeight);
-  const int resumeAction = kNanoActionBase + kNanoReadResume;
-  display_.nanoButton(resume, title, true, NanoIcon::Bookmark, 2, author, progress,
-                      nanoPressed(resumeAction));
-  nanoAddTarget(resume, resumeAction, title);
-
-  const ui::Rect fonts = nanoRect(area.x + area.w - kHeaderActionSize,
-                                  area.y + (kHeaderHeight - kHeaderActionSize) / 2, kHeaderActionSize,
-                                  kHeaderActionSize);
-  const int fontsAction = kNanoActionBase + kNanoReadFonts;
-  display_.nanoIconButton(fonts, NanoIcon::Language, nanoPressed(fontsAction));
-  nanoAddTarget(fonts, fontsAction);
-
-  // rsvpnano has Chapters + Library here; save points are ours and sit
-  // between them.
-  const int rowY = area.y + kHeaderHeight + kRowGap;
-  constexpr int kGap = 10;
-  const int buttonWidth = (area.w - kGap * 2) / 3;
-  struct ActionSpec {
-    int action;
-    String label;
-  };
-  const ActionSpec actions[] = {
-      {kNanoReadChapters, uiText(UiText::Chapters)},
-      {kNanoReadSavePoints, uiText(UiText::SavePoints)},
-      {kNanoReadLibrary, uiText(UiText::Library)},
-  };
-  for (size_t i = 0; i < 3; ++i) {
-    const int x = area.x + static_cast<int>(i) * (buttonWidth + kGap);
-    const int w = (i == 2) ? area.x + area.w - x : buttonWidth;
-    const ui::Rect rect = nanoRect(x, rowY, w, kHeaderHeight);
-    const int action = kNanoActionBase + actions[i].action;
-    display_.nanoButton(rect, actions[i].label, true, NanoIcon::None, 2, "", "", nanoPressed(action));
-    nanoAddTarget(rect, action, actions[i].label);
+  nano::Tile chapters;
+  chapters.id = kNanoActionBase + kNanoReadChapters;
+  chapters.label = uiText(UiText::Chapters);
+  chapters.icon = NanoIcon::List;
+  chapters.enabled = view.hasBook;
+  if (view.hasBook && !chapterMarkers_.empty()) {
+    chapters.detail = String(static_cast<unsigned>(chapterMarkers_.size()));
   }
+  nano::Tile savePoints;
+  savePoints.id = kNanoActionBase + kNanoReadSavePoints;
+  savePoints.label = uiText(UiText::SavePoints);
+  savePoints.icon = NanoIcon::Bookmark;
+  if (!savePoints_.empty()) {
+    savePoints.detail = String(static_cast<unsigned>(savePoints_.size()));
+  }
+  nano::Tile library;
+  library.id = kNanoActionBase + kNanoReadLibrary;
+  library.label = uiText(UiText::Library);
+  library.icon = NanoIcon::Books;
+  library.detail = String(static_cast<unsigned>(storage_.bookCount())) + " " + tr3(TrKey3::NanoBooksCount);
+  view.tiles = {chapters, savePoints, library};
+
+  NanoSinkAdapter sink(*this);
+  nano::paintReadHome(display_, sink, view);
 }
 
-// ─── Ustawienia (rsvpnano screens::settings) ────────────────────────────────
+// ─── Ustawienia ─────────────────────────────────────────────────────────────
 
 void App::renderNanoSettingsHome() {
   nanoScreensaverFromSettingsHome_ = false;
-  const ui::Rect content = nanoTabContent();
-  constexpr int kRowHeight = 36;
-  constexpr int kGap = 6;
-  const int half = (content.w - kGap) / 2;
-  const int rightX = content.x + half + kGap;
-  const int rightW = content.x + content.w - rightX;
-
-  auto settingButton = [&](const ui::Rect &rect, int index, const String &label) {
-    display_.nanoButton(rect, label, true, NanoIcon::None, 1, "", "", nanoPressed(index));
-    nanoAddTarget(rect, index, label);
+  auto item = [](int id, const String &label, NanoIcon icon) {
+    nano::SectionItem entry;
+    entry.id = id;
+    entry.label = label;
+    entry.icon = icon;
+    return entry;
   };
-
-  int y = content.y;
-  display_.nanoSeparator(nanoRect(content.x, y, content.w, 12), tr3(TrKey3::NanoReadingSection));
-  y += 18;
-  settingButton(nanoRect(content.x, y, half, kRowHeight), kSettingsHomeReadingIndex,
-                tr3(TrKey3::ReadingSettings));
-  settingButton(nanoRect(rightX, y, rightW, kRowHeight), kSettingsHomeTypographyIndex,
-                uiText(UiText::TypographyTune));
-  y += kRowHeight + kGap;
-
-  display_.nanoSeparator(nanoRect(content.x, y, content.w, 12), tr3(TrKey3::NanoSystemSection));
-  y += 18;
-  settingButton(nanoRect(content.x, y, half, kRowHeight), kSettingsHomeDisplayIndex,
-                uiText(UiText::Display));
-  const int screensaverAction = kNanoActionBase + kNanoSettingsScreensaver;
-  const String screensaverLabel = nanoStripColon(tr(TrKey::Screensaver));
-  const ui::Rect screensaver = nanoRect(rightX, y, rightW, kRowHeight);
-  display_.nanoButton(screensaver, screensaverLabel, true, NanoIcon::None, 1, "", "",
-                      nanoPressed(screensaverAction));
-  nanoAddTarget(screensaver, screensaverAction, screensaverLabel);
-  y += kRowHeight + kGap;
-
-  const bool advanced = devModeEnabled();
-  const String advancedLabel = nanoStripColon(tr3(TrKey3::AdvancedModeColon));
-  const ui::Rect toggle = nanoRect(content.x, y, advanced ? half : content.w, kRowHeight);
-  display_.nanoToggle(toggle, advancedLabel, advanced, nanoPressed(kSettingsHomeAdvancedIndex));
-  nanoAddTarget(toggle, kSettingsHomeAdvancedIndex, advancedLabel);
-  if (advanced) {
-    settingButton(nanoRect(rightX, y, rightW, kRowHeight), kSettingsHomePresetsIndex,
-                  tr3(TrKey3::PresetsLabel));
+  std::vector<nano::Section> sections(3);
+  sections[0].title = tr3(TrKey3::NanoReadingSection);
+  sections[0].items = {item(kSettingsHomeReadingIndex, tr3(TrKey3::NanoPacingTile), NanoIcon::Sliders),
+                       item(kSettingsHomeTypographyIndex, uiText(UiText::TypographyTune), NanoIcon::Font)};
+  sections[1].title = tr3(TrKey3::NanoSystemSection);
+  sections[1].items = {item(kSettingsHomeDisplayIndex, uiText(UiText::Display), NanoIcon::Sun),
+                       item(kNanoActionBase + kNanoSettingsScreensaver, nanoStripColon(tr(TrKey::Screensaver)),
+                            NanoIcon::Hourglass)};
+  nano::SectionItem advanced = item(kSettingsHomeAdvancedIndex, nanoStripColon(tr3(TrKey3::AdvancedModeColon)),
+                                    NanoIcon::None);
+  advanced.toggle = true;
+  advanced.on = devModeEnabled();
+  sections[2].items.push_back(advanced);
+  if (devModeEnabled()) {
+    sections[2].items.push_back(item(kSettingsHomePresetsIndex, tr3(TrKey3::PresetsLabel), NanoIcon::Edit));
+  } else {
+    sections[2].items[0].fullWidth = true;
   }
+  NanoSinkAdapter sink(*this);
+  sink.labels = &settingsMenuItems_;
+  nano::paintSections(display_, sink, nano::tabContent(), sections);
 }
 
-// ─── Urzadzenie (rsvpnano screens::device) ──────────────────────────────────
+// ─── Urzadzenie ─────────────────────────────────────────────────────────────
 
 void App::openDeviceHome() {
   menuScreen_ = MenuScreen::DeviceHome;
@@ -693,78 +622,80 @@ void App::rebuildDeviceHomeItems() {
     settingsMenuItems_.push_back(label);
     deviceHomeActions_.push_back(action);
   };
-  add(kDeviceSdCard, String(tr3(TrKey3::NanoSdCard)) + ": " +
-                         String(static_cast<unsigned>(storage_.bookCount())) + " " +
-                         tr3(TrKey3::NanoBooksCount));
-  add(kDeviceVersion, String(tr(TrKey::Version)) + otaUpdater_.currentVersion());
+  add(kDeviceSdCard, tr3(TrKey3::NanoSdCard));
   if (otaUpdatePromptPending_) {
-    add(kDeviceUpdateNow, String(tr2(TrKey2::Update)) + ": " + pendingUpdateNewVersion_);
+    add(kDeviceUpdateNow, tr2(TrKey2::Update));
+  } else {
+    add(kDeviceVersion, tr3(TrKey3::NanoVersionTile));
   }
 #if RSVP_USB_TRANSFER_ENABLED
   add(kDeviceUsb, uiText(UiText::UsbTransfer));
 #endif
-  add(kDeviceSync, String(tr(TrKey::PhoneSync)) +
-                       (state_ == AppState::CompanionSync ? tr(TrKey::Yes) : tr(TrKey::No)));
+  add(kDeviceSync, tr3(TrKey3::NanoAppTile));
 #if FLOWER_BLE_ENABLED
-  add(kDeviceBluetooth,
-      String("Bluetooth: ") +
-          (ble_.isActive() ? (ble_.isConnected() ? tr(TrKey::Connected) : tr(TrKey::Yes)) : tr(TrKey::No)));
+  add(kDeviceBluetooth, "Bluetooth");
 #endif
-  add(kDeviceWifi, String(tr(TrKey::HomeWifi)) + storedOrFallbackLabel(configuredWifiSsid(), tr(TrKey::NotSet)));
-  if (devModeEnabled()) {
-    add(kDeviceFirmware, firmwareUpdateMenuLabel());
-  }
+  add(kDeviceWifi, "Wi-Fi");
   add(kDeviceTutorial, tr3(TrKey3::TutorialLabel));
+  add(kDevicePowerOff, tr3(TrKey3::NanoPowerOffTile));
 }
 
 void App::renderNanoDeviceHome() {
-  const ui::Rect content = nanoTabContent();
-  constexpr int kGap = 4;
-  constexpr int kStatusHeight = 44;
-  const int statusWidth = (content.w - kGap) / 2;
-
-  // Row 1: the two status tiles (rsvpnano: Storage / Encryption).
-  size_t index = 1;
-  for (int column = 0; column < 2 && index < settingsMenuItems_.size(); ++column, ++index) {
-    const int x = content.x + column * (statusWidth + kGap);
-    const ui::Rect rect = nanoRect(x, content.y, column == 0 ? statusWidth : content.x + content.w - x,
-                                   kStatusHeight);
-    String label;
-    String value;
-    if (!nanoSplitSetting(settingsMenuItems_[index], label, value)) {
-      label = settingsMenuItems_[index];
+  std::vector<nano::Tile> tiles;
+  for (size_t i = 1; i < deviceHomeActions_.size() && i < settingsMenuItems_.size(); ++i) {
+    nano::Tile tile;
+    tile.id = static_cast<int>(i);
+    tile.label = settingsMenuItems_[i];
+    switch (deviceHomeActions_[i]) {
+      case kDeviceSdCard:
+        tile.icon = NanoIcon::SdCard;
+        tile.detail = String(static_cast<unsigned>(storage_.bookCount())) + " " + tr3(TrKey3::NanoBooksCount);
+        break;
+      case kDeviceVersion:
+        tile.icon = NanoIcon::Info;
+        tile.detail = otaUpdater_.currentVersion();
+        break;
+      case kDeviceUpdateNow:
+        tile.icon = NanoIcon::Download;
+        tile.detail = pendingUpdateNewVersion_;
+        tile.accent = true;
+        break;
+      case kDeviceUsb:
+        tile.icon = NanoIcon::Usb;
+        tile.detail = tr3(TrKey3::NanoTransferFiles);
+        break;
+      case kDeviceSync:
+        tile.icon = NanoIcon::Phone;
+        tile.detail = "Wi-Fi + QR";
+        break;
+      case kDeviceBluetooth:
+        tile.icon = NanoIcon::Bluetooth;
+#if FLOWER_BLE_ENABLED
+        tile.detail = ble_.isActive() ? (ble_.isConnected() ? tr3(TrKey3::NanoConnectedState)
+                                                            : tr3(TrKey3::NanoOnState))
+                                      : tr3(TrKey3::NanoOffState);
+#endif
+        break;
+      case kDeviceWifi:
+        tile.icon = NanoIcon::Wifi;
+        tile.detail = storedOrFallbackLabel(configuredWifiSsid(), tr(TrKey::NotSet));
+        break;
+      case kDeviceTutorial:
+        tile.icon = NanoIcon::Help;
+        break;
+      case kDevicePowerOff:
+        tile.icon = NanoIcon::Power;
+        break;
+      default:
+        break;
     }
-    display_.nanoSetting(rect, label, value, false, nanoPressed(static_cast<int>(index)));
-    nanoAddTarget(rect, static_cast<int>(index), settingsMenuItems_[index]);
+    tiles.push_back(tile);
   }
-
-  // Rows 2-3: actions (rsvpnano: 2x2 USB / Sync / RSS / OTA; ours has a
-  // few more, so 3 columns, 4 once an update is also waiting).
-  const size_t first = index;
-  const size_t count = settingsMenuItems_.size() > first ? settingsMenuItems_.size() - first : 0;
-  const int columns = count > 6 ? 4 : 3;
-  const int actionsY = content.y + kStatusHeight + kGap;
-  const int actionsHeight = content.y + content.h - actionsY;
-  const int rowHeight = (actionsHeight - kGap) / 2;
-  const int cellWidth = (content.w - kGap * (columns - 1)) / columns;
-  for (size_t i = 0; i < count && i < static_cast<size_t>(columns * 2); ++i) {
-    const size_t item = first + i;
-    const int column = static_cast<int>(i) % columns;
-    const int row = static_cast<int>(i) / columns;
-    const int x = content.x + column * (cellWidth + kGap);
-    const int w = column == columns - 1 ? content.x + content.w - x : cellWidth;
-    const ui::Rect rect = nanoRect(x, actionsY + row * (rowHeight + kGap), w, rowHeight);
-    const int canonical = static_cast<int>(item);
-    String label;
-    String value;
-    if (nanoSplitSetting(settingsMenuItems_[item], label, value)) {
-      display_.nanoSetting(rect, label, value, false, nanoPressed(canonical));
-    } else {
-      display_.nanoButton(rect, settingsMenuItems_[item], true, NanoIcon::None, 2, "", "",
-                          nanoPressed(canonical));
-    }
-    nanoAddTarget(rect, canonical, settingsMenuItems_[item]);
-  }
+  const int columns = tiles.size() > 6 ? 4 : 3;
+  const int rows = tiles.size() > static_cast<size_t>(columns * 2) ? 3 : 2;
+  NanoSinkAdapter sink(*this);
+  sink.labels = &settingsMenuItems_;
+  nano::paintTileGrid(display_, sink, nano::tabContent(), tiles, columns, rows);
 }
 
 void App::selectDeviceHomeItem(uint32_t nowMs) {
@@ -778,6 +709,11 @@ void App::selectDeviceHomeItem(uint32_t nowMs) {
       runSdCardCheck(nowMs);
       return;
     case kDeviceVersion: {
+      if (devModeEnabled()) {
+        // Advanced mode: the version tile checks for an update.
+        runFirmwareUpdate(preferredOtaConfig(), false, nowMs);
+        return;
+      }
       // Same 10-tap developer unlock as Informacje > Wersja.
       constexpr uint32_t kTapWindowMs = 1500;
       constexpr uint8_t kTapsToUnlock = 10;
@@ -834,31 +770,22 @@ void App::selectDeviceHomeItem(uint32_t nowMs) {
     case kDeviceTutorial:
       openTutorialStep1();
       return;
+    case kDevicePowerOff:
+      enterPowerOff(nowMs);
+      return;
     default:
       return;
   }
 }
 
 // ─── Motywy ─────────────────────────────────────────────────────────────────
-// Not in rsvpnano (their themes are TOML files on the SD card, picked from a
-// list). Here: palette chips that preview themselves, the rail layout, and
-// whether a fixed palette keeps its own accent or takes the highlight color.
-
-namespace {
-constexpr int kThemeHeaderHeight = 28;
-constexpr int kThemeChipHeight = 36;
-constexpr int kThemeChipRows = 2;
-constexpr int kThemeGap = 5;
-
-int themeChipColumns(const ui::Rect &content) { return content.w >= 480 ? 4 : 3; }
-}  // namespace
+// Three sections behind a segmented control: palette chips that preview
+// themselves (+ the own-accent switch), the UI font (drawn in each face),
+// and where the tab rail sits.
 
 void App::openNanoThemes() {
   menuScreen_ = MenuScreen::NanoThemes;
   settingsSelectedIndex_ = 0;
-  nanoSyncLayout();
-  const size_t perPage = static_cast<size_t>(themeChipColumns(nanoTabContent()) * kThemeChipRows);
-  nanoThemePage_ = nanoPalette_ / perPage;
   rebuildSettingsMenuItems();
   renderSettings();
 }
@@ -870,7 +797,6 @@ void App::setNanoTheme(uint8_t palette, bool ownAccent, uint8_t layout) {
   if (layout >= kNanoLayoutCount) {
     layout = kNanoLayoutLeft;
   }
-  const bool layoutChanged = layout != nanoLayout_;
   nanoPalette_ = palette;
   nanoOwnAccent_ = ownAccent;
   nanoLayout_ = layout;
@@ -880,25 +806,11 @@ void App::setNanoTheme(uint8_t palette, bool ownAccent, uint8_t layout) {
   display_.setNanoPalette(nanoPalette_, nanoOwnAccent_);
   Serial.printf("[nano] palette=%s ownAccent=%d layout=%u\n", DisplayManager::nanoPaletteName(nanoPalette_),
                 nanoOwnAccent_ ? 1 : 0, static_cast<unsigned>(nanoLayout_));
-  if (layoutChanged) {
-    // Chip columns follow the content width, so the page holding the
-    // selected palette can move.
-    nanoSyncLayout();
-    const size_t perPage = static_cast<size_t>(themeChipColumns(nanoTabContent()) * kThemeChipRows);
-    nanoThemePage_ = nanoPalette_ / perPage;
-  }
   rebuildSettingsMenuItems();
   renderSettings();
 }
 
 void App::renderNanoThemes() {
-  const ui::Rect content = nanoTabContent();
-  const int columns = themeChipColumns(content);
-  const size_t perPage = static_cast<size_t>(columns * kThemeChipRows);
-  const size_t count = DisplayManager::nanoPaletteCount();
-  const size_t pageCount = std::max<size_t>(1, (count + perPage - 1) / perPage);
-  nanoThemePage_ = std::min(nanoThemePage_, pageCount - 1);
-
   auto paletteName = [this](uint8_t palette) -> String {
     const String name = DisplayManager::nanoPaletteName(palette);
     if (palette == DisplayManager::kNanoPaletteClassic) return tr3(TrKey3::NanoPaletteClassic);
@@ -908,515 +820,427 @@ void App::renderNanoThemes() {
     return name;
   };
 
-  // Header: "Paleta: <name>" + pager.
-  int titleRight = content.x + content.w;
-  if (pageCount > 1) {
-    const int nextX = content.x + content.w - kNanoPageButtonWidth;
-    const int labelX = nextX - kNanoPageLabelWidth;
-    const int prevX = labelX - kNanoPageButtonWidth;
-    const ui::Rect prev = nanoRect(prevX, content.y, kNanoPageButtonWidth, kThemeHeaderHeight);
-    const ui::Rect next = nanoRect(nextX, content.y, kNanoPageButtonWidth, kThemeHeaderHeight);
-    const bool hasPrev = nanoThemePage_ > 0;
-    const bool hasNext = nanoThemePage_ + 1 < pageCount;
-    display_.nanoButton(prev, "<", hasPrev, NanoIcon::None, 1, "", "",
-                        nanoPressed(kNanoActionBase + kNanoThemePagePrev));
-    display_.nanoButton(next, ">", hasNext, NanoIcon::None, 1, "", "",
-                        nanoPressed(kNanoActionBase + kNanoThemePageNext));
-    if (hasPrev) nanoAddTarget(prev, kNanoActionBase + kNanoThemePagePrev);
-    if (hasNext) nanoAddTarget(next, kNanoActionBase + kNanoThemePageNext);
-    display_.nanoLabel(nanoRect(labelX, content.y, kNanoPageLabelWidth, kThemeHeaderHeight),
-                       String(static_cast<unsigned>(nanoThemePage_ + 1)) + "/" +
-                           String(static_cast<unsigned>(pageCount)),
-                       2, NanoRole::Muted, NanoAlign::Center);
-    titleRight = prevX - 8;
-  }
-  display_.nanoLabel(nanoRect(content.x, content.y, titleRight - content.x, kThemeHeaderHeight),
-                     String(tr3(TrKey3::NanoPaletteLabel)) + ": " + paletteName(nanoPalette_), 2,
-                     NanoRole::Foreground);
-
-  // Palette chips.
-  const int chipsY = content.y + kThemeHeaderHeight + 4;
-  const int chipWidth = (content.w - kThemeGap * (columns - 1)) / columns;
-  const size_t first = nanoThemePage_ * perPage;
-  for (size_t i = 0; i < perPage && first + i < count; ++i) {
-    const uint8_t palette = static_cast<uint8_t>(first + i);
-    const int column = static_cast<int>(i) % columns;
-    const int row = static_cast<int>(i) / columns;
-    const int x = content.x + column * (chipWidth + kThemeGap);
-    const int w = column == columns - 1 ? content.x + content.w - x : chipWidth;
-    const ui::Rect rect = nanoRect(x, chipsY + row * (kThemeChipHeight + kThemeGap), w, kThemeChipHeight);
-    const int action = kNanoActionBase + kNanoThemePalette + palette;
-    const String name = paletteName(palette);
-    display_.nanoPaletteChip(rect, palette, name, palette == nanoPalette_, nanoPressed(action));
-    nanoAddTarget(rect, action, name);
+  nano::ThemesView view;
+  view.section = std::min<int>(nanoThemeSection_, 2);
+  const String segmentLabels[3] = {tr3(TrKey3::NanoColorsSection), tr3(TrKey3::NanoFontSection),
+                                   tr3(TrKey3::NanoLayoutTab)};
+  for (int i = 0; i < 3; ++i) {
+    view.segmentIds[i] = kNanoActionBase + kNanoThemeSection + i;
+    view.segmentLabels[i] = segmentLabels[i];
   }
 
-  // Rail layout (+ own-accent switch for the fixed palettes).
-  const int sectionY = chipsY + kThemeChipRows * kThemeChipHeight + kThemeGap + 3;
-  display_.nanoSeparator(nanoRect(content.x, sectionY, content.w, 12), tr3(TrKey3::NanoLayoutSection));
-  const int rowY = sectionY + 14;
-  const int rowH = content.y + content.h - rowY;
-  const bool showAccent = nanoPalette_ != DisplayManager::kNanoPaletteClassic;
-  const String accentLabel = tr3(TrKey3::NanoOwnAccent);
-  const int accentWidth =
-      showAccent ? std::min(static_cast<int>(content.w) / 2, DisplayManager::nanoTextWidth(accentLabel, 2) + 62) : 0;
-  const int layoutsWidth = content.w - (showAccent ? accentWidth + kThemeGap : 0);
-  const String layoutLabels[kNanoLayoutCount] = {tr3(TrKey3::NanoLayoutLeft), tr3(TrKey3::NanoLayoutRight),
-                                                 tr3(TrKey3::NanoLayoutCompact)};
-  const int segmentWidth = (layoutsWidth - kThemeGap * (kNanoLayoutCount - 1)) / kNanoLayoutCount;
-  for (int i = 0; i < kNanoLayoutCount; ++i) {
-    const int x = content.x + i * (segmentWidth + kThemeGap);
-    const int w = i == kNanoLayoutCount - 1 ? content.x + layoutsWidth - x : segmentWidth;
-    const ui::Rect rect = nanoRect(x, rowY, w, rowH);
-    const int action = kNanoActionBase + kNanoThemeLayout + i;
-    // Selected segment in the solid accent (the "armed" look).
-    display_.nanoButton(rect, layoutLabels[i], true, NanoIcon::None, 1, "", "", nanoPressed(action),
-                        nanoLayout_ == i);
-    nanoAddTarget(rect, action, layoutLabels[i]);
+  if (view.section == 0) {
+    for (uint8_t palette = 0; palette < DisplayManager::nanoPaletteCount(); ++palette) {
+      nano::ThemesView::PaletteChip chip;
+      chip.id = kNanoActionBase + kNanoThemePalette + palette;
+      chip.palette = palette;
+      chip.name = paletteName(palette);
+      chip.selected = palette == nanoPalette_;
+      view.palettes.push_back(chip);
+    }
+    // Classic already uses the highlight color; the switch only matters
+    // for the fixed palettes.
+    if (nanoPalette_ != DisplayManager::kNanoPaletteClassic) {
+      view.ownAccentId = kNanoActionBase + kNanoThemeOwnAccent;
+      view.ownAccentLabel = tr3(TrKey3::NanoOwnAccent);
+      view.ownAccentOn = nanoOwnAccent_;
+    }
+  } else if (view.section == 1) {
+    nano::ThemesView::FontChip follow;
+    follow.id = kNanoActionBase + kNanoThemeFont;
+    follow.family = nanoFamilyForTypeface(typographyConfig_.typeface);
+    follow.name = tr3(TrKey3::NanoFollowReader);
+    follow.sample = typefaceDisplayName(typographyConfig_.typeface);
+    follow.selected = nanoUiFontChoice_ == kNanoUiFontFollowReader;
+    view.fonts.push_back(follow);
+    for (uint8_t family = 0; family < DisplayManager::nanoUiFontCount(); ++family) {
+      nano::ThemesView::FontChip chip;
+      chip.id = kNanoActionBase + kNanoThemeFont + 1 + family;
+      chip.family = family;
+      chip.name = DisplayManager::nanoUiFontName(family);
+      chip.sample = tr3(TrKey3::NanoFontSample);
+      chip.selected = nanoUiFontChoice_ == family;
+      view.fonts.push_back(chip);
+    }
+  } else {
+    const String names[kNanoLayoutCount] = {tr3(TrKey3::NanoLayoutLeft), tr3(TrKey3::NanoLayoutRight),
+                                            tr3(TrKey3::NanoLayoutCompact)};
+    for (uint8_t layout = 0; layout < kNanoLayoutCount; ++layout) {
+      nano::ThemesView::LayoutChip chip;
+      chip.id = kNanoActionBase + kNanoThemeLayout + layout;
+      chip.layout = layout;
+      chip.name = names[layout];
+      chip.selected = layout == nanoLayout_;
+      view.layouts.push_back(chip);
+    }
+    view.layoutHint = tr3(TrKey3::NanoLayoutHint);
   }
-  if (showAccent) {
-    const ui::Rect rect = nanoRect(content.x + content.w - accentWidth, rowY, accentWidth, rowH);
-    const int action = kNanoActionBase + kNanoThemeOwnAccent;
-    display_.nanoToggle(rect, accentLabel, nanoOwnAccent_, nanoPressed(action));
-    nanoAddTarget(rect, action, accentLabel);
-  }
+  NanoSinkAdapter sink(*this);
+  nano::paintThemes(display_, sink, view);
 }
 
-// ─── Pluginy (rsvpnano's Focus tab slot) ────────────────────────────────────
+uint8_t App::nanoResolvedUiFont() const {
+  if (nanoUiFontChoice_ == kNanoUiFontFollowReader || nanoUiFontChoice_ >= DisplayManager::nanoUiFontCount()) {
+    return nanoFamilyForTypeface(typographyConfig_.typeface);
+  }
+  return nanoUiFontChoice_;
+}
+
+void App::applyNanoUiFont() { display_.setNanoUiFont(nanoResolvedUiFont()); }
+
+void App::setNanoUiFontChoice(uint8_t choice) {
+  if (choice != kNanoUiFontFollowReader && choice >= DisplayManager::nanoUiFontCount()) {
+    choice = kNanoUiFontFollowReader;
+  }
+  nanoUiFontChoice_ = choice;
+  preferences_.putUChar(kPrefNanoUiFont, nanoUiFontChoice_);
+  applyNanoUiFont();
+  Serial.printf("[nano] ui font choice=%u -> %s\n", static_cast<unsigned>(nanoUiFontChoice_),
+                DisplayManager::nanoUiFontName(nanoResolvedUiFont()));
+  rebuildSettingsMenuItems();
+  renderSettings();
+}
+
+// ─── Pluginy ────────────────────────────────────────────────────────────────
 
 void App::renderNanoPluginsHome() {
-  const ui::Rect content = nanoTabContent();
-  constexpr int kGap = 6;
-  constexpr int kRows = 3;
+  const ui::Rect content = nano::tabContent();
   const auto enabled = pluginLibrary_.enabledEntries();
-  const size_t count = enabled.size() + 1;  // + library button
-  const int columns = count > 6 ? 3 : 2;
-  const int rowHeight = (content.h - kGap * (kRows - 1)) / kRows;
-  const int cellWidth = (content.w - kGap * (columns - 1)) / columns;
-
-  size_t cell = 0;
-  if (enabled.empty()) {
-    display_.nanoLabel(nanoRect(content.x, content.y, content.w, rowHeight * 2 + kGap),
-                       tr3(TrKey3::NoActivePlugins), 2, NanoRole::Muted, NanoAlign::Center, 2);
-    cell = static_cast<size_t>(columns) * 2;
+  std::vector<nano::Tile> tiles;
+  for (size_t i = 0; i < enabled.size() && i < 7; ++i) {
+    nano::Tile tile;
+    tile.id = kNanoActionBase + kNanoLaunchPlugin + static_cast<int>(i);
+    tile.label = enabled[i].name;
+    tile.icon = nanoPluginIcon(enabled[i].id);
+    tiles.push_back(tile);
   }
-  auto cellRect = [&](size_t index, bool fullRow) {
-    const int column = static_cast<int>(index) % columns;
-    const int row = static_cast<int>(index) / columns;
-    const int x = content.x + column * (cellWidth + kGap);
-    const int w = fullRow ? content.w : (column == columns - 1 ? content.x + content.w - x : cellWidth);
-    return nanoRect(fullRow ? content.x : x, content.y + row * (rowHeight + kGap), w, rowHeight);
-  };
-  const size_t maxCells = static_cast<size_t>(columns * kRows);
-  for (size_t i = 0; i < enabled.size() && cell + 1 < maxCells; ++i, ++cell) {
-    const int action = kNanoActionBase + kNanoLaunchPlugin + static_cast<int>(i);
-    const ui::Rect rect = cellRect(cell, false);
-    display_.nanoButton(rect, enabled[i].name, true, NanoIcon::None, 2, "", "", nanoPressed(action));
-    nanoAddTarget(rect, action, enabled[i].name);
-  }
-  // Library: last cell, or a full-width bottom row when nothing is enabled.
-  const bool fullRow = enabled.empty();
-  const ui::Rect library = fullRow ? cellRect(static_cast<size_t>(columns) * 2, true) : cellRect(cell, false);
-  const int libraryAction = kNanoActionBase + kNanoPluginLibrary;
-  display_.nanoButton(library, tr2(TrKey2::PluginLibrary), true, NanoIcon::Books, 2, "", "",
-                      nanoPressed(libraryAction));
-  nanoAddTarget(library, libraryAction, tr2(TrKey2::PluginLibrary));
-}
+  nano::Tile library;
+  library.id = kNanoActionBase + kNanoPluginLibrary;
+  library.label = tr2(TrKey2::PluginLibrary);
+  library.icon = NanoIcon::Books;
+  library.detail = String(static_cast<unsigned>(pluginLibrary_.all().size())) + " " + tr3(TrKey3::NanoAvailable);
 
-// ─── Biblioteka: bookshelf (rsvpnano screens::LibraryScreen, regular) ───────
-
-void App::renderNanoShelf() {
-  const ShelfGeometry g = shelfGeometry();
-  const size_t count = bookMenuItems_.size() > 1 ? bookMenuItems_.size() - 1 : 0;
-  if (count == 0) {
-    display_.nanoLabel(g.viewport, tr3(TrKey3::NanoNoLibraryItems), 2, NanoRole::Muted, NanoAlign::Center, 2);
+  NanoSinkAdapter sink(*this);
+  if (tiles.empty()) {
+    const int labelH = content.h / 2;
+    display_.nanoLabel(ui::Rect(content.x, content.y, content.w, labelH), tr3(TrKey3::NoActivePlugins), 2,
+                       NanoRole::Muted, NanoAlign::Center, 2);
+    nano::paintTileGrid(display_, sink,
+                        ui::Rect(content.x, content.y + labelH, content.w, content.h - labelH), {library}, 1, 1);
     return;
   }
-  const size_t selected = bookPickerSelectedIndex_ > 0 ? std::min(bookPickerSelectedIndex_ - 1, count - 1) : 0;
-  if (!nanoShelfDragging_) {
-    nanoShelfOffset_ = shelfCenteredOffset(count, selected, g.viewport.w);
+  tiles.push_back(library);
+  // 2x2 up to four tiles, then three or four columns over two rows.
+  const int columns = tiles.size() <= 2 ? static_cast<int>(tiles.size()) : tiles.size() <= 4 ? 2 : tiles.size() <= 6 ? 3 : 4;
+  const int rows = tiles.size() <= 2 ? 1 : 2;
+  nano::paintTileGrid(display_, sink, content, tiles, columns, rows);
+}
+
+// ─── Biblioteka: bookshelf ──────────────────────────────────────────────────
+
+String App::librarySortLabel() const {
+  switch (librarySort_) {
+    case kLibrarySortTitle:
+      return tr3(TrKey3::NanoSortTitle);
+    case kLibrarySortAuthor:
+      return tr3(TrKey3::NanoSortAuthor);
+    case kLibrarySortProgress:
+      return tr3(TrKey3::NanoSortProgress);
+    default:
+      return tr3(TrKey3::NanoSortRecent);
   }
+}
 
-  const uint16_t foreground = display_.nanoColor(NanoRole::Foreground);
-  const uint16_t accent = display_.nanoColor(NanoRole::Accent);
-  const uint16_t outline = display_.nanoColor(NanoRole::Outline);
-  // Spines may scroll under the rail — clip to the shelf column.
-  display_.nanoSetClip(g.viewport.x, 0, g.viewport.w, g.viewport.y + g.viewport.h + 2);
-  display_.nanoFillRect(g.marker, g.viewport.y, 1, g.viewport.h, display_.nanoColor(NanoRole::ProgressTrack));
-
-  const int32_t contentLeft = -nanoShelfOffset_;
-  const size_t firstVisible = shelfSpineIndexAt(contentLeft, count);
-  const size_t lastVisible = shelfSpineIndexAt(contentLeft + g.viewport.w, count);
-  for (size_t i = firstVisible; i <= lastVisible && i < count; ++i) {
-    const DisplayManager::LibraryItem &item = bookMenuItems_[i + 1];
-    const int width = shelfSpineWidth(i);
-    const int height = shelfSpineHeight(item.title, i);
-    const int x = g.viewport.x + static_cast<int>(shelfSpineLeft(i) + nanoShelfOffset_);
-    const bool active = i == selected;
-    const int y = g.viewport.y + g.viewport.h - height - (active ? 8 : 0);
-    const uint16_t fill = shelfSpineColor(i);
-    display_.nanoFillRect(x, y, width, height, fill);
-    display_.nanoDrawRect(x, y, width, height, foreground);
-    if (active) {
-      display_.nanoFillRect(x, y - 2, width, 2, accent);
+void App::sortLibraryIndices(std::vector<size_t> &indices) {
+  // Recent first is also the tie-breaker of every other order.
+  std::vector<uint32_t> recent(storage_.bookCount(), 0);
+  for (size_t index : indices) {
+    if (index < recent.size()) {
+      recent[index] = bookRecentSequence(storage_.bookPath(index));
     }
-    if (item.progressPercent > 0) {
-      // Bookmark ribbon hanging from the top, as long as the progress.
-      const int ribbonX = x + width - 9;
-      const int ribbonHeight = std::max(8, height * item.progressPercent / 100);
-      display_.nanoFillRect(ribbonX, y, 5, ribbonHeight, 0xDACA);
-      for (int row = 0; row < 3; ++row) {
-        display_.nanoFillRect(ribbonX + 2 - row, y + ribbonHeight - 3 + row, row * 2 + 1, 1, fill);
-      }
+  }
+  auto byRecent = [&](size_t left, size_t right) {
+    const bool leftCurrent = usingStorageBook_ && left == currentBookIndex_;
+    const bool rightCurrent = usingStorageBook_ && right == currentBookIndex_;
+    if (leftCurrent != rightCurrent) {
+      return leftCurrent;
     }
-    // Spine lettering: up to 7 upper-case letters/digits, top to bottom,
-    // leading English article dropped, Polish letters folded to ASCII.
-    String title = item.title;
-    String lower = title;
-    lower.toLowerCase();
-    if (lower.startsWith("the ")) {
-      title = title.substring(4);
-    } else if (lower.startsWith("an ")) {
-      title = title.substring(3);
-    } else if (lower.startsWith("a ")) {
-      title = title.substring(2);
+    const uint32_t l = left < recent.size() ? recent[left] : 0;
+    const uint32_t r = right < recent.size() ? recent[right] : 0;
+    if ((l > 0) != (r > 0)) {
+      return l > 0;
     }
-    int letterY = y + 6;
-    size_t written = 0;
-    auto drawLetter = [&](char c) {
-      display_.nanoSmallGlyph(x + width / 2 - 3, letterY, c, 0xFF9C);
-      letterY += 11;
-      ++written;
-    };
-    for (size_t c = 0; c < title.length() && written < 7 && letterY + 8 < y + height; ++c) {
-      uint8_t value = LatinText::byteValue(title[c]);
+    return l > r;
+  };
+  auto folded = [](const String &text) {
+    String out;
+    out.reserve(text.length());
+    for (size_t i = 0; i < text.length(); ++i) {
+      uint8_t value = LatinText::byteValue(text[i]);
       if (value >= 0x80 || value < 0x20) {
         value = LatinText::fallbackAsciiByte(value);
       }
-      char letter = static_cast<char>(value);
-      if (letter >= 'a' && letter <= 'z') {
-        letter = static_cast<char>(letter - 'a' + 'A');
+      char c = static_cast<char>(value);
+      if (c >= 'A' && c <= 'Z') {
+        c = static_cast<char>(c - 'A' + 'a');
       }
-      if ((letter >= 'A' && letter <= 'Z') || (letter >= '0' && letter <= '9')) {
-        drawLetter(letter);
-      }
+      out += c;
     }
-    if (written == 0) {
-      for (const char letter : {'B', 'O', 'O', 'K'}) {
-        if (letterY + 8 >= y + height) break;
-        drawLetter(letter);
-      }
-    }
-  }
-  display_.nanoFillRect(g.viewport.x, g.viewport.y + g.viewport.h, g.viewport.w, 2, outline);
-  display_.nanoResetClip();
+    return out;
+  };
 
-  // Detail strip: title, author, status, progress percent.
-  constexpr int kProgressWidth = 76;
-  constexpr int kDetailGap = 12;
-  const int textWidth = g.detail.w - kProgressWidth - kDetailGap;
-  const size_t bookIndex = selected < bookPickerBookIndices_.size() ? bookPickerBookIndices_[selected] : 0;
-  const String author = storage_.bookAuthorName(bookIndex);
-  uint8_t percent = 0;
-  const bool hasProgress = bookProgressPercent(bookIndex, percent);
-  display_.nanoText(nanoRect(g.detail.x, g.detail.y, textWidth, 18), bookMenuItems_[selected + 1].title, 2,
-                    foreground);
-  display_.nanoText(nanoRect(g.detail.x, g.detail.y + 20, textWidth, 10),
-                    author.isEmpty() ? String(tr3(TrKey3::NanoUnknownAuthor)) : author, 1,
-                    display_.nanoColor(NanoRole::Muted));
-  if (usingStorageBook_ && bookIndex == currentBookIndex_) {
-    display_.nanoText(nanoRect(g.detail.x, g.detail.y + 33, textWidth, 10), uiText(UiText::CurrentBook), 1,
-                      display_.nanoColor(NanoRole::Muted));
+  switch (librarySort_) {
+    case kLibrarySortTitle:
+    case kLibrarySortAuthor: {
+      const bool byAuthor = librarySort_ == kLibrarySortAuthor;
+      std::vector<String> keys(storage_.bookCount());
+      for (size_t index : indices) {
+        if (index < keys.size()) {
+          String key = byAuthor ? storage_.bookAuthorName(index) : String();
+          // Books without an author go last in the author order.
+          keys[index] = folded(byAuthor ? (key.isEmpty() ? String("~") : key) + " " + storage_.bookDisplayName(index)
+                                        : storage_.bookDisplayName(index));
+        }
+      }
+      std::stable_sort(indices.begin(), indices.end(), [&](size_t left, size_t right) {
+        const int cmp = keys[left].compareTo(keys[right]);
+        return cmp != 0 ? cmp < 0 : byRecent(left, right);
+      });
+      return;
+    }
+    case kLibrarySortProgress: {
+      std::vector<int> progress(storage_.bookCount(), -1);
+      for (size_t index : indices) {
+        uint8_t percent = 0;
+        if (index < progress.size() && bookProgressPercent(index, percent)) {
+          progress[index] = percent;
+        }
+      }
+      // Started books first, furthest along first; unread after them.
+      std::stable_sort(indices.begin(), indices.end(), [&](size_t left, size_t right) {
+        if (progress[left] != progress[right]) {
+          return progress[left] > progress[right];
+        }
+        return byRecent(left, right);
+      });
+      return;
+    }
+    default:
+      std::stable_sort(indices.begin(), indices.end(), byRecent);
+      return;
   }
-  display_.nanoText(nanoRect(g.detail.x + g.detail.w - kProgressWidth, g.detail.y, kProgressWidth, g.detail.h),
-                    String(static_cast<unsigned>(hasProgress ? percent : 0)) + "%", 3, accent, NanoAlign::End);
 }
 
-// ─── Rozdzialy: chapter wheel (rsvpnano screens::ChaptersScreen) ────────────
+void App::renderNanoShelf() {
+  const nano::ShelfGeometry g = nano::shelfGeometry();
+  const size_t count = bookMenuItems_.size() > 1 ? bookMenuItems_.size() - 1 : 0;
+  nano::ShelfView view;
+  view.header.backId = 0;
+  view.header.title = uiText(UiText::Library);
+  view.header.trailing = String(static_cast<unsigned>(count));
+  view.header.pillId = kNanoActionBase + kNanoLibrarySort;
+  view.header.pillLabel = librarySortLabel();
+  view.header.pillIcon = NanoIcon::Sort;
+  view.emptyLabel = tr3(TrKey3::NanoNoLibraryItems);
+
+  NanoSinkAdapter sink(*this);
+  sink.zeroIsBack = true;
+  if (count > 0) {
+    const size_t selected =
+        bookPickerSelectedIndex_ > 0 ? std::min(bookPickerSelectedIndex_ - 1, count - 1) : 0;
+    if (!nanoShelfDragging_) {
+      nanoShelfOffset_ = nano::shelfCenteredOffset(count, selected, g.viewport.w);
+    }
+    view.selected = selected;
+    view.offset = nanoShelfOffset_;
+    view.books.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+      nano::ShelfBook book;
+      book.title = bookMenuItems_[i + 1].title;
+      book.progress = bookMenuItems_[i + 1].progressPercent;
+      view.books.push_back(book);
+    }
+    const size_t bookIndex = selected < bookPickerBookIndices_.size() ? bookPickerBookIndices_[selected] : 0;
+    view.detailTitle = bookMenuItems_[selected + 1].title;
+    const String author = storage_.bookAuthorName(bookIndex);
+    view.detailAuthor = author.isEmpty() ? String(tr3(TrKey3::NanoUnknownAuthor)) : author;
+    if (usingStorageBook_ && bookIndex == currentBookIndex_) {
+      view.detailStatus = uiText(UiText::CurrentBook);
+    }
+    uint8_t percent = 0;
+    const bool hasProgress = bookProgressPercent(bookIndex, percent);
+    view.detailPercent = String(static_cast<unsigned>(hasProgress ? percent : 0)) + "%";
+  }
+  nano::paintShelf(display_, sink, view);
+}
+
+// ─── Rozdzialy: chapter wheel ───────────────────────────────────────────────
 
 void App::renderNanoChapters() {
-  const ui::Rect content = nanoTabContent();
-  const ui::Rect back = nanoRect(content.x, content.y, 64, kNanoHeaderHeight);
-  display_.nanoButton(back, "<<", true, NanoIcon::None, 1, "", "", nanoPressed(0));
-  nanoAddTarget(back, 0, "", ui::IconId::Back);
-
   const size_t count = chapterMarkers_.size();
-  const size_t readingIndex = currentChapterIndex();
   if (nanoWheelCentered_ >= count && count > 0) {
     nanoWheelCentered_ = count - 1;
   }
-  const int positionWidth = std::min(84, content.w / 4);
-  display_.nanoLabel(nanoRect(content.x + 68, content.y, content.w - positionWidth - 72, kNanoHeaderHeight),
-                     uiText(UiText::Chapters), 2, NanoRole::Foreground, NanoAlign::Center);
-  display_.nanoLabel(nanoRect(content.x + content.w - positionWidth, content.y, positionWidth, kNanoHeaderHeight),
-                     String(static_cast<unsigned>(count == 0 ? 0 : nanoWheelCentered_ + 1)) + " / " +
-                         String(static_cast<unsigned>(count)),
-                     1, NanoRole::Muted, NanoAlign::End);
-
-  const ui::Rect viewport = wheelViewport();
-  if (count == 0) {
-    // "Start of book" (chapterMenuItems_[1], see openChapterPicker()).
-    const String label = uiText(UiText::StartOfBook);
-    display_.nanoButton(viewport, label, true, NanoIcon::None, 1, "", "",
-                        nanoPressed(static_cast<int>(kChapterPickerFallbackIndex)));
-    nanoAddTarget(viewport, static_cast<int>(kChapterPickerFallbackIndex), label);
-    return;
-  }
-
-  const size_t first = nanoWheelCentered_ > 4 ? nanoWheelCentered_ - 4 : 0;
+  nano::WheelView view;
+  view.header.backId = 0;
+  view.header.title = uiText(UiText::Chapters);
+  view.header.trailing = String(static_cast<unsigned>(count == 0 ? 0 : nanoWheelCentered_ + 1)) + " / " +
+                         String(static_cast<unsigned>(count));
+  view.count = count;
+  view.centered = nanoWheelCentered_;
+  view.offset = nanoWheelOffset_;
+  view.readingIndex = currentChapterIndex();
+  view.emptyId = static_cast<int>(kChapterPickerFallbackIndex);
+  view.emptyLabel = uiText(UiText::StartOfBook);
+  view.firstIndex = nanoWheelCentered_ > 4 ? nanoWheelCentered_ - 4 : 0;
   const size_t last = std::min(count, nanoWheelCentered_ + 5);
-  const int centerY = viewport.y + viewport.h / 2;
-  const int halfHeight = std::max(1, viewport.h / 2);
-  const int maximumWidth = std::max(40, viewport.w - 20);
-  const uint16_t background = display_.nanoColor(NanoRole::Background);
-  display_.nanoSetClip(viewport.x, viewport.y, viewport.w, viewport.h);
-  for (size_t i = first; i < last; ++i) {
-    const int y = wheelRowCenter(viewport, static_cast<int>(i) - static_cast<int>(nanoWheelCentered_),
-                                 nanoWheelOffset_);
-    const int curved = y - centerY;
-    const bool centered = i == nanoWheelCentered_;
-    const uint8_t alpha =
-        centered ? 255 : static_cast<uint8_t>(std::max(48, 220 - std::abs(curved) * 172 / halfHeight));
-    const int height = wheelRowHeight(centered);
-    const int width = centered ? maximumWidth
-                               : maximumWidth - std::min(std::abs(curved), halfHeight) * (maximumWidth / 3) /
-                                                    halfHeight;
-    const int x = viewport.x + (viewport.w - width) / 2;
-    const int top = y - height / 2;
-    if (!wheelRowVisible(viewport, y, height)) {
-      continue;
-    }
-    const int right = x + width - 1;
-    const int notch = std::min(10, height / 2);
-    const uint16_t surface =
-        centered ? display_.nanoColor(NanoRole::SurfaceActive) : display_.nanoBlend(NanoRole::SurfaceMuted, alpha);
-    const uint16_t outline =
-        centered ? display_.nanoColor(NanoRole::Outline) : display_.nanoBlend(NanoRole::Outline, alpha);
-    display_.nanoFillRoundRect(x, top, width, height, 5, surface);
-    if (i == readingIndex) {
-      const int tailLeft = right - notch - 6;
-      display_.nanoFillRect(tailLeft, top, right - tailLeft + 1, height,
-                            centered ? display_.nanoColor(NanoRole::Accent)
-                                     : display_.nanoBlend(NanoRole::Accent, alpha));
-    }
-    display_.nanoDrawRoundRect(x, top, width, height, 5, outline);
-    display_.nanoFillTriangle(right - notch, y, right, top, right, top + height - 1, background);
-    display_.nanoDrawLine(right - notch, y, right, top, outline);
-    display_.nanoDrawLine(right - notch, y, right, top + height - 1, outline);
-    if (centered) {
-      display_.nanoFillRect(x + 4, top + 3, 3, height - 6, display_.nanoColor(NanoRole::Accent));
-    }
-    const String title = chapterMarkers_[i].title.isEmpty()
-                             ? uiText(UiText::Chapters) + " " + String(static_cast<unsigned>(i + 1))
-                             : chapterMarkers_[i].title;
-    display_.nanoText(nanoRect(x + 10, top, width - notch - 24, height), title, centered ? 2 : 1,
-                      display_.nanoBlend(NanoRole::Foreground, alpha), NanoAlign::Center);
+  for (size_t i = view.firstIndex; i < last; ++i) {
+    view.titles.push_back(chapterMarkers_[i].title.isEmpty()
+                              ? uiText(UiText::Chapters) + " " + String(static_cast<unsigned>(i + 1))
+                              : chapterMarkers_[i].title);
   }
-  display_.nanoResetClip();
+  NanoSinkAdapter sink(*this);
+  sink.zeroIsBack = true;
+  nano::paintWheel(display_, sink, view);
 }
 
 // ─── Punkty zapisu ──────────────────────────────────────────────────────────
 
 void App::renderNanoSavePoints() {
-  const ui::Rect content = nanoTabContent();
-  constexpr int kGap = 5;
-  constexpr int kRows = 3;
-  constexpr int kDeleteWidth = 96;
-  const int rowHeight = (content.h - kNanoHeaderHeight - 6 - kGap * (kRows - 1)) / kRows;
-
   // Row 0 is "+ Dodaj punkt zapisu" (index 1), then one row per save point
   // (name at 2+2k, its delete at 3+2k — see openSavePointsList()).
   const size_t pointCount = savePointMenuItems_.size() > 2 ? (savePointMenuItems_.size() - 2) / 2 : 0;
   const size_t rowCount = 1 + pointCount;
-  const size_t pageCount = std::max<size_t>(1, (rowCount + kRows - 1) / kRows);
+  const size_t rows = static_cast<size_t>(kNanoListRows);
+  const size_t pageCount = std::max<size_t>(1, (rowCount + rows - 1) / rows);
   const size_t selectedRow = savePointSelectedIndex_ <= 1 ? 0 : 1 + (savePointSelectedIndex_ - 2) / 2;
-  const size_t page = std::min(selectedRow / kRows, pageCount - 1);
+  const size_t page = std::min(selectedRow / rows, pageCount - 1);
   nanoPage_ = page;
   for (size_t p = 0; p < pageCount; ++p) {
-    const size_t row = p * kRows;
+    const size_t row = p * rows;
     nanoPageFirstIndex_.push_back(row == 0 ? 1 : 2 + (row - 1) * 2);
   }
 
-  // Header: <<, title, pager.
-  const ui::Rect back = nanoRect(content.x, content.y, kNanoBackWidth, kNanoHeaderHeight);
-  display_.nanoButton(back, "<<", true, NanoIcon::None, 1, "", "", nanoPressed(0));
-  nanoAddTarget(back, 0, "", ui::IconId::Back);
-  int titleRight = content.x + content.w;
-  if (pageCount > 1) {
-    const int nextX = content.x + content.w - kNanoPageButtonWidth;
-    const int labelX = nextX - kNanoPageLabelWidth;
-    const int prevX = labelX - kNanoPageButtonWidth;
-    const ui::Rect prev = nanoRect(prevX, content.y, kNanoPageButtonWidth, kNanoHeaderHeight);
-    const ui::Rect next = nanoRect(nextX, content.y, kNanoPageButtonWidth, kNanoHeaderHeight);
-    display_.nanoButton(prev, "<", page > 0, NanoIcon::None, 1, "", "",
-                        nanoPressed(kNanoActionBase + kNanoPagePrev));
-    display_.nanoButton(next, ">", page + 1 < pageCount, NanoIcon::None, 1, "", "",
-                        nanoPressed(kNanoActionBase + kNanoPageNext));
-    if (page > 0) nanoAddTarget(prev, kNanoActionBase + kNanoPagePrev);
-    if (page + 1 < pageCount) nanoAddTarget(next, kNanoActionBase + kNanoPageNext);
-    display_.nanoLabel(nanoRect(labelX, content.y, kNanoPageLabelWidth, kNanoHeaderHeight),
-                       String(static_cast<unsigned>(page + 1)) + "/" + String(static_cast<unsigned>(pageCount)), 2,
-                       NanoRole::Muted, NanoAlign::Center);
-    titleRight = prevX - 8;
-  }
-  display_.nanoLabel(nanoRect(content.x + kNanoBackWidth + 8, content.y,
-                              titleRight - (content.x + kNanoBackWidth + 8), kNanoHeaderHeight),
-                     uiText(UiText::SavePoints), 2, NanoRole::Foreground);
-
-  const int listY = content.y + kNanoHeaderHeight + 6;
-  for (size_t r = 0; r < static_cast<size_t>(kRows); ++r) {
-    const size_t row = page * kRows + r;
+  nano::ListView view;
+  view.header.backId = 0;
+  view.header.title = uiText(UiText::SavePoints);
+  view.header.page = page;
+  view.header.pageCount = pageCount;
+  view.header.prevId = kNanoActionBase + kNanoPagePrev;
+  view.header.nextId = kNanoActionBase + kNanoPageNext;
+  view.columns = 1;
+  view.rows = kNanoListRows;
+  const String deleteLabel = nanoStripColon(tr3(TrKey3::DeleteSpace));
+  for (size_t r = 0; r < rows; ++r) {
+    const size_t row = page * rows + r;
     if (row >= rowCount) {
       break;
     }
-    const int y = listY + static_cast<int>(r) * (rowHeight + kGap);
+    nano::ListItem item;
     if (row == 0) {
-      const ui::Rect add = nanoRect(content.x, y, content.w, rowHeight);
-      display_.nanoButton(add, savePointMenuItems_[1], true, NanoIcon::None, 1, "", "", nanoPressed(1));
-      nanoAddTarget(add, 1, savePointMenuItems_[1]);
+      item.id = 1;
+      item.label = savePointMenuItems_.size() > 1 ? savePointMenuItems_[1] : String();
+      item.icon = NanoIcon::Plus;
+      view.items.push_back(item);
       continue;
     }
     const size_t nameIndex = 2 + (row - 1) * 2;
-    const size_t deleteIndex = nameIndex + 1;
-    if (deleteIndex >= savePointMenuItems_.size()) {
+    if (nameIndex + 1 >= savePointMenuItems_.size()) {
       break;
     }
-    const ui::Rect name = nanoRect(content.x, y, content.w - kDeleteWidth - kGap, rowHeight);
-    const ui::Rect remove = nanoRect(content.x + content.w - kDeleteWidth, y, kDeleteWidth, rowHeight);
-    display_.nanoButton(name, savePointMenuItems_[nameIndex], true, NanoIcon::Bookmark, 1, "", "",
-                        nanoPressed(static_cast<int>(nameIndex)));
-    nanoAddTarget(name, static_cast<int>(nameIndex), savePointMenuItems_[nameIndex]);
-    display_.nanoButton(remove, nanoStripColon(tr3(TrKey3::DeleteSpace)), true, NanoIcon::None, 1, "", "",
-                        nanoPressed(static_cast<int>(deleteIndex)), nanoArmed(static_cast<int>(deleteIndex)));
-    nanoAddTarget(remove, static_cast<int>(deleteIndex), savePointMenuItems_[deleteIndex]);
+    item.kind = nano::ListItem::Kind::Row;
+    item.id = static_cast<int>(nameIndex);
+    item.label = savePointMenuItems_[nameIndex];
+    item.icon = NanoIcon::Bookmark;
+    const size_t pointIndex = row - 1;
+    if (pointIndex < savePoints_.size()) {
+      item.value = String(static_cast<unsigned>(savePoints_[pointIndex].progressPercent)) + "%";
+    }
+    item.trailingId = static_cast<int>(nameIndex + 1);
+    item.trailingLabel = deleteLabel;
+    view.items.push_back(item);
   }
+  NanoSinkAdapter sink(*this);
+  sink.labels = &savePointMenuItems_;
+  sink.zeroIsBack = true;
+  nano::paintList(display_, sink, view);
 }
 
 // ─── Szczegoly ksiazki ──────────────────────────────────────────────────────
 
 void App::renderNanoBookDetails() {
-  const ui::Rect content = nanoFullContent();
-  constexpr int kGap = 6;
-  const ui::Rect back = nanoRect(content.x, content.y, kNanoBackWidth, kNanoHeaderHeight);
-  display_.nanoButton(back, "<<", true, NanoIcon::None, 1, "", "", nanoPressed(0));
-  nanoAddTarget(back, 0, "", ui::IconId::Back);
-  display_.nanoLabel(nanoRect(content.x + kNanoBackWidth + 8, content.y, content.w - kNanoBackWidth - 8,
-                              kNanoHeaderHeight),
-                     storage_.bookDisplayName(bookDetailsBookIndex_), 2, NanoRole::Foreground);
-
+  nano::BookDetailsView view;
+  view.header.backId = 0;
+  view.header.title = storage_.bookDisplayName(bookDetailsBookIndex_);
   const String author = storage_.bookAuthorName(bookDetailsBookIndex_);
+  view.author = author.isEmpty() ? String(tr3(TrKey3::NanoUnknownAuthor)) : author;
   uint8_t percent = 0;
   bookProgressPercent(bookDetailsBookIndex_, percent);
-  const int infoY = content.y + kNanoHeaderHeight + 6;
-  display_.nanoLabel(nanoRect(content.x, infoY, content.w - 80, 18),
-                     author.isEmpty() ? String(tr3(TrKey3::NanoUnknownAuthor)) : author, 2, NanoRole::Muted);
-  display_.nanoLabel(nanoRect(content.x + content.w - 76, infoY, 76, 18),
-                     String(static_cast<unsigned>(percent)) + "%", 2, NanoRole::Accent, NanoAlign::End);
-  display_.nanoProgress(nanoRect(content.x, infoY + 22, content.w, 6), percent, 0, 100);
-
-  // Actions: bookDetailsMenuItems_[3..6] = read on / chapters / restart / delete.
-  const int gridY = infoY + 36;
-  const int rowHeight = (content.y + content.h - gridY - kGap) / 2;
-  const int half = (content.w - kGap) / 2;
+  view.percent = percent;
+  view.percentLabel = String(static_cast<unsigned>(percent)) + "%";
+  // bookDetailsMenuItems_[3..6] = read on / chapters / restart / delete.
+  const NanoIcon icons[] = {NanoIcon::Play, NanoIcon::List, NanoIcon::Restart, NanoIcon::Trash};
   for (size_t i = 0; i < 4; ++i) {
     const size_t index = 3 + i;
     if (index >= bookDetailsMenuItems_.size()) {
       break;
     }
-    const int column = static_cast<int>(i % 2);
-    const int row = static_cast<int>(i / 2);
-    const int x = content.x + column * (half + kGap);
-    const ui::Rect rect =
-        nanoRect(x, gridY + row * (rowHeight + kGap), column == 1 ? content.x + content.w - x : half, rowHeight);
-    display_.nanoButton(rect, bookDetailsMenuItems_[index], true, NanoIcon::None, 1, "", "",
-                        nanoPressed(static_cast<int>(index)));
-    nanoAddTarget(rect, static_cast<int>(index), bookDetailsMenuItems_[index]);
+    nano::Tile tile;
+    tile.id = static_cast<int>(index);
+    tile.label = bookDetailsMenuItems_[index];
+    tile.icon = icons[i];
+    tile.accent = i == 0;
+    view.actions.push_back(tile);
   }
+  NanoSinkAdapter sink(*this);
+  sink.labels = &bookDetailsMenuItems_;
+  sink.zeroIsBack = true;
+  nano::paintBookDetails(display_, sink, view);
 }
 
-// ─── Confirm dialogs (rsvpnano screens::storageEncryption panel) ────────────
+// ─── Confirm dialogs ────────────────────────────────────────────────────────
 
 void App::renderNanoConfirm(const String &title, const std::vector<String> &items, size_t headerRows) {
   (void)title;
-  const ui::Rect content = nanoFullContent();
-  constexpr int kPanelWidth = 440;
-  constexpr int kPanelHeight = 144;
-  const int width = std::min(static_cast<int>(content.w), kPanelWidth);
-  const int height = std::min(static_cast<int>(content.h), kPanelHeight);
-  const ui::Rect panel =
-      nanoRect(content.x + (content.w - width) / 2, content.y + (content.h - height) / 2, width, height);
-
-  // Question text: the header rows, or for the list-style confirms the info
-  // row right after Back ("Usun: <tytul>").
-  String question;
-  std::vector<size_t> actions;  // canonical indices shown as buttons
-  bool hasBack = false;
+  nano::ConfirmView view;
   const bool infoRow = menuScreen_ == MenuScreen::BookDeleteConfirm ||
                        menuScreen_ == MenuScreen::SavePointDeleteConfirm;
+  // Question text: the header rows, or for the list-style confirms the info
+  // row right after Back ("Usun: <tytul>").
   for (size_t i = 0; i < headerRows && i < items.size(); ++i) {
-    question += (question.isEmpty() ? "" : " ") + items[i];
+    view.question += (view.question.isEmpty() ? "" : " ") + items[i];
   }
   for (size_t i = headerRows; i < items.size(); ++i) {
     const size_t canonical = i - headerRows;
     if (canonical == 0 && items[i] == uiText(UiText::Back)) {
-      hasBack = true;
+      view.backId = 0;
+      view.backLabel = uiText(UiText::Back);
       continue;
     }
     if (infoRow && canonical == 1) {
-      question = items[i];
+      view.question = items[i];
       continue;
     }
-    actions.push_back(canonical);
-  }
-  if (menuScreen_ == MenuScreen::PresetsDeleteConfirm && !actions.empty()) {
-    String label;
-    String value;
-    if (nanoSplitSetting(items[headerRows + actions[0]], label, value)) {
-      question = value;
-    }
-  }
-
-  constexpr int kTitleHeight = 60;
-  display_.nanoLabel(nanoRect(panel.x, panel.y, panel.w, kTitleHeight), question, 2, NanoRole::Foreground,
-                     NanoAlign::Center, 2);
-  const int buttonsY = panel.y + kTitleHeight + 20;
-  const int buttonsHeight = panel.y + panel.h - buttonsY;
-  constexpr int kGap = 8;
-  int x = panel.x;
-  const size_t slots = actions.size() + (hasBack ? 1 : 0);
-  if (slots == 0) {
-    return;
-  }
-  const int backWidth = hasBack ? 64 : 0;
-  const int actionWidth = actions.empty()
-                              ? 0
-                              : (panel.w - (hasBack ? backWidth + kGap : 0) -
-                                 kGap * (static_cast<int>(actions.size()) - 1)) /
-                                    static_cast<int>(actions.size());
-  if (hasBack) {
-    const ui::Rect back = nanoRect(x, buttonsY, backWidth, buttonsHeight);
-    display_.nanoButton(back, "<<", true, NanoIcon::None, 1, "", "", nanoPressed(0));
-    nanoAddTarget(back, 0, "", ui::IconId::Back);
-    x += backWidth + kGap;
-  }
-  for (size_t i = 0; i < actions.size(); ++i) {
-    const size_t canonical = actions[i];
-    const String &item = items[headerRows + canonical];
-    String label = item;
-    String value;
+    nano::ConfirmView::Action action;
+    action.id = static_cast<int>(canonical);
+    action.label = items[i];
     if (menuScreen_ == MenuScreen::PresetsDeleteConfirm) {
       String name;
-      if (nanoSplitSetting(item, name, value)) {
-        label = name;
+      String value;
+      if (nanoSplitSetting(items[i], name, value)) {
+        action.label = name;
+        view.question = value;
       }
     }
-    const int w = (i + 1 == actions.size()) ? panel.x + panel.w - x : actionWidth;
-    const ui::Rect rect = nanoRect(x, buttonsY, w, buttonsHeight);
-    display_.nanoButton(rect, label, true, NanoIcon::None, 2, "", "", nanoPressed(static_cast<int>(canonical)),
-                        nanoArmed(static_cast<int>(canonical)));
-    nanoAddTarget(rect, static_cast<int>(canonical), item);
-    x += w + kGap;
+    action.danger = nanoIsDeleteLabel(action.label) ||
+                    (infoRow && action.label == uiText(UiText::On));
+    view.actions.push_back(action);
   }
+  NanoSinkAdapter sink(*this);
+  sink.labels = &items;
+  sink.labelOffset = headerRows;
+  sink.zeroIsBack = view.backId == 0;
+  nano::paintConfirm(display_, sink, view);
 }
 
 // ─── Generic list (every other menu screen) ─────────────────────────────────
@@ -1427,7 +1251,6 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
     nanoScreensaverFromSettingsHome_ = false;
   }
   const bool rail = nanoRailScreen();
-  const ui::Rect area = rail ? nanoTabContent() : nanoFullContent();
   size_t itemCount = 0;
   const size_t *selectedPtr = currentMenuSelectedIndexPtr(itemCount);
   const size_t selected = selectedPtr != nullptr ? *selectedPtr : 0;
@@ -1437,7 +1260,7 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
   const size_t firstTile = hasBack ? 1 : 0;
   const size_t tileCount = actionable > firstTile ? actionable - firstTile : 0;
 
-  // Two columns of rsvpnano setting rows when the items carry values ("Motyw:
+  // Two columns of setting rows when the items carry values ("Motyw:
   // Ciemny"), three columns of plain buttons otherwise (two next to the rail).
   bool settingsLike = !subtitles.empty();
   for (size_t i = firstTile; i < actionable && !settingsLike; ++i) {
@@ -1445,9 +1268,7 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
   }
   const bool detailScreen = menuScreen_ == MenuScreen::PluginDetail;
   const int columns = detailScreen ? 1 : (settingsLike || rail) ? 2 : 3;
-  constexpr int kRows = 3;
-  constexpr int kGap = 5;
-  const size_t perPage = static_cast<size_t>(columns * kRows);
+  const size_t perPage = static_cast<size_t>(columns * kNanoListRows);
   const size_t pageCount = std::max<size_t>(1, (tileCount + perPage - 1) / perPage);
   const size_t selectedTile = selected > firstTile ? selected - firstTile : 0;
   const size_t page = std::min(selectedTile / perPage, pageCount - 1);
@@ -1456,60 +1277,36 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
     nanoPageFirstIndex_.push_back(firstTile + p * perPage);
   }
 
-  // Header row: "<<", title, pager.
-  int titleX = area.x;
-  if (hasBack) {
-    const ui::Rect back = nanoRect(area.x, area.y, kNanoBackWidth, kNanoHeaderHeight);
-    display_.nanoButton(back, "<<", true, NanoIcon::None, 1, "", "", nanoPressed(0));
-    nanoAddTarget(back, 0, "", ui::IconId::Back);
-    titleX += kNanoBackWidth + 8;
-  }
-  int titleRight = area.x + area.w;
-  if (pageCount > 1) {
-    const int nextX = area.x + area.w - kNanoPageButtonWidth;
-    const int labelX = nextX - kNanoPageLabelWidth;
-    const int prevX = labelX - kNanoPageButtonWidth;
-    const ui::Rect prev = nanoRect(prevX, area.y, kNanoPageButtonWidth, kNanoHeaderHeight);
-    const ui::Rect next = nanoRect(nextX, area.y, kNanoPageButtonWidth, kNanoHeaderHeight);
-    display_.nanoButton(prev, "<", page > 0, NanoIcon::None, 1, "", "",
-                        nanoPressed(kNanoActionBase + kNanoPagePrev));
-    display_.nanoButton(next, ">", page + 1 < pageCount, NanoIcon::None, 1, "", "",
-                        nanoPressed(kNanoActionBase + kNanoPageNext));
-    if (page > 0) nanoAddTarget(prev, kNanoActionBase + kNanoPagePrev);
-    if (page + 1 < pageCount) nanoAddTarget(next, kNanoActionBase + kNanoPageNext);
-    display_.nanoLabel(nanoRect(labelX, area.y, kNanoPageLabelWidth, kNanoHeaderHeight),
-                       String(static_cast<unsigned>(page + 1)) + "/" + String(static_cast<unsigned>(pageCount)), 2,
-                       NanoRole::Muted, NanoAlign::Center);
-    titleRight = prevX - 8;
-  }
-  const String heading = title.isEmpty() ? nanoScreenTitle() : title;
-  display_.nanoLabel(nanoRect(titleX, area.y, titleRight - titleX, kNanoHeaderHeight), heading, 2,
-                     NanoRole::Foreground);
+  nano::ListView view;
+  view.header.backId = hasBack ? 0 : nano::kNoTarget;
+  view.header.title = title.isEmpty() ? nanoScreenTitle() : title;
+  view.header.page = page;
+  view.header.pageCount = pageCount;
+  view.header.prevId = kNanoActionBase + kNanoPagePrev;
+  view.header.nextId = kNanoActionBase + kNanoPageNext;
+  view.columns = columns;
+  view.rows = kNanoListRows;
+  view.fullScreen = !rail;
 
-  const int gridY = area.y + kNanoHeaderHeight + 6;
-  const int gridH = area.y + area.h - gridY;
-  const int rowHeight = (gridH - kGap * (kRows - 1)) / kRows;
-  const int cellWidth = (area.w - kGap * (columns - 1)) / columns;
   const size_t pageStart = page * perPage;
   for (size_t i = 0; i < perPage && pageStart + i < tileCount; ++i) {
     const size_t canonical = firstTile + pageStart + i;
-    const String &item = items[headerRows + canonical];
-    const int column = static_cast<int>(i) % columns;
-    const int row = static_cast<int>(i) / columns;
-    const int x = area.x + column * (cellWidth + kGap);
-    const int w = column == columns - 1 ? area.x + area.w - x : cellWidth;
-    ui::Rect rect = nanoRect(x, gridY + row * (rowHeight + kGap), w, rowHeight);
+    const String &text = items[headerRows + canonical];
     const int index = static_cast<int>(canonical);
-    const bool pressed = nanoPressed(index);
+    nano::ListItem item;
+    item.id = index;
+    item.label = text;
 
-    if (item == "---") {
-      display_.nanoSeparator(rect, "");
+    if (text == "---") {
+      item.kind = nano::ListItem::Kind::Separator;
+      item.label = "";
+      view.items.push_back(item);
       continue;
     }
 
     // Reuse the Buttons-grid annotations for what each row is.
     DisplayManager::Button info;
-    info.label = item;
+    info.label = text;
     if (menuScreen_ == MenuScreen::SettingsDisplay) {
       annotateSettingsDisplayButton(info, canonical);
     } else if (menuScreen_ == MenuScreen::PluginDetail) {
@@ -1520,48 +1317,58 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
 
     if (info.kind == DisplayManager::Button::ButtonKind::Label) {
       // Plugin description: plain muted prose, two rows tall.
-      rect.h = static_cast<uint16_t>(rowHeight * 2 + kGap);
-      display_.nanoLabel(rect, info.sublabel.isEmpty() ? info.label : info.label + " " + info.sublabel, 2,
-                         NanoRole::Muted, NanoAlign::Start, 2);
+      item.kind = nano::ListItem::Kind::Label;
+      item.label = info.sublabel.isEmpty() ? info.label : info.label + " " + info.sublabel;
+      view.items.push_back(item);
       continue;
-    }
-    if (detailScreen) {
-      // Enable/disable button under the description.
-      rect.y = static_cast<uint16_t>(gridY + 2 * (rowHeight + kGap));
     }
     NanoSliderSpec slider;
     String sliderLabel;
     String sliderValue;
-    if (nanoSliderSpec(canonical, slider) && nanoSplitSetting(item, sliderLabel, sliderValue)) {
-      display_.nanoSlider(rect, sliderLabel, sliderValue, slider.value, slider.minimum, slider.maximum, pressed,
-                          nanoSliderDragging_ && nanoSliderIndex_ == index);
-      NanoSliderTarget target;
-      target.rect = rect;
-      target.index = canonical;
-      nanoSliderTargets_.push_back(target);
-      nanoAddTarget(rect, index, item);
+    if (nanoSliderSpec(canonical, slider) && nanoSplitSetting(text, sliderLabel, sliderValue)) {
+      item.kind = nano::ListItem::Kind::Slider;
+      item.label = sliderLabel;
+      item.value = sliderValue;
+      item.sliderValue = slider.value;
+      item.sliderMin = slider.minimum;
+      item.sliderMax = slider.maximum;
+      item.dragging = nanoSliderDragging_ && nanoSliderIndex_ == index;
+      view.items.push_back(item);
       continue;
     }
     if (info.kind == DisplayManager::Button::ButtonKind::Toggle) {
-      display_.nanoToggle(rect, info.label, info.active, pressed);
+      item.kind = nano::ListItem::Kind::Toggle;
+      item.label = info.label;
+      item.on = info.active;
     } else if (canonical < subtitles.size()) {
-      display_.nanoSetting(rect, item, subtitles[canonical], true, pressed);
+      item.kind = nano::ListItem::Kind::Setting;
+      item.value = subtitles[canonical];
     } else {
       String label;
       String value;
-      if (nanoSplitSetting(item, label, value) && !nanoArmed(index)) {
-        display_.nanoSetting(rect, label, value, true, pressed);
+      if (nanoSplitSetting(text, label, value) && !nanoArmed(index)) {
+        item.kind = nano::ListItem::Kind::Setting;
+        item.label = label;
+        item.value = value;
       } else {
+        item.kind = nano::ListItem::Kind::Button;
+        item.typeface = info.previewTypeface;
         // Font picker: the selection always equals the active face (set on
         // open, moved by the tap that applies a face), so mark it.
-        const bool currentFace =
-            menuScreen_ == MenuScreen::TypographyFontPicker && canonical == selected;
-        display_.nanoButton(rect, item, true, currentFace ? NanoIcon::Bookmark : NanoIcon::None, 2, "", "",
-                            pressed, nanoArmed(index), info.previewTypeface);
+        item.marked = menuScreen_ == MenuScreen::TypographyFontPicker && canonical == selected;
+        if (nanoIsDeleteLabel(text)) {
+          item.icon = NanoIcon::Trash;
+        }
       }
     }
-    nanoAddTarget(rect, index, item);
+    view.items.push_back(item);
   }
+
+  NanoSinkAdapter sink(*this);
+  sink.labels = &items;
+  sink.labelOffset = headerRows;
+  sink.zeroIsBack = hasBack;
+  nano::paintList(display_, sink, view);
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -1588,6 +1395,16 @@ bool App::nanoChangePage(int delta, bool fromSwipe) {
 }
 
 void App::runNanoAction(int action, uint32_t nowMs) {
+  if (action >= kNanoThemeFont) {
+    const int family = action - kNanoThemeFont - 1;
+    setNanoUiFontChoice(family < 0 ? kNanoUiFontFollowReader : static_cast<uint8_t>(family));
+    return;
+  }
+  if (action >= kNanoThemeSection) {
+    nanoThemeSection_ = static_cast<uint8_t>(std::min(2, action - kNanoThemeSection));
+    renderSettings();
+    return;
+  }
   if (action >= kNanoThemeLayout) {
     setNanoTheme(nanoPalette_, nanoOwnAccent_, static_cast<uint8_t>(action - kNanoThemeLayout));
     return;
@@ -1619,15 +1436,6 @@ void App::runNanoAction(int action, uint32_t nowMs) {
     case kNanoTabThemes:
       openNanoThemes();
       return;
-    case kNanoThemePagePrev:
-    case kNanoThemePageNext:
-      if (action == kNanoThemePagePrev && nanoThemePage_ > 0) {
-        --nanoThemePage_;
-      } else if (action == kNanoThemePageNext) {
-        ++nanoThemePage_;  // renderNanoThemes() clamps
-      }
-      renderSettings();
-      return;
     case kNanoThemeOwnAccent:
       setNanoTheme(nanoPalette_, !nanoOwnAccent_, nanoLayout_);
       return;
@@ -1647,12 +1455,15 @@ void App::runNanoAction(int action, uint32_t nowMs) {
       if (!usingStorageBook_ && storage_.bookCount() > 0) {
         openBookPicker(false);
       } else {
+        // The reader panel (Paused in this mode): word, speed, Start.
+        menuScreen_ = MenuScreen::Main;
         setState(AppState::Paused, nowMs);
       }
       return;
     case kNanoReadChapters:
       // Back from the wheel lands on Czytaj, not on a stale book-details page.
       bookDetailsMenuItems_.clear();
+      nanoChaptersFromPanel_ = false;
       openChapterPicker();
       return;
     case kNanoReadSavePoints:
@@ -1671,6 +1482,12 @@ void App::runNanoAction(int action, uint32_t nowMs) {
       return;
     case kNanoPluginLibrary:
       openPluginLibraryScreen();
+      return;
+    case kNanoLibrarySort:
+      librarySort_ = static_cast<uint8_t>((librarySort_ + 1) % kLibrarySortCount);
+      preferences_.putUChar(kPrefLibrarySort, librarySort_);
+      Serial.printf("[library] sort=%u\n", static_cast<unsigned>(librarySort_));
+      openBookPicker(false);
       return;
     default:
       return;
@@ -1692,11 +1509,11 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
     return true;
   }
   if (menuScreen_ == MenuScreen::BookPicker) {
-    const ShelfGeometry g = shelfGeometry();
+    const nano::ShelfGeometry g = nano::shelfGeometry();
     const size_t count = bookMenuItems_.size() > 1 ? bookMenuItems_.size() - 1 : 0;
     if (event.phase == TouchPhase::Start) {
       nanoShelfDragging_ = count > 0 && g.viewport.contains(event.x, event.y);
-      nanoShelfDetailTouch_ = !nanoShelfDragging_ && g.detail.contains(event.x, event.y);
+      nanoShelfDetailTouch_ = !nanoShelfDragging_ && count > 0 && g.detail.contains(event.x, event.y);
       if (!nanoShelfDragging_ && !nanoShelfDetailTouch_) {
         return false;
       }
@@ -1714,10 +1531,11 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
     }
     const int dx = static_cast<int>(event.x) - nanoShelfDragStartX_;
     const int dy = static_cast<int>(event.y) - nanoShelfDragStartY_;
-    nanoShelfMoved_ = nanoShelfMoved_ || std::abs(dx) > kShelfDragThreshold || std::abs(dy) > kShelfDragThreshold;
+    nanoShelfMoved_ = nanoShelfMoved_ || std::abs(dx) > nano::kShelfDragThreshold ||
+                      std::abs(dy) > nano::kShelfDragThreshold;
     if (trackingShelf && nanoShelfMoved_) {
-      nanoShelfOffset_ = shelfClampOffset(count, nanoShelfDragStartOffset_ + dx, g.viewport.w);
-      bookPickerSelectedIndex_ = shelfNearest(count, nanoShelfOffset_, g.marker, g.viewport.x) + 1;
+      nanoShelfOffset_ = nano::shelfClampOffset(count, nanoShelfDragStartOffset_ + dx, g.viewport.w);
+      bookPickerSelectedIndex_ = nano::shelfNearest(count, nanoShelfOffset_, g.marker, g.viewport.x) + 1;
     }
     if (event.phase == TouchPhase::Move) {
       if (trackingShelf && nanoShelfMoved_ && nowMs - nanoShelfLastDragRenderMs_ >= kNanoDragFrameMs) {
@@ -1739,22 +1557,27 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
       }
       // Tap on the title strip: the book's detail page (chapters, restart,
       // delete).
-      if (count > 0 && bookPickerSelectedIndex_ >= 1 &&
-          bookPickerSelectedIndex_ - 1 < bookPickerBookIndices_.size()) {
+      if (bookPickerSelectedIndex_ >= 1 && bookPickerSelectedIndex_ - 1 < bookPickerBookIndices_.size()) {
         openBookDetails(bookPickerBookIndices_[bookPickerSelectedIndex_ - 1], nowMs);
       }
       return true;
     }
     // Tap on the shelf: pick the spine under the finger (or keep the
-    // selected one) and open that book on the Czytaj tab.
-    if (count == 0 || (lastMenuActionAtMs_ != 0 && nowMs - lastMenuActionAtMs_ < kMenuActionDebounceMs)) {
+    // selected one) and open that book on the reader panel.
+    if (lastMenuActionAtMs_ != 0 && nowMs - lastMenuActionAtMs_ < kMenuActionDebounceMs) {
       return true;
     }
     const int32_t contentX = static_cast<int32_t>(event.x) - g.viewport.x - nanoShelfOffset_;
-    const size_t tapped = shelfSpineIndexAt(contentX, count);
-    const int spineX = g.viewport.x + static_cast<int>(shelfSpineLeft(tapped) + nanoShelfOffset_);
-    if (static_cast<int>(event.x) >= spineX && static_cast<int>(event.x) < spineX + shelfSpineWidth(tapped)) {
-      bookPickerSelectedIndex_ = tapped + 1;
+    const size_t tapped = nano::shelfSpineIndexAt(contentX, count);
+    const int spineX = g.viewport.x + static_cast<int>(nano::shelfSpineLeft(tapped) + nanoShelfOffset_);
+    if (static_cast<int>(event.x) >= spineX && static_cast<int>(event.x) < spineX + nano::shelfSpineWidth(tapped)) {
+      if (tapped + 1 != bookPickerSelectedIndex_) {
+        // First tap on another spine only brings it forward.
+        bookPickerSelectedIndex_ = tapped + 1;
+        lastMenuActionAtMs_ = nowMs;
+        renderBookPicker();
+        return true;
+      }
     }
     lastMenuActionAtMs_ = nowMs;
     const size_t row = bookPickerSelectedIndex_ > 0 ? bookPickerSelectedIndex_ - 1 : 0;
@@ -1762,7 +1585,6 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
       return true;
     }
     const size_t bookIndex = bookPickerBookIndices_[row];
-    renderBookPicker();
     if (!(usingStorageBook_ && bookIndex == currentBookIndex_)) {
       saveReadingPosition(true);
       if (!loadBookAtIndex(bookIndex, nowMs, true, true, true, true)) {
@@ -1774,12 +1596,12 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
     }
     bookDetailsMenuItems_.clear();
     menuScreen_ = MenuScreen::Main;
-    renderMainMenu();
+    setState(AppState::Paused, nowMs);
     return true;
   }
 
   if (menuScreen_ == MenuScreen::ChapterPicker && !chapterMarkers_.empty()) {
-    const ui::Rect viewport = wheelViewport();
+    const ui::Rect viewport = nano::wheelViewport();
     const size_t count = chapterMarkers_.size();
     if (event.phase == TouchPhase::Start) {
       if (!viewport.contains(event.x, event.y)) {
@@ -1796,14 +1618,15 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
       return false;
     }
     const int delta = static_cast<int>(event.y) - nanoWheelDragStartY_;
-    nanoWheelMoved_ = nanoWheelMoved_ || std::abs(delta) > kWheelDragThreshold;
+    nanoWheelMoved_ = nanoWheelMoved_ || std::abs(delta) > nano::kWheelDragThreshold;
     if (nanoWheelMoved_) {
       // Displacement owns the selection: holding still never advances.
       const int64_t position = std::max<int64_t>(
-          0, std::min<int64_t>(static_cast<int64_t>(nanoWheelDragStartIndex_) * kWheelRowStep - delta,
-                               static_cast<int64_t>(count - 1) * kWheelRowStep));
-      nanoWheelCentered_ = static_cast<size_t>((position + kWheelRowStep / 2) / kWheelRowStep);
-      nanoWheelOffset_ = static_cast<int16_t>(static_cast<int64_t>(nanoWheelCentered_) * kWheelRowStep - position);
+          0, std::min<int64_t>(static_cast<int64_t>(nanoWheelDragStartIndex_) * nano::kWheelRowStep - delta,
+                               static_cast<int64_t>(count - 1) * nano::kWheelRowStep));
+      nanoWheelCentered_ = static_cast<size_t>((position + nano::kWheelRowStep / 2) / nano::kWheelRowStep);
+      nanoWheelOffset_ =
+          static_cast<int16_t>(static_cast<int64_t>(nanoWheelCentered_) * nano::kWheelRowStep - position);
     }
     if (event.phase == TouchPhase::Move) {
       if (nanoWheelMoved_ && nowMs - nanoWheelLastDragRenderMs_ >= kNanoDragFrameMs) {
@@ -1817,11 +1640,11 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
       const size_t first = nanoWheelCentered_ > 4 ? nanoWheelCentered_ - 4 : 0;
       const size_t last = std::min(count, nanoWheelCentered_ + 5);
       size_t tappedIndex = count;
-      int closest = kWheelRowStep / 2 + 1;
+      int closest = nano::kWheelRowStep / 2 + 1;
       for (size_t i = first; i < last; ++i) {
-        const int y = wheelRowCenter(viewport, static_cast<int>(i) - static_cast<int>(nanoWheelCentered_),
-                                     nanoWheelOffset_);
-        if (!wheelRowVisible(viewport, y, wheelRowHeight(i == nanoWheelCentered_))) {
+        const int y = nano::wheelRowCenter(viewport, static_cast<int>(i) - static_cast<int>(nanoWheelCentered_),
+                                           nanoWheelOffset_);
+        if (!nano::wheelRowVisible(viewport, y, nano::wheelRowHeight(i == nanoWheelCentered_))) {
           continue;
         }
         const int distance = std::abs(y - static_cast<int>(event.y));
@@ -1831,7 +1654,14 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
         }
       }
       if (tappedIndex != count) {
-        nanoWheelCentered_ = tappedIndex;
+        if (tappedIndex != nanoWheelCentered_) {
+          // A row off the center scrolls it in; tapping the centered row
+          // jumps there.
+          nanoWheelCentered_ = tappedIndex;
+          nanoWheelOffset_ = 0;
+          renderChapterPicker();
+          return true;
+        }
         nanoWheelOffset_ = 0;
         chapterPickerSelectedIndex_ = tappedIndex + 1;
         selectChapterPickerItem(nowMs);
@@ -1843,6 +1673,147 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
     return true;
   }
   return false;
+}
+
+// ─── Reader panel (Paused, Modern mode) ─────────────────────────────────────
+// rsvpnano's reader screen before Start: the current word with its
+// neighbours, chapter / progress / time left on top, and a bottom bar with
+// Menu, Chapters, a save-point ribbon, the speed stepper and Start. Start
+// (or hold, or a double tap) plays on the classic reading screen; pausing
+// brings the panel back.
+
+bool App::nanoReaderPanelActive() const {
+  return navMode_ == NavMode::Modern && state_ == AppState::Paused && !pendingBootBookLoad_ &&
+         !chapterTransitionVisible_;
+}
+
+void App::renderNanoReaderPanel() {
+  applyReaderUiOrientation();
+  display_.setModernCardStyle(true);
+  contextViewVisible_ = false;
+  wpmFeedbackVisible_ = false;
+
+  nano::ReaderPanelView view;
+  view.chapter = currentChapterLabel();
+  view.progressPercent = readingProgressPercent();
+  view.progressLabel = String(static_cast<unsigned>(view.progressPercent)) + "%";
+  const size_t wordCount = reader_.wordCount();
+  if (wordCount > 0) {
+    const size_t current = std::min(reader_.currentIndex(), wordCount - 1);
+    view.timeLeft = formatReadingTimeRemaining(estimatedReadingTimeRemainingMs(current, wordCount));
+  }
+  view.before = phantomBeforeText();
+  view.word = reader_.currentWord();
+  view.after = phantomAfterText();
+  view.menuId = kPanelMenu;
+  view.menuLabel = tr3(TrKey3::NanoMenuLabel);
+  view.chaptersId = kPanelChapters;
+  view.bookmarkId = kPanelBookmark;
+  view.bookmarkFilled = isCurrentPositionSaved();
+  view.minusId = kPanelWpmMinus;
+  view.plusId = kPanelWpmPlus;
+  view.wpmLabel = String(static_cast<unsigned>(reader_.wpm())) + " " + tr3(TrKey3::NanoWpmUnit);
+  view.startId = kPanelStart;
+  view.startLabel = uiText(UiText::Read);
+  view.hint = tr3(TrKey3::NanoPanelHint);
+
+  nanoPanelTargets_.clear();
+  NanoPanelSink sink(nanoPanelTargets_, nanoPanelPressedAction_);
+  display_.nanoBeginFrame();
+  nano::paintReaderPanel(display_, sink, view);
+  display_.nanoEndFrame();
+}
+
+bool App::handleNanoReaderPanelTouch(const TouchEvent &event, uint32_t nowMs) {
+  auto targetAt = [this](uint16_t x, uint16_t y) {
+    for (const auto &target : nanoPanelTargets_) {
+      if (target.first.contains(x, y)) {
+        return target.second;
+      }
+    }
+    return -1;
+  };
+  if (event.phase == TouchPhase::Start) {
+    nanoPanelBarTouch_ = nano::readerPanelBar().contains(event.x, event.y);
+    if (!nanoPanelBarTouch_) {
+      return false;
+    }
+    nanoPanelTouchAction_ = targetAt(event.x, event.y);
+    resetReaderTapTracking();
+    pausedTouch_.active = false;
+    if (nanoPanelTouchAction_ >= 0) {
+      nanoPanelPressedAction_ = nanoPanelTouchAction_;
+      renderNanoReaderPanel();
+    }
+    return true;
+  }
+  if (!nanoPanelBarTouch_) {
+    return false;
+  }
+  if (event.phase == TouchPhase::Move) {
+    return true;
+  }
+  // End: fire when the finger lifts on the button it went down on.
+  nanoPanelBarTouch_ = false;
+  const int action = nanoPanelTouchAction_;
+  nanoPanelTouchAction_ = -1;
+  nanoPanelPressedAction_ = -1;
+  if (action >= 0 && targetAt(event.x, event.y) == action) {
+    runNanoReaderPanelAction(action, nowMs);
+  } else if (action >= 0) {
+    renderNanoReaderPanel();
+  }
+  return true;
+}
+
+void App::runNanoReaderPanelAction(int action, uint32_t nowMs) {
+  switch (action) {
+    case kPanelMenu:
+      openMainMenu(nowMs);
+      return;
+    case kPanelChapters:
+      bookDetailsMenuItems_.clear();
+      nanoChaptersFromPanel_ = true;
+      openChapterPicker();  // builds the list and sets menuScreen_
+      setState(AppState::Menu, nowMs);
+      return;
+    case kPanelBookmark:
+      quickSavePointFromReader(nowMs);
+      return;
+    case kPanelWpmMinus:
+    case kPanelWpmPlus:
+      reader_.adjustWpm(action == kPanelWpmPlus ? 1 : -1);
+      preferences_.putUShort(kPrefWpm, reader_.wpm());
+      Serial.printf("[app] WPM=%u (panel)\n", reader_.wpm());
+      renderNanoReaderPanel();
+      return;
+    case kPanelStart:
+      playLocked_ = true;
+      pauseAtSentenceEndRequested_ = false;
+      wpmFeedbackVisible_ = false;
+      setState(AppState::Playing, nowMs);
+      return;
+    default:
+      return;
+  }
+}
+
+void App::quickSavePointFromReader(uint32_t nowMs) {
+  resetReaderTapTracking();
+  if (state_ == AppState::Playing) {
+    setState(AppState::Paused, nowMs);
+  }
+  saveReadingPosition(true);
+  const String defaultName = savePointDefaultName();
+  savePointQuickSaveFromReader_ = true;
+  if (savePointUseCustomName_) {
+    menuScreen_ = MenuScreen::Main;
+    setState(AppState::Menu, nowMs);
+    openTextEntry(TextEntryPurpose::SavePointName, tr3(TrKey3::NameBookmark), tr3(TrKey3::EnterNamePrompt), "",
+                  defaultName, "", false, 30, MenuScreen::SavePointsList);
+  } else {
+    finishSavePointCreation(defaultName, nowMs);
+  }
 }
 
 // ─── Slider tiles ───────────────────────────────────────────────────────────

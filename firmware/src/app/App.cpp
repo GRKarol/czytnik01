@@ -422,6 +422,8 @@ constexpr const char *kPrefFocusColorIndex = "foc_clr";
 constexpr const char *kPrefNanoPalette = "nano_pal";
 constexpr const char *kPrefNanoOwnAccent = "nano_acc";
 constexpr const char *kPrefNanoLayout = "nano_lay";
+constexpr const char *kPrefNanoUiFont = "nano_font";
+constexpr const char *kPrefLibrarySort = "lib_sort";
 constexpr const char *kPrefLegacyPacingLong = "pace_len";
 constexpr const char *kPrefLegacyPacingComplex = "pace_cpx";
 constexpr const char *kPrefLegacyPacingPunctuation = "pace_pnc";
@@ -991,6 +993,11 @@ void App::begin() {
   if (nanoLayout_ >= kNanoLayoutCount) {
     nanoLayout_ = kNanoLayoutLeft;
   }
+  nanoUiFontChoice_ = preferences_.getUChar(kPrefNanoUiFont, kNanoUiFontFollowReader);
+  librarySort_ = preferences_.getUChar(kPrefLibrarySort, 0);
+  if (librarySort_ >= 4) {
+    librarySort_ = 0;
+  }
   applyHandednessSettings(0, false);
   applyDisplayPreferences(0, false);
   applyTypographySettings(0, false);
@@ -1435,12 +1442,9 @@ void App::setState(AppState nextState, uint32_t nowMs) {
       renderMenu();
       break;
     case AppState::CompanionSync:
-      if (companionSync_.hasQrCode()) {
-        display_.renderStatusWithQr("Wi-Fi", companionSync_.statusLine1(),
-                                    companionSync_.qrCodeData(), companionSync_.qrCodeSize());
-      } else {
-        display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
-      }
+      companionSyncEnteredMs_ = nowMs;
+      companionSyncTouchStarted_ = false;
+      renderCompanionSyncScreen();
       break;
     case AppState::UsbTransfer:
       display_.renderStatus("USB", tr(TrKey::PreparingSD),
@@ -2121,6 +2125,11 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   if (nanoLayout_ >= kNanoLayoutCount) {
     nanoLayout_ = kNanoLayoutLeft;
   }
+  nanoUiFontChoice_ = preferences_.getUChar(kPrefNanoUiFont, kNanoUiFontFollowReader);
+  librarySort_ = preferences_.getUChar(kPrefLibrarySort, 0);
+  if (librarySort_ >= 4) {
+    librarySort_ = 0;
+  }
 
   reader_.setWpm(preferences_.getUShort(kPrefWpm, reader_.wpm()));
   applyReaderUiOrientation();
@@ -2154,6 +2163,8 @@ void App::loadTypographyConfigFromPreferences() {
 
 void App::applyTypographySettings(uint32_t nowMs, bool rerender) {
   display_.setTypographyConfig(effectiveTypographyConfig());
+  // Motywy > Czcionka "Jak czytanie" follows the reading typeface.
+  applyNanoUiFont();
 
   Serial.printf("[typography] face=%s highlight=%s track=%d anchor=%u guideWidth=%u guideGap=%u\n",
                 readerTypefaceLabel().c_str(),
@@ -2862,6 +2873,13 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
     return;
   }
 
+  // Modern mode's reader panel: its bottom bar is buttons, not reader
+  // gestures.
+  const bool readerPanel = nanoReaderPanelActive();
+  if (readerPanel && handleNanoReaderPanelTouch(event, nowMs)) {
+    return;
+  }
+
   if (event.phase == TouchPhase::Start) {
     touchPlayPendingRelease_ = false;
     pausedTouch_.active = true;
@@ -3014,16 +3032,18 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   if (ended) {
     pausedTouch_.active = false;
     pausedTouchIntent_ = TouchIntent::None;
-    if (tapLike && handleBatteryBadgeTap(event.x, event.y, nowMs)) {
+    // The classic reader chrome (battery badge, footer, rewind corner,
+    // save-point ribbon) isn't drawn on the reader panel.
+    if (!readerPanel && tapLike && handleBatteryBadgeTap(event.x, event.y, nowMs)) {
       return;
     }
-    if (tapLike && handleFooterMetricTap(event.x, event.y, nowMs)) {
+    if (!readerPanel && tapLike && handleFooterMetricTap(event.x, event.y, nowMs)) {
       return;
     }
-    if (tapLike && handlePreviousSentenceTap(event.x, event.y, nowMs)) {
+    if (!readerPanel && tapLike && handlePreviousSentenceTap(event.x, event.y, nowMs)) {
       return;
     }
-    if (tapLike && isSavePointButtonTap(event.x, event.y)) {
+    if (!readerPanel && tapLike && isSavePointButtonTap(event.x, event.y)) {
       resetReaderTapTracking();
       saveReadingPosition(true);
       const String defaultName = savePointDefaultName();
@@ -4425,8 +4445,9 @@ namespace {
 // first tap like a normal app button — doubling that up with a second
 // required tap only makes the UI feel unresponsive and broken.
 bool isDestructiveGridLabel(const String &label) {
-  const bool startsWithDelete = label.startsWith("Usun") || label.startsWith("Usuń") ||
-                                 label.startsWith("Delete");
+  // "Usun"/"Usuń": the Polish strings carry the firmware's single-byte
+  // encoding of "ń" (0x9D, src/text/LatinText.h), so match the stem.
+  const bool startsWithDelete = label.startsWith("Usu") || label.startsWith("Delete");
   return startsWithDelete && label.indexOf(": ") >= 0;
 }
 }  // namespace
@@ -6399,11 +6420,6 @@ constexpr uint32_t kWelcomeScreenFrameMs = 150;
 // Forces a look at the download QR before the corner "Next" appears —
 // see App::renderWelcomeConnect()/isWizardNextCornerTap().
 constexpr uint32_t kWelcomeConnectNextDelayMs = 5000;
-// Must match the box DisplayManager::renderStatusWithQr() draws for
-// cornerHint (70x20 at a 4px margin) — widened a little for an easier tap,
-// same idea as the wizard Confirm button's oversized hit zone.
-constexpr int kWizardNextCornerX = BoardConfig::DISPLAY_WIDTH - 90;
-constexpr int kWizardNextCornerY = BoardConfig::DISPLAY_HEIGHT - 30;
 }  // namespace
 
 bool App::welcomeConnectQrAvailable() const { return g_installAppQrSize > 0; }
@@ -6827,7 +6843,10 @@ void App::renderWelcomeConnect() {
 }
 
 bool App::isWizardNextCornerTap(uint16_t x, uint16_t y) const {
-  return x >= kWizardNextCornerX && y >= kWizardNextCornerY;
+  // The drawn button's rect depends on the skin (the Nano one is bigger);
+  // keep the old generous margin around whichever is on screen.
+  const ui::Rect corner = display_.qrCornerButtonRect();
+  return x + 16 >= corner.x && y + 10 >= corner.y;
 }
 
 void App::selectWelcomeConnectTap(uint32_t nowMs) {
@@ -8463,31 +8482,8 @@ void App::openBookPicker(bool articlesOnly) {
     sortedBookIndices.push_back(i);
   }
 
-  std::stable_sort(sortedBookIndices.begin(), sortedBookIndices.end(),
-                   [this](size_t leftIndex, size_t rightIndex) {
-                     const bool leftCurrent =
-                         usingStorageBook_ && leftIndex == currentBookIndex_;
-                     const bool rightCurrent =
-                         usingStorageBook_ && rightIndex == currentBookIndex_;
-                     if (leftCurrent != rightCurrent) {
-                       return leftCurrent;
-                     }
-
-                     const uint32_t leftRecent =
-                         bookRecentSequence(storage_.bookPath(leftIndex));
-                     const uint32_t rightRecent =
-                         bookRecentSequence(storage_.bookPath(rightIndex));
-                     const bool leftHasRecent = leftRecent > 0;
-                     const bool rightHasRecent = rightRecent > 0;
-                     if (leftHasRecent != rightHasRecent) {
-                       return leftHasRecent;
-                     }
-                     if (leftRecent != rightRecent) {
-                       return leftRecent > rightRecent;
-                     }
-
-                     return false;
-                   });
+  // Biblioteka order (Nano: sort pill; recent first everywhere else).
+  sortLibraryIndices(sortedBookIndices);
 
   for (size_t bookIndex : sortedBookIndices) {
     bookPickerBookIndices_.push_back(bookIndex);
@@ -8578,12 +8574,24 @@ void App::openChapterPicker() {
 
   chapterMenuItems_.push_back(uiText(UiText::RestartBook));
 
+  // Nano chapter wheel opens centered on the chapter being read.
+  nanoWheelCentered_ = chapterPickerSelectedIndex_ > 0 ? chapterPickerSelectedIndex_ - 1 : 0;
+  nanoWheelOffset_ = 0;
+  nanoWheelDragging_ = false;
+
   menuScreen_ = MenuScreen::ChapterPicker;
   renderChapterPicker();
 }
 
 void App::selectChapterPickerItem(uint32_t nowMs) {
   if (chapterPickerSelectedIndex_ == kChapterPickerBackIndex || chapterMenuItems_.size() <= 1) {
+    if (nanoChaptersFromPanel_) {
+      // Opened from the reader panel: Back returns there.
+      nanoChaptersFromPanel_ = false;
+      menuScreen_ = MenuScreen::Main;
+      setState(AppState::Paused, nowMs);
+      return;
+    }
     // Return to book details if we came from there, otherwise main menu
     if (bookDetailsMenuItems_.size() > 0) {
       menuScreen_ = MenuScreen::BookDetails;
@@ -8594,6 +8602,7 @@ void App::selectChapterPickerItem(uint32_t nowMs) {
     }
     return;
   }
+  nanoChaptersFromPanel_ = false;
 
   const size_t restartIndex = chapterMenuItems_.size() - 1;
   if (chapterPickerSelectedIndex_ == restartIndex) {
@@ -8677,6 +8686,7 @@ void App::selectBookDetailsItem(uint32_t nowMs) {
       return;
     }
     case 4: {  // Rozdzialy
+      nanoChaptersFromPanel_ = false;
       // Load the book so we have chapter markers available
       saveReadingPosition(true);
       if (!loadBookAtIndex(bookDetailsBookIndex_, nowMs, true, true, true, true)) {
@@ -9710,23 +9720,51 @@ void App::updateCompanionSync(uint32_t nowMs) {
     return;
   }
 
-  // Touch anywhere = exit sync (back button)
+  // A tap exits sync: anywhere on the classic screen, the "Zakoncz" button
+  // in the Modern one. It only counts when the touch also began here, after
+  // a short settle time. The tap that opened sync (and the controller's
+  // contact bounce after it) used to deliver a release right after the
+  // access point came up, which shut Wi-Fi down again ~2 s later, before a
+  // phone could join.
+  constexpr uint32_t kCompanionSyncTouchGraceMs = 700;
   TouchEvent ev;
-  if (touch_.poll(ev) && ev.phase == TouchPhase::End) {
-    exitCompanionSync(nowMs);
-    return;
+  if (touch_.poll(ev)) {
+    if (ev.phase == TouchPhase::Start) {
+      companionSyncTouchStarted_ = nowMs - companionSyncEnteredMs_ >= kCompanionSyncTouchGraceMs;
+    } else if (ev.phase == TouchPhase::End && companionSyncTouchStarted_) {
+      companionSyncTouchStarted_ = false;
+      const bool modern = navMode_ == NavMode::Modern;
+      if (!modern || display_.qrCornerButtonRect().contains(ev.x, ev.y) || !companionSync_.hasQrCode()) {
+        exitCompanionSync(nowMs);
+        return;
+      }
+    }
   }
 
   if (nowMs - lastCompanionSyncRenderMs_ >= 1000) {
     lastCompanionSyncRenderMs_ = nowMs;
+    renderCompanionSyncScreen();
+  }
+}
+
+void App::renderCompanionSyncScreen() {
+  if (navMode_ == NavMode::Modern) {
+    display_.setModernCardStyle(true);
     if (companionSync_.hasQrCode()) {
-      display_.renderStatusWithQr(tr3(TrKey3::BackWifiHeader),
-                                  companionSync_.statusLine1(),
-                                  companionSync_.qrCodeData(), companionSync_.qrCodeSize());
+      display_.renderStatusWithQr("Wi-Fi", companionSync_.statusLine1(), companionSync_.qrCodeData(),
+                                  companionSync_.qrCodeSize(), tr3(TrKey3::NanoScanHint),
+                                  tr3(TrKey3::NanoStopSync));
     } else {
-      display_.renderStatus(tr3(TrKey3::BackSyncHeader),
-                            companionSync_.statusLine1(), companionSync_.statusLine2());
+      display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
     }
+    return;
+  }
+  if (companionSync_.hasQrCode()) {
+    display_.renderStatusWithQr(tr3(TrKey3::BackWifiHeader), companionSync_.statusLine1(),
+                                companionSync_.qrCodeData(), companionSync_.qrCodeSize());
+  } else {
+    display_.renderStatus(tr3(TrKey3::BackSyncHeader), companionSync_.statusLine1(),
+                          companionSync_.statusLine2());
   }
 }
 
@@ -12089,6 +12127,11 @@ void App::renderActiveReader(uint32_t nowMs) {
     return;
   }
 
+  if (nanoReaderPanelActive()) {
+    renderNanoReaderPanel();
+    return;
+  }
+
   applyReaderUiOrientation();
   if (scrollModeEnabled()) {
     if (wpmFeedbackVisible_) {
@@ -12313,6 +12356,11 @@ void App::renderScrollReader(uint32_t nowMs, const String &overlayText) {
 
 void App::renderWpmFeedback(uint32_t nowMs) {
   if (!ensureCurrentBookWordAvailable(nowMs)) {
+    return;
+  }
+  if (nanoReaderPanelActive()) {
+    // The panel's speed stepper already shows the new value.
+    renderNanoReaderPanel();
     return;
   }
 

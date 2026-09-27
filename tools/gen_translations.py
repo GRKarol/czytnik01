@@ -55,8 +55,41 @@ def parse_enum_order(enum_name: str, text: str, source_path: Path) -> list[str]:
     return keys
 
 
+# UTF-8 in the CSV (Polish diacritics etc.) becomes the firmware's
+# single-byte text encoding (src/text/LatinText.h): the same slot map the
+# font generators use, Latin-1 identity for the rest, and a plain-ASCII
+# fallback for anything neither covers.
+sys.path.insert(0, str(ROOT / "firmware/tools"))
+from gen_nano_ui_fonts import CUSTOM_GLYPH_CODEPOINTS  # noqa: E402
+
+_SLOT_FOR_CODEPOINT = {cp: slot for slot, cp in CUSTOM_GLYPH_CODEPOINTS.items() if cp != 0x2026}
+_REPURPOSED_BYTES = {slot for slot in CUSTOM_GLYPH_CODEPOINTS if 0x80 <= slot <= 0xFF}
+
+
+def storage_byte(ch: str) -> int:
+    cp = ord(ch)
+    if cp in _SLOT_FOR_CODEPOINT:
+        return _SLOT_FOR_CODEPOINT[cp]
+    if 0xA0 <= cp <= 0xFF and cp not in _REPURPOSED_BYTES:
+        return cp
+    import unicodedata
+    base = unicodedata.normalize("NFKD", ch)[:1]
+    return ord(base) if base and ord(base) < 0x80 else ord("?")
+
+
 def escape_cpp(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    out = []
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ord(ch) < 0x80:
+            out.append(ch)
+        else:
+            # Close the literal after the escape: C++ hex escapes are greedy.
+            out.append(f'\\x{storage_byte(ch):02X}""')
+    return "".join(out)
 
 
 def main() -> None:
