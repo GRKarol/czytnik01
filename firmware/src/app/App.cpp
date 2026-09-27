@@ -106,6 +106,9 @@ constexpr uint32_t kPressFlashMs = 140;
 // (tabs, pager, shortcut tiles), run by App::runNanoAction() in
 // AppNano.inl instead of the screen's select*Item() handler.
 constexpr int kNanoActionBase = 10000;
+// Nano actions of the 2026-09-27 screens (app/AppExtras.inl) start here
+// (offsets from kNanoActionBase; AppNano.inl's own stay below it).
+constexpr int kExtraActionBase = 1000;
 // Minimum gap between two fires of the SAME grid button on the SAME
 // screen — see lastFiredGridItemIndex_ in App.h for why this exists
 // (capacitive-touch contact bounce reads as two quick taps from one
@@ -327,10 +330,10 @@ constexpr const char *kPrefTutorialDone = "tut_done";
 constexpr size_t kSettingsDisplayThemeIndex = 1;
 constexpr size_t kSettingsDisplayBrightnessIndex = 2;
 constexpr size_t kSettingsDisplayHandednessIndex = 3;
-// Moved up front (was slot 12, buried on page 2 of the Ekran grid) — save
-// point visibility is a control people reach for often, not a one-time
-// setup choice, so it belongs on the first page next to Theme/Brightness.
-constexpr size_t kSettingsDisplaySavePointBtnIndex = 4;
+// Was the reading screen's save-point button toggle; that button moved to
+// the reader panel for good (2026-09-27), the slot now picks how the
+// battery indicator looks.
+constexpr size_t kSettingsDisplayBatteryStyleIndex = 4;
 constexpr size_t kSettingsDisplayFooterIndex = 5;
 constexpr size_t kSettingsDisplayBatteryIndex = 6;
 constexpr size_t kSettingsDisplayScreensaverIndex = 7;
@@ -341,7 +344,7 @@ constexpr size_t kSettingsDisplayLanguageIndex = 11;
 constexpr size_t kSettingsDisplayFocusColorIndex = 12;
 constexpr size_t kSettingsDisplayHelpHintsIndex = 13;
 constexpr size_t kSettingsDisplayNavModeIndex = 14;
-// Appended at the end, not next to kSettingsDisplaySavePointBtnIndex, to
+// Appended at the end, not next to kSettingsDisplayBatteryStyleIndex, to
 // avoid reshuffling every other index in this list.
 constexpr size_t kSettingsDisplaySavePointNameModeIndex = 15;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
@@ -412,7 +415,7 @@ constexpr const char *kPrefScreensaverMode = "scrn_sv";
 constexpr const char *kPrefReaderBatteryVisible = "read_bat";
 constexpr const char *kPrefReaderChapterVisible = "read_ch";
 constexpr const char *kPrefReaderProgressVisible = "read_pct";
-constexpr const char *kPrefSavePointButtonVisible = "sp_btn";
+constexpr const char *kPrefBatteryStyle = "bat_style";
 constexpr const char *kPrefSavePointCustomName = "sp_name_cust";
 constexpr const char *kPrefReaderFontSize = "font_size";
 constexpr const char *kPrefReaderTypeface = "typeface";
@@ -881,8 +884,7 @@ void App::begin() {
       preferences_.getBool(kPrefReaderChapterVisible, readerChapterVisibleWhilePlaying_);
   readerProgressVisibleWhilePlaying_ =
       preferences_.getBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
-  savePointButtonVisible_ =
-      preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
+  display_.setBatteryStyle(preferences_.getUChar(kPrefBatteryStyle, DisplayManager::kBatteryStyleIconPercent));
   savePointUseCustomName_ =
       preferences_.getBool(kPrefSavePointCustomName, savePointUseCustomName_);
   showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
@@ -1215,9 +1217,12 @@ void App::update(uint32_t nowMs) {
     return;
   }
 
-  const bool batteryChanged = updateBatteryStatus(nowMs);
+  bool batteryChanged = updateBatteryStatus(nowMs);
   if (powerOffStarted_) {
     return;
+  }
+  if (batteryPresent_ && updateChargeProbe(nowMs)) {
+    batteryChanged = true;
   }
 
   if (batteryWarningOverlayVisible_) {
@@ -1411,6 +1416,7 @@ void App::setState(AppState nextState, uint32_t nowMs) {
   }
 
   if (nextState != AppState::Paused) {
+    nanoPanelScrubbing_ = false;
     pausedTouch_.active = false;
     pausedTouchIntent_ = TouchIntent::None;
     contextViewVisible_ = false;
@@ -2007,8 +2013,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       preferences_.getBool(kPrefReaderChapterVisible, readerChapterVisibleWhilePlaying_);
   readerProgressVisibleWhilePlaying_ =
       preferences_.getBool(kPrefReaderProgressVisible, readerProgressVisibleWhilePlaying_);
-  savePointButtonVisible_ =
-      preferences_.getBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
+  display_.setBatteryStyle(preferences_.getUChar(kPrefBatteryStyle, DisplayManager::kBatteryStyleIconPercent));
   savePointUseCustomName_ =
       preferences_.getBool(kPrefSavePointCustomName, savePointUseCustomName_);
   showHelpHints_ = preferences_.getBool(kPrefShowHelpHints, showHelpHints_);
@@ -2547,13 +2552,16 @@ bool App::isBatteryBadgeTap(uint16_t x, uint16_t y) const {
 }
 
 bool App::isPreviousSentenceTap(uint16_t x, uint16_t y) const {
-  // Left portion of top area only (not overlapping with SP button)
-  return x < 38 && y < 30;
+  // Left portion of top area only (not overlapping with SP button). Not in
+  // Official mode: the reader panel has its own "<<" button.
+  return navMode_ != NavMode::Modern && x < 38 && y < 30;
 }
 
 bool App::isSavePointButtonTap(uint16_t x, uint16_t y) const {
   // Right of "<<", top area: matches the save-point floppy icon at (40, 4).
-  return savePointButtonVisible_ && x >= 38 && x < 120 && y < 30;
+  (void)x;
+  (void)y;
+  return false;
 }
 
 bool App::isActivelyReading() const { return state_ == AppState::Playing; }
@@ -2569,8 +2577,12 @@ DisplayManager::ReaderChrome App::readerChrome() const {
   chrome.showBattery = readerBatteryVisibleWhilePlaying_;
   chrome.showChapter = !reading || readerChapterVisibleWhilePlaying_;
   chrome.showProgress = !reading || readerProgressVisibleWhilePlaying_;
-  chrome.showPreviousSentenceHint = !contextViewVisible_ || scrollModeEnabled();
-  chrome.showSavePointButton = savePointButtonVisible_;
+  // Official mode rewinds from the reader panel's "<<" button; the corner
+  // hint on the reading screen stays for the legacy navigation modes.
+  chrome.showPreviousSentenceHint = navMode_ != NavMode::Modern && (!contextViewVisible_ || scrollModeEnabled());
+  // The save-point ribbon lives on the reader panel now (Official mode) and
+  // in the Punkty zapisu list; the reading screen stays clean.
+  chrome.showSavePointButton = false;
   chrome.savePointAtCurrentPosition = isCurrentPositionSaved();
   return chrome;
 }
@@ -2994,11 +3006,21 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   }
 
   if (pausedTouchIntent_ == TouchIntent::Scrub) {
+    if (readerPanel && !nanoPanelScrubbing_) {
+      // Official mode: while the finger scrubs, the whole page shows in the
+      // scroll view (easier to find a place); the panel returns on lift.
+      nanoPanelScrubbing_ = true;
+    }
     applyScrubTarget(scrubStepsForDrag(deltaX), nowMs);
     if (ended) {
       pausedTouch_.active = false;
       pausedTouchIntent_ = TouchIntent::None;
       saveReadingPosition(true);
+      if (nanoPanelScrubbing_) {
+        nanoPanelScrubbing_ = false;
+        contextViewVisible_ = false;
+        renderActiveReader(nowMs);
+      }
     }
     return;
   }
@@ -3087,7 +3109,8 @@ int App::scrubStepsForDrag(int deltaX) const {
 }
 
 void App::applyScrubTarget(int targetSteps, uint32_t nowMs) {
-  if (targetSteps == pausedTouch_.gestureStepsApplied) {
+  if (targetSteps == pausedTouch_.gestureStepsApplied && !(nanoPanelScrubbing_ && !contextViewVisible_ &&
+                                                           !scrollModeEnabled())) {
     return;
   }
 
@@ -3742,6 +3765,9 @@ size_t *App::currentMenuSelectedIndexPtr(size_t &itemCountOut) {
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
     selectedIndex = &updateConfirmSelectedIndex_;
     itemCount = UpdateConfirmItemCount;
+  } else if (isExtraScreen()) {
+    selectedIndex = &extraSelectedIndex_;
+    itemCount = 1;
   }
 
   itemCountOut = itemCount;
@@ -4368,9 +4394,10 @@ void App::annotateSettingsDisplayButton(DisplayManager::Button &button,
       button.kind = DisplayManager::Button::ButtonKind::Toggle;
       button.active = readerProgressVisibleWhilePlaying_;
       break;
-    case kSettingsDisplaySavePointBtnIndex:
-      button.kind = DisplayManager::Button::ButtonKind::Toggle;
-      button.active = savePointButtonVisible_;
+    case kSettingsDisplayBatteryStyleIndex:
+      button.kind = DisplayManager::Button::ButtonKind::Cycle;
+      button.cycleCount = DisplayManager::kBatteryStyleCount;
+      button.cycleState = display_.batteryStyle();
       break;
     case kSettingsDisplaySavePointNameModeIndex:
       button.kind = DisplayManager::Button::ButtonKind::Toggle;
@@ -4667,6 +4694,12 @@ void App::selectMenuItem(uint32_t nowMs) {
     return;
   }
   lastMenuActionAtMs_ = nowMs;
+
+  if (isExtraScreen()) {
+    // Their only non-action target is Back (canonical index 0).
+    extraScreenBack(nowMs);
+    return;
+  }
 
   if (menuScreen_ == MenuScreen::WelcomeConnect) {
     // Cały ekran to jeden przycisk "Dalej" — bez tego wejścia potwierdzenie
@@ -5034,9 +5067,10 @@ void App::selectSettingsItem(uint32_t nowMs) {
         // path) — nothing left to do here.
         cycleFocusColor(nowMs);
         return;
-      case kSettingsDisplaySavePointBtnIndex:
-        savePointButtonVisible_ = !savePointButtonVisible_;
-        preferences_.putBool(kPrefSavePointButtonVisible, savePointButtonVisible_);
+      case kSettingsDisplayBatteryStyleIndex:
+        display_.setBatteryStyle(static_cast<uint8_t>((display_.batteryStyle() + 1) %
+                                                      DisplayManager::kBatteryStyleCount));
+        preferences_.putUChar(kPrefBatteryStyle, display_.batteryStyle());
         rebuildSettingsMenuItems();
         showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
@@ -6045,8 +6079,7 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back(uiText(UiText::Brightness) + ": " +
                                  String(currentBrightnessPercent()) + "%");
     settingsMenuItems_.push_back(String(tr(TrKey::ReaderHand)) + handednessLabel());
-    settingsMenuItems_.push_back(String(tr3(TrKey3::SaveBtnColon)) +
-                                 onOffLabel(savePointButtonVisible_));
+    settingsMenuItems_.push_back(String(tr4(TrKey4::BatteryStyleColon)) + batteryStyleLabel());
     settingsMenuItems_.push_back(String(tr(TrKey::FooterLabel)) +
                                  footerMetricModeLabel());
     settingsMenuItems_.push_back(String(tr(TrKey::BatteryLabel)) +
@@ -6241,6 +6274,10 @@ const char *App::tr2(TrKey2 key) const {
 
 const char *App::tr3(TrKey3 key) const {
   return Translations3::tr3(uiLanguage_, key);
+}
+
+const char *App::tr4(TrKey4 key) const {
+  return Translations4::tr4(uiLanguage_, key);
 }
 
 // ─── SettingsConnectivity ────────────────────────────────────────────────────
@@ -8200,6 +8237,19 @@ String App::firmwareUpdateMenuLabel() const {
 
 String App::uiText(UiText key) const { return Localization::text(uiLanguage_, key); }
 
+String App::batteryStyleLabel() const {
+  switch (display_.batteryStyle()) {
+    case DisplayManager::kBatteryStyleNumberInIcon:
+      return tr4(TrKey4::BatteryStyleNumberInIcon);
+    case DisplayManager::kBatteryStyleNumberOnly:
+      return tr4(TrKey4::BatteryStyleNumberOnly);
+    case DisplayManager::kBatteryStyleIconOnly:
+      return tr4(TrKey4::BatteryStyleIconOnly);
+    default:
+      return tr4(TrKey4::BatteryStyleIconPercent);
+  }
+}
+
 String App::themeModeLabel() const {
   if (nightMode_) {
     return uiText(UiText::Night);
@@ -9088,18 +9138,8 @@ void App::selectSavePointItem(uint32_t nowMs) {
       renderSavePointsList();
       return;
     }
-    // Generate default name
-    const String defaultName = savePointDefaultName();
     savePointQuickSaveFromReader_ = false;
-    if (savePointUseCustomName_) {
-      openTextEntry(TextEntryPurpose::SavePointName,
-                    tr3(TrKey3::NameBookmark),
-                    tr3(TrKey3::EnterNamePrompt),
-                    "", defaultName, "", false, 30,
-                    MenuScreen::SavePointsList);
-    } else {
-      finishSavePointCreation(defaultName, nowMs);
-    }
+    beginSavePointNaming(nowMs);
     return;
   }
 
@@ -11200,6 +11240,9 @@ int App::findBookIndexByPath(const String &path) const {
 
 void App::renderMenu() {
   applyReaderUiOrientation();
+  if (renderExtraScreen()) {
+    return;
+  }
 
   if (menuScreen_ == MenuScreen::SettingsHome || menuScreen_ == MenuScreen::SettingsDisplay ||
       menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::WifiSettings ||
@@ -12404,3 +12447,4 @@ void App::handleStorageStatus(void *context, const char *title, const char *line
 }
 
 #include "AppNano.inl"
+#include "AppExtras.inl"

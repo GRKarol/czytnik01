@@ -293,7 +293,14 @@ struct ReaderPanelView {
   String before;
   String word;
   String after;
+  // Scroll reading mode: the page around the word instead of the RSVP line.
+  bool scrollMode = false;
+  std::vector<DisplayManager::ContextWord> words;
+  size_t currentLocal = 0;
   int menuId = kNoTarget;
+  int rewindId = kNoTarget;   // back to the start of the sentence
+  int gotoId = kNoTarget;     // jump to %, page or chapter
+  int statusId = kNoTarget;   // the top line + progress bar (also opens "go to")
   int chaptersId = kNoTarget;
   int bookmarkId = kNoTarget;
   bool bookmarkFilled = false;
@@ -308,6 +315,45 @@ struct ReaderPanelView {
 };
 Rect readerPanelWordArea();
 Rect readerPanelBar();
+Rect readerPanelStatusArea();
 void paintReaderPanel(DisplayManager &d, Sink &sink, const ReaderPanelView &view);
+
+// ── Przejdz do (jump to %, page or chapter) ──
+
+struct GoToView {
+  Header header;
+  int segmentIds[3] = {kNoTarget, kNoTarget, kNoTarget};
+  String segmentLabels[3];
+  int segment = 0;
+  String value;    // "42%", "Strona 120 / 412", "5 / 12"
+  String detail;   // chapter at the target
+  String hint;     // "1 strona = 250 slow"
+  int sliderMin = 0;
+  int sliderMax = 100;
+  int sliderValue = 0;
+  bool dragging = false;
+  int minusId = kNoTarget;
+  int plusId = kNoTarget;
+  int readId = kNoTarget;
+  String readLabel;
+};
+Rect goToBarRect();
+void paintGoTo(DisplayManager &d, Sink &sink, const GoToView &view);
+
+// ── Two big choices under a question (bookmark name, ...) ──
+
+struct ChoiceView {
+  Header header;
+  String question;
+  struct Option {
+    int id = kNoTarget;
+    String label;
+    String detail;
+    Icon icon = Icon::None;
+    bool accent = false;
+  };
+  std::vector<Option> options;  // 2 or 3
+};
+void paintChoice(DisplayManager &d, Sink &sink, const ChoiceView &view);
 
 }  // namespace nano

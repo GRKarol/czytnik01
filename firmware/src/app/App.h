@@ -178,6 +178,11 @@ class App {
     // Nano UI's "Motywy" rail tab: palette chips, rail layout, own-accent
     // switch. Also NavMode::Modern only.
     NanoThemes,
+    // 2026-09-27 (app/AppExtras.inl), Nano-drawn in every nav mode.
+    GoToPosition,
+    SavePointNameChoice,
+    HelpPage,
+    FocusColorPicker,
   };
 
   // Which of the three pacing delays the PacingDelayEditor screen is
@@ -460,6 +465,7 @@ class App {
   const char *tr(TrKey key) const;
   const char *tr2(TrKey2 key) const;
   const char *tr3(TrKey3 key) const;
+  const char *tr4(TrKey4 key) const;
 
   /// Nowe ekrany ustawień zorganizowane wokół codziennego użycia (a nie
   /// odziedziczonej hierarchii rsvpnano). Otwieranie + handlery wyboru.
@@ -553,6 +559,7 @@ class App {
   String wpmEditorLabel() const;
   String firmwareUpdateMenuLabel() const;
   String themeModeLabel() const;
+  String batteryStyleLabel() const;
   String phantomWordsLabel() const;
   String focusHighlightLabel() const;
   String focusColorLabel() const;
@@ -838,6 +845,26 @@ class App {
   // in the Nano UI, the main menu otherwise.
   void returnFromSdCardTool();
   bool batteryChargingNow() const;
+  // ─── Extra screens (app/AppExtras.inl) ──────────────────────────────────
+  bool isExtraScreen() const;
+  // Draws the current screen if it is one of them; false otherwise.
+  bool renderExtraScreen();
+  void extraScreenBack(uint32_t nowMs);
+  void runExtraAction(int action, uint32_t nowMs);
+  // Przejdz do: jump to a percent, page (250 words) or chapter.
+  void openGoToPosition(bool fromBookDetails, uint32_t nowMs);
+  void renderGoToPosition();
+  bool handleGoToTouch(const TouchEvent &event, uint32_t nowMs);
+  int goToSliderValue(int &minimum, int &maximum) const;
+  void goToSetSliderValue(int value);
+  size_t chapterIndexForWord(size_t wordIndex) const;
+  // New bookmark: default name at once, or the choice screen first when
+  // custom names are on (then the keyboard only for "Wlasna nazwa").
+  void beginSavePointNaming(uint32_t nowMs);
+  void renderSavePointNameChoice();
+  // Charger detection from the cell voltage (no status pin on this board).
+  // True when the charging state flipped (indicator needs a repaint).
+  bool updateChargeProbe(uint32_t nowMs);
 
   /// True if `canonicalIndex` on the current menu screen is the armed
   /// (first-tapped, awaiting confirm) grid button and the confirm window
@@ -1261,6 +1288,16 @@ class App {
   int nanoPanelPressedAction_ = -1;
   // Chapter wheel opened from the reader panel: Back returns there.
   bool nanoChaptersFromPanel_ = false;
+  // Reader panel: a horizontal scrub is running (the classic scroll view
+  // shows the text while the finger moves, the panel comes back on lift).
+  bool nanoPanelScrubbing_ = false;
+  // Extra screens (app/AppExtras.inl).
+  size_t extraSelectedIndex_ = 0;
+  uint8_t goToSegment_ = 0;  // 0 percent, 1 page, 2 chapter
+  size_t goToTargetWord_ = 0;
+  bool goToDragging_ = false;
+  bool goToFromBookDetails_ = false;
+  uint32_t goToLastRenderMs_ = 0;
   // Companion sync: when it started, and whether the current touch began
   // inside it (a release without a start there is noise, not a tap).
   uint32_t companionSyncEnteredMs_ = 0;
@@ -1412,6 +1449,16 @@ class App {
   // branch and loadPendingBootBook().
   bool suppressBootStorageStatusRender_ = false;
   bool batteryPresent_ = false;
+  // updateChargeProbe() state.
+  uint32_t chargeProbeLastMs_ = 0;
+  uint32_t chargeStartMs_ = 0;
+  float chargeFastV_ = 0.0f;
+  float chargeBaselineV_ = 0.0f;
+  float chargeStartV_ = 0.0f;
+  float chargePeakV_ = 0.0f;
+  uint8_t chargeDropCount_ = 0;
+  bool chargeProbeReady_ = false;
+  bool chargingDetected_ = false;
   bool batterySampleInitialized_ = false;
   bool batteryRuntimeEstimateReady_ = false;
   uint8_t batteryCriticalSampleCount_ = 0;
@@ -1419,7 +1466,6 @@ class App {
   bool readerBatteryVisibleWhilePlaying_ = false;
   bool readerChapterVisibleWhilePlaying_ = true;
   bool readerProgressVisibleWhilePlaying_ = false;
-  bool savePointButtonVisible_ = false;
   bool savePointUseCustomName_ = true;
   // True while naming a save point created via the in-reader quick-save
   // button, so committing/cancelling that name entry resumes reading

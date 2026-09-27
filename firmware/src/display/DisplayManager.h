@@ -146,6 +146,10 @@ class DisplayManager {
     Sliders,
     Book,
     Restart,
+    Rewind,
+    Target,
+    Moon,
+    Image,
   };
 
   struct Button {
@@ -235,6 +239,16 @@ class DisplayManager {
   // Raw battery reading for the Nano skin's battery icon (fill level +
   // charging bolt); the text badge keeps using setBatteryLabel().
   void setBatteryState(bool present, uint8_t percent, bool charging);
+  // How every battery indicator (rail footer, reader panel, reading screen)
+  // shows the charge: icon + "76%", the number inside the icon, the bare
+  // number, or the icon alone. Stored in NVS by App, so only append.
+  static constexpr uint8_t kBatteryStyleIconPercent = 0;
+  static constexpr uint8_t kBatteryStyleNumberInIcon = 1;
+  static constexpr uint8_t kBatteryStyleNumberOnly = 2;
+  static constexpr uint8_t kBatteryStyleIconOnly = 3;
+  static constexpr uint8_t kBatteryStyleCount = 4;
+  void setBatteryStyle(uint8_t style);
+  uint8_t batteryStyle() const { return batteryStyle_; }
   void setBrightnessPercent(uint8_t percent);
   void setFocusColorIndex(uint8_t index);
   uint8_t focusColorIndex() const;
@@ -406,11 +420,22 @@ class DisplayManager {
   // so the word doesn't jump when reading starts.
   void nanoReaderPreview(const ui::Rect &area, const String &before, const String &word,
                          const String &after);
+  // Scroll-mode counterpart: three lines of the page around the current
+  // word (words[currentLocal]), what was read above dimmed, the word itself
+  // marked, in the reading typeface.
+  void nanoScrollPreview(const ui::Rect &area, const std::vector<ContextWord> &words, size_t currentLocal);
+  // Switches the Nano palette for the next frame(s) without forcing a
+  // repaint (reader panel: reading colors; restored right after).
+  void overrideNanoPalette(uint8_t palette, bool ownAccent);
   // The classic 5x7 glyph set, 1x, clipped — used for book-spine lettering.
   void nanoSmallGlyph(int x, int y, char c, uint16_t color);
   void nanoIcon(const ui::Rect &rect, NanoIcon icon, uint16_t ink, uint16_t surface);
   void nanoBatteryIcon(int x, int y, int w, int h, uint8_t percent, bool charging, uint16_t ink,
                        uint16_t surface);
+  // Lightning glyph drawn next to the battery while it charges.
+  void nanoChargingBolt(int cx, int cy, int h, uint16_t color);
+  // Width nanoBatteryInline() will take for the current style and state.
+  int nanoBatteryIndicatorWidth(bool compact = false) const;
 
   void nanoLabel(const ui::Rect &rect, const String &text, uint8_t size, NanoRole role,
                  NanoAlign align = NanoAlign::Start, uint8_t maxLines = 1);
@@ -462,7 +487,9 @@ class DisplayManager {
   // Battery icon with the percent label stacked under it.
   void nanoBatteryStack(const ui::Rect &rect);
   // Battery icon and percent side by side, centered in `rect` (rail footer).
-  void nanoBatteryInline(const ui::Rect &rect, bool iconOnly = false);
+  // `iconOnly` = the compact rail (narrow: "Ikona + %" becomes the number in
+  // the icon). `align` places the indicator inside `rect`.
+  void nanoBatteryInline(const ui::Rect &rect, bool iconOnly = false, NanoAlign align = NanoAlign::Center);
   // line1ScalePercent/line2ScalePercent domyślnie 36/28 (dotychczasowy
   // rozmiar) — ekrany kreatora pierwszego uruchomienia proszą o większe
   // wartości, żeby tekst był czytelny dla osób 40+, bez zmiany rozmiaru na
@@ -616,6 +643,9 @@ class DisplayManager {
   int logicalWidth() const;
   int logicalHeight() const;
   uint16_t focusTimerBreakColor() const;
+  uint16_t nanoBatteryLevelColor(uint8_t percent, bool charging) const;
+  String batteryNumberLabel() const;
+  uint8_t batteryStyleFor(bool compact) const;
 
   uint16_t *virtualFrame_ = nullptr;
   uint16_t *txBuffer_ = nullptr;
@@ -638,6 +668,7 @@ class DisplayManager {
   bool batteryPresent_ = false;
   uint8_t batteryPercent_ = 0;
   bool batteryCharging_ = false;
+  uint8_t batteryStyle_ = kBatteryStyleIconPercent;
   // Incremented by every drawBitmap() — nanoEndFrame() may only skip an
   // unchanged frame if nothing else reached the panel since it last flushed.
   uint32_t panelWriteCount_ = 0;

@@ -354,3 +354,21 @@ DictStr.MicUnavailable;Mikrofon niedostępny;Mic unavailable;Microfono no dispon
 DictStr.RecordingFailed;Nagrywanie nie powiodło się;Recording failed;Grabacion fallida;Enregistrement echoue;Aufnahme fehlgeschlagen;Inregistrare esuata
 DictStr.TryAgain;Spróbuj ponownie;Try again;Intentalo de nuevo;Reessayez;Erneut versuchen;Incearca din nou
 DictStr.PeakAbbrev;Pzm;Lvl;Niv;Niv;Peg;Niv
+TrKey4.BatteryStyleColon;Wskaźnik baterii: ;Battery indicator: ;Indicador de batería: ;Indicateur batterie : ;Akkuanzeige: ;Indicator baterie: 
+TrKey4.BatteryStyleIconPercent;Ikona + %;Icon + %;Icono + %;Icône + %;Symbol + %;Pictogramă + %
+TrKey4.BatteryStyleNumberInIcon;Liczba w ikonie;Number in icon;Número en icono;Chiffre dans l'icône;Zahl im Symbol;Număr în pictogramă
+TrKey4.BatteryStyleNumberOnly;Sama liczba;Number only;Solo número;Chiffre seul;Nur Zahl;Doar număr
+TrKey4.BatteryStyleIconOnly;Tylko ikona;Icon only;Solo icono;Icône seule;Nur Symbol;Doar pictogramă
+TrKey4.GoToTitle;Przejdź do;Go to;Ir a;Aller à;Gehe zu;Mergi la
+TrKey4.GoToPercent;Procent;Percent;Porcentaje;Pourcentage;Prozent;Procent
+TrKey4.GoToPage;Strona;Page;Página;Page;Seite;Pagină
+TrKey4.GoToChapter;Rozdział;Chapter;Capítulo;Chapitre;Kapitel;Capitol
+TrKey4.GoToReadHere;Czytaj stąd;Read from here;Leer desde aquí;Lire d'ici;Ab hier lesen;Citește de aici
+TrKey4.GoToPageOf;z;of;de;sur;von;din
+TrKey4.GoToPageSize;1 strona = 250 słów;1 page = 250 words;1 página = 250 palabras;1 page = 250 mots;1 Seite = 250 Wörter;1 pagină = 250 cuvinte
+TrKey4.GoToNoChapters;Ta książka nie ma rozdziałów;This book has no chapters;Este libro no tiene capítulos;Ce livre n'a pas de chapitres;Dieses Buch hat keine Kapitel;Cartea nu are capitole
+TrKey4.BookmarkNameQuestion;Jak nazwać zakładkę?;How should the bookmark be named?;¿Cómo nombrar el marcador?;Quel nom pour le signet ?;Wie soll das Lesezeichen heißen?;Cum numim semnul?
+TrKey4.BookmarkNameDefault;Domyślna nazwa;Default name;Nombre por defecto;Nom par défaut;Standardname;Nume implicit
+TrKey4.BookmarkNameCustom;Własna nazwa;Custom name;Nombre propio;Nom personnalisé;Eigener Name;Nume propriu
+TrKey4.BookmarkNameCustomDetail;Wpisz na klawiaturze;Type it on the keyboard;Escríbelo con el teclado;Tapez-le au clavier;Über die Tastatur eingeben;Scrie-l la tastatură
+TrKey4.PanelGoToHint;Dotknij paska u góry, by przejść do miejsca;Tap the top bar to jump to a place;Toca la barra superior para saltar;Touchez la barre du haut pour sauter;Obere Leiste antippen, um zu springen;Atinge bara de sus pentru a sări

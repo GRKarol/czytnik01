@@ -314,6 +314,28 @@ enum class TrKey3 : uint8_t {
   NanoLayoutTab,
 };
 
+// Strings added by the 2026-09-27 update (TrKey3 is close to full).
+enum class TrKey4 : uint8_t {
+  BatteryStyleColon,
+  BatteryStyleIconPercent,
+  BatteryStyleNumberInIcon,
+  BatteryStyleNumberOnly,
+  BatteryStyleIconOnly,
+  GoToTitle,
+  GoToPercent,
+  GoToPage,
+  GoToChapter,
+  GoToReadHere,
+  GoToPageOf,
+  GoToPageSize,
+  GoToNoChapters,
+  BookmarkNameQuestion,
+  BookmarkNameDefault,
+  BookmarkNameCustom,
+  BookmarkNameCustomDetail,
+  PanelGoToHint,
+};
+
 namespace Translations3 {
 
 inline const char *tr3(UiLanguage lang, TrKey3 key) {
@@ -321,3 +343,11 @@ inline const char *tr3(UiLanguage lang, TrKey3 key) {
 }
 
 }  // namespace Translations3
+
+namespace Translations4 {
+
+inline const char *tr4(UiLanguage lang, TrKey4 key) {
+  return TranslationsData::trKey4Lookup(static_cast<uint8_t>(key), static_cast<uint8_t>(lang));
+}
+
+}  // namespace Translations4

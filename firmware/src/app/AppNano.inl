@@ -74,6 +74,8 @@ enum NanoPanelAction : int {
   kPanelWpmMinus,
   kPanelWpmPlus,
   kPanelStart,
+  kPanelRewind,
+  kPanelGoTo,
 };
 
 // Library order (NVS lib_sort).
@@ -221,6 +223,9 @@ struct NanoPanelSink : nano::Sink {
 // ─── Mode / screen classification ───────────────────────────────────────────
 
 bool App::nanoUiActive() const {
+  if (isExtraScreen()) {
+    return true;
+  }
   if (navMode_ != NavMode::Modern) {
     return false;
   }
@@ -1395,6 +1400,10 @@ bool App::nanoChangePage(int delta, bool fromSwipe) {
 }
 
 void App::runNanoAction(int action, uint32_t nowMs) {
+  if (action >= kExtraActionBase) {
+    runExtraAction(action, nowMs);
+    return;
+  }
   if (action >= kNanoThemeFont) {
     const int family = action - kNanoThemeFont - 1;
     setNanoUiFontChoice(family < 0 ? kNanoUiFontFollowReader : static_cast<uint8_t>(family));
@@ -1505,6 +1514,9 @@ void App::returnFromPlugin() {
 // ─── Live-drag screens ──────────────────────────────────────────────────────
 
 bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
+  if (menuScreen_ == MenuScreen::GoToPosition) {
+    return handleGoToTouch(event, nowMs);
+  }
   if (handleNanoSliderTouch(event, nowMs)) {
     return true;
   }
@@ -1684,7 +1696,7 @@ bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
 
 bool App::nanoReaderPanelActive() const {
   return navMode_ == NavMode::Modern && state_ == AppState::Paused && !pendingBootBookLoad_ &&
-         !chapterTransitionVisible_;
+         !chapterTransitionVisible_ && !nanoPanelScrubbing_;
 }
 
 void App::renderNanoReaderPanel() {
@@ -1701,6 +1713,13 @@ void App::renderNanoReaderPanel() {
   if (wordCount > 0) {
     const size_t current = std::min(reader_.currentIndex(), wordCount - 1);
     view.timeLeft = formatReadingTimeRemaining(estimatedReadingTimeRemainingMs(current, wordCount));
+    if (scrollModeEnabled()) {
+      // Scroll reading: show the page around the word, not an RSVP line.
+      updateContextPreviewWindow(current);
+      view.scrollMode = true;
+      view.words = contextPreviewWords_;
+      view.currentLocal = current >= contextPreviewStartIndex_ ? current - contextPreviewStartIndex_ : 0;
+    }
   }
   view.before = phantomBeforeText();
   view.word = reader_.currentWord();
@@ -1710,18 +1729,27 @@ void App::renderNanoReaderPanel() {
   view.chaptersId = kPanelChapters;
   view.bookmarkId = kPanelBookmark;
   view.bookmarkFilled = isCurrentPositionSaved();
+  view.rewindId = kPanelRewind;
+  view.gotoId = usingStorageBook_ ? kPanelGoTo : nano::kNoTarget;
+  view.statusId = usingStorageBook_ ? kPanelGoTo : nano::kNoTarget;
   view.minusId = kPanelWpmMinus;
   view.plusId = kPanelWpmPlus;
   view.wpmLabel = String(static_cast<unsigned>(reader_.wpm())) + " " + tr3(TrKey3::NanoWpmUnit);
   view.startId = kPanelStart;
   view.startLabel = uiText(UiText::Read);
-  view.hint = tr3(TrKey3::NanoPanelHint);
+  view.hint = view.scrollMode ? String() : String(tr3(TrKey3::NanoPanelHint));
 
+  // The panel is the doorway to the reading screen, so it wears the
+  // reading colors (Motyw czytania + kolor litery), not the menu palette.
+  const uint8_t menuPalette = display_.nanoPalette();
+  const bool menuOwnAccent = display_.nanoOwnAccent();
+  display_.overrideNanoPalette(DisplayManager::kNanoPaletteClassic, false);
   nanoPanelTargets_.clear();
   NanoPanelSink sink(nanoPanelTargets_, nanoPanelPressedAction_);
   display_.nanoBeginFrame();
   nano::paintReaderPanel(display_, sink, view);
   display_.nanoEndFrame();
+  display_.overrideNanoPalette(menuPalette, menuOwnAccent);
 }
 
 bool App::handleNanoReaderPanelTouch(const TouchEvent &event, uint32_t nowMs) {
@@ -1734,7 +1762,8 @@ bool App::handleNanoReaderPanelTouch(const TouchEvent &event, uint32_t nowMs) {
     return -1;
   };
   if (event.phase == TouchPhase::Start) {
-    nanoPanelBarTouch_ = nano::readerPanelBar().contains(event.x, event.y);
+    nanoPanelBarTouch_ = nano::readerPanelBar().contains(event.x, event.y) ||
+                         (usingStorageBook_ && nano::readerPanelStatusArea().contains(event.x, event.y));
     if (!nanoPanelBarTouch_) {
       return false;
     }
@@ -1787,6 +1816,16 @@ void App::runNanoReaderPanelAction(int action, uint32_t nowMs) {
       Serial.printf("[app] WPM=%u (panel)\n", reader_.wpm());
       renderNanoReaderPanel();
       return;
+    case kPanelRewind:
+      reader_.rewindSentence();
+      invalidateContextPreviewWindow();
+      saveReadingPosition(true);
+      Serial.printf("[app] sentence rewind (panel) index=%u\n", static_cast<unsigned>(reader_.currentIndex()));
+      renderNanoReaderPanel();
+      return;
+    case kPanelGoTo:
+      openGoToPosition(false, nowMs);
+      return;
     case kPanelStart:
       playLocked_ = true;
       pauseAtSentenceEndRequested_ = false;
@@ -1804,16 +1843,9 @@ void App::quickSavePointFromReader(uint32_t nowMs) {
     setState(AppState::Paused, nowMs);
   }
   saveReadingPosition(true);
-  const String defaultName = savePointDefaultName();
   savePointQuickSaveFromReader_ = true;
-  if (savePointUseCustomName_) {
-    menuScreen_ = MenuScreen::Main;
-    setState(AppState::Menu, nowMs);
-    openTextEntry(TextEntryPurpose::SavePointName, tr3(TrKey3::NameBookmark), tr3(TrKey3::EnterNamePrompt), "",
-                  defaultName, "", false, 30, MenuScreen::SavePointsList);
-  } else {
-    finishSavePointCreation(defaultName, nowMs);
-  }
+  menuScreen_ = MenuScreen::Main;
+  beginSavePointNaming(nowMs);
 }
 
 // ─── Slider tiles ───────────────────────────────────────────────────────────
@@ -2021,11 +2053,73 @@ bool App::batteryChargingNow() const {
   }
 #if RSVP_USB_TRANSFER_ENABLED && CONFIG_TINYUSB_MSC_ENABLED && !ARDUINO_USB_MODE
   // Enumerated by a computer = on USB power. A plain wall charger doesn't
-  // enumerate; that case falls back to the voltage check below.
+  // enumerate; that case is what updateChargeProbe() is for.
   if (tud_inited() && tud_mounted()) {
     return true;
   }
 #endif
-  // A charger holds the cell near 4.2 V; a resting pack sits below that.
-  return batteryFilteredVoltage_ >= 4.18f;
+  return chargingDetected_;
+}
+
+// The board has no charger status line, so charging is read off the cell
+// voltage: plugging a charger in lifts it by ~0.1 V at once, then it keeps
+// climbing; unplugging drops it back. The regular battery sample runs every
+// few minutes, far too slow to catch the step, so this probes on its own,
+// short cadence (a reading takes ~25 ms, so only rarely while playing).
+bool App::updateChargeProbe(uint32_t nowMs) {
+  constexpr uint32_t kProbeMs = 6000;
+  constexpr uint32_t kProbePlayingMs = 45000;
+  constexpr float kStepV = 0.07f;        // plug-in / unplug step
+  constexpr float kSettleDropV = 0.035f; // slow drop after unplugging a full cell
+  constexpr uint32_t kClimbCheckMs = 240000;
+  const uint32_t interval = state_ == AppState::Playing ? kProbePlayingMs : kProbeMs;
+  if (chargeProbeLastMs_ != 0 && nowMs - chargeProbeLastMs_ < interval) {
+    return false;
+  }
+  chargeProbeLastMs_ = nowMs;
+  BoardConfig::BatteryStatus status;
+  if (!BoardConfig::readBatteryStatus(status)) {
+    return false;
+  }
+  const float v = status.voltage;
+  if (!chargeProbeReady_) {
+    chargeProbeReady_ = true;
+    chargeFastV_ = v;
+    chargeBaselineV_ = v;
+    return false;
+  }
+  chargeFastV_ = chargeFastV_ * 0.5f + v * 0.5f;
+  const bool wasCharging = chargingDetected_;
+  if (!chargingDetected_) {
+    if (chargeFastV_ - chargeBaselineV_ >= kStepV) {
+      chargingDetected_ = true;
+      chargeStartV_ = chargeBaselineV_;
+      chargeStartMs_ = nowMs;
+      chargePeakV_ = chargeFastV_;
+      chargeDropCount_ = 0;
+    } else {
+      // Follow the slow discharge (and ADC drift) without chasing spikes.
+      chargeBaselineV_ = chargeBaselineV_ * 0.85f + chargeFastV_ * 0.15f;
+    }
+  } else {
+    chargePeakV_ = std::max(chargePeakV_, chargeFastV_);
+    const float drop = chargePeakV_ - chargeFastV_;
+    chargeDropCount_ = drop >= kSettleDropV ? static_cast<uint8_t>(chargeDropCount_ + 1) : 0;
+    const bool unplugged = drop >= kStepV || chargeDropCount_ >= 3;
+    // A step with no climb after it was a load change (Wi-Fi or the
+    // backlight going off), not a charger.
+    const bool noClimb = nowMs - chargeStartMs_ >= kClimbCheckMs && chargePeakV_ < chargeStartV_ + kStepV + 0.015f &&
+                         chargeFastV_ < 4.12f;
+    if (unplugged || noClimb) {
+      chargingDetected_ = false;
+      chargeBaselineV_ = chargeFastV_;
+    }
+  }
+  if (wasCharging == chargingDetected_) {
+    return false;
+  }
+  Serial.printf("[power] charging=%d (v=%.3f base=%.3f)\n", chargingDetected_ ? 1 : 0, static_cast<double>(v),
+                static_cast<double>(chargeBaselineV_));
+  display_.setBatteryState(batteryPresent_, batteryDisplayedPercent_, batteryChargingNow());
+  return true;
 }

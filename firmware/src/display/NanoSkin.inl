@@ -173,8 +173,14 @@ uint16_t nanoReadable(uint16_t color, uint16_t background) {
 // ─── State ──────────────────────────────────────────────────────────────────
 
 void DisplayManager::setBatteryState(bool present, uint8_t percent, bool charging) {
+  percent = std::min<uint8_t>(percent, 100);
+  if (present != batteryPresent_ || percent != batteryPercent_ || charging != batteryCharging_) {
+    // The classic reader screens cache on a render key; make them repaint
+    // the indicator (the Nano frames compare pixels anyway).
+    lastRenderKey_ = "";
+  }
   batteryPresent_ = present;
-  batteryPercent_ = std::min<uint8_t>(percent, 100);
+  batteryPercent_ = percent;
   batteryCharging_ = charging;
 }
 
@@ -841,6 +847,87 @@ void DisplayManager::nanoReaderPreview(const ui::Rect &area, const String &befor
   nanoResetClip();
 }
 
+void DisplayManager::nanoScrollPreview(const ui::Rect &area, const std::vector<ContextWord> &words,
+                                       size_t currentLocal) {
+  if (words.empty() || area.h < 20 || area.w < 40) {
+    return;
+  }
+  const ReaderTypeface face = currentReaderTypeface();
+  const int baseHeight = std::max(1, baseGlyphHeightForTypeface(face));
+  // Three lines of body text in the strip: the one with the current word
+  // in the middle, what was just read above it, what comes next below.
+  constexpr int kLines = 3;
+  const int lineStep = static_cast<int>(area.h) / kLines;
+  const int textHeightWanted = std::max(10, lineStep * 7 / 10);
+  const uint8_t scalePercent = static_cast<uint8_t>(std::max(12, std::min(100, textHeightWanted * 100 / baseHeight)));
+  const int textHeight = scaledPercentDimension(baseHeight, scalePercent);
+  const int space = std::max(4, textHeight * 3 / 10);
+  constexpr int kPad = 14;
+  const int maxWidth = static_cast<int>(area.w) - kPad * 2;
+
+  struct Placed {
+    size_t index;
+    int x;
+    int width;
+  };
+  std::vector<std::vector<Placed>> lines(1);
+  int cursor = 0;
+  int currentLine = -1;
+  for (size_t i = 0; i < words.size(); ++i) {
+    const int width = nanoTypefaceTextWidth(words[i].text, scalePercent);
+    const bool breakHere = !lines.back().empty() &&
+                           ((words[i].paragraphStart && i > 0) || cursor + space + width > maxWidth);
+    if (breakHere) {
+      if (currentLine >= 0 && static_cast<int>(lines.size()) > currentLine + kLines) {
+        break;  // enough lines after the current one
+      }
+      lines.emplace_back();
+      cursor = 0;
+    }
+    const int x = lines.back().empty() ? 0 : cursor + space;
+    lines.back().push_back({i, x, width});
+    cursor = x + width;
+    if (i == currentLocal) {
+      currentLine = static_cast<int>(lines.size()) - 1;
+    }
+  }
+  if (currentLine < 0) {
+    currentLine = 0;
+  }
+
+  const uint16_t background = nanoColor(NanoRole::Background);
+  const uint16_t ink = nanoColor(NanoRole::Foreground);
+  const uint16_t read = nanoMix565(background, ink, 110);
+  const uint16_t focus = nanoReadable(nanoColor(NanoRole::Accent), background);
+  nanoSetClip(area.x, area.y, area.w, area.h);
+  for (int row = 0; row < kLines; ++row) {
+    const int lineIndex = currentLine - 1 + row;
+    if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
+      continue;
+    }
+    const int top = area.y + row * lineStep + (lineStep - textHeight) / 2;
+    for (const Placed &placed : lines[static_cast<size_t>(lineIndex)]) {
+      const int x = area.x + kPad + placed.x;
+      uint16_t color = placed.index < currentLocal ? read : ink;
+      if (placed.index == currentLocal) {
+        // The word the reader resumes from: an accent underline and ink.
+        nanoFillRoundRect(x - 3, top - 2, placed.width + 6, textHeight + 4, 4, nanoColor(NanoRole::SurfaceMuted));
+        nanoFillRect(x, top + textHeight + 1, placed.width, 2, nanoColor(NanoRole::Accent));
+        color = focus;
+      }
+      nanoTypefaceText(x, top, words[placed.index].text, color, scalePercent);
+    }
+  }
+  nanoResetClip();
+}
+
+void DisplayManager::overrideNanoPalette(uint8_t palette, bool ownAccent) {
+  // Temporary switch for one screen (the reader panel draws in the reading
+  // colors); no render-key reset, the frame hash still dedups flushes.
+  nanoPalette_ = palette > kNanoFixedPaletteCount ? kNanoPaletteClassic : palette;
+  nanoOwnAccent_ = ownAccent;
+}
+
 // ─── Icons ──────────────────────────────────────────────────────────────────
 // ~20px line icons, 2px strokes, centered in `rect`. The first few follow
 // rsvpnano's src/ui/Icons.cpp; the rest are drawn in the same spirit.
@@ -1066,6 +1153,34 @@ void DisplayManager::nanoIcon(const ui::Rect &rect, NanoIcon icon, uint16_t ink,
       nanoCircleHelper(cx, cy, 7, 0x1 | 0x4 | 0x8, ink);
       nanoFillTriangle(cx + 2, cy - 11, cx + 2, cy - 3, cx + 8, cy - 7, ink);
       break;
+    case NanoIcon::Rewind:
+      // "<<": back to the start of the sentence.
+      nanoThickLine(cx - 1, cy - 7, cx - 8, cy, ink);
+      nanoThickLine(cx - 8, cy, cx - 1, cy + 7, ink);
+      nanoThickLine(cx + 7, cy - 7, cx, cy, ink);
+      nanoThickLine(cx, cy, cx + 7, cy + 7, ink);
+      break;
+    case NanoIcon::Target: {
+      // Go to a position: a ring with a centre dot and four ticks.
+      nanoDrawCircle(cx, cy, 7, ink);
+      nanoDrawCircle(cx, cy, 6, ink);
+      nanoFillCircle(cx, cy, 2, ink);
+      nanoFillRect(cx - 1, cy - 11, 2, 4, ink);
+      nanoFillRect(cx - 1, cy + 8, 2, 4, ink);
+      nanoFillRect(cx - 11, cy - 1, 4, 2, ink);
+      nanoFillRect(cx + 8, cy - 1, 4, 2, ink);
+      break;
+    }
+    case NanoIcon::Moon:
+      nanoFillCircle(cx, cy, 8, ink);
+      nanoFillCircle(cx + 5, cy - 3, 7, surface);
+      break;
+    case NanoIcon::Image:
+      nanoDrawRoundRect(cx - 10, cy - 8, 20, 16, 2, ink);
+      nanoFillTriangle(cx - 7, cy + 5, cx - 1, cy - 2, cx + 4, cy + 5, ink);
+      nanoFillTriangle(cx + 1, cy + 5, cx + 5, cy, cx + 8, cy + 5, ink);
+      nanoFillCircle(cx + 5, cy - 4, 2, ink);
+      break;
     case NanoIcon::None:
     default:
       break;
@@ -1074,29 +1189,154 @@ void DisplayManager::nanoIcon(const ui::Rect &rect, NanoIcon icon, uint16_t ink,
 
 void DisplayManager::nanoBatteryIcon(int x, int y, int w, int h, uint8_t percent, bool charging,
                                      uint16_t ink, uint16_t surface) {
-  constexpr uint16_t kBatteryGood = nanoRgb(126, 176, 92);
-  constexpr uint16_t kBatteryMedium = nanoRgb(214, 163, 58);
-  constexpr uint16_t kBatteryLow = nanoRgb(200, 82, 82);
+  (void)surface;
   constexpr int kCapWidth = 2;
   if (w <= kCapWidth + 4 || h <= 4) {
     return;
   }
   percent = std::min<uint8_t>(percent, 100);
   const int bodyWidth = w - kCapWidth;
-  const uint16_t fillColor = charging || percent > 35 ? kBatteryGood : percent <= 18 ? kBatteryLow : kBatteryMedium;
   nanoDrawRoundRect(x, y, bodyWidth, h, 3, ink);
   nanoFillRect(x + bodyWidth, y + h / 2 - 2, kCapWidth, 4, ink);
   const int innerWidth = std::max(0, bodyWidth - 4);
-  const int fill = charging ? innerWidth : innerWidth * percent / 100;
+  const int fill = innerWidth * percent / 100;
   if (fill > 0) {
-    nanoFillRoundRect(x + 2, y + 2, fill, h - 4, 1, fillColor);
+    nanoFillRoundRect(x + 2, y + 2, std::max(2, fill), h - 4, 1, nanoBatteryLevelColor(percent, charging));
   }
-  if (charging) {
-    const int cx = x + bodyWidth / 2;
-    const int cy = y + h / 2;
-    nanoFillTriangle(cx + 1, y + 1, cx - 3, cy + 1, cx + 1, cy + 1, surface);
-    nanoFillTriangle(cx - 1, y + h - 2, cx + 3, cy - 1, cx - 1, cy - 1, surface);
+}
+
+uint16_t DisplayManager::nanoBatteryLevelColor(uint8_t percent, bool charging) const {
+  constexpr uint16_t kBatteryGood = nanoRgb(126, 176, 92);
+  constexpr uint16_t kBatteryMedium = nanoRgb(214, 163, 58);
+  constexpr uint16_t kBatteryLow = nanoRgb(200, 82, 82);
+  return charging || percent > 35 ? kBatteryGood : percent <= 18 ? kBatteryLow : kBatteryMedium;
+}
+
+void DisplayManager::nanoChargingBolt(int cx, int cy, int h, uint16_t color) {
+  // Two triangles: the upper one leans right, the lower one left, sharing
+  // a short horizontal step in the middle -- the usual lightning glyph.
+  const int half = std::max(4, h / 2);
+  const int w = std::max(3, h * 5 / 12);
+  nanoFillTriangle(cx + w / 2 + 1, cy - half, cx - w, cy + 1, cx + 1, cy + 1, color);
+  nanoFillTriangle(cx - w / 2 - 1, cy + half, cx + w, cy - 1, cx - 1, cy - 1, color);
+}
+
+void DisplayManager::setBatteryStyle(uint8_t style) {
+  if (style >= kBatteryStyleCount) {
+    style = kBatteryStyleIconPercent;
   }
+  if (style == batteryStyle_) {
+    return;
+  }
+  batteryStyle_ = style;
+  lastRenderKey_ = "";
+}
+
+String DisplayManager::batteryNumberLabel() const {
+  if (batteryPresent_) {
+    return String(static_cast<unsigned>(batteryPercent_));
+  }
+  String label = batteryLabel_;
+  label.replace("%", "");
+  label.trim();
+  return label;
+}
+
+int DisplayManager::nanoBatteryIndicatorWidth(bool compact) const {
+  if (!batteryPresent_ && batteryLabel_.isEmpty()) {
+    return 0;
+  }
+  const int bolt = batteryCharging_ ? 12 : 0;
+  switch (batteryStyleFor(compact)) {
+    case kBatteryStyleNumberInIcon:
+      return 34 + bolt;
+    case kBatteryStyleNumberOnly:
+      return nanoTextWidth(batteryNumberLabel(), 1) + 2 + bolt;
+    case kBatteryStyleIconOnly:
+      return 24 + bolt;
+    case kBatteryStyleIconPercent:
+    default: {
+      const String label = batteryPresent_ ? nanoPercentLabel(batteryPercent_) : batteryLabel_;
+      return 24 + 6 + nanoTextWidth(label, 1) + bolt;
+    }
+  }
+}
+
+uint8_t DisplayManager::batteryStyleFor(bool compact) const {
+  // The icon-only rail is 60 px wide: "Ikona + %" and the long labels would
+  // not fit next to its tabs, the number inside the icon does.
+  if (compact && batteryStyle_ == kBatteryStyleIconPercent) {
+    return kBatteryStyleNumberInIcon;
+  }
+  return batteryStyle_;
+}
+
+void DisplayManager::nanoBatteryInline(const ui::Rect &rect, bool iconOnly, NanoAlign align) {
+  if (!batteryPresent_ && batteryLabel_.isEmpty()) {
+    return;
+  }
+  const uint8_t style = batteryStyleFor(iconOnly);
+  const uint16_t ink = nanoColor(NanoRole::Muted);
+  const uint16_t background = nanoColor(NanoRole::Background);
+  const int total = nanoBatteryIndicatorWidth(iconOnly);
+  int x = rect.x + (static_cast<int>(rect.w) - total) / 2;
+  if (align == NanoAlign::End) {
+    x = rect.x + static_cast<int>(rect.w) - total;
+  } else if (align == NanoAlign::Start) {
+    x = rect.x;
+  }
+  const int cy = rect.y + static_cast<int>(rect.h) / 2;
+  switch (style) {
+    case kBatteryStyleNumberInIcon: {
+      // A wider cell with the number set inside it; the fill runs as a thin
+      // bar along the bottom so the digits stay on a plain background.
+      constexpr int kW = 34;
+      constexpr int kH = 17;
+      const int y = cy - kH / 2;
+      nanoDrawRoundRect(x, y, kW - 2, kH, 4, ink);
+      nanoFillRect(x + kW - 2, cy - 2, 2, 4, ink);
+      const int inner = kW - 6;
+      const int fill = batteryPresent_ ? inner * std::min<uint8_t>(batteryPercent_, 100) / 100 : 0;
+      if (fill > 0) {
+        nanoFillRect(x + 2, y + kH - 4, std::max(2, fill), 2,
+                     nanoBatteryLevelColor(batteryPercent_, batteryCharging_));
+      }
+      nanoText(ui::Rect(x + 1, y, kW - 4, kH - 2), batteryNumberLabel(), 1, nanoColor(NanoRole::Foreground),
+               NanoAlign::Center);
+      x += kW;
+      break;
+    }
+    case kBatteryStyleNumberOnly: {
+      const String label = batteryNumberLabel();
+      const int w = nanoTextWidth(label, 1) + 2;
+      nanoText(ui::Rect(x, rect.y, w, rect.h), label, 1, ink);
+      x += w;
+      break;
+    }
+    case kBatteryStyleIconOnly:
+      nanoBatteryIcon(x, cy - 6, 24, 12, batteryPercent_, batteryCharging_, ink, background);
+      x += 24;
+      break;
+    case kBatteryStyleIconPercent:
+    default: {
+      const String label = batteryPresent_ ? nanoPercentLabel(batteryPercent_) : batteryLabel_;
+      nanoBatteryIcon(x, cy - 6, 24, 12, batteryPercent_, batteryCharging_, ink, background);
+      const int labelW = nanoTextWidth(label, 1);
+      nanoText(ui::Rect(x + 30, rect.y, labelW + 2, rect.h), label, 1, ink);
+      x += 30 + labelW;
+      break;
+    }
+  }
+  if (batteryCharging_) {
+    nanoChargingBolt(x + 7, cy, 13, nanoBatteryLevelColor(100, true));
+  }
+}
+
+void DisplayManager::nanoBatteryStack(const ui::Rect &rect) {
+  if (!batteryPresent_ && batteryLabel_.isEmpty()) {
+    return;
+  }
+  nanoBatteryInline(ui::Rect(rect.x, rect.y, rect.w, 16));
 }
 
 // ─── Widgets ────────────────────────────────────────────────────────────────
@@ -1506,38 +1746,6 @@ void DisplayManager::nanoLayoutChip(const ui::Rect &rect, uint8_t layout, const 
   nanoFillRoundRect(contentX + contentW / 2 + 1, sy + 15, contentW / 2 - 1, 7, 2, rail);
   nanoText(ui::Rect(rect.x + 6, sy + sh + 2, rect.w - 12, rect.y + rect.h - (sy + sh + 2)), name, 2,
            nanoColor(NanoRole::Foreground), NanoAlign::Center);
-}
-
-void DisplayManager::nanoBatteryStack(const ui::Rect &rect) {
-  if (!batteryPresent_ && batteryLabel_.isEmpty()) {
-    return;
-  }
-  constexpr int kIconW = 26;
-  constexpr int kIconH = 13;
-  const int iconX = rect.x + (static_cast<int>(rect.w) - kIconW) / 2;
-  const uint16_t ink = nanoColor(NanoRole::Muted);
-  nanoBatteryIcon(iconX, rect.y, kIconW, kIconH, batteryPercent_, batteryCharging_, ink,
-                  nanoColor(NanoRole::Background));
-  const String label = batteryPresent_ ? nanoPercentLabel(batteryPercent_) : batteryLabel_;
-  nanoText(ui::Rect(rect.x, rect.y + kIconH + 2, rect.w, nanoLineHeight(1)), label, 1, ink, NanoAlign::Center);
-}
-
-void DisplayManager::nanoBatteryInline(const ui::Rect &rect, bool iconOnly) {
-  if (!batteryPresent_ && batteryLabel_.isEmpty()) {
-    return;
-  }
-  constexpr int kIconW = 24;
-  constexpr int kIconH = 12;
-  const uint16_t ink = nanoColor(NanoRole::Muted);
-  const String label = batteryPresent_ ? nanoPercentLabel(batteryPercent_) : batteryLabel_;
-  const int labelW = iconOnly ? 0 : nanoTextWidth(label, 1);
-  const int total = kIconW + (iconOnly ? 0 : 6 + labelW);
-  const int x = rect.x + (static_cast<int>(rect.w) - total) / 2;
-  const int iconY = rect.y + (static_cast<int>(rect.h) - kIconH) / 2;
-  nanoBatteryIcon(x, iconY, kIconW, kIconH, batteryPercent_, batteryCharging_, ink, nanoColor(NanoRole::Background));
-  if (!iconOnly) {
-    nanoText(ui::Rect(x + kIconW + 6, rect.y, labelW + 2, rect.h), label, 1, ink);
-  }
 }
 
 // ─── Generic Button painting (Nano skin) ────────────────────────────────────

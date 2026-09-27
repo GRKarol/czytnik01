@@ -2032,14 +2032,74 @@ void DisplayManager::drawBatteryBadge() {
 }
 
 void DisplayManager::drawBatteryBadge(int logicalWidth, int logicalHeight) {
-  if (batteryLabel_.isEmpty()) {
+  if (!batteryPresent_ && batteryLabel_.isEmpty()) {
     return;
   }
-
-  const int width = measureTinyTextWidth(batteryLabel_, kTinyScale);
-  const int x = std::max(kFooterMarginX, logicalWidth - kFooterMarginX - width);
+  const uint16_t color = footerColor();
   const int y = logicalHeight > (kDisplayHeight * 2) ? kFooterMarginBottom + 8 : kFooterMarginBottom;
-  drawTinyTextAt(batteryLabel_, x, y, footerColor(), kTinyScale);
+  const int glyphH = kTinyGlyphHeight * kTinyScale;
+  int right = logicalWidth - kFooterMarginX;
+
+  if (batteryCharging_) {
+    // Lightning bolt right of the indicator (same glyph as the Nano skin).
+    nanoResetClip();
+    nanoChargingBolt(right - 5, y + glyphH / 2, 14, rgb565(126, 176, 92));
+    right -= 14;
+  }
+
+  auto drawCell = [&](int x, int w, int h) {
+    const int top = y + (glyphH - h) / 2;
+    fillVirtualRect(x, top, w - 2, 1, color);
+    fillVirtualRect(x, top + h - 1, w - 2, 1, color);
+    fillVirtualRect(x, top, 1, h, color);
+    fillVirtualRect(x + w - 3, top, 1, h, color);
+    fillVirtualRect(x + w - 2, top + h / 2 - 2, 2, 4, color);
+    return top;
+  };
+  auto levelColor = [&]() {
+    const uint8_t p = batteryPercent_;
+    return batteryCharging_ || p > 35 ? rgb565(126, 176, 92) : p <= 18 ? rgb565(200, 82, 82) : rgb565(214, 163, 58);
+  };
+
+  switch (batteryStyle_) {
+    case kBatteryStyleNumberInIcon: {
+      const String number = batteryNumberLabel();
+      const int textW = measureTinyTextWidth(number, 1);
+      const int w = std::max(24, textW + 10);
+      const int h = 14;
+      const int x = right - w;
+      const int top = drawCell(x, w, h);
+      if (batteryPresent_) {
+        fillVirtualRect(x + 2, top + h - 3, std::max(1, (w - 6) * batteryPercent_ / 100), 1, levelColor());
+      }
+      drawTinyTextAt(number, x + (w - 2 - textW) / 2, top + 3, color, 1);
+      return;
+    }
+    case kBatteryStyleNumberOnly: {
+      const String number = batteryNumberLabel();
+      const int w = measureTinyTextWidth(number, kTinyScale);
+      drawTinyTextAt(number, std::max(kFooterMarginX, right - w), y, color, kTinyScale);
+      return;
+    }
+    case kBatteryStyleIconOnly:
+    case kBatteryStyleIconPercent:
+    default: {
+      int x = right;
+      if (batteryStyle_ != kBatteryStyleIconOnly && !batteryLabel_.isEmpty()) {
+        const int w = measureTinyTextWidth(batteryLabel_, kTinyScale);
+        x = std::max(kFooterMarginX, right - w);
+        drawTinyTextAt(batteryLabel_, x, y, color, kTinyScale);
+        x -= 6;
+      }
+      if (batteryPresent_) {
+        const int w = 24;
+        const int h = 12;
+        const int top = drawCell(x - w, w, h);
+        fillVirtualRect(x - w + 2, top + 2, std::max(1, (w - 7) * batteryPercent_ / 100), h - 4, levelColor());
+      }
+      return;
+    }
+  }
 }
 
 void DisplayManager::drawPreviousSentenceHint() {

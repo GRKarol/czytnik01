@@ -340,6 +340,9 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
       v.after = pl("ksi~a~zk~e");
       v.menuId = 180;
       v.chaptersId = 181;
+      v.gotoId = 187;
+      v.statusId = 187;
+      v.rewindId = 188;
       v.bookmarkId = 182;
       v.minusId = 183;
       v.wpmId = 184;

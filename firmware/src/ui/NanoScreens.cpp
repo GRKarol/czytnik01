@@ -727,38 +727,58 @@ Rect readerPanelWordArea() { return Rect(0, 24, kScreenW, 96); }
 
 Rect readerPanelBar() { return Rect(0, 128, kScreenW, kScreenH - 128); }
 
+Rect readerPanelStatusArea() { return Rect(0, 0, kScreenW - 100, 22); }
+
 void paintReaderPanel(DisplayManager &d, Sink &sink, const ReaderPanelView &view) {
   // Top line: chapter left, time left + percent right, battery.
   const int statusW = 150;
-  d.nanoBatteryInline(Rect(kScreenW - 92, 2, 86, 20));
+  d.nanoBatteryInline(Rect(kScreenW - 104, 2, 96, 20), false, Align::End);
   String status = view.progressLabel;
   if (!view.timeLeft.isEmpty()) {
     status = view.timeLeft + "  -  " + status;
   }
-  d.nanoLabel(Rect(kScreenW - 100 - statusW, 2, statusW, 20), status, 1, Role::Muted, Align::End);
-  d.nanoLabel(Rect(12, 2, kScreenW - 124 - statusW, 20), view.chapter, 1, Role::Muted);
+  const bool statusPressed = sink.pressed(view.statusId);
+  if (statusPressed) {
+    d.nanoFillRoundRect(4, 1, kScreenW - 112, 22, 6, d.nanoColor(Role::SurfaceMuted));
+  }
+  d.nanoLabel(Rect(kScreenW - 112 - statusW, 2, statusW, 20), status, 1, Role::Muted, Align::End);
+  d.nanoLabel(Rect(12, 2, kScreenW - 136 - statusW, 20), view.chapter, 1, Role::Muted);
+  addTarget(sink, readerPanelStatusArea(), view.statusId);
 
   const Rect words = readerPanelWordArea();
-  d.nanoReaderPreview(Rect(0, words.y + 2, kScreenW, words.h - (view.hint.isEmpty() ? 4 : 18)), view.before, view.word,
-                      view.after);
+  if (view.scrollMode) {
+    d.nanoScrollPreview(Rect(0, words.y, kScreenW, words.h - (view.hint.isEmpty() ? 0 : 14)), view.words,
+                        view.currentLocal);
+  } else {
+    d.nanoReaderPreview(Rect(0, words.y + 2, kScreenW, words.h - (view.hint.isEmpty() ? 4 : 18)), view.before,
+                        view.word, view.after);
+  }
   if (!view.hint.isEmpty()) {
-    d.nanoLabel(Rect(12, bottom(words) - 18, kScreenW - 24, 16), view.hint, 1, Role::Subtle, Align::Center);
+    d.nanoLabel(Rect(12, bottom(words) - 16, kScreenW - 24, 16), view.hint, 1, Role::Subtle, Align::Center);
   }
   d.nanoProgress(Rect(12, 122, kScreenW - 24, 3), view.progressPercent, 0, 100);
 
-  // Bottom bar.
+  // Bottom bar: Menu | chapters | go to | bookmark | << | - WPM + | Czytaj.
   const int y = 132;
   const int h = kScreenH - y - 4;
+  constexpr int kSmall = 44;
   int x = 10;
-  const Rect menu(x, y, 104, h);
-  d.nanoButton(menu, view.menuLabel, true, Icon::ChevronLeft, 1, "", "", sink.pressed(view.menuId));
+  const Rect menu(x, y, 92, h);
+  d.nanoButton(menu, view.menuLabel, true, Icon::None, 1, "", "", sink.pressed(view.menuId));
   addTarget(sink, menu, view.menuId);
   x += menu.w + kGap;
-  const Rect chapters(x, y, 46, h);
-  d.nanoButton(chapters, "", true, Icon::List, 1, "", "", sink.pressed(view.chaptersId));
-  addTarget(sink, chapters, view.chaptersId);
-  x += chapters.w + kGap;
-  const Rect bookmark(x, y, 46, h);
+  auto small = [&](int id, Icon icon) {
+    if (id == kNoTarget) {
+      return;
+    }
+    const Rect rect(x, y, kSmall, h);
+    d.nanoButton(rect, "", true, icon, 1, "", "", sink.pressed(id));
+    addTarget(sink, rect, id);
+    x += kSmall + kGap;
+  };
+  small(view.chaptersId, Icon::List);
+  small(view.gotoId, Icon::Target);
+  const Rect bookmark(x, y, kSmall, h);
   const uint16_t bookmarkSurface = d.nanoColor(sink.pressed(view.bookmarkId) ? Role::SurfaceActive : Role::SurfaceMuted);
   d.nanoFillRoundRect(bookmark.x, bookmark.y, bookmark.w, bookmark.h, 8, bookmarkSurface);
   d.nanoIcon(bookmark, Icon::Bookmark, d.nanoColor(view.bookmarkFilled ? Role::Accent : Role::Foreground),
@@ -771,14 +791,15 @@ void paintReaderPanel(DisplayManager &d, Sink &sink, const ReaderPanelView &view
   }
   addTarget(sink, bookmark, view.bookmarkId);
   x += bookmark.w + kGap;
+  small(view.rewindId, Icon::Rewind);
 
   // WPM stepper: one pill with - and + ends.
-  const int stepperW = 176;
+  const int stepperW = 164;
   const Rect stepper(x, y, stepperW, h);
   d.nanoFillRoundRect(stepper.x, stepper.y, stepper.w, stepper.h, 8, d.nanoColor(Role::SurfaceMuted));
-  const Rect minus(stepper.x, y, 44, h);
-  const Rect plus(right(stepper) - 44, y, 44, h);
-  const Rect value(right(minus), y, stepper.w - 88, h);
+  const Rect minus(stepper.x, y, 42, h);
+  const Rect plus(right(stepper) - 42, y, 42, h);
+  const Rect value(right(minus), y, stepper.w - 84, h);
   if (sink.pressed(view.minusId)) {
     d.nanoFillRoundRect(minus.x, minus.y, minus.w, minus.h, 8, d.nanoColor(Role::SurfaceActive));
   }
@@ -799,6 +820,91 @@ void paintReaderPanel(DisplayManager &d, Sink &sink, const ReaderPanelView &view
   const Rect start(x, y, kScreenW - 10 - x, h);
   d.nanoButton(start, view.startLabel, true, Icon::Play, 1, "", "", sink.pressed(view.startId), true);
   addTarget(sink, start, view.startId);
+}
+
+// ─── Przejdz do ─────────────────────────────────────────────────────────────
+
+namespace {
+void paintSegments(DisplayManager &d, Sink &sink, const Rect &segments, const int ids[3], const String labels[3],
+                   int active) {
+  d.nanoFillRoundRect(segments.x, segments.y, segments.w, segments.h, segments.h / 2, d.nanoColor(Role::SurfaceMuted));
+  const int segmentW = segments.w / 3;
+  for (int i = 0; i < 3; ++i) {
+    const int x = segments.x + i * segmentW;
+    const Rect rect(x, segments.y, i == 2 ? right(segments) - x : segmentW, segments.h);
+    const bool on = active == i;
+    if (on) {
+      d.nanoFillRoundRect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6, (rect.h - 6) / 2, d.nanoColor(Role::Accent));
+    } else if (sink.pressed(ids[i])) {
+      d.nanoFillRoundRect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6, (rect.h - 6) / 2,
+                          d.nanoColor(Role::SurfaceActive));
+    }
+    d.nanoText(rect, labels[i], 1, d.nanoColor(on ? Role::OnAccent : Role::Foreground), Align::Center);
+    addTarget(sink, rect, ids[i]);
+  }
+}
+}  // namespace
+
+Rect goToBarRect() { return Rect(kMargin + 4, 92, kScreenW - (kMargin + 4) * 2, 26); }
+
+void paintGoTo(DisplayManager &d, Sink &sink, const GoToView &view) {
+  const Rect area = fullContent();
+  Header header = view.header;
+  paintHeader(d, sink, Rect(area.x, area.y, area.w - 318, kHeaderH), header);
+  paintSegments(d, sink, Rect(right(area) - 308, area.y, 308, kHeaderH), view.segmentIds, view.segmentLabels,
+                view.segment);
+
+  // Big readout + the chapter it lands in.
+  const int valueW = std::min(300, DisplayManager::nanoTextWidth(view.value, 3) + 8);
+  d.nanoText(Rect(area.x + 4, 46, valueW, 36), view.value, 3, d.nanoColor(Role::Foreground));
+  d.nanoLabel(Rect(area.x + 4 + valueW + 14, 46, area.w - valueW - 22, 20), view.detail, 2, Role::Accent);
+  d.nanoLabel(Rect(area.x + 4 + valueW + 14, 66, area.w - valueW - 22, 16), view.hint, 1, Role::Muted);
+
+  // Bar: tap or drag anywhere on it.
+  const Rect bar = goToBarRect();
+  const int range = std::max(1, view.sliderMax - view.sliderMin);
+  const int value = std::max(view.sliderMin, std::min(view.sliderValue, view.sliderMax));
+  const int fill = bar.h + (bar.w - bar.h) * (value - view.sliderMin) / range;
+  d.nanoFillRoundRect(bar.x, bar.y, bar.w, bar.h, bar.h / 2, d.nanoColor(Role::SurfaceMuted));
+  d.nanoFillRoundRect(bar.x, bar.y, fill, bar.h, bar.h / 2, d.nanoColor(Role::Accent));
+  d.nanoFillCircle(bar.x + fill - bar.h / 2, bar.y + bar.h / 2, bar.h / 2 - (view.dragging ? 2 : 4),
+                   d.nanoColor(Role::OnAccent));
+
+  // Fine steps and the action.
+  const int y = 128;
+  const int h = kScreenH - y - 6;
+  const Rect minus(area.x, y, 64, h);
+  const Rect plus(area.x + 64 + kGap, y, 64, h);
+  d.nanoButton(minus, "", true, Icon::Minus, 1, "", "", sink.pressed(view.minusId));
+  d.nanoButton(plus, "", true, Icon::Plus, 1, "", "", sink.pressed(view.plusId));
+  addTarget(sink, minus, view.minusId);
+  addTarget(sink, plus, view.plusId);
+  const Rect read(right(area) - 220, y, 220, h);
+  d.nanoButton(read, view.readLabel, true, Icon::Play, 1, "", "", sink.pressed(view.readId), true);
+  addTarget(sink, read, view.readId);
+}
+
+// ─── Choice ─────────────────────────────────────────────────────────────────
+
+void paintChoice(DisplayManager &d, Sink &sink, const ChoiceView &view) {
+  const Rect area = fullContent();
+  int top = area.y;
+  if (view.header.backId != kNoTarget || !view.header.title.isEmpty()) {
+    top = paintHeader(d, sink, Rect(area.x, area.y, area.w, kHeaderH), view.header);
+  }
+  if (!view.question.isEmpty()) {
+    d.nanoLabel(Rect(area.x, top, area.w, 26), view.question, 2, Role::Muted, Align::Center);
+    top += 32;
+  }
+  const int count = std::max<int>(1, static_cast<int>(view.options.size()));
+  const int cellW = (area.w - kGap * (count - 1)) / count;
+  for (int i = 0; i < count && i < static_cast<int>(view.options.size()); ++i) {
+    const auto &option = view.options[static_cast<size_t>(i)];
+    const int x = area.x + i * (cellW + kGap);
+    const Rect rect(x, top, i == count - 1 ? right(area) - x : cellW, bottom(area) - top);
+    d.nanoTile(rect, option.label, option.icon, option.detail, sink.pressed(option.id), option.accent);
+    addTarget(sink, rect, option.id);
+  }
 }
 
 }  // namespace nano

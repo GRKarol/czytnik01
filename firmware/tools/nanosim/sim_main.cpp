@@ -28,6 +28,7 @@ static void dump(const DisplayManager &d, const char *name) {
 
 void runScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runPluginScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
+void runUpdateScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 
 int main() {
   DisplayManager d;
@@ -37,5 +38,7 @@ int main() {
   runScreens(d, dump);
   d.setNanoUiFont(0);
   runPluginScreens(d, dump);
+  d.setNanoUiFont(0);
+  runUpdateScreens(d, dump);
   return 0;
 }

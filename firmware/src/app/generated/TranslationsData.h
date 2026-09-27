@@ -299,6 +299,30 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
   return kTable[keyIndex][langIndex];
 }
 
+inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
+  static const char *const kTable[18][6] = {
+      {"Battery indicator: ", "Indicador de bater\xED""a: ", "Indicateur batterie : ", "Akkuanzeige: ", "Indicator baterie: ", "Wska\xB3""nik baterii: "},  // BatteryStyleColon
+      {"Icon + %", "Icono + %", "Ic\xF4""ne + %", "Symbol + %", "Pictogram\x8B"" + %", "Ikona + %"},  // BatteryStyleIconPercent
+      {"Number in icon", "N\xFA""mero en icono", "Chiffre dans l'ic\xF4""ne", "Zahl im Symbol", "Num\x8B""r \xEE""n pictogram\x8B""", "Liczba w ikonie"},  // BatteryStyleNumberInIcon
+      {"Number only", "Solo n\xFA""mero", "Chiffre seul", "Nur Zahl", "Doar num\x8B""r", "Sama liczba"},  // BatteryStyleNumberOnly
+      {"Icon only", "Solo icono", "Ic\xF4""ne seule", "Nur Symbol", "Doar pictogram\x8B""", "Tylko ikona"},  // BatteryStyleIconOnly
+      {"Go to", "Ir a", "Aller \xE0""", "Gehe zu", "Mergi la", "Przejd\xB3"" do"},  // GoToTitle
+      {"Percent", "Porcentaje", "Pourcentage", "Prozent", "Procent", "Procent"},  // GoToPercent
+      {"Page", "P\xE1""gina", "Page", "Seite", "Pagin\x8B""", "Strona"},  // GoToPage
+      {"Chapter", "Cap\xED""tulo", "Chapitre", "Kapitel", "Capitol", "Rozdzia\x83"""},  // GoToChapter
+      {"Read from here", "Leer desde aqu\xED""", "Lire d'ici", "Ab hier lesen", "Cite\x8D""te de aici", "Czytaj st\x97""d"},  // GoToReadHere
+      {"of", "de", "sur", "von", "din", "z"},  // GoToPageOf
+      {"1 page = 250 words", "1 p\xE1""gina = 250 palabras", "1 page = 250 mots", "1 Seite = 250 W\xF6""rter", "1 pagin\x8B"" = 250 cuvinte", "1 strona = 250 s\x83""\xF3""w"},  // GoToPageSize
+      {"This book has no chapters", "Este libro no tiene cap\xED""tulos", "Ce livre n'a pas de chapitres", "Dieses Buch hat keine Kapitel", "Cartea nu are capitole", "Ta ksi\x97""\xB5""ka nie ma rozdzia\x83""\xF3""w"},  // GoToNoChapters
+      {"How should the bookmark be named?", "\x17""C\xF3""mo nombrar el marcador?", "Quel nom pour le signet ?", "Wie soll das Lesezeichen hei\xDF""en?", "Cum numim semnul?", "Jak nazwa\x9B"" zak\x83""adk\x99""?"},  // BookmarkNameQuestion
+      {"Default name", "Nombre por defecto", "Nom par d\xE9""faut", "Standardname", "Nume implicit", "Domy\x9F""lna nazwa"},  // BookmarkNameDefault
+      {"Custom name", "Nombre propio", "Nom personnalis\xE9""", "Eigener Name", "Nume propriu", "W\x83""asna nazwa"},  // BookmarkNameCustom
+      {"Type it on the keyboard", "Escr\xED""belo con el teclado", "Tapez-le au clavier", "\xDC""ber die Tastatur eingeben", "Scrie-l la tastatur\x8B""", "Wpisz na klawiaturze"},  // BookmarkNameCustomDetail
+      {"Tap the top bar to jump to a place", "Toca la barra superior para saltar", "Touchez la barre du haut pour sauter", "Obere Leiste antippen, um zu springen", "Atinge bara de sus pentru a s\x8B""ri", "Dotknij paska u g\xF3""ry, by przej\x9F""\x9B"" do miejsca"},  // PanelGoToHint
+  };
+  return kTable[keyIndex][langIndex];
+}
+
 inline const char *uiTextLookup(uint8_t keyIndex, uint8_t langIndex) {
   static const char *const kTable[65][6] = {
       {"Resume", "Reanudar", "Reprendre", "Weiter", "Continua", "Wzn\xF3""w"},  // Resume

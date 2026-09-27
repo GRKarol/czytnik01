@@ -37,6 +37,7 @@ TABLES = [
     (TRANSLATIONS_H, "TrKey", "trKeyLookup"),
     (TRANSLATIONS_H, "TrKey2", "trKey2Lookup"),
     (TRANSLATIONS_H, "TrKey3", "trKey3Lookup"),
+    (TRANSLATIONS_H, "TrKey4", "trKey4Lookup"),
     (LOCALIZATION_H, "UiText", "uiTextLookup"),
     (DICTAPHONE_PLUGIN_CPP, "DictStr", "dictStrLookup"),
 ]
