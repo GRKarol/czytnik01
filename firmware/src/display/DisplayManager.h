@@ -395,6 +395,8 @@ class DisplayManager {
   // `text` cut to `maxWidth` px with a trailing ellipsis (unchanged when it
   // already fits).
   static String nanoFitText(const String &text, int maxWidth, uint8_t size);
+  // Every line of `text` wrapped to `maxWidth` (\n starts a paragraph).
+  static std::vector<String> nanoWrapText(const String &text, int maxWidth, uint8_t size);
   // Logical frame (landscape, RGB565 byte-swapped as the panel takes it) --
   // for the serial screenshot command and tools/nanosim.
   const uint16_t *frameBuffer() const { return virtualFrame_; }

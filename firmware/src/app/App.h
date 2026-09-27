@@ -9,6 +9,7 @@
 
 #include "app/AppState.h"
 #include "app/HelpTexts.h"
+#include "app/generated/HelpData.h"
 #include "app/Localization.h"
 #include "app/Translations.h"
 #include "audio/AudioManager.h"
@@ -870,6 +871,13 @@ class App {
   // custom names are on (then the keyboard only for "Wlasna nazwa").
   void beginSavePointNaming(uint32_t nowMs);
   void renderSavePointNameChoice();
+  // ? buttons: which help page a settings row has (false = none), the
+  // Nano action that opens it, and the page itself.
+  bool helpTopicFor(MenuScreen screen, int id, HelpTopic &topic) const;
+  int helpActionFor(MenuScreen screen, int id) const;
+  void openHelpPage(HelpTopic topic, uint32_t nowMs);
+  void renderHelpPage();
+  bool handleHelpTouch(const TouchEvent &event, uint32_t nowMs);
   // Motywy > Czytanie > Kolor litery: full palette for the focus letter.
   void openFocusColorPicker(uint32_t nowMs);
   void renderFocusColorPicker();
@@ -1313,6 +1321,15 @@ class App {
   bool goToDragging_ = false;
   bool goToFromBookDetails_ = false;
   uint32_t goToLastRenderMs_ = 0;
+  HelpTopic helpTopic_ = HelpTopic::Brightness;
+  MenuScreen helpReturnScreen_ = MenuScreen::Main;
+  int helpScroll_ = 0;
+  bool helpDragging_ = false;
+  bool helpMoved_ = false;
+  uint16_t helpDragStartY_ = 0;
+  int helpDragStartScroll_ = 0;
+  uint32_t helpLastRenderMs_ = 0;
+  std::vector<String> helpLines_;
   // Companion sync: when it started, and whether the current touch began
   // inside it (a release without a start there is noise, not a tap).
   uint32_t companionSyncEnteredMs_ = 0;
@@ -1487,7 +1504,7 @@ class App {
   // instead of landing on the SavePointsList menu (which is where naming
   // one from that list itself should still end up).
   bool savePointQuickSaveFromReader_ = false;
-  bool showHelpHints_ = false;
+  bool showHelpHints_ = true;
   bool showingHelpPopup_ = false;
   bool tutorialCompleted_ = false;
   const char* helpPopupTitle_ = nullptr;

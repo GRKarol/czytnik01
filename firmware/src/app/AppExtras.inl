@@ -17,6 +17,9 @@ enum ExtraAction : int {
   kExtraBookmarkDefault,
   kExtraBookmarkCustom,
   kExtraColorSwatch = kExtraActionBase + 100,  // + swatch index
+  kExtraHelp = kExtraActionBase + 200,         // + HelpTopic
+  kExtraHelpUp = kExtraActionBase + 199,
+  kExtraHelpDown = kExtraActionBase + 198,
 };
 
 constexpr size_t kGoToWordsPerPage = 250;
@@ -58,6 +61,7 @@ bool App::isExtraScreen() const {
     case MenuScreen::GoToPosition:
     case MenuScreen::SavePointNameChoice:
     case MenuScreen::FocusColorPicker:
+    case MenuScreen::HelpPage:
       return true;
     default:
       return false;
@@ -93,6 +97,9 @@ bool App::renderExtraScreen() {
     case MenuScreen::FocusColorPicker:
       renderFocusColorPicker();
       break;
+    case MenuScreen::HelpPage:
+      renderHelpPage();
+      break;
     default:
       break;
   }
@@ -124,6 +131,13 @@ void App::extraScreenBack(uint32_t nowMs) {
       nanoThemeSection_ = 1;  // back to Motywy > Czytanie
       openNanoThemes();
       return;
+    case MenuScreen::HelpPage:
+      menuScreen_ = helpReturnScreen_;
+      if (isSettingsListScreen()) {
+        rebuildSettingsMenuItems();
+      }
+      renderMenu();
+      return;
     default:
       menuScreen_ = MenuScreen::Main;
       renderMenu();
@@ -132,6 +146,16 @@ void App::extraScreenBack(uint32_t nowMs) {
 }
 
 void App::runExtraAction(int action, uint32_t nowMs) {
+  if (action >= kExtraHelp && action < kExtraHelp + static_cast<int>(HelpTopic::Count)) {
+    openHelpPage(static_cast<HelpTopic>(action - kExtraHelp), nowMs);
+    return;
+  }
+  if (action == kExtraHelpUp || action == kExtraHelpDown) {
+    const int page = nano::helpBodyRect().h - DisplayManager::nanoLineHeight(2);
+    helpScroll_ += action == kExtraHelpDown ? page : -page;
+    renderMenu();
+    return;
+  }
   if (action >= kExtraColorSwatch && action < kExtraColorSwatch + static_cast<int>(kLetterColorSwatchCount)) {
     const uint16_t color = letterColorSwatch(static_cast<size_t>(action - kExtraColorSwatch));
     display_.setCustomFocusColor(color);
@@ -414,4 +438,149 @@ void App::renderFocusColorPicker() {
   NanoSinkAdapter sink(*this);
   sink.zeroIsBack = true;
   nano::paintColorPicker(display_, sink, view);
+}
+
+// ─── Pomoc (?) ──────────────────────────────────────────────────────────────
+
+bool App::helpTopicFor(MenuScreen screen, int id, HelpTopic &topic) const {
+  auto pick = [&topic](HelpTopic value) {
+    topic = value;
+    return true;
+  };
+  if (screen == MenuScreen::SettingsDisplay) {
+    switch (id) {
+      case kSettingsDisplayBrightnessIndex: return pick(HelpTopic::Brightness);
+      case kSettingsDisplayHandednessIndex: return pick(HelpTopic::Handedness);
+      case kSettingsDisplayBatteryStyleIndex: return pick(HelpTopic::BatteryStyle);
+      case kSettingsDisplayFooterIndex: return pick(HelpTopic::Footer);
+      case kSettingsDisplayBatteryIndex: return pick(HelpTopic::BatteryLabel);
+      case kSettingsDisplayScreensaverIndex: return pick(HelpTopic::Screensaver);
+      case kSettingsDisplayReaderBatteryIndex: return pick(HelpTopic::ReaderBattery);
+      case kSettingsDisplayReaderChapterIndex: return pick(HelpTopic::ReaderChapter);
+      case kSettingsDisplayReaderProgressIndex: return pick(HelpTopic::ReaderProgress);
+      case kSettingsDisplayLanguageIndex: return pick(HelpTopic::Language);
+      case kSettingsDisplayHelpHintsIndex: return pick(HelpTopic::HelpHints);
+      case kSettingsDisplayNavModeIndex: return pick(HelpTopic::NavMode);
+      case kSettingsDisplaySavePointNameModeIndex: return pick(HelpTopic::SavePointNameMode);
+      default: return false;
+    }
+  }
+  if (screen == MenuScreen::SettingsPacing) {
+    if (id == kSettingsPacingReadingModeIndex) return pick(HelpTopic::ReadingMode);
+    if (readerMode_ == ReaderMode::Scroll) {
+      switch (id) {
+        case kSettingsPacingScrollFontSizeIndex: return pick(HelpTopic::ScrollFontSize);
+        case kSettingsPacingScrollLineSpacingIndex: return pick(HelpTopic::ScrollLineSpacing);
+        case kSettingsPacingScrollMarginIndex: return pick(HelpTopic::ScrollMargins);
+        case kSettingsPacingScrollPreviewIndex: return pick(HelpTopic::ScrollPreview);
+        default: return false;
+      }
+    }
+    switch (id) {
+      case kSettingsPacingPauseModeIndex: return pick(HelpTopic::PauseMode);
+      case kSettingsPacingWpmIndex: return pick(HelpTopic::Wpm);
+      case kSettingsPacingLongWordsIndex: return pick(HelpTopic::LongWords);
+      case kSettingsPacingComplexityIndex: return pick(HelpTopic::Complexity);
+      case kSettingsPacingPunctuationIndex: return pick(HelpTopic::Punctuation);
+      case kSettingsPacingResetIndex: return pick(HelpTopic::ResetPacing);
+      default: return false;
+    }
+  }
+  if (screen == MenuScreen::ScreensaverSettings) {
+    switch (id) {
+      case kScreensaverSettingsStyleIndex: return pick(HelpTopic::SaverStyle);
+      case kScreensaverSettingsTimeoutIndex: return pick(HelpTopic::SaverTimeout);
+      case kScreensaverSettingsAutoOffIndex: return pick(HelpTopic::SaverAutoOff);
+      case kScreensaverSettingsSleepGuardIndex: return pick(HelpTopic::SaverSleepGuard);
+      case kScreensaverSettingsPreviewIndex: return pick(HelpTopic::SaverPreview);
+      default: return false;
+    }
+  }
+  if (screen == MenuScreen::SettingsHome) {
+    if (id == static_cast<int>(kSettingsHomeReadingIndex)) return pick(HelpTopic::HomePacing);
+    if (id == static_cast<int>(kSettingsHomeTypographyIndex)) return pick(HelpTopic::HomeTypography);
+    if (id == static_cast<int>(kSettingsHomeDisplayIndex)) return pick(HelpTopic::HomeDisplay);
+    if (id == static_cast<int>(kSettingsHomeAdvancedIndex)) return pick(HelpTopic::HomeAdvanced);
+    if (id == static_cast<int>(kSettingsHomePresetsIndex)) return pick(HelpTopic::HomePresets);
+    if (id == kNanoActionBase + kNanoSettingsScreensaver) return pick(HelpTopic::Screensaver);
+  }
+  return false;
+}
+
+int App::helpActionFor(MenuScreen screen, int id) const {
+  HelpTopic topic;
+  if (!showHelpHints_ || !helpTopicFor(screen, id, topic)) {
+    return nano::kNoTarget;
+  }
+  return kNanoActionBase + kExtraHelp + static_cast<int>(topic);
+}
+
+void App::openHelpPage(HelpTopic topic, uint32_t nowMs) {
+  if (menuScreen_ != MenuScreen::HelpPage) {
+    helpReturnScreen_ = menuScreen_;
+  }
+  helpTopic_ = topic;
+  helpScroll_ = 0;
+  helpDragging_ = false;
+  helpLines_ = DisplayManager::nanoWrapText(HelpData::body(topic, static_cast<uint8_t>(uiLanguage_)),
+                                            nano::helpTextWidth(), 2);
+  menuScreen_ = MenuScreen::HelpPage;
+  if (state_ != AppState::Menu) {
+    setState(AppState::Menu, nowMs);
+  } else {
+    renderMenu();
+  }
+}
+
+void App::renderHelpPage() {
+  nano::HelpView view;
+  view.header.backId = 0;
+  view.header.title = HelpData::title(helpTopic_, static_cast<uint8_t>(uiLanguage_));
+  view.lines = helpLines_;
+  const int maxScroll = std::max(0, nano::helpContentHeight(view) - nano::helpBodyRect().h);
+  helpScroll_ = std::max(0, std::min(helpScroll_, maxScroll));
+  view.scroll = helpScroll_;
+  if (maxScroll > 0) {
+    const int pageH = std::max(1, nano::helpBodyRect().h - DisplayManager::nanoLineHeight(2));
+    view.header.pageCount = static_cast<size_t>(maxScroll / pageH + 2);
+    view.header.page = helpScroll_ >= maxScroll ? view.header.pageCount - 1 : static_cast<size_t>(helpScroll_ / pageH);
+    view.header.prevId = kNanoActionBase + kExtraHelpUp;
+    view.header.nextId = kNanoActionBase + kExtraHelpDown;
+  }
+  NanoSinkAdapter sink(*this);
+  sink.zeroIsBack = true;
+  nano::paintHelp(display_, sink, view);
+}
+
+bool App::handleHelpTouch(const TouchEvent &event, uint32_t nowMs) {
+  const ui::Rect body = nano::helpBodyRect();
+  if (event.phase == TouchPhase::Start) {
+    helpDragging_ = body.contains(event.x, event.y);
+    helpMoved_ = false;
+    if (!helpDragging_) {
+      return false;
+    }
+    helpDragStartY_ = event.y;
+    helpDragStartScroll_ = helpScroll_;
+    pausedTouch_.active = false;
+    return true;
+  }
+  if (!helpDragging_) {
+    return false;
+  }
+  const int dy = static_cast<int>(event.y) - helpDragStartY_;
+  helpMoved_ = helpMoved_ || std::abs(dy) > 6;
+  if (helpMoved_) {
+    helpScroll_ = helpDragStartScroll_ - dy;
+  }
+  if (event.phase == TouchPhase::End) {
+    helpDragging_ = false;
+    renderMenu();
+    return true;
+  }
+  if (helpMoved_ && nowMs - helpLastRenderMs_ >= kNanoDragFrameMs) {
+    helpLastRenderMs_ = nowMs;
+    renderMenu();
+  }
+  return true;
 }

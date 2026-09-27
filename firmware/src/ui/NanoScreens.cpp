@@ -24,6 +24,24 @@ void iconButton(DisplayManager &d, Sink &sink, const Rect &rect, int id, Icon ic
   }
 }
 
+constexpr int kHelpButtonW = 34;
+
+// Cuts the "?" button off the right of `rect` (when the item has one) and
+// paints it; returns what is left for the tile itself.
+Rect withHelpButton(DisplayManager &d, Sink &sink, const Rect &rect, int helpId) {
+  if (helpId == kNoTarget || rect.w < 120) {
+    return rect;
+  }
+  const Rect help(rect.x + rect.w - kHelpButtonW + 4, rect.y, kHelpButtonW - 4, rect.h);
+  const int r = std::min<int>(13, (std::min(help.w, help.h) - 2) / 2);
+  const int cx = help.x + help.w / 2;
+  const int cy = help.y + help.h / 2;
+  d.nanoFillCircle(cx, cy, r, d.nanoColor(sink.pressed(helpId) ? Role::SurfaceActive : Role::SurfaceMuted));
+  d.nanoText(Rect(cx - r, cy - r, r * 2 + 1, r * 2 + 1), "?", 2, d.nanoColor(Role::Muted), Align::Center);
+  addTarget(sink, help, helpId);
+  return Rect(rect.x, rect.y, rect.w - kHelpButtonW, rect.h);
+}
+
 }  // namespace
 
 Layout &layout() { return gLayout; }
@@ -250,7 +268,7 @@ void paintSections(DisplayManager &d, Sink &sink, const Rect &area, const std::v
       }
       const int x = column == 0 ? area.x : area.x + split + kGap;
       const int w = alone ? area.w : (column == 0 ? split : right(area) - x);
-      const Rect rect(x, y, w, rowH);
+      const Rect rect = withHelpButton(d, sink, Rect(x, y, w, rowH), item.helpId);
       if (item.toggle) {
         d.nanoToggle(rect, item.label, item.on, sink.pressed(item.id));
       } else {
@@ -646,7 +664,7 @@ void paintList(DisplayManager &d, Sink &sink, const ListView &view) {
     const int y = grid.y + row * (cellH + gap);
     const int w = wide ? grid.w : (column == columns - 1 ? right(grid) - x : cellW);
     const int h = span * cellH + (span - 1) * gap;
-    const Rect rect(x, y, w, h);
+    const Rect rect = withHelpButton(d, sink, Rect(x, y, w, h), item.helpId);
     const bool pressed = sink.pressed(item.id);
     switch (item.kind) {
       case ListItem::Kind::Separator:
@@ -943,6 +961,50 @@ void paintChoice(DisplayManager &d, Sink &sink, const ChoiceView &view) {
   }
 }
 
+// ─── Help page ──────────────────────────────────────────────────────────────
+
+Rect helpBodyRect() {
+  const Rect area = fullContent();
+  return Rect(area.x + 6, area.y + kHeaderH + 8, area.w - 22, area.h - kHeaderH - 8);
+}
+
+int helpTextWidth() { return helpBodyRect().w; }
+
+int helpContentHeight(const HelpView &view) {
+  const int lineH = DisplayManager::nanoLineHeight(2);
+  int height = 0;
+  for (const String &line : view.lines) {
+    height += line.isEmpty() ? lineH / 2 : lineH;
+  }
+  return height;
+}
+
+void paintHelp(DisplayManager &d, Sink &sink, const HelpView &view) {
+  const Rect area = fullContent();
+  paintHeader(d, sink, Rect(area.x, area.y, area.w, kHeaderH), view.header);
+  const Rect body = helpBodyRect();
+  const int lineH = DisplayManager::nanoLineHeight(2);
+  d.nanoSetClip(body.x, body.y, body.w, body.h);
+  int y = body.y - view.scroll;
+  for (const String &line : view.lines) {
+    const int h = line.isEmpty() ? lineH / 2 : lineH;
+    if (y + h > body.y && y < bottom(body) && !line.isEmpty()) {
+      d.nanoText(Rect(body.x, y, body.w, lineH), line, 2, d.nanoColor(Role::Foreground));
+    }
+    y += h;
+  }
+  d.nanoResetClip();
+  // Scroll bar: where the visible part sits in the whole text.
+  const int total = helpContentHeight(view);
+  if (total > body.h) {
+    const int trackX = right(area) - 6;
+    d.nanoFillRoundRect(trackX, body.y, 4, body.h, 2, d.nanoColor(Role::SurfaceMuted));
+    const int thumbH = std::max(16, body.h * body.h / total);
+    const int thumbY = body.y + (body.h - thumbH) * view.scroll / std::max(1, total - body.h);
+    d.nanoFillRoundRect(trackX, thumbY, 4, thumbH, 2, d.nanoColor(Role::Accent));
+  }
+}
+
 // ─── Kolor litery ───────────────────────────────────────────────────────────
 
 void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view) {
@@ -961,7 +1023,7 @@ void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view
   const int wm = d.nanoTypefaceTextWidth(mid, kScale);
   const int wr = d.nanoTypefaceTextWidth(rest, kScale);
   const int tx = preview.x + (preview.w - wl - wm - wr) / 2;
-  const int ty = preview.y + 6;
+  const int ty = preview.y + 1;
   d.nanoSetClip(preview.x, preview.y, preview.w, preview.h);
   d.nanoTypefaceText(tx, ty, left, view.previewWord, kScale);
   d.nanoTypefaceText(tx + wl, ty, mid, view.previewFocus, kScale);

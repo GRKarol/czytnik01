@@ -5,6 +5,7 @@
 
 #include "display/DisplayManager.h"
 #include "ui/NanoScreens.h"
+#include "app/generated/HelpData.h"
 
 using namespace nano;
 
@@ -183,6 +184,51 @@ void runUpdateScreens(DisplayManager &d, void (*dump)(const DisplayManager &, co
     v.previewWord = 0xFFFF;
     v.previewFocus = rgb(20, 80, 255);
     paintColorPicker(d, sink, v);
+  });
+
+  frame("u_help", [&] {
+    HelpView v;
+    v.header.backId = 0;
+    v.header.title = HelpData::title(HelpTopic::BatteryStyle, 5);
+    v.lines = DisplayManager::nanoWrapText(HelpData::body(HelpTopic::BatteryStyle, 5), helpTextWidth(), 2);
+    v.header.pageCount = 2;
+    v.header.prevId = 1;
+    v.header.nextId = 2;
+    paintHelp(d, sink, v);
+  });
+
+  frame("u_display_help", [&] {
+    ListView v;
+    v.header.backId = 150;
+    v.header.title = pl("Wy~swietlacz");
+    v.fullScreen = true;
+    v.columns = 2;
+    v.rows = 3;
+    auto setting = [&](int id, const String &label, const String &value) {
+      ListItem it;
+      it.kind = ListItem::Kind::Setting;
+      it.id = id;
+      it.label = label;
+      it.value = value;
+      it.helpId = id + 100;
+      v.items.push_back(it);
+    };
+    ListItem bright;
+    bright.kind = ListItem::Kind::Slider;
+    bright.id = 151;
+    bright.label = pl("Jasno~s~c");
+    bright.value = "70%";
+    bright.sliderValue = 70;
+    bright.sliderMin = 20;
+    bright.sliderMax = 100;
+    bright.helpId = 251;
+    v.items.push_back(bright);
+    setting(154, "Orientacja", pl("Pozioma, odwr~ocona"));
+    setting(155, pl("Wska~xnik baterii"), "Ikona + %");
+    setting(156, "Stopka", "Procent");
+    setting(157, "Bateria", "Procent");
+    setting(158, "Wygaszacz", "Gwiazdy");
+    paintList(d, sink, v);
   });
 
   // Battery indicator styles, charging and not, in the rail footer size.

@@ -618,6 +618,30 @@ int DisplayManager::nanoCapHeight(uint8_t size) {
   return nanoStrike(gNanoUiFamily, nanoStrikeForSize(size)).capHeight;
 }
 
+std::vector<String> DisplayManager::nanoWrapText(const String &text, int maxWidth, uint8_t size) {
+  std::vector<String> lines;
+  const NanoUiStrike &strike = nanoStrike(gNanoUiFamily, nanoStrikeForSize(size));
+  int start = 0;
+  while (start <= static_cast<int>(text.length())) {
+    int end = text.indexOf('\n', start);
+    if (end < 0) {
+      end = text.length();
+    }
+    const String paragraph = text.substring(start, end);
+    if (paragraph.length() > 0) {
+      for (const String &line : nanoWrap(strike, paragraph, maxWidth, 250)) {
+        lines.push_back(line);
+      }
+    }
+    lines.push_back(String());  // paragraph gap
+    start = end + 1;
+  }
+  while (!lines.empty() && lines.back().isEmpty()) {
+    lines.pop_back();
+  }
+  return lines;
+}
+
 String DisplayManager::nanoFitText(const String &text, int maxWidth, uint8_t size) {
   return nanoEllipsize(nanoStrike(gNanoUiFamily, nanoStrikeForSize(size)), text, maxWidth);
 }

@@ -470,7 +470,7 @@ constexpr const char *kPrefOtaChannel = "ota_channel";
 constexpr const char *kOtaStagingRepo = "czytnik01-staging";
 constexpr const char *kPrefDevMode = "dev_mode";
 constexpr const char *kPrefBleEnabled = "ble_on";
-constexpr const char *kPrefShowHelpHints = "help_hints";
+constexpr const char *kPrefShowHelpHints = "help_hints";  // default on: the ? buttons
 constexpr const char *kPrefNavMode = "nav_mode";
 constexpr size_t kReaderFontSizeCount = 3;
 constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144};
@@ -11458,7 +11458,7 @@ void App::renderSettings() {
 
   // Show "?" indicator on selected item only if help is available
   std::vector<String> renderItems = settingsMenuItems_;
-  if (showHelpHints_ && settingsSelectedIndex_ < renderItems.size() && settingsSelectedIndex_ > 0) {
+  if (showHelpHints_ && !nanoUiActive() && settingsSelectedIndex_ < renderItems.size() && settingsSelectedIndex_ > 0) {
     bool hasHelp = false;
     if (menuScreen_ == MenuScreen::SettingsDisplay) {
       hasHelp = HelpTexts::getDisplayHelp(settingsSelectedIndex_ - 1) != nullptr;

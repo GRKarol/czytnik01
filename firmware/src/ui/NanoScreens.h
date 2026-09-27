@@ -124,6 +124,7 @@ struct SectionItem {
   bool toggle = false;
   bool on = false;
   bool fullWidth = false;
+  int helpId = kNoTarget;  // round "?" button right of the tile
 };
 struct Section {
   String title;  // empty = no section label
@@ -259,6 +260,8 @@ struct ListItem {
   int sliderMax = 1;
   bool dragging = false;
   DisplayManager::ReaderTypeface typeface = DisplayManager::ReaderTypeface::Count;
+  // Round "?" button right of the tile (help page for this setting).
+  int helpId = kNoTarget;
   // Kind::Row: trailing action (delete) inside the same row.
   int trailingId = kNoTarget;
   String trailingLabel;
@@ -373,6 +376,18 @@ struct ChoiceView {
   std::vector<Option> options;  // 2 or 3
 };
 void paintChoice(DisplayManager &d, Sink &sink, const ChoiceView &view);
+
+// ── Help page (the ? buttons) ──
+
+struct HelpView {
+  Header header;
+  std::vector<String> lines;  // wrapped to helpTextWidth()
+  int scroll = 0;             // px from the top
+};
+Rect helpBodyRect();
+int helpTextWidth();
+int helpContentHeight(const HelpView &view);
+void paintHelp(DisplayManager &d, Sink &sink, const HelpView &view);
 
 // ── Kolor litery (palette) ──
 

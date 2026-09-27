@@ -608,6 +608,11 @@ void App::renderNanoSettingsHome() {
   } else {
     sections[2].items[0].fullWidth = true;
   }
+  for (nano::Section &section : sections) {
+    for (nano::SectionItem &entry : section.items) {
+      entry.helpId = helpActionFor(MenuScreen::SettingsHome, entry.id);
+    }
+  }
   NanoSinkAdapter sink(*this);
   sink.labels = &settingsMenuItems_;
   nano::paintSections(display_, sink, nano::tabContent(), sections);
@@ -1343,6 +1348,7 @@ void App::renderNanoList(const String &title, const std::vector<String> &items, 
     nano::ListItem item;
     item.id = index;
     item.label = text;
+    item.helpId = helpActionFor(menuScreen_, index);
 
     if (text == "---") {
       item.kind = nano::ListItem::Kind::Separator;
@@ -1606,6 +1612,9 @@ void App::returnFromPlugin() {
 bool App::handleNanoTouch(const TouchEvent &event, uint32_t nowMs) {
   if (menuScreen_ == MenuScreen::GoToPosition) {
     return handleGoToTouch(event, nowMs);
+  }
+  if (menuScreen_ == MenuScreen::HelpPage) {
+    return handleHelpTouch(event, nowMs);
   }
   if (handleNanoSliderTouch(event, nowMs)) {
     return true;
