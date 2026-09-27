@@ -76,6 +76,49 @@ Plik binarny firmware (`czytnik01.bin`) wrzuć do `public/firmware/`. Szczegół
 Firmware nie jest częścią tego repo — to repo to **tylko warstwa webowa**.
 Repo firmware (PlatformIO/ESP-IDF) zostanie założone osobno.
 
+## Podgląd ekranów bez czytnika (symulator nanosim)
+
+Ekrany trybu nawigacji *Nowoczesny* (skórka Nano) da się obejrzeć na
+komputerze, bez wgrywania firmware. To nie jest emulator ESP32. Czytnik
+rysuje każdą klatkę do bufora 640×172 w RAM i dopiero potem wysyła ją na
+panel. Symulator kompiluje te same pliki rysujące
+(`firmware/src/display/DisplayManager.cpp`, `firmware/src/ui/NanoScreens.cpp`)
+pod zwykły komputer i zapisuje ten bufor do pliku obrazka.
+
+Kod w `firmware/tools/nanosim/`:
+
+| Plik               | Co robi                                                              |
+| ------------------ | -------------------------------------------------------------------- |
+| `sim_screens.cpp`  | ustawia każdy ekran (zakładka, przykładowe książki, bateria 76%) i robi zrzut |
+| `sim_plugins.cpp`  | to samo dla pluginów (Dyktafon, Klepsydra)                           |
+| `sim_main.cpp`     | zapis bufora do `.ppm`                                               |
+| `stubs/`           | atrapy Arduino, SD_MMC i logów ESP, żeby kod skompilował się na PC   |
+| `build.sh`         | kompiluje i odpala symulator                                         |
+| `sheet.py`         | skleja wybrane zrzuty w jeden PNG                                    |
+
+Wymagania: g++ (na Windowsie przez WSL z Ubuntu) i Python z Pillow
+(`pip install pillow`).
+
+```powershell
+cd firmware
+wsl -d Ubuntu -- bash tools/nanosim/build.sh
+cd tools\nanosim
+python sheet.py podglad read settings library device
+```
+
+Pierwsza komenda zapisuje wszystkie ekrany do `tools/nanosim/out/*.ppm`
+(otwiera je np. GIMP albo IrfanView). Każdy ekran ma też wersję
+`*_targets.ppm` z fioletowymi ramkami w miejscach, które reagują na dotyk.
+`sheet.py <nazwa_wyniku> <ekran> <ekran> ...` skleja podane ekrany w
+`out/<nazwa_wyniku>.png`. Ekran podajesz nazwą pliku bez `.ppm`, np. `read`,
+`settings`, `themes0`, `library`, `chapters`, `device`, `reader_panel`,
+`plugin_dict_home`. Wersje z czcionką Literata mają końcówkę `_literata`.
+
+Nowy ekran trzeba dopisać do `sim_screens.cpp` (albo `sim_plugins.cpp`)
+wywołaniem `frame("nazwa", zakładka, [&] { ... })`, wzorując się na
+istniejących. Symulator robi statyczne zrzuty, klikać w nim się nie da.
+Kolory na monitorze wyglądają trochę inaczej niż na panelu czytnika.
+
 ## Deploy
 
 Push na branch `main` → GitHub Actions buduje i deployuje na GitHub Pages.
