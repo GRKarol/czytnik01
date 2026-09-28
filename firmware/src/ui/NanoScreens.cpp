@@ -28,6 +28,23 @@ void iconButton(DisplayManager &d, Sink &sink, const Rect &rect, int id, Icon ic
 
 constexpr int kHelpButtonW = 34;
 
+// A book cover: the picture from the Flower app, or the book's colour with
+// its initials. The thin binding line near the left edge goes over both, so
+// a picture sits in exactly the frame of the default cover.
+void paintCover(DisplayManager &d, const Rect &cover, int radius, int bindingX, int bindingW, uint16_t color,
+                const String &initials, uint8_t size, const NanoImage &image) {
+  if (image.valid()) {
+    d.nanoImage(cover, radius, image);
+  } else {
+    d.nanoFillRoundRect(cover.x, cover.y, cover.w, cover.h, radius, color);
+  }
+  d.nanoFillRect(cover.x + bindingX, cover.y, bindingW, cover.h, d.nanoBlend(Role::Background, 90));
+  if (!image.valid()) {
+    const int textX = bindingX + bindingW;
+    d.nanoText(Rect(cover.x + textX, cover.y, cover.w - textX, cover.h), initials, size, 0xFFFF, Align::Center);
+  }
+}
+
 // Cuts the "?" button off the right of `rect` (when the item has one) and
 // paints it; returns what is left for the tile itself.
 Rect withHelpButton(DisplayManager &d, Sink &sink, const Rect &rect, int helpId) {
@@ -183,10 +200,8 @@ void paintReadHome(DisplayManager &d, Sink &sink, const ReadHome &view) {
 
   if (view.hasBook) {
     // Cover: a colored book with its initials.
-    const Rect cover(card.x + 10, card.y + 10, 46, kCardH - 20);
-    d.nanoFillRoundRect(cover.x, cover.y, cover.w, cover.h, 6, view.coverColor);
-    d.nanoFillRect(cover.x + 6, cover.y, 2, cover.h, d.nanoBlend(Role::Background, 90));
-    d.nanoText(Rect(cover.x + 8, cover.y, cover.w - 8, cover.h), view.coverInitials, 2, 0xFFFF, Align::Center);
+    const Rect cover(card.x + 10, card.y + 10, kCoverW, kCoverH);
+    paintCover(d, cover, 6, 6, 2, view.coverColor, view.coverInitials, 2, view.cover);
 
     const int textX = right(cover) + 12;
     const int textRight = playCx - playR - 12;
@@ -522,7 +537,11 @@ void paintShelf(DisplayManager &d, Sink &sink, const ShelfView &view) {
     const bool active = i == selected;
     const int y = bottom(g.viewport) - height - (active ? 6 : 0);
     const uint16_t fill = shelfSpineColor(i);
-    d.nanoFillRoundRect(x, y, width, height, 3, fill);
+    if (book.spine.valid()) {
+      d.nanoImage(Rect(x, y, width, height), 3, book.spine);
+    } else {
+      d.nanoFillRoundRect(x, y, width, height, 3, fill);
+    }
     d.nanoFillRect(x + 3, y + 5, width - 6, 1, d.nanoBlend(Role::Background, 60));
     d.nanoFillRect(x + 3, y + height - 6, width - 6, 1, d.nanoBlend(Role::Background, 60));
     if (active) {
@@ -532,9 +551,15 @@ void paintShelf(DisplayManager &d, Sink &sink, const ShelfView &view) {
       // Bookmark ribbon hanging from the top, as long as the progress.
       const int ribbonX = x + width - 9;
       const int ribbonHeight = std::max(8, (height - 8) * book.progress / 100);
-      d.nanoFillRect(ribbonX, y, 5, ribbonHeight, 0xDACA);
-      d.nanoFillTriangle(ribbonX, y + ribbonHeight, ribbonX + 4, y + ribbonHeight, ribbonX + 2, y + ribbonHeight - 3,
-                         fill);
+      // Body, then the two tails of the swallowtail end (drawn rather than
+      // cut out with the spine colour, so it also works over a picture).
+      const int tailY = y + ribbonHeight - 3;
+      d.nanoFillRect(ribbonX, y, 5, ribbonHeight - 3, 0xDACA);
+      d.nanoFillTriangle(ribbonX, tailY, ribbonX + 2, tailY, ribbonX, y + ribbonHeight, 0xDACA);
+      d.nanoFillTriangle(ribbonX + 2, tailY, ribbonX + 4, tailY, ribbonX + 4, y + ribbonHeight, 0xDACA);
+    }
+    if (book.spine.valid()) {
+      continue;  // the picture carries its own lettering
     }
     // Spine lettering: up to 6 capitals, top to bottom.
     String title = book.title;
@@ -730,8 +755,12 @@ void paintList(DisplayManager &d, Sink &sink, const ListView &view) {
 // ─── Book details ───────────────────────────────────────────────────────────
 
 void paintBookDetails(DisplayManager &d, Sink &sink, const BookDetailsView &view) {
-  const Rect area = fullContent();
-  const int top = paintHeader(d, sink, Rect(area.x, area.y, area.w, kHeaderH), view.header);
+  const Rect full = fullContent();
+  const int top = paintHeader(d, sink, Rect(full.x, full.y, full.w, kHeaderH), view.header);
+  // Cover down the left, twice the size of the one on the Czytaj card.
+  const Rect cover(full.x, top, kCoverW * 2, kCoverH * 2);
+  paintCover(d, cover, 8, 12, 3, view.coverColor, view.coverInitials, 3, view.cover);
+  const Rect area(right(cover) + 12, full.y, right(full) - right(cover) - 12, full.h);
   const int percentW = 60;
   d.nanoLabel(Rect(area.x, top, area.w - percentW - 10, 18), view.author, 1, Role::Muted);
   d.nanoLabel(Rect(right(area) - percentW, top, percentW, 18), view.percentLabel, 1, Role::Accent, Align::End);
@@ -1069,10 +1098,8 @@ void paintSaverBook(DisplayManager &d, const SaverBookView &view) {
   const int x = (kScreenW - cardW) / 2 + view.driftX;
   const int y = (kScreenH - cardH) / 2 + view.driftY;
   if (view.hasBook) {
-    const Rect cover(x, y, 70, cardH);
-    d.nanoFillRoundRect(cover.x, cover.y, cover.w, cover.h, 8, view.coverColor);
-    d.nanoFillRect(cover.x + 9, cover.y, 3, cover.h, d.nanoBlend(Role::Background, 90));
-    d.nanoText(Rect(cover.x + 12, cover.y, cover.w - 12, cover.h), view.coverInitials, 3, 0xFFFF, Align::Center);
+    const Rect cover(x, y, cardH * kCoverW / kCoverH, cardH);
+    paintCover(d, cover, 8, 10, 3, view.coverColor, view.coverInitials, 3, view.cover);
     const int textX = right(cover) + 18;
     const int textW = x + cardW - textX;
     d.nanoText(Rect(textX, y + 2, textW, 34), view.title, 3, d.nanoColor(Role::Foreground));

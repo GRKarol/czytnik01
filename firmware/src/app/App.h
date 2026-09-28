@@ -613,6 +613,7 @@ class App {
   void loadSavePoints();
   void persistSavePoints();
   void archiveSavePointsForDeletedBook(const String &bookPath);
+  void archiveSavePointsForMissingBooks();
   void restoreArchivedSavePointsForReturnedBooks();
   void openPluginsHome();
   void selectPluginsHomeItem(uint32_t nowMs);

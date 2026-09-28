@@ -7,6 +7,15 @@
 #include "display/Icons.h"
 #include "ui/UiGrid.h"
 
+// An RGB565 picture held in memory: book covers and spines sent from the
+// Flower app (storage/BookExtras.h).
+struct NanoImage {
+  uint16_t width = 0;
+  uint16_t height = 0;
+  const uint16_t *pixels = nullptr;
+  bool valid() const { return pixels != nullptr && width > 0 && height > 0; }
+};
+
 class DisplayManager {
  public:
   enum class ReaderTypeface : uint8_t {
@@ -414,6 +423,9 @@ class DisplayManager {
   void nanoFillCircle(int cx, int cy, int radius, uint16_t color);
   void nanoDrawCircle(int cx, int cy, int radius, uint16_t color);
   void nanoFillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t color);
+  // `image` scaled to fill `rect` (centre-cropped to its aspect, pixels
+  // averaged when shrinking) with the corners rounded like nanoFillRoundRect.
+  void nanoImage(const ui::Rect &rect, int radius, const NanoImage &image);
   // Wraps `text` at spaces into at most `maxLines` (1-3) lines of the rect
   // and ends the last one with an ellipsis if the rest doesn't fit -- never
   // shrinks the type (only when the rect is too short for even one line of

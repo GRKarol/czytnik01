@@ -53,6 +53,14 @@ class StorageManager {
   DiagnosticResult diagnoseSdCard();
   bool repairSdCardFolders();
   bool deleteBook(size_t index);
+  // Same clean-up by path (the Flower app deletes by name, and the library
+  // list the reader works from must not shift under it). No list refresh.
+  bool deleteBookAtPath(const String &path);
+  // Opens a library file by path for the Flower app's chapter editor without
+  // touching the library list: an EPUB is converted first, a missing word
+  // index is built. `readingPath` gets the file actually read (.rsvp).
+  bool openIndexedBookAtPath(const String &path, IndexedBookStore &store, BookMetadata &metadata,
+                             String *readingPath = nullptr);
   // True if `path` is a current library entry, OR is the .rsvp cache
   // sibling of one (an EPUB's save points are keyed by its converted cache
   // path — see epubCacheRsvpPath() — so a returned .epub source needs to

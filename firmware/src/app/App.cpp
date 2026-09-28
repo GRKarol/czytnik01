@@ -16,6 +16,7 @@
 #include "app/Translations.h"
 #include "board/BoardConfig.h"
 #include "plugins/DeviceServicesBridge.h"
+#include "storage/BookExtras.h"
 
 #ifndef RSVP_USB_TRANSFER_ENABLED
 #define RSVP_USB_TRANSFER_ENABLED 0
@@ -869,6 +870,7 @@ void App::begin() {
   powerButtonLongPressHandled_ = false;
   powerTapPending_ = false;
   storage_.setStatusCallback(&App::handleStorageStatus, this);
+  companionSync_.setStorage(&storage_);
   preferences_.begin(kPrefsNamespace, false);
   if (!preferences_.getBool(kPrefReaderModeMigrated, false)) {
     preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(ReaderMode::Rsvp));
@@ -8913,6 +8915,23 @@ void App::archiveSavePointsForDeletedBook(const String &bookPath) {
                 bookPath.c_str());
 }
 
+void App::archiveSavePointsForMissingBooks() {
+  if (storage_.bookCount() == 0) {
+    return;  // empty or unreadable card: nothing to compare against
+  }
+  loadSavePoints();
+  std::vector<String> missing;
+  for (const SavePoint &sp : savePoints_) {
+    if (!storage_.bookExistsAtPath(sp.bookPath) &&
+        std::find(missing.begin(), missing.end(), sp.bookPath) == missing.end()) {
+      missing.push_back(sp.bookPath);
+    }
+  }
+  for (const String &path : missing) {
+    archiveSavePointsForDeletedBook(path);
+  }
+}
+
 void App::restoreArchivedSavePointsForReturnedBooks() {
   std::vector<String> trashLines = storage_.readSavePointTrashLines();
   if (trashLines.empty()) {
@@ -9807,7 +9826,32 @@ void App::exitCompanionSync(uint32_t nowMs) {
   preferences_.begin(kPrefsNamespace, false);
   reloadRuntimePreferences(nowMs, false);
   storage_.refreshBooks();
+  // Books deleted from the Flower app: their save points go to the hidden
+  // trash like after deleting on the reader; returned books get theirs back.
+  archiveSavePointsForMissingBooks();
   restoreArchivedSavePointsForReturnedBooks();
+  BookExtras::forgetCachedPictures();
+  // Reopen the current book: chapters edited in the app and index shifts
+  // from added/deleted books both need it. Same position afterwards.
+  if (usingStorageBook_ && !currentBookPath_.isEmpty()) {
+    const size_t resumeIndex = reader_.currentIndex();
+    const int refreshedBookIndex = findBookIndexByPath(currentBookPath_);
+    if (refreshedBookIndex >= 0) {
+      if (loadBookAtIndex(static_cast<size_t>(refreshedBookIndex), nowMs, false, false, false, false)) {
+        reader_.seekTo(resumeIndex);
+      }
+    } else {
+      // Deleted from the app while it was open, like executeDeleteBook().
+      activeBookStore_.close();
+      reader_.clearLoadedBook(nowMs);
+      usingStorageBook_ = false;
+      currentBookPath_ = "";
+      currentBookTitle_ = "";
+      if (storage_.bookCount() > 0) {
+        loadBookAtIndex(0, nowMs);
+      }
+    }
+  }
   menuScreen_ = MenuScreen::Main;
   setState(AppState::Paused, nowMs);
 }

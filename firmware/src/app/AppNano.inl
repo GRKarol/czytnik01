@@ -129,8 +129,14 @@ bool nanoIsDeleteLabel(const String &label) {
 }
 
 // Cover of the current book on the Czytaj card: a stable color per book.
-uint16_t nanoCoverColor(const String &key) {
+uint16_t nanoCoverColor(const String &path) {
   constexpr uint16_t kColors[] = {0x99E3, 0x1AF5, 0x0B6A, 0x7B98, 0x4490, 0xB4CD, 0x9A49, 0x32FA};
+  // Without the extension: an EPUB and its converted .rsvp are one book.
+  String key = path;
+  const int dot = key.lastIndexOf('.');
+  if (dot > key.lastIndexOf('/')) {
+    key.remove(dot);
+  }
   uint32_t hash = 2166136261u;
   for (size_t i = 0; i < key.length(); ++i) {
     hash = (hash ^ static_cast<uint8_t>(key[i])) * 16777619u;
@@ -547,6 +553,7 @@ void App::renderNanoRead() {
     view.progressLabel = String(static_cast<unsigned>(view.progressPercent)) + "%";
     view.coverColor = nanoCoverColor(currentBookPath_);
     view.coverInitials = nanoInitials(view.title);
+    view.cover = BookExtras::picture(currentBookPath_, BookExtras::Picture::Cover);
     view.hint = tr3(TrKey3::NanoResumeHint);
   } else {
     view.title = tr3(TrKey3::NanoNoBook);
@@ -1088,10 +1095,17 @@ void App::renderNanoShelf() {
     view.selected = selected;
     view.offset = nanoShelfOffset_;
     view.books.reserve(count);
+    // Spine pictures only for the books on screen (same range paintShelf
+    // draws), so a long library doesn't churn the picture cache.
+    const size_t firstVisible = nano::shelfSpineIndexAt(-nanoShelfOffset_, count);
+    const size_t lastVisible = nano::shelfSpineIndexAt(-nanoShelfOffset_ + g.viewport.w, count);
     for (size_t i = 0; i < count; ++i) {
       nano::ShelfBook book;
       book.title = bookMenuItems_[i + 1].title;
       book.progress = bookMenuItems_[i + 1].progressPercent;
+      if (i >= firstVisible && i <= lastVisible && i < bookPickerBookIndices_.size()) {
+        book.spine = BookExtras::picture(storage_.bookPath(bookPickerBookIndices_[i]), BookExtras::Picture::Spine);
+      }
       view.books.push_back(book);
     }
     const size_t bookIndex = selected < bookPickerBookIndices_.size() ? bookPickerBookIndices_[selected] : 0;
@@ -1212,6 +1226,10 @@ void App::renderNanoBookDetails() {
   bookProgressPercent(bookDetailsBookIndex_, percent);
   view.percent = percent;
   view.percentLabel = String(static_cast<unsigned>(percent)) + "%";
+  const String bookPath = storage_.bookPath(bookDetailsBookIndex_);
+  view.coverColor = nanoCoverColor(bookPath);
+  view.coverInitials = nanoInitials(view.header.title);
+  view.cover = BookExtras::picture(bookPath, BookExtras::Picture::Cover);
   // bookDetailsMenuItems_[3..7] = read on / chapters / restart / delete /
   // go to.
   const NanoIcon icons[] = {NanoIcon::Play, NanoIcon::List, NanoIcon::Restart, NanoIcon::Trash, NanoIcon::Target};

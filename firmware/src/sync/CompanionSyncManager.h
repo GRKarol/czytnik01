@@ -7,6 +7,8 @@
 #include <WebServer.h>
 #include <WiFiUdp.h>
 
+class StorageManager;
+
 class CompanionSyncManager {
  public:
   struct Config {
@@ -33,6 +35,9 @@ class CompanionSyncManager {
 
   /** Apply settings from JSON body (used by BleApi for set-settings command). */
   bool applySettingsJson(const String &body, String &error);
+
+  /** Library access for the Flower app's chapter editor (word index). */
+  void setStorage(StorageManager *storage) { storage_ = storage; }
 
  private:
   enum class NetworkMode : uint8_t {
@@ -74,6 +79,10 @@ class CompanionSyncManager {
   static void handleLangCodesStatic();
   static void handleBookPositionStatic();
   static void handleLogClearStatic();
+  static void handleBookTextStatic();
+  static void handleBookChaptersStatic();
+  static void handleBookPictureStatic();
+  static void handleBookPictureUploadStatic();
 
   bool startAccessPoint();
   bool startServer();
@@ -101,6 +110,12 @@ class CompanionSyncManager {
   void handleLangCodes();
   void handleBookPosition();
   void handleLogClear();
+  void handleBookText();
+  void handleBookChapters();
+  void handleBookPicture();
+  void handleBookPictureUpload();
+  String booksJsonArray();
+  String resolveLibraryPath(const String &requested) const;
   String wifiJson();
   bool applyWifiJson(const String &body, String &error);
   String rssFeedsJson();
@@ -128,6 +143,9 @@ class CompanionSyncManager {
   String uploadTmpPath_;
   String uploadError_;
   String otaError_;
+  StorageManager *storage_ = nullptr;
+  File pictureFile_;
+  String pictureError_;
   String pairingCode_;
   String networkSsid_;
   Preferences preferences_;

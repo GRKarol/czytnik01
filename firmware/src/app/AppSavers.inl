@@ -181,6 +181,7 @@ void App::renderStandbyScene(uint32_t nowMs, const String &hint, uint8_t hintAlp
         view.progressLabel = String(static_cast<unsigned>(view.progressPercent)) + "%";
         view.coverColor = nanoCoverColor(currentBookPath_);
         view.coverInitials = nanoInitials(view.title);
+        view.cover = BookExtras::picture(currentBookPath_, BookExtras::Picture::Cover);
       } else {
         view.title = tr4(TrKey4::SaverNoBook);
       }

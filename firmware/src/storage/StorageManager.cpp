@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "board/BoardConfig.h"
+#include "storage/BookExtras.h"
 #include "storage/EpubConverter.h"
 #include "text/LatinText.h"
 
@@ -2224,6 +2225,8 @@ bool StorageManager::loadBookContent(size_t index, BookContent &book, String *lo
       if (book.title.isEmpty()) {
         book.title = normalizeDisplayText(displayNameWithoutExtension(path));
       }
+      book.wordCount = book.words.size();
+      BookExtras::applyChapters(path, book);
       Serial.printf("[storage] Loaded %u words and %u chapters from %s in %lu ms\n",
                     static_cast<unsigned int>(book.words.size()),
                     static_cast<unsigned int>(book.chapters.size()), path.c_str(),
@@ -2738,6 +2741,7 @@ bool StorageManager::loadIndexedBook(size_t index, IndexedBookStore &store,
     notifyStatus("Book open failed", displayNameForPath(path).c_str(), "Index invalid", 100);
     return false;
   }
+  BookExtras::applyChapters(path, metadata);
 
   notifyStatus("Opening book", displayNameForPath(path).c_str(), "Opening word cache", 80);
   if (!store.open(indexedIndexPathFor(path), indexedDataPathFor(path), header)) {
@@ -2905,32 +2909,44 @@ bool StorageManager::deleteBook(size_t index) {
     return false;
   }
 
-  const String path = bookPaths_[index];
+  const bool ok = deleteBookAtPath(bookPaths_[index]);
+
+  // Refresh the book list
+  refreshBookPaths();
+  return ok;
+}
+
+bool StorageManager::deleteBookAtPath(const String &path) {
   Serial.printf("[storage] deleteBook: removing %s\n", path.c_str());
+  BookExtras::archive(path);
 
-  // Remove the main book file
-  bool ok = SD_MMC.remove(path.c_str());
+  const auto removeWithIndex = [](const String &file) {
+    const bool removed = SD_MMC.remove(file.c_str());
+    const String indexPath = file + ".ridx";
+    const String dataPath = file + ".rdat";
+    if (SD_MMC.exists(indexPath.c_str())) {
+      SD_MMC.remove(indexPath.c_str());
+    }
+    if (SD_MMC.exists(dataPath.c_str())) {
+      SD_MMC.remove(dataPath.c_str());
+    }
+    return removed;
+  };
 
-  // Remove indexed cache files (.ridx, .rdat) if they exist
-  const String indexPath = path + ".ridx";
-  const String dataPath = path + ".rdat";
-  if (SD_MMC.exists(indexPath.c_str())) {
-    SD_MMC.remove(indexPath.c_str());
-  }
-  if (SD_MMC.exists(dataPath.c_str())) {
-    SD_MMC.remove(dataPath.c_str());
-  }
+  // Remove the main book file and its word index (.ridx, .rdat).
+  const bool ok = removeWithIndex(path);
 
-  // If it was an epub-converted file (.rsvp), also try removing the cached .rsvp
-  // or if it's an epub, remove the cached .rsvp sibling
+  // An EPUB and the .rsvp the reader converted it to are one book: deleting
+  // either removes both, otherwise the other one comes back in the library.
   if (hasEpubExtension(path)) {
     const String rsvpCache = rsvpCachePathForEpub(path);
     if (SD_MMC.exists(rsvpCache.c_str())) {
-      SD_MMC.remove(rsvpCache.c_str());
-      const String rsvpIdx = rsvpCache + ".ridx";
-      const String rsvpDat = rsvpCache + ".rdat";
-      if (SD_MMC.exists(rsvpIdx.c_str())) SD_MMC.remove(rsvpIdx.c_str());
-      if (SD_MMC.exists(rsvpDat.c_str())) SD_MMC.remove(rsvpDat.c_str());
+      removeWithIndex(rsvpCache);
+    }
+  } else if (hasRsvpExtension(path)) {
+    const String epubSource = epubSiblingPathForRsvp(path);
+    if (SD_MMC.exists(epubSource.c_str())) {
+      SD_MMC.remove(epubSource.c_str());
     }
   }
 
@@ -2939,10 +2955,44 @@ bool StorageManager::deleteBook(size_t index) {
   } else {
     Serial.printf("[storage] deleteBook: failed to remove %s\n", path.c_str());
   }
-
-  // Refresh the book list
-  refreshBookPaths();
   return ok;
+}
+
+bool StorageManager::openIndexedBookAtPath(const String &requestedPath, IndexedBookStore &store,
+                                           BookMetadata &metadata, String *readingPath) {
+  metadata.clear();
+  if (!mounted_) {
+    return false;
+  }
+  String path = requestedPath;
+  if (hasEpubExtension(path)) {
+    String rsvpPath;
+    if (!ensureEpubConverted(path, rsvpPath)) {
+      return false;
+    }
+    path = rsvpPath;
+  }
+  if (!fileExistsAndHasBytes(path)) {
+    return false;
+  }
+  if (!ensureIndexedBook(path, metadata, hasRsvpExtension(path), true)) {
+    metadata.clear();
+    return false;
+  }
+  IndexedBookStore::Header header;
+  if (!readIndexedMetadata(path, metadata, &header)) {
+    metadata.clear();
+    return false;
+  }
+  BookExtras::applyChapters(path, metadata);
+  if (!store.open(indexedIndexPathFor(path), indexedDataPathFor(path), header)) {
+    metadata.clear();
+    return false;
+  }
+  if (readingPath != nullptr) {
+    *readingPath = path;
+  }
+  return true;
 }
 
 String StorageManager::epubCacheRsvpPath(const String &epubPath) const {
@@ -3020,6 +3070,7 @@ void StorageManager::refreshBookPaths(bool includeMetadata) {
 
   notifyStatus("SD", "Reading library", "", 96);
   bookPaths_ = collectBookPaths();
+  BookExtras::restoreAll(bookPaths_);
   if (includeMetadata) {
     rebuildBookMetadataCache();
   } else {

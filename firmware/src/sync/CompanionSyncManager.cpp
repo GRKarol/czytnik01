@@ -10,6 +10,9 @@
 #include <vector>
 
 #include "sync/WifiQrCode.h"
+#include "storage/BookExtras.h"
+#include "storage/IndexedBookStore.h"
+#include "storage/StorageManager.h"
 #include "ble/BleApi.h"
 #include "plugins/BuiltinPlugins.h"
 #include "update/OtaUpdater.h"
@@ -798,6 +801,30 @@ void CompanionSyncManager::handleLangCodesStatic() {
   }
 }
 
+void CompanionSyncManager::handleBookTextStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleBookText();
+  }
+}
+
+void CompanionSyncManager::handleBookChaptersStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleBookChapters();
+  }
+}
+
+void CompanionSyncManager::handleBookPictureStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleBookPicture();
+  }
+}
+
+void CompanionSyncManager::handleBookPictureUploadStatic() {
+  if (instance_ != nullptr) {
+    instance_->handleBookPictureUpload();
+  }
+}
+
 void CompanionSyncManager::handleBookPositionStatic() {
   if (instance_ != nullptr) {
     instance_->handleBookPosition();
@@ -938,6 +965,12 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/lang/codes", HTTP_GET, handleLangCodesStatic);
   server_.on("/api/books/position", HTTP_GET, handleBookPositionStatic);
   server_.on("/api/books/position", HTTP_PUT, handleBookPositionStatic);
+  server_.on("/api/books/text", HTTP_GET, handleBookTextStatic);
+  server_.on("/api/books/chapters", HTTP_PUT, handleBookChaptersStatic);
+  server_.on("/api/books/chapters", HTTP_DELETE, handleBookChaptersStatic);
+  server_.on("/api/books/picture", HTTP_GET, handleBookPictureStatic);
+  server_.on("/api/books/picture", HTTP_DELETE, handleBookPictureStatic);
+  server_.on("/api/books/picture", HTTP_POST, handleBookPictureStatic, handleBookPictureUploadStatic);
   // CORS preflight dla wszystkich endpointów
   server_.on("/api/hello", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/info", HTTP_OPTIONS, handleOptionsStatic);
@@ -954,6 +987,9 @@ bool CompanionSyncManager::startServer() {
   server_.on("/api/log", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/lang/codes", HTTP_OPTIONS, handleOptionsStatic);
   server_.on("/api/books/position", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/books/text", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/books/chapters", HTTP_OPTIONS, handleOptionsStatic);
+  server_.on("/api/books/picture", HTTP_OPTIONS, handleOptionsStatic);
   server_.onNotFound(handleNotFoundStatic);
   server_.begin();
   serverStarted_ = true;
@@ -1007,7 +1043,15 @@ void CompanionSyncManager::handleRoot() {
 
 void CompanionSyncManager::handleBooksList() {
   sendCorsHeaders();
-  String body = "{\"ok\":true,\"books\":[";
+  server_.send(200, "application/json", "{\"ok\":true,\"books\":" + booksJsonArray() + "}");
+}
+
+// The library as the reader shows it: an EPUB and the .rsvp the reader
+// converted it to are one entry (the EPUB's name, the .rsvp's title and
+// reading progress), a .txt with an .rsvp next to it is hidden. Each entry
+// says whether it has a cover, a spine and hand-made chapters from the app.
+String CompanionSyncManager::booksJsonArray() {
+  String body = "[";
   bool first = true;
 
   const auto appendDirectory = [&](const char *directoryPath) {
@@ -1019,58 +1063,82 @@ void CompanionSyncManager::handleBooksList() {
       return;
     }
 
+    std::vector<std::pair<String, uint32_t>> files;
     File entry = dir.openNextFile();
     while (entry) {
       if (!entry.isDirectory()) {
-        const String name = displayNameForPath(String(entry.name()));
-        const String path = String(directoryPath) + "/" + name;
-        String lowered = name;
-        lowered.toLowerCase();
-        if (isSupportedBookName(lowered)) {
-          const RsvpMetadata metadata = readRsvpMetadata(path);
-          uint8_t progressPercent = 0;
-          const bool hasProgress = progressPercentForPath(path, progressPercent);
-          if (!first) {
-            body += ",";
-          }
-          first = false;
-          body += "{\"name\":\"" + jsonEscape(relativeLibraryName(path)) + "\",\"category\":\"" +
-                  libraryCategoryForPath(path) + "\",\"title\":\"" +
-                  jsonEscape(metadata.title) + "\",\"author\":\"" + jsonEscape(metadata.author) +
-                  "\",\"bytes\":" +
-                  String(static_cast<uint32_t>(entry.size()));
-          if (hasProgress) {
-            body += ",\"progressPercent\":" + String(progressPercent);
-          }
-          // Include chapters if available (only for .rsvp files)
-          if (lowered.endsWith(".rsvp")) {
-            const std::vector<RsvpChapter> chapters = readRsvpChapters(path);
-            if (!chapters.empty()) {
-              body += ",\"chapters\":[";
-              for (size_t i = 0; i < chapters.size(); ++i) {
-                if (i > 0) body += ",";
-                body += "{\"title\":\"" + jsonEscape(chapters[i].title) +
-                        "\",\"startWord\":" + String(static_cast<uint32_t>(chapters[i].startWord)) + "}";
-              }
-              body += "]";
-            }
-          }
-          body += "}";
-        }
+        files.emplace_back(displayNameForPath(String(entry.name())), static_cast<uint32_t>(entry.size()));
       }
       entry.close();
       entry = dir.openNextFile();
     }
-
     dir.close();
+
+    const auto hasFile = [&](const String &name) {
+      String lowered = name;
+      lowered.toLowerCase();
+      for (const auto &file : files) {
+        String other = file.first;
+        other.toLowerCase();
+        if (other == lowered) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const auto withExtension = [](const String &name, const char *extension) {
+      const int dot = name.lastIndexOf('.');
+      return (dot > 0 ? name.substring(0, dot) : name) + extension;
+    };
+
+    for (const auto &file : files) {
+      const String &name = file.first;
+      String lowered = name;
+      lowered.toLowerCase();
+      if (!isSupportedBookName(lowered) || name.startsWith(".")) {
+        continue;
+      }
+      if (lowered.endsWith(".rsvp") && hasFile(withExtension(name, ".epub"))) {
+        continue;  // converted copy of an EPUB, listed under the EPUB
+      }
+      if (lowered.endsWith(".txt") && hasFile(withExtension(name, ".rsvp"))) {
+        continue;
+      }
+      const String path = String(directoryPath) + "/" + name;
+      // Title and progress live with the file the reader actually reads.
+      String readingPath = path;
+      if (lowered.endsWith(".epub") && hasFile(withExtension(name, ".rsvp"))) {
+        readingPath = String(directoryPath) + "/" + withExtension(name, ".rsvp");
+      }
+      const RsvpMetadata metadata = readRsvpMetadata(readingPath);
+      uint8_t progressPercent = 0;
+      const bool hasProgress = progressPercentForPath(readingPath, progressPercent);
+      if (!first) {
+        body += ",";
+      }
+      first = false;
+      body += "{\"name\":\"" + jsonEscape(relativeLibraryName(path)) + "\",\"category\":\"" +
+              libraryCategoryForPath(path) + "\",\"title\":\"" + jsonEscape(metadata.title) +
+              "\",\"author\":\"" + jsonEscape(metadata.author) + "\",\"bytes\":" + String(file.second);
+      if (hasProgress) {
+        body += ",\"progressPercent\":" + String(progressPercent);
+      }
+      body += ",\"hasCover\":";
+      body += BookExtras::hasPicture(path, BookExtras::Picture::Cover) ? "true" : "false";
+      body += ",\"hasSpine\":";
+      body += BookExtras::hasPicture(path, BookExtras::Picture::Spine) ? "true" : "false";
+      body += ",\"customChapters\":";
+      body += BookExtras::hasChapters(path) ? "true" : "false";
+      body += "}";
+    }
   };
 
   appendDirectory(kBooksPath);
   appendDirectory(kBookFilesPath);
   appendDirectory(kArticleFilesPath);
 
-  body += "]}";
-  server_.send(200, "application/json", body);
+  body += "]";
+  return body;
 }
 
 void CompanionSyncManager::handleSettings() {
@@ -1182,68 +1250,78 @@ void CompanionSyncManager::handleBooks() {
   uploadFinalPath_ = "";
 }
 
+// "books/x.epub", "articles/y.rsvp" or a bare file name (older app
+// versions, legacy /books root) -> the existing file on the card, "" if none.
+String CompanionSyncManager::resolveLibraryPath(const String &requested) const {
+  String name = requested;
+  name.trim();
+  if (name.isEmpty() || name.indexOf("..") >= 0) {
+    return "";
+  }
+  std::vector<String> candidates;
+  const int separator = name.indexOf('/');
+  if (separator >= 0) {
+    const String directory = name.substring(0, separator);
+    const String filename = sanitizeFilename(name.substring(separator + 1));
+    if (filename.isEmpty() || (directory != "books" && directory != "articles")) {
+      return "";
+    }
+    candidates.push_back(String(kBooksPath) + "/" + directory + "/" + filename);
+  } else {
+    const String filename = sanitizeFilename(name);
+    if (filename.isEmpty()) {
+      return "";
+    }
+    candidates.push_back(String(kBooksPath) + "/" + filename);
+    candidates.push_back(String(kBookFilesPath) + "/" + filename);
+    candidates.push_back(String(kArticleFilesPath) + "/" + filename);
+  }
+  for (const String &path : candidates) {
+    String lowered = path;
+    lowered.toLowerCase();
+    if (!isSupportedBookName(lowered)) {
+      continue;
+    }
+    File file = SD_MMC.open(path);
+    const bool isFile = file && !file.isDirectory();
+    if (file) {
+      file.close();
+    }
+    if (isFile) {
+      return path;
+    }
+  }
+  return "";
+}
+
 void CompanionSyncManager::handleBookDelete() {
   sendCorsHeaders();
-  String requested = server_.arg("name");
-  requested.trim();
+  const String requested = server_.arg("name");
   if (requested.isEmpty()) {
     server_.send(400, "application/json", "{\"ok\":false,\"error\":\"Missing filename\"}");
     return;
   }
-
-  String filename = requested;
-  String path;
-  const int separator = requested.indexOf('/');
-  if (separator >= 0) {
-    const String directory = requested.substring(0, separator);
-    filename = sanitizeFilename(requested.substring(separator + 1));
-    if (filename.isEmpty() || requested.indexOf("..") >= 0 ||
-        (directory != "books" && directory != "articles")) {
-      server_.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid library path\"}");
-      return;
-    }
-    path = String(kBooksPath) + "/" + directory + "/" + filename;
-  } else {
-    filename = sanitizeFilename(requested);
-    path = String(kBooksPath) + "/" + filename;
-  }
-
-  String lowered = filename;
-  lowered.toLowerCase();
-  if (!isSupportedBookName(lowered)) {
-    server_.send(400, "application/json", "{\"ok\":false,\"error\":\"Unsupported file type\"}");
-    return;
-  }
-
-  File file = SD_MMC.open(path);
-  if ((!file || file.isDirectory()) && separator < 0) {
-    if (file) {
-      file.close();
-    }
-    path = String(kBookFilesPath) + "/" + filename;
-    file = SD_MMC.open(path);
-  }
-  if ((!file || file.isDirectory()) && separator < 0) {
-    if (file) {
-      file.close();
-    }
-    path = String(kArticleFilesPath) + "/" + filename;
-    file = SD_MMC.open(path);
-  }
-  if (!file || file.isDirectory()) {
-    if (file) {
-      file.close();
-    }
+  const String path = resolveLibraryPath(requested);
+  if (path.isEmpty()) {
     server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Book not found\"}");
     return;
   }
-  file.close();
 
-  if (!SD_MMC.remove(path)) {
+  // Cover, spine and chapters go to the archive with the book (they return
+  // if it is added again); an EPUB takes its converted copy with it.
+  bool deleted = false;
+  if (storage_ != nullptr) {
+    deleted = storage_->deleteBookAtPath(path);
+  } else {
+    BookExtras::archive(path);
+    deleted = SD_MMC.remove(path);
+  }
+  if (!deleted) {
     server_.send(500, "application/json", "{\"ok\":false,\"error\":\"Delete failed\"}");
     return;
   }
 
+  const String filename = displayNameForPath(path);
   statusLine1_ = "Book deleted";
   statusLine2_ = filename;
   Serial.printf("[sync] deleted %s\n", path.c_str());
@@ -1313,6 +1391,248 @@ void CompanionSyncManager::handleBookUpload() {
   if (upload.status == UPLOAD_FILE_ABORTED) {
     uploadError_ = "Upload aborted";
     finishUpload(false);
+  }
+}
+
+// ─── Book extras for the Flower app ─────────────────────────────────────────
+//
+// GET /api/books/text?name=&from=&count=&words=
+//   Paragraphs of the book as the reader split it: the word each starts at
+//   and its first `words` words, `count` paragraphs from paragraph `from`,
+//   plus the chapters the reader uses now. The app's chapter editor pages
+//   through this and marks where chapters begin, in the reader's own word
+//   numbering, so nothing is lost between the app's and the reader's parsing.
+// PUT /api/books/chapters?name=   body "wordIndex<TAB>title" per line
+// DELETE /api/books/chapters?name=  back to the chapters found in the text
+// POST/GET/DELETE /api/books/picture?name=&kind=cover|spine
+
+void CompanionSyncManager::handleBookText() {
+  sendCorsHeaders();
+  const String path = resolveLibraryPath(server_.arg("name"));
+  if (path.isEmpty()) {
+    server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Book not found\"}");
+    return;
+  }
+  if (storage_ == nullptr) {
+    server_.send(503, "application/json", "{\"ok\":false,\"error\":\"Library not ready\"}");
+    return;
+  }
+
+  IndexedBookStore store;
+  BookMetadata metadata;
+  if (!storage_->openIndexedBookAtPath(path, store, metadata)) {
+    server_.send(500, "application/json", "{\"ok\":false,\"error\":\"Cannot open book\"}");
+    return;
+  }
+
+  const size_t paragraphCount = metadata.paragraphStarts.size();
+  const size_t from = std::min(paragraphCount, static_cast<size_t>(std::max(0L, server_.arg("from").toInt())));
+  long countArg = server_.arg("count").toInt();
+  if (countArg <= 0) {
+    countArg = 100;
+  }
+  const size_t count = std::min(static_cast<size_t>(std::min(countArg, 300L)), paragraphCount - from);
+  long wordsArg = server_.arg("words").toInt();
+  if (wordsArg <= 0) {
+    wordsArg = 24;
+  }
+  const size_t wordsPerParagraph = static_cast<size_t>(std::min(wordsArg, 80L));
+
+  String body;
+  body.reserve(count * 120 + 512);
+  body += "{\"ok\":true,\"wordCount\":" + String(static_cast<uint32_t>(metadata.wordCount));
+  body += ",\"paragraphCount\":" + String(static_cast<uint32_t>(paragraphCount));
+  body += ",\"from\":" + String(static_cast<uint32_t>(from));
+  body += ",\"custom\":";
+  body += BookExtras::hasChapters(path) ? "true" : "false";
+  body += ",\"chapters\":[";
+  for (size_t i = 0; i < metadata.chapters.size(); ++i) {
+    if (i > 0) {
+      body += ",";
+    }
+    body += "{\"w\":" + String(static_cast<uint32_t>(metadata.chapters[i].wordIndex)) + ",\"t\":\"" +
+            jsonEscape(metadata.chapters[i].title) + "\"}";
+  }
+  body += "],\"paragraphs\":[";
+  for (size_t p = from; p < from + count; ++p) {
+    const size_t start = metadata.paragraphStarts[p];
+    const size_t end = p + 1 < paragraphCount ? metadata.paragraphStarts[p + 1] : metadata.wordCount;
+    String text;
+    size_t shown = 0;
+    for (size_t w = start; w < end && shown < wordsPerParagraph; ++w, ++shown) {
+      if (shown > 0) {
+        text += " ";
+      }
+      text += store.wordAt(w);
+    }
+    if (p > from) {
+      body += ",";
+    }
+    body += "{\"w\":" + String(static_cast<uint32_t>(start)) + ",\"n\":" +
+            String(static_cast<uint32_t>(end > start ? end - start : 0)) + ",\"t\":\"" + jsonEscape(text) + "\"}";
+  }
+  body += "]}";
+  store.close();
+  server_.send(200, "application/json", body);
+}
+
+void CompanionSyncManager::handleBookChapters() {
+  sendCorsHeaders();
+  const String path = resolveLibraryPath(server_.arg("name"));
+  if (path.isEmpty()) {
+    server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Book not found\"}");
+    return;
+  }
+
+  if (server_.method() == HTTP_DELETE) {
+    BookExtras::removeChapters(path);
+    logLine("Chapters reset: " + displayNameForPath(path));
+    server_.send(200, "application/json", "{\"ok\":true,\"custom\":false}");
+    return;
+  }
+
+  const String body = server_.arg("plain");
+  std::vector<ChapterMarker> chapters;
+  int lineStart = 0;
+  while (lineStart < static_cast<int>(body.length()) && chapters.size() < BookExtras::kMaxChapters) {
+    int lineEnd = body.indexOf('\n', lineStart);
+    if (lineEnd < 0) {
+      lineEnd = body.length();
+    }
+    const String line = body.substring(lineStart, lineEnd);
+    lineStart = lineEnd + 1;
+    const int tab = line.indexOf('\t');
+    if (tab <= 0) {
+      continue;
+    }
+    ChapterMarker marker;
+    marker.wordIndex = static_cast<size_t>(line.substring(0, tab).toInt());
+    marker.title = line.substring(tab + 1);
+    marker.title.replace("\r", "");
+    chapters.push_back(marker);
+  }
+  if (chapters.empty()) {
+    server_.send(400, "application/json", "{\"ok\":false,\"error\":\"No chapters\"}");
+    return;
+  }
+  if (!BookExtras::writeChapters(path, chapters)) {
+    server_.send(500, "application/json", "{\"ok\":false,\"error\":\"Cannot save chapters\"}");
+    return;
+  }
+  statusLine1_ = "Chapters saved";
+  statusLine2_ = displayNameForPath(path);
+  logLine("Chapters saved: " + displayNameForPath(path) + " (" + String(static_cast<unsigned>(chapters.size())) + ")");
+  server_.send(200, "application/json",
+               "{\"ok\":true,\"custom\":true,\"count\":" + String(static_cast<unsigned>(chapters.size())) + "}");
+}
+
+namespace {
+constexpr const char *kPictureUploadPath = "/config/picture.upload";
+
+bool pictureKindFromArg(const String &value, BookExtras::Picture &kind) {
+  if (value == "cover") {
+    kind = BookExtras::Picture::Cover;
+    return true;
+  }
+  if (value == "spine") {
+    kind = BookExtras::Picture::Spine;
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+void CompanionSyncManager::handleBookPicture() {
+  sendCorsHeaders();
+  BookExtras::Picture kind;
+  if (!pictureKindFromArg(server_.arg("kind"), kind)) {
+    server_.send(400, "application/json", "{\"ok\":false,\"error\":\"kind must be cover or spine\"}");
+    return;
+  }
+  const String path = resolveLibraryPath(server_.arg("name"));
+  if (path.isEmpty()) {
+    if (server_.method() == HTTP_POST) {
+      SD_MMC.remove(kPictureUploadPath);
+    }
+    server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Book not found\"}");
+    return;
+  }
+
+  if (server_.method() == HTTP_GET) {
+    File file = SD_MMC.open(BookExtras::picturePath(path, kind), FILE_READ);
+    if (!file) {
+      server_.send(404, "application/json", "{\"ok\":false,\"error\":\"No picture\"}");
+      return;
+    }
+    server_.streamFile(file, "application/octet-stream");
+    file.close();
+    return;
+  }
+
+  if (server_.method() == HTTP_DELETE) {
+    BookExtras::removePicture(path, kind);
+    logLine(String(kind == BookExtras::Picture::Cover ? "Cover" : "Spine") + " removed: " + displayNameForPath(path));
+    server_.send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+
+  // POST: the multipart body is already in kPictureUploadPath.
+  if (pictureFile_) {
+    pictureFile_.close();
+  }
+  if (!pictureError_.isEmpty()) {
+    SD_MMC.remove(kPictureUploadPath);
+    server_.send(400, "application/json", "{\"ok\":false,\"error\":\"" + jsonEscape(pictureError_) + "\"}");
+    pictureError_ = "";
+    return;
+  }
+  String error;
+  if (!BookExtras::installPicture(path, kind, kPictureUploadPath, error)) {
+    server_.send(400, "application/json", "{\"ok\":false,\"error\":\"" + jsonEscape(error) + "\"}");
+    return;
+  }
+  statusLine1_ = kind == BookExtras::Picture::Cover ? "Cover saved" : "Spine saved";
+  statusLine2_ = displayNameForPath(path);
+  logLine(statusLine1_ + ": " + statusLine2_);
+  server_.send(200, "application/json", "{\"ok\":true}");
+}
+
+void CompanionSyncManager::handleBookPictureUpload() {
+  HTTPUpload &upload = server_.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    pictureError_ = "";
+    SD_MMC.mkdir(kConfigPath);
+    SD_MMC.remove(kPictureUploadPath);
+    pictureFile_ = SD_MMC.open(kPictureUploadPath, FILE_WRITE);
+    if (!pictureFile_) {
+      pictureError_ = "Could not create file";
+    }
+    return;
+  }
+  if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!pictureError_.isEmpty() || !pictureFile_) {
+      return;
+    }
+    if (pictureFile_.size() + upload.currentSize > 64 * 1024) {
+      pictureError_ = "Picture too large";
+      return;
+    }
+    if (pictureFile_.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      pictureError_ = "Write failed";
+    }
+    return;
+  }
+  if (upload.status == UPLOAD_FILE_END) {
+    if (pictureFile_) {
+      pictureFile_.close();
+    }
+    return;
+  }
+  if (upload.status == UPLOAD_FILE_ABORTED) {
+    if (pictureFile_) {
+      pictureFile_.close();
+    }
+    pictureError_ = "Upload aborted";
   }
 }
 
@@ -1472,6 +1792,8 @@ void CompanionSyncManager::handleCapabilities() {
   body += ",\"pluginsList\":true";
   body += ",\"pluginsRemove\":true";
   body += ",\"pluginsInstallPackage\":false";
+  body += ",\"bookPictures\":true";
+  body += ",\"chapterEditor\":true";
   body += ",\"bluetoothTransfer\":";
 #if FLOWER_BLE_ENABLED
   body += "true";
@@ -1624,55 +1946,7 @@ void CompanionSyncManager::handleState() {
   body += ",\"settings\":" + settingsBody;
 
   // books — inline the books list
-  body += ",\"books\":[";
-  {
-    bool first = true;
-    const auto appendDir = [&](const char *directoryPath) {
-      File dir = SD_MMC.open(directoryPath);
-      if (!dir || !dir.isDirectory()) { if (dir) dir.close(); return; }
-      File entry = dir.openNextFile();
-      while (entry) {
-        if (!entry.isDirectory()) {
-          const String name = displayNameForPath(String(entry.name()));
-          const String path = String(directoryPath) + "/" + name;
-          String lowered = name; lowered.toLowerCase();
-          if (isSupportedBookName(lowered)) {
-            const RsvpMetadata metadata = readRsvpMetadata(path);
-            uint8_t progressPercent = 0;
-            const bool hasProgress = progressPercentForPath(path, progressPercent);
-            if (!first) body += ",";
-            first = false;
-            body += "{\"name\":\"" + jsonEscape(relativeLibraryName(path)) +
-                    "\",\"category\":\"" + libraryCategoryForPath(path) +
-                    "\",\"title\":\"" + jsonEscape(metadata.title) +
-                    "\",\"author\":\"" + jsonEscape(metadata.author) +
-                    "\",\"bytes\":" + String(static_cast<uint32_t>(entry.size()));
-            if (hasProgress) body += ",\"progressPercent\":" + String(progressPercent);
-            if (lowered.endsWith(".rsvp")) {
-              const std::vector<RsvpChapter> chapters = readRsvpChapters(path);
-              if (!chapters.empty()) {
-                body += ",\"chapters\":[";
-                for (size_t i = 0; i < chapters.size(); ++i) {
-                  if (i > 0) body += ",";
-                  body += "{\"title\":\"" + jsonEscape(chapters[i].title) +
-                          "\",\"startWord\":" + String(static_cast<uint32_t>(chapters[i].startWord)) + "}";
-                }
-                body += "]";
-              }
-            }
-            body += "}";
-          }
-        }
-        entry.close();
-        entry = dir.openNextFile();
-      }
-      dir.close();
-    };
-    appendDir(kBooksPath);
-    appendDir(kBookFilesPath);
-    appendDir(kArticleFilesPath);
-  }
-  body += "]";
+  body += ",\"books\":" + booksJsonArray();
 
   // plugins
   body += ",\"plugins\":[";
@@ -2617,6 +2891,7 @@ void CompanionSyncManager::finishUpload(bool success) {
     } else {
       statusLine1_ = "Book received";
       statusLine2_ = uploadFinalPath_;
+      BookExtras::restore(uploadFinalPath_);
       Serial.printf("[sync] upload ready %s\n", uploadFinalPath_.c_str());
     }
   } else {

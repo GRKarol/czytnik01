@@ -24,6 +24,14 @@ constexpr int kScreenH = BoardConfig::DISPLAY_HEIGHT;
 constexpr int kGap = 8;
 constexpr int kMargin = 10;
 constexpr int kHeaderH = 30;
+// Book cover on the Czytaj card; book details draw it twice as large and the
+// Book screensaver at the same aspect. The Flower app crops cover pictures to
+// kCoverW*2 x kCoverH*2 and spines to kSpineImageW x kSpineImageH (tallest
+// spine on the shelf is 68 px, widest 35).
+constexpr int kCoverW = 46;
+constexpr int kCoverH = 58;
+constexpr int kSpineImageW = 36;
+constexpr int kSpineImageH = 72;
 constexpr int kCompactRailW = 60;
 constexpr int kRailFooterH = 24;
 constexpr int kNoTarget = -1;
@@ -108,6 +116,7 @@ struct ReadHome {
   int progressPercent = 0;
   uint16_t coverColor = 0x32FA;
   String coverInitials;
+  NanoImage cover;  // picture from the Flower app, drawn instead of the colour
   int resumeId = kNoTarget;
   int fontsId = kNoTarget;
   String fontsLabel;
@@ -205,6 +214,7 @@ constexpr int kShelfDragThreshold = 20;
 struct ShelfBook {
   String title;
   uint8_t progress = 0;
+  NanoImage spine;  // picture from the Flower app, drawn instead of the colour
 };
 struct ShelfView {
   Header header;
@@ -280,6 +290,9 @@ void paintList(DisplayManager &d, Sink &sink, const ListView &view);
 
 struct BookDetailsView {
   Header header;
+  uint16_t coverColor = 0x32FA;
+  String coverInitials;
+  NanoImage cover;
   String author;
   String percentLabel;
   int percent = 0;
@@ -429,6 +442,7 @@ struct SaverBookView {
   String progressLabel;
   uint16_t coverColor = 0;
   String coverInitials;
+  NanoImage cover;
   int driftX = 0;  // offset of the card from the centre, px
   int driftY = 0;
   SaverOverlay overlay;

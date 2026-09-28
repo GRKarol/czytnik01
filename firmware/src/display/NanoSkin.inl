@@ -492,6 +492,66 @@ void DisplayManager::nanoFillRoundRect(int x, int y, int w, int h, int r, uint16
   nanoFillCircleHelper(x + r, y + r, r, 2, h - 2 * r - 1, color);
 }
 
+void DisplayManager::nanoImage(const ui::Rect &rect, int r, const NanoImage &image) {
+  if (!image.valid() || rect.w <= 0 || rect.h <= 0 || virtualFrame_ == nullptr) {
+    return;
+  }
+  r = std::max(0, std::min(r, std::min<int>(rect.w, rect.h) / 2));
+  // Largest source window with the rect's aspect, centred.
+  int srcW = image.width;
+  int srcH = image.height;
+  if (static_cast<int32_t>(srcW) * rect.h > static_cast<int32_t>(srcH) * rect.w) {
+    srcW = std::max(1, static_cast<int>(static_cast<int32_t>(srcH) * rect.w / rect.h));
+  } else {
+    srcH = std::max(1, static_cast<int>(static_cast<int32_t>(srcW) * rect.h / rect.w));
+  }
+  const int srcX = (image.width - srcW) / 2;
+  const int srcY = (image.height - srcH) / 2;
+  for (int j = 0; j < rect.h; ++j) {
+    const int y = rect.y + j;
+    if (y < nanoClipY0_ || y >= nanoClipY1_) {
+      continue;
+    }
+    const int sy0 = srcY + j * srcH / rect.h;
+    const int sy1 = std::max(sy0 + 1, srcY + (j + 1) * srcH / rect.h);
+    // Rounded corners: rows inside the top/bottom radius start later.
+    int inset = 0;
+    const int cornerRow = j < r ? r - j : (j >= rect.h - r ? j - (rect.h - r - 1) : 0);
+    if (cornerRow > 0) {
+      const int dy = cornerRow;
+      int dx = r;
+      while (dx > 0 && (dx * dx + dy * dy) > r * r) {
+        --dx;
+      }
+      inset = r - dx;
+    }
+    for (int i = inset; i < rect.w - inset; ++i) {
+      const int x = rect.x + i;
+      if (x < nanoClipX0_ || x >= nanoClipX1_) {
+        continue;
+      }
+      const int sx0 = srcX + i * srcW / rect.w;
+      const int sx1 = std::max(sx0 + 1, srcX + (i + 1) * srcW / rect.w);
+      uint32_t red = 0;
+      uint32_t green = 0;
+      uint32_t blue = 0;
+      uint32_t count = 0;
+      for (int sy = sy0; sy < sy1; ++sy) {
+        const uint16_t *row = image.pixels + sy * image.width;
+        for (int sx = sx0; sx < sx1; ++sx) {
+          const uint16_t c = row[sx];
+          red += c >> 11;
+          green += (c >> 5) & 0x3F;
+          blue += c & 0x1F;
+          ++count;
+        }
+      }
+      const uint16_t color = static_cast<uint16_t>(((red / count) << 11) | ((green / count) << 5) | (blue / count));
+      virtualFrame_[y * kVirtualBufferWidth + x] = panelColor(color);
+    }
+  }
+}
+
 void DisplayManager::nanoDrawRoundRect(int x, int y, int w, int h, int r, uint16_t color) {
   if (w <= 0 || h <= 0) {
     return;
