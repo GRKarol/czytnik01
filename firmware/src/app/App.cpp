@@ -1364,10 +1364,22 @@ void App::update(uint32_t nowMs) {
         renderWelcomeAppPairing();
       }
     }
+    // The wizard's pairing step shows this very network's QR: no timeout
+    // while it's on screen (it used to vanish after 30 s mid-scan).
+    if (state_ == AppState::Menu && menuScreen_ == MenuScreen::WelcomeAppPairing) {
+      autoSyncStartedMs_ = nowMs;
+    }
     if (!autoSyncClientConnected_ && (nowMs - autoSyncStartedMs_ >= 30000)) {
       Serial.println("[app] auto-sync: 30s timeout, no client — shutting down AP");
       companionSync_.end();
       autoSyncActive_ = false;
+      // The boot update check may have been skipped while this AP was up
+      // (OtaUpdater::connectWiFi refuses to touch the radio then): run it
+      // once more now that the radio is free.
+      if (!bootOtaRecheckDone_) {
+        bootOtaRecheckDone_ = true;
+        maybeAutoCheckForUpdates(nowMs);
+      }
     }
   }
 
@@ -9635,6 +9647,7 @@ void App::enterCompanionSync(uint32_t nowMs) {
   }
 
   Serial.println("[app] entering companion sync mode");
+  companionSyncPage_ = 0;
   saveReadingPosition(true);
   pausedTouch_.active = false;
   pausedTouchIntent_ = TouchIntent::None;
@@ -9698,11 +9711,35 @@ void App::updateCompanionSync(uint32_t nowMs) {
   if (touch_.poll(ev)) {
     if (ev.phase == TouchPhase::Start) {
       companionSyncTouchStarted_ = nowMs - companionSyncEnteredMs_ >= kCompanionSyncTouchGraceMs;
+      companionSyncTouchStartX_ = ev.x;
     } else if (ev.phase == TouchPhase::End && companionSyncTouchStarted_) {
       companionSyncTouchStarted_ = false;
-      const bool modern = navMode_ == NavMode::Modern;
-      if (!modern || display_.qrCornerButtonRect().contains(ev.x, ev.y) || !companionSync_.hasQrCode()) {
+      if (navMode_ != NavMode::Modern) {
         exitCompanionSync(nowMs);
+        return;
+      }
+      // Official: page buttons / sideways swipe switch pairing and app
+      // download, Zakończ leaves.
+      const int dx = static_cast<int>(ev.x) - static_cast<int>(companionSyncTouchStartX_);
+      if (abs(dx) >= static_cast<int>(kSwipeThresholdPx)) {
+        companionSyncPage_ = dx < 0 ? 1 : 0;
+        renderCompanionSyncScreen();
+        return;
+      }
+      int hit = nano::kNoTarget;
+      for (const auto &target : companionSyncTargets_) {
+        if (target.first.contains(ev.x, ev.y)) {
+          hit = target.second;
+          break;
+        }
+      }
+      if (hit == kSyncTargetStop) {
+        exitCompanionSync(nowMs);
+        return;
+      }
+      if (hit == kSyncTargetPairing || hit == kSyncTargetApp) {
+        companionSyncPage_ = hit == kSyncTargetApp ? 1 : 0;
+        renderCompanionSyncScreen();
         return;
       }
     }
@@ -9717,13 +9754,40 @@ void App::updateCompanionSync(uint32_t nowMs) {
 void App::renderCompanionSyncScreen() {
   if (navMode_ == NavMode::Modern) {
     display_.setModernCardStyle(true);
-    if (companionSync_.hasQrCode()) {
-      display_.renderStatusWithQr("Wi-Fi", companionSync_.statusLine1(), companionSync_.qrCodeData(),
-                                  companionSync_.qrCodeSize(), tr3(TrKey3::NanoScanHint),
-                                  tr3(TrKey3::NanoStopSync));
+    nano::SyncView view;
+    view.page = companionSyncPage_ == 1 ? 1 : 0;
+    view.pageLabels[0] = tr4(TrKey4::SyncPagePairing);
+    view.pageLabels[1] = tr4(TrKey4::SyncPageApp);
+    view.pageIds[0] = kSyncTargetPairing;
+    view.pageIds[1] = kSyncTargetApp;
+    view.stopId = kSyncTargetStop;
+    view.stopLabel = tr3(TrKey3::NanoStopSync);
+    if (view.page == 0) {
+      view.title = tr3(TrKey3::WelcomeAppPairingTitle);
+      view.line = companionSync_.statusLine1();
+      view.hint = tr3(TrKey3::NanoScanHint);
+      if (companionSync_.hasQrCode()) {
+        view.qr = companionSync_.qrCodeData();
+        view.qrSize = companionSync_.qrCodeSize();
+      }
     } else {
-      display_.renderStatus("Sync", companionSync_.statusLine1(), companionSync_.statusLine2());
+      ensureInstallAppQr();
+      view.title = tr4(TrKey4::SyncAppTitle);
+      view.line = "flower.theworkpc.com/appdownload";
+      view.hint = tr4(TrKey4::SyncAppHint);
+      if (g_installAppQrSize > 0) {
+        view.qr = g_installAppQrData;
+        view.qrSize = g_installAppQrSize;
+      }
     }
+    companionSyncTargets_.clear();
+    struct TargetSink : nano::Sink {
+      std::vector<std::pair<ui::Rect, int>> &targets;
+      explicit TargetSink(std::vector<std::pair<ui::Rect, int>> &out) : targets(out) {}
+      void target(const ui::Rect &rect, int id) override { targets.push_back({rect, id}); }
+      bool pressed(int) const override { return false; }
+    } sink(companionSyncTargets_);
+    nano::paintSync(display_, sink, view);
     return;
   }
   if (companionSync_.hasQrCode()) {

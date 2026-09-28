@@ -1519,4 +1519,54 @@ void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view) {
 }
 
 
+// ── Aplikacja (phone sync) ──────────────────────────────────────────────────
+
+void paintSync(DisplayManager &d, Sink &sink, const SyncView &view) {
+  d.nanoBeginFrame();
+  // Segment buttons, top left.
+  int x = 10;
+  for (int i = 0; i < 2; ++i) {
+    const int w = std::max(110, DisplayManager::nanoTextWidth(view.pageLabels[i], 1) + 32);
+    const Rect seg(x, 6, w, 26);
+    d.nanoPill(seg, view.pageLabels[i], Icon::None, sink.pressed(view.pageIds[i]), static_cast<size_t>(i) == view.page);
+    addTarget(sink, Rect(seg.x - 4, 0, seg.w + 8, 40), view.pageIds[i]);
+    x += w + 8;
+  }
+  // Zakończ, bottom left under the text.
+  const int stopW = std::max(120, DisplayManager::nanoTextWidth(view.stopLabel, 2) + 36);
+  const Rect stop(10, kScreenH - 36, stopW, 30);
+  d.nanoPill(stop, view.stopLabel, Icon::Power, sink.pressed(view.stopId), false);
+  addTarget(sink, Rect(0, stop.y - 6, stop.w + 20, kScreenH - stop.y + 6), view.stopId);
+
+  // QR on the right, on white so phone cameras read it in any palette.
+  const Rect box(kScreenW - 10 - 128, 22, 128, 128);
+  d.nanoFillRoundRect(box.x, box.y, box.w, box.h, 8, 0xFFFF);
+  if (view.qr != nullptr && view.qrSize > 0) {
+    const int module = std::max(1, (box.w - 12) / view.qrSize);
+    const int side = module * view.qrSize;
+    const int x0 = box.x + (box.w - side) / 2;
+    const int y0 = box.y + (box.h - side) / 2;
+    for (int row = 0; row < view.qrSize; ++row) {
+      for (int col = 0; col < view.qrSize; ++col) {
+        if (view.qr[row * view.qrSize + col]) {
+          d.nanoFillRect(x0 + col * module, y0 + row * module, module, module, 0x0000);
+        }
+      }
+    }
+  }
+  // Page dots under the code.
+  for (int i = 0; i < 2; ++i) {
+    const bool on = static_cast<size_t>(i) == view.page;
+    d.nanoFillCircle(box.x + box.w / 2 - 7 + i * 14, kScreenH - 12, on ? 4 : 3,
+                     on ? d.nanoColor(Role::Accent) : d.nanoColor(Role::Subtle));
+  }
+
+  const int textW = box.x - 16 - 12;
+  d.nanoText(Rect(16, 42, textW, 32), view.title, 3, d.nanoColor(Role::Foreground));
+  d.nanoText(Rect(16, 76, textW, 24), view.line, 2, d.nanoColor(Role::Accent));
+  d.nanoText(Rect(16, 102, textW, 32), view.hint, 1, d.nanoColor(Role::Muted), Align::Start, 2);
+  d.nanoEndFrame();
+}
+
+
 }  // namespace nano

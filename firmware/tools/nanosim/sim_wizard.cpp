@@ -298,4 +298,22 @@ void runWizardScreens(DisplayManager &d, void (*dump)(const DisplayManager &, co
     nano::paintWizard(d, sink, v);
     dump(d, "wizard_9_pairing");
   }
+  for (int page = 0; page < 2; ++page) {
+    nano::SyncView v;
+    v.page = page;
+    v.pageLabels[0] = "Po\x83""\x97""czenie";
+    v.pageLabels[1] = "Pobierz aplikacj\x99""";
+    v.pageIds[0] = 1;
+    v.pageIds[1] = 2;
+    v.stopId = 3;
+    v.stopLabel = "Zako\x9D""cz";
+    v.title = page == 0 ? "Po\x83""\x97""czenie z aplikacj\x97""" : "Aplikacja Flower";
+    v.line = page == 0 ? "Flower-4F2A" : "flower.theworkpc.com/appdownload";
+    v.hint = page == 0 ? "Zeskanuj kod w aplikacji Flower albo po\x83""\x97""cz telefon z t\x97"" sieci\x97"""
+                       : "Zeskanuj aparatem telefonu i zainstaluj aplikacj\x99"". Potem wr\xF3""\x9B"" na stron\x99"" Po\x83""\x97""czenie.";
+    v.qr = gQr;
+    v.qrSize = 29;
+    nano::paintSync(d, sink, v);
+    dump(d, page == 0 ? "sync_pairing" : "sync_app");
+  }
 }

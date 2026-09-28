@@ -370,6 +370,10 @@ enum class TrKey4 : uint8_t {
   WizConfigureSub,
   WizConnectLook,
   WizPairSub,
+  SyncPagePairing,
+  SyncPageApp,
+  SyncAppTitle,
+  SyncAppHint,
 };
 
 namespace Translations3 {

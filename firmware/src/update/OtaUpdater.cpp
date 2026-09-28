@@ -387,6 +387,17 @@ bool OtaUpdater::connectWiFi(const Config &config, StatusCallback callback,
   // patrz komentarz przy wifiSessionMutex() na początku pliku.
   xSemaphoreTake(wifiSessionMutex(), portMAX_DELAY);
 
+  // The phone-sync access point (CompanionSyncManager) is up: WiFi.mode(STA)
+  // here and WIFI_OFF at the end of the session would take the "Flower-..."
+  // network down under the phone. That is what made it invisible -- the
+  // font pack retry runs every minute while the pack is incomplete. Skip;
+  // background callers retry later, and the sync screen owns the radio.
+  if ((WiFi.getMode() & WIFI_MODE_AP) != 0) {
+    xSemaphoreGive(wifiSessionMutex());
+    Serial.println("[wifi] sync access point is up - background Wi-Fi session skipped");
+    return false;
+  }
+
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);

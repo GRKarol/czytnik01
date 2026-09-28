@@ -408,6 +408,10 @@ TrKey4.WizSuperSub;Podstawy gotowe;The basics are set;Lo básico está listo;L'e
 TrKey4.WizConfigureSub;Czcionka, sposób czytania i telefon;Typeface, reading mode and phone;Tipografía, modo de lectura y teléfono;Police, mode de lecture et téléphone;Schrift, Lesemodus und Telefon;Font, mod de citire și telefon
 TrKey4.WizConnectLook;Zeskanuj kod aparatem telefonu;Scan the code with your phone camera;Escanea el código con la cámara;Scannez le code avec l'appareil photo;Scanne den Code mit der Handykamera;Scanează codul cu camera telefonului
 TrKey4.WizPairSub;Otwórz aplikację Flower i zeskanuj ten kod;Open the Flower app and scan this code;Abre la app Flower y escanea este código;Ouvrez l'app Flower et scannez ce code;Öffne die Flower-App und scanne diesen Code;Deschide aplicația Flower și scanează codul
+TrKey4.SyncPagePairing;Połączenie;Pairing;Conexión;Connexion;Verbindung;Conectare
+TrKey4.SyncPageApp;Pobierz aplikację;Get the app;Descargar la app;Télécharger l'app;App laden;Descarcă aplicația
+TrKey4.SyncAppTitle;Aplikacja Flower;Flower app;App Flower;App Flower;Flower-App;Aplicația Flower
+TrKey4.SyncAppHint;Zeskanuj aparatem telefonu i zainstaluj aplikację. Potem wróć na stronę Połączenie.;Scan with your phone camera and install the app. Then come back to Pairing.;Escanea con la cámara e instala la app. Luego vuelve a Conexión.;Scannez avec l'appareil photo et installez l'app. Puis revenez à Connexion.;Mit der Handykamera scannen und die App installieren. Dann zurück zu Verbindung.;Scanează cu camera și instalează aplicația. Apoi revino la Conectare.
 FtStr.PresetPomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro
 FtStr.PresetShort;Krótka sesja;Short session;Sesion corta;Session courte;Kurze Sitzung;Sesiune scurta
 FtStr.PresetDeep;Długa sesja;Deep work;Trabajo profundo;Travail profond;Vertiefte Arbeit;Munca profunda

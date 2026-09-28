@@ -300,7 +300,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[54][6] = {
+  static const char *const kTable[58][6] = {
       {"Battery indicator: ", "Indicador de bater\xED""a: ", "Indicateur batterie : ", "Akkuanzeige: ", "Indicator baterie: ", "Wska\xB3""nik baterii: "},  // BatteryStyleColon
       {"Icon + %", "Icono + %", "Ic\xF4""ne + %", "Symbol + %", "Pictogram\x8B"" + %", "Ikona + %"},  // BatteryStyleIconPercent
       {"Number in icon", "N\xFA""mero en icono", "Chiffre dans l'ic\xF4""ne", "Zahl im Symbol", "Num\x8B""r \xEE""n pictogram\x8B""", "Liczba w ikonie"},  // BatteryStyleNumberInIcon
@@ -355,6 +355,10 @@ inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Typeface, reading mode and phone", "Tipograf\xED""a, modo de lectura y tel\xE9""fono", "Police, mode de lecture et t\xE9""l\xE9""phone", "Schrift, Lesemodus und Telefon", "Font, mod de citire \x8D""i telefon", "Czcionka, spos\xF3""b czytania i telefon"},  // WizConfigureSub
       {"Scan the code with your phone camera", "Escanea el c\xF3""digo con la c\xE1""mara", "Scannez le code avec l'appareil photo", "Scanne den Code mit der Handykamera", "Scaneaz\x8B"" codul cu camera telefonului", "Zeskanuj kod aparatem telefonu"},  // WizConnectLook
       {"Open the Flower app and scan this code", "Abre la app Flower y escanea este c\xF3""digo", "Ouvrez l'app Flower et scannez ce code", "\xD6""ffne die Flower-App und scanne diesen Code", "Deschide aplica\x8F""ia Flower \x8D""i scaneaz\x8B"" codul", "Otw\xF3""rz aplikacj\x99"" Flower i zeskanuj ten kod"},  // WizPairSub
+      {"Pairing", "Conexi\xF3""n", "Connexion", "Verbindung", "Conectare", "Po\x83""\x97""czenie"},  // SyncPagePairing
+      {"Get the app", "Descargar la app", "T\xE9""l\xE9""charger l'app", "App laden", "Descarc\x8B"" aplica\x8F""ia", "Pobierz aplikacj\x99"""},  // SyncPageApp
+      {"Flower app", "App Flower", "App Flower", "Flower-App", "Aplica\x8F""ia Flower", "Aplikacja Flower"},  // SyncAppTitle
+      {"Scan with your phone camera and install the app. Then come back to Pairing.", "Escanea con la c\xE1""mara e instala la app. Luego vuelve a Conexi\xF3""n.", "Scannez avec l'appareil photo et installez l'app. Puis revenez \xE0"" Connexion.", "Mit der Handykamera scannen und die App installieren. Dann zur\xFC""ck zu Verbindung.", "Scaneaz\x8B"" cu camera \x8D""i instaleaz\x8B"" aplica\x8F""ia. Apoi revino la Conectare.", "Zeskanuj aparatem telefonu i zainstaluj aplikacj\x99"". Potem wr\xF3""\x9B"" na stron\x99"" Po\x83""\x97""czenie."},  // SyncAppHint
   };
   return kTable[keyIndex][langIndex];
 }

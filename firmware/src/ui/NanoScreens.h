@@ -544,4 +544,23 @@ struct WizardView {
 void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view);
 
 
+// ── Aplikacja (phone sync) ──
+// Two pages: pairing with the reader's own network, and the app download
+// link. Segment buttons on top switch them (so does a sideways swipe),
+// Zakończ closes sync.
+struct SyncView {
+  size_t page = 0;  // 0 pairing, 1 app download
+  String pageLabels[2];
+  int pageIds[2] = {kNoTarget, kNoTarget};
+  int stopId = kNoTarget;
+  String stopLabel;
+  String title;
+  String line;  // network name / link
+  String hint;
+  const bool *qr = nullptr;
+  uint8_t qrSize = 0;
+};
+void paintSync(DisplayManager &d, Sink &sink, const SyncView &view);
+
+
 }  // namespace nano

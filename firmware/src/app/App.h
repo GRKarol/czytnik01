@@ -1470,6 +1470,15 @@ class App {
   bool chapterTransitionVisible_ = false;
   bool batteryWarningOverlayVisible_ = false;
   bool otaCheckInProgress_ = false;
+  // Boot update check repeated once after the 30 s boot sync AP closes.
+  bool bootOtaRecheckDone_ = false;
+  // Aplikacja screen (Official): 0 pairing, 1 app download.
+  uint8_t companionSyncPage_ = 0;
+  uint16_t companionSyncTouchStartX_ = 0;
+  std::vector<std::pair<ui::Rect, int>> companionSyncTargets_;
+  static constexpr int kSyncTargetPairing = 1;
+  static constexpr int kSyncTargetApp = 2;
+  static constexpr int kSyncTargetStop = 3;
   uint32_t otaCheckStartedMs_ = 0;
   bool otaUpdatePromptPending_ = false;
   bool otaUpdatePromptDismissed_ = false;
