@@ -59,8 +59,8 @@ TrKey.ScreensaverAutoOff;Auto-wyłącz: ;Auto power-off: ;Auto-apagar: ;Auto-ete
 TrKey.ScreensaverSleepGuard;Ochrona snu: ;Sleep guard: ;Protec. sueno: ;Protec. sommeil: ;Schlafschutz: ;Protectie somn: 
 TrKey.ScreensaverStyle;Styl: ;Style: ;Estilo: ;Style: ;Stil: ;Stil: 
 TrKey.ScreensaverPreview;>> Podgląd <<;>> Preview <<;>> Vista previa <<;>> Apercu <<;>> Vorschau <<;>> Previz. <<
-TrKey.Stars;Gwiazdy;Stars;Estrellas;Etoiles;Sterne;Stele
-TrKey.MatrixRain;Matrix;Matrix;Matrix;Matrix;Matrix;Matrix
+TrKey.SaverWords;Słowa;Words;Palabras;Mots;Woerter;Cuvinte
+TrKey.SaverWaves;Fale;Waves;Olas;Vagues;Wellen;Valuri
 TrKey.ScreensaverHint;Naciśnij przycisk, by wybudzić;Press button to wake;Pulsa un boton para despertar;Appuyez pour reveiller;Taste drucken zum Aufwecken;Apasa un buton pt. trezire
 TrKey.Minutes1;1 min;1 min;1 min;1 min;1 Min;1 min
 TrKey.Minutes2;2 min;2 min;2 min;2 min;2 Min;2 min
@@ -382,6 +382,9 @@ TrKey4.LayoutSideLeft;Z lewej;Left;Izquierda;À gauche;Links;Stânga
 TrKey4.LayoutSideRight;Z prawej;Right;Derecha;À droite;Rechts;Dreapta
 TrKey4.LayoutTapToPick;Dotknij, by wybrać;Tap to pick;Toca para elegir;Touchez pour choisir;Tippen zum Wählen;Atinge pentru a alege
 TrKey4.LayoutTapAgainHint;Dotknij wybranego jeszcze raz: pasek przejdzie na drugą stronę;Tap the selected one again: the bar moves to the other side;Toca de nuevo el elegido: la barra cambia de lado;Touchez à nouveau : la barre change de côté;Erneut tippen: die Leiste wechselt die Seite;Atinge din nou: bara trece pe cealaltă parte
+TrKey4.SaverBook;Książka;Book;Libro;Livre;Buch;Carte
+TrKey4.SaverNoBook;Nie masz otwartej książki;No book open;Ningun libro abierto;Aucun livre ouvert;Kein Buch geoeffnet;Nicio carte deschisa
+TrKey4.SaverWordsFallback;Jedno słowo naraz, oczy stoją w miejscu, a tekst płynie do ciebie. Dotknij ekranu i czytaj dalej;One word at a time, your eyes stay put and the text comes to you. Tap the screen and keep reading;Una palabra a la vez, tus ojos quietos y el texto llega a ti. Toca la pantalla y sigue leyendo;Un mot a la fois, les yeux immobiles, le texte vient a vous. Touchez l ecran et lisez;Ein Wort nach dem anderen, die Augen bleiben stehen und der Text kommt zu dir. Tippen und weiterlesen;Un cuvant pe rand, ochii stau pe loc si textul vine la tine. Atinge ecranul si citeste
 FtStr.PresetPomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro
 FtStr.PresetShort;Krótka sesja;Short session;Sesion corta;Session courte;Kurze Sitzung;Sesiune scurta
 FtStr.PresetDeep;Długa sesja;Deep work;Trabajo profundo;Travail profond;Vertiefte Arbeit;Munca profunda

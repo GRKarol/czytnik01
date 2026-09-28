@@ -1,5 +1,7 @@
 #include "ui/NanoScreens.h"
 
+#include <math.h>
+
 #include <algorithm>
 
 namespace nano {
@@ -1045,6 +1047,125 @@ void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view
     d.nanoColorSwatch(rect, swatch.color, swatch.selected, sink.pressed(swatch.id));
     addTarget(sink, rect, swatch.id);
   }
+}
+
+// ── Wygaszacze ──────────────────────────────────────────────────────────────
+
+void paintSaverOverlay(DisplayManager &d, const SaverOverlay &overlay) {
+  if (!overlay.label.isEmpty() && overlay.labelAlpha > 0) {
+    d.nanoText(Rect(0, 6, kScreenW, 20), overlay.label, 1, d.nanoBlend(Role::Muted, overlay.labelAlpha),
+               Align::Center);
+  }
+  if (!overlay.hint.isEmpty() && overlay.hintAlpha > 0) {
+    d.nanoText(Rect(0, kScreenH - 22, kScreenW, 20), overlay.hint, 1, d.nanoBlend(Role::Muted, overlay.hintAlpha),
+               Align::Center);
+  }
+}
+
+void paintSaverBook(DisplayManager &d, const SaverBookView &view) {
+  d.nanoBeginFrame();
+  const int cardW = 420;
+  const int cardH = 104;
+  const int x = (kScreenW - cardW) / 2 + view.driftX;
+  const int y = (kScreenH - cardH) / 2 + view.driftY;
+  if (view.hasBook) {
+    const Rect cover(x, y, 70, cardH);
+    d.nanoFillRoundRect(cover.x, cover.y, cover.w, cover.h, 8, view.coverColor);
+    d.nanoFillRect(cover.x + 9, cover.y, 3, cover.h, d.nanoBlend(Role::Background, 90));
+    d.nanoText(Rect(cover.x + 12, cover.y, cover.w - 12, cover.h), view.coverInitials, 3, 0xFFFF, Align::Center);
+    const int textX = right(cover) + 18;
+    const int textW = x + cardW - textX;
+    d.nanoText(Rect(textX, y + 2, textW, 34), view.title, 3, d.nanoColor(Role::Foreground));
+    d.nanoText(Rect(textX, y + 38, textW, 22), view.author, 1, d.nanoColor(Role::Muted));
+    const int barY = y + cardH - 16;
+    const int labelW = 56;
+    const Rect bar(textX, barY, textW - labelW - 10, 6);
+    d.nanoFillRoundRect(bar.x, bar.y, bar.w, bar.h, 3, d.nanoColor(Role::ProgressTrack));
+    const int fill = bar.w * std::max(0, std::min(100, view.progressPercent)) / 100;
+    if (fill > 0) {
+      d.nanoFillRoundRect(bar.x, bar.y, std::max(6, fill), bar.h, 3, d.nanoColor(Role::Accent));
+    }
+    d.nanoText(Rect(right(bar) + 10, barY - 8, labelW, 22), view.progressLabel, 1, d.nanoColor(Role::Accent),
+               Align::End);
+  } else {
+    d.nanoIcon(Rect(x, y, 40, cardH), Icon::Books, d.nanoColor(Role::Accent), d.nanoColor(Role::Background));
+    d.nanoText(Rect(x + 56, y, cardW - 56, cardH), view.title, 2, d.nanoColor(Role::Muted));
+  }
+  paintSaverOverlay(d, view.overlay);
+  d.nanoEndFrame();
+}
+
+void paintSaverWords(DisplayManager &d, const SaverWordsView &view) {
+  d.nanoBeginFrame();
+  constexpr int kWordGap = 22;
+  const int centreX = kScreenW / 2;
+  for (const SaverLane &lane : view.lanes) {
+    if (lane.words.empty()) continue;
+    std::vector<int> widths;
+    widths.reserve(lane.words.size());
+    uint32_t total = 0;
+    for (const String &word : lane.words) {
+      const int w = DisplayManager::nanoTextWidth(word, lane.size);
+      widths.push_back(w);
+      total += static_cast<uint32_t>(w + kWordGap);
+    }
+    if (total == 0) continue;
+    const uint16_t ink = d.nanoBlend(Role::Foreground, lane.alpha);
+    int x = -static_cast<int>(lane.offset % total);
+    size_t i = 0;
+    while (x < kScreenW) {
+      const int w = widths[i];
+      if (x + w > 0) {
+        const bool centre = lane.markCentre && x <= centreX && x + w >= centreX;
+        d.nanoTextLineAt(x, lane.y, lane.words[i], lane.size, centre ? d.nanoColor(Role::Accent) : ink);
+      }
+      x += w + kWordGap;
+      i = (i + 1) % lane.words.size();
+    }
+  }
+  paintSaverOverlay(d, view.overlay);
+  d.nanoEndFrame();
+}
+
+void paintSaverWaves(DisplayManager &d, const SaverWavesView &view) {
+  d.nanoBeginFrame();
+  // Each wave: amplitude (px), wavelength (px), speed (phase units per
+  // frame), vertical centre, brightness. Faint ones first so the bright
+  // one sits on top.
+  struct Wave {
+    int amplitude;
+    int wavelength;
+    int speed;
+    int centre;
+    uint8_t alpha;
+  };
+  constexpr Wave kWaves[] = {
+      {44, 560, 3, 70, 90}, {30, 380, -4, 104, 130}, {24, 260, 5, 62, 170}, {36, 440, 2, 90, 255},
+  };
+  constexpr float kTwoPi = 6.2831853f;
+  for (const Wave &wave : kWaves) {
+    const uint16_t color = d.nanoBlend(Role::Accent, wave.alpha);
+    const float shift = static_cast<float>(static_cast<int32_t>(view.phase) * wave.speed) / 100.0f;
+    // Slow swell of the amplitude so the picture never repeats exactly.
+    const float swell = 0.75f + 0.25f * sinf(static_cast<float>(view.phase) / 90.0f + wave.centre);
+    int prevX = 0;
+    int prevY = 0;
+    for (int x = 0; x <= kScreenW; x += 4) {
+      const float t = kTwoPi * static_cast<float>(x) / static_cast<float>(wave.wavelength) + shift;
+      const int y = wave.centre + static_cast<int>(sinf(t) * wave.amplitude * swell);
+      if (x > 0) {
+        d.nanoDrawLine(prevX, prevY, x, y, color);
+        d.nanoDrawLine(prevX, prevY + 1, x, y + 1, color);
+        if (wave.alpha == 255) {
+          d.nanoDrawLine(prevX, prevY + 2, x, y + 2, color);
+        }
+      }
+      prevX = x;
+      prevY = y;
+    }
+  }
+  paintSaverOverlay(d, view.overlay);
+  d.nanoEndFrame();
 }
 
 }  // namespace nano

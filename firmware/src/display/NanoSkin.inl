@@ -718,6 +718,15 @@ void DisplayManager::nanoText(const ui::Rect &rect, const String &text, uint8_t 
   nanoTextWithFamily(rect, text, nanoUiFont_, size, color, align, maxLines);
 }
 
+void DisplayManager::nanoTextLineAt(int x, int centreY, const String &text, uint8_t size, uint16_t color) {
+  if (text.isEmpty()) {
+    return;
+  }
+  const uint8_t strikeIndex = nanoStrikeForSize(size);
+  const NanoUiStrike &s = nanoStrike(nanoUiFont_, strikeIndex);
+  nanoDrawRun(x, centreY + s.capHeight / 2, text, nanoUiFont_, strikeIndex, color);
+}
+
 void DisplayManager::nanoTextInFamily(const ui::Rect &rect, const String &text, uint8_t family, uint8_t size,
                                       uint16_t color, NanoAlign align) {
   nanoTextWithFamily(rect, text, family, size, color, align, 1);

@@ -424,6 +424,9 @@ class DisplayManager {
   // Same, in a specific UI font family (font chips preview themselves).
   void nanoTextInFamily(const ui::Rect &rect, const String &text, uint8_t family, uint8_t size,
                         uint16_t color, NanoAlign align = NanoAlign::Start);
+  // One line at a signed x (it may start off-screen, pixels are clipped),
+  // centred vertically on `centreY` -- for text sliding across the edge.
+  void nanoTextLineAt(int x, int centreY, const String &text, uint8_t size, uint16_t color);
   // Text in a reader typeface (anti-aliased onto whatever is underneath),
   // `y` = top of the glyph box. Count = the active reading typeface.
   void nanoTypefaceText(int x, int y, const String &text, uint16_t color, uint8_t scalePercent,

@@ -228,13 +228,16 @@ class App {
     Voltage = 2,
   };
 
+  // Stored in NVS (scrn_sv). 1, 4 (Stars) and 5 (Matrix) are retired and
+  // load as Book.
   enum class ScreensaverMode : uint8_t {
     Life = 0,
     Maze = 2,
     Voronoi = 3,
-    Stars = 4,
-    Matrix = 5,
     ScreenOff = 6,
+    Book = 7,
+    Words = 8,
+    Waves = 9,
   };
 
   enum class PauseMode : uint8_t {
@@ -660,10 +663,14 @@ class App {
   void renderStandbyVoronoi();
   void seedStandbyScreenOff(uint32_t nowMs);
   void updateStandbyScreensaver(uint32_t nowMs, bool force = false);
-  void seedStandbyStars(uint32_t nowMs);
-  void stepStandbyStars();
-  void seedStandbyMatrix(uint32_t nowMs);
-  void stepStandbyMatrix();
+  // Book / Words / Waves (app/AppSavers.inl): painted by nano::paintSaver*.
+  static ScreensaverMode screensaverModeFromStored(uint8_t stored);
+  static ScreensaverMode nextScreensaverMode(ScreensaverMode mode);
+  bool screensaverIsScene() const;
+  uint32_t standbyFrameIntervalMs() const;
+  void seedStandbyScene(uint32_t nowMs);
+  void renderStandbyScene(uint32_t nowMs, const String &hint, uint8_t hintAlpha, const String &label,
+                          uint8_t labelAlpha);
   void openScreensaverSettings();
   void selectScreensaverSettingsItem(uint32_t nowMs);
   void renderScreensaverSettings();
@@ -1420,13 +1427,11 @@ class App {
   std::vector<int16_t> standbyVoronoiY_;
   std::vector<int16_t> standbyVoronoiDx_;
   std::vector<int16_t> standbyVoronoiDy_;
-  std::vector<int16_t> standbyStarsX_;
-  std::vector<int16_t> standbyStarsY_;
-  std::vector<int8_t> standbyStarsSpeed_;
-  std::vector<uint8_t> standbyStarsBright_;
-  std::vector<uint8_t> standbyMatrixColumns_;
-  std::vector<uint8_t> standbyMatrixHeads_;
-  std::vector<uint8_t> standbyMatrixTrails_;
+  // Words screensaver: the book's words from the reading position, one
+  // list per lane, and the frame counter the scenes animate by.
+  std::vector<std::vector<String>> standbyLaneWords_;
+  uint32_t standbySceneFrame_ = 0;
+  bool standbySceneSeeded_ = false;
   String currentBookPath_;
   String currentBookTitle_;
   String pendingUpdateCurrentVersion_;
@@ -1513,7 +1518,7 @@ class App {
   const char* helpPopupDesc_ = nullptr;
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;
   BatteryLabelMode batteryLabelMode_ = BatteryLabelMode::Percent;
-  ScreensaverMode screensaverMode_ = ScreensaverMode::Life;
+  ScreensaverMode screensaverMode_ = ScreensaverMode::Book;
   uint8_t screensaverTimeoutIndex_ = 2;   // default: 5 min
   uint8_t screensaverAutoOffIndex_ = 0;   // default: off (never)
   uint8_t screensaverSleepGuardIndex_ = 0; // default: off (never)

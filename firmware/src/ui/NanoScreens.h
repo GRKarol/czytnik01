@@ -408,4 +408,54 @@ struct ColorPickerView {
 };
 void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view);
 
+// ── Wygaszacze (App::ScreensaverMode Book / Words / Waves) ──
+// Full-screen scenes in the active palette: background, accent, muted
+// text. The style name and the "tap to wake" hint fade in and out on top
+// (alpha 0 = hidden).
+struct SaverOverlay {
+  String label;
+  uint8_t labelAlpha = 0;
+  String hint;
+  uint8_t hintAlpha = 0;
+};
+void paintSaverOverlay(DisplayManager &d, const SaverOverlay &overlay);
+
+// Current book as a card that drifts slowly around the screen.
+struct SaverBookView {
+  bool hasBook = false;
+  String title;   // no book: the "no book open" line
+  String author;
+  int progressPercent = 0;
+  String progressLabel;
+  uint16_t coverColor = 0;
+  String coverInitials;
+  int driftX = 0;  // offset of the card from the centre, px
+  int driftY = 0;
+  SaverOverlay overlay;
+};
+void paintSaverBook(DisplayManager &d, const SaverBookView &view);
+
+// Words of the book gliding past in lanes; each lane loops its words.
+struct SaverLane {
+  std::vector<String> words;
+  int y = 0;        // lane centre
+  uint8_t size = 1; // UI font size
+  uint8_t alpha = 255;
+  uint32_t offset = 0;  // px scrolled so far
+  // The word crossing the middle of the screen takes the accent.
+  bool markCentre = false;
+};
+struct SaverWordsView {
+  std::vector<SaverLane> lanes;
+  SaverOverlay overlay;
+};
+void paintSaverWords(DisplayManager &d, const SaverWordsView &view);
+
+// A few slow sine waves in the accent, layered from faint to bright.
+struct SaverWavesView {
+  uint32_t phase = 0;  // advances every frame
+  SaverOverlay overlay;
+};
+void paintSaverWaves(DisplayManager &d, const SaverWavesView &view);
+
 }  // namespace nano

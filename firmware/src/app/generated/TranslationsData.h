@@ -68,8 +68,8 @@ inline const char *trKeyLookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Sleep guard: ", "Protec. sueno: ", "Protec. sommeil: ", "Schlafschutz: ", "Protectie somn: ", "Ochrona snu: "},  // ScreensaverSleepGuard
       {"Style: ", "Estilo: ", "Style: ", "Stil: ", "Stil: ", "Styl: "},  // ScreensaverStyle
       {">> Preview <<", ">> Vista previa <<", ">> Apercu <<", ">> Vorschau <<", ">> Previz. <<", ">> Podgl\x97""d <<"},  // ScreensaverPreview
-      {"Stars", "Estrellas", "Etoiles", "Sterne", "Stele", "Gwiazdy"},  // Stars
-      {"Matrix", "Matrix", "Matrix", "Matrix", "Matrix", "Matrix"},  // MatrixRain
+      {"Words", "Palabras", "Mots", "Woerter", "Cuvinte", "S\x83""owa"},  // SaverWords
+      {"Waves", "Olas", "Vagues", "Wellen", "Valuri", "Fale"},  // SaverWaves
       {"Press button to wake", "Pulsa un boton para despertar", "Appuyez pour reveiller", "Taste drucken zum Aufwecken", "Apasa un buton pt. trezire", "Naci\x9F""nij przycisk, by wybudzi\x9B"""},  // ScreensaverHint
       {"1 min", "1 min", "1 min", "1 Min", "1 min", "1 min"},  // Minutes1
       {"2 min", "2 min", "2 min", "2 Min", "2 min", "2 min"},  // Minutes2
@@ -300,7 +300,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[28][6] = {
+  static const char *const kTable[31][6] = {
       {"Battery indicator: ", "Indicador de bater\xED""a: ", "Indicateur batterie : ", "Akkuanzeige: ", "Indicator baterie: ", "Wska\xB3""nik baterii: "},  // BatteryStyleColon
       {"Icon + %", "Icono + %", "Ic\xF4""ne + %", "Symbol + %", "Pictogram\x8B"" + %", "Ikona + %"},  // BatteryStyleIconPercent
       {"Number in icon", "N\xFA""mero en icono", "Chiffre dans l'ic\xF4""ne", "Zahl im Symbol", "Num\x8B""r \xEE""n pictogram\x8B""", "Liczba w ikonie"},  // BatteryStyleNumberInIcon
@@ -329,6 +329,9 @@ inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Right", "Derecha", "\xC0"" droite", "Rechts", "Dreapta", "Z prawej"},  // LayoutSideRight
       {"Tap to pick", "Toca para elegir", "Touchez pour choisir", "Tippen zum W\xE4""hlen", "Atinge pentru a alege", "Dotknij, by wybra\x9B"""},  // LayoutTapToPick
       {"Tap the selected one again: the bar moves to the other side", "Toca de nuevo el elegido: la barra cambia de lado", "Touchez \xE0"" nouveau : la barre change de c\xF4""t\xE9""", "Erneut tippen: die Leiste wechselt die Seite", "Atinge din nou: bara trece pe cealalt\x8B"" parte", "Dotknij wybranego jeszcze raz: pasek przejdzie na drug\x97"" stron\x99"""},  // LayoutTapAgainHint
+      {"Book", "Libro", "Livre", "Buch", "Carte", "Ksi\x97""\xB5""ka"},  // SaverBook
+      {"No book open", "Ningun libro abierto", "Aucun livre ouvert", "Kein Buch geoeffnet", "Nicio carte deschisa", "Nie masz otwartej ksi\x97""\xB5""ki"},  // SaverNoBook
+      {"One word at a time, your eyes stay put and the text comes to you. Tap the screen and keep reading", "Una palabra a la vez, tus ojos quietos y el texto llega a ti. Toca la pantalla y sigue leyendo", "Un mot a la fois, les yeux immobiles, le texte vient a vous. Touchez l ecran et lisez", "Ein Wort nach dem anderen, die Augen bleiben stehen und der Text kommt zu dir. Tippen und weiterlesen", "Un cuvant pe rand, ochii stau pe loc si textul vine la tine. Atinge ecranul si citeste", "Jedno s\x83""owo naraz, oczy stoj\x97"" w miejscu, a tekst p\x83""ynie do ciebie. Dotknij ekranu i czytaj dalej"},  // SaverWordsFallback
   };
   return kTable[keyIndex][langIndex];
 }

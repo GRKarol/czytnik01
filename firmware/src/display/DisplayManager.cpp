@@ -4893,7 +4893,8 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
                                       ? 0UL
                                       : static_cast<unsigned long>((*dimCells)[0])) +
                            "|h:" + String(hintAlpha) + "|s:" + styleLabel + "|sa:" +
-                           String(styleLabelAlpha);
+                           String(styleLabelAlpha) + "|p:" + String(nanoPalette_) +
+                           (nanoOwnAccent_ ? "a" : "");
   if (!initialized_ || renderKey == lastRenderKey_ || columns == 0 || rows == 0) {
     return;
   }
@@ -4910,10 +4911,13 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
   const int renderHeight = std::min(virtualHeight, static_cast<int>(rows) * cellSize);
   const int xOffset = std::max(0, (virtualWidth - renderWidth) / 2);
   const int yOffset = std::max(0, (virtualHeight - renderHeight) / 2);
-  const uint16_t lifeColor = panelColor(focusColor());
-  const uint16_t dimLifeColor = panelColor(blendOverBackground(focusColor(), nightMode_ ? 60 : 72));
+  // Colors of the menu palette (Motywy > Kolory); App switches to the
+  // classic palette around this call outside the Official nav mode.
+  const uint16_t lifeColor = panelColor(nanoColor(NanoRole::Accent));
+  const uint16_t dimLifeColor = panelColor(nanoBlend(NanoRole::Accent, 72));
 
-  clearVirtualBuffer(virtualWidth, virtualHeight);
+  nanoResetClip();
+  nanoClearBackground(virtualWidth, virtualHeight);
   auto drawPackedCells = [&](const std::vector<uint32_t> &source, uint16_t color) {
     for (int y = 0; y < static_cast<int>(rows); ++y) {
       const int dstY = yOffset + y * cellSize;
@@ -4945,11 +4949,10 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
   }
   drawPackedCells(cells, lifeColor);
 
-  // Draw hint text with fade-in/fade-out alpha
+  // Hint text with fade-in/fade-out alpha
   if (hintText.length() > 0 && hintAlpha > 0) {
-    const uint16_t hintColor = panelColor(blendOverBackground(wordColor(), hintAlpha));
-    const int hintY = virtualHeight - 20;
-    drawTinyTextCentered(hintText, hintY, hintColor, 1);
+    nanoText(ui::Rect(0, virtualHeight - 22, virtualWidth, 20), hintText, 1, nanoBlend(NanoRole::Muted, hintAlpha),
+             NanoAlign::Center);
   }
 
   // Style name, shown briefly at the top when the screensaver first starts
@@ -4957,8 +4960,8 @@ void DisplayManager::renderLifeScreensaver(const std::vector<uint32_t> &cells, u
   // via the Settings > Screensaver Preview button) tells you which style
   // you're looking at instead of just an unlabeled animation.
   if (styleLabel.length() > 0 && styleLabelAlpha > 0) {
-    const uint16_t styleColor = panelColor(blendOverBackground(wordColor(), styleLabelAlpha));
-    drawTinyTextCentered(styleLabel, 4, styleColor, 1);
+    nanoText(ui::Rect(0, 6, virtualWidth, 20), styleLabel, 1, nanoBlend(NanoRole::Muted, styleLabelAlpha),
+             NanoAlign::Center);
   }
 
   flushScaledFrame(scale, virtualWidth, virtualHeight);

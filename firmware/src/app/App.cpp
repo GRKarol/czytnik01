@@ -951,27 +951,8 @@ void App::begin() {
       batteryLabelMode_ = BatteryLabelMode::Percent;
       break;
   }
-  switch (preferences_.getUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_))) {
-    case static_cast<uint8_t>(ScreensaverMode::Maze):
-      screensaverMode_ = ScreensaverMode::Maze;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Voronoi):
-      screensaverMode_ = ScreensaverMode::Voronoi;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Stars):
-      screensaverMode_ = ScreensaverMode::Stars;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Matrix):
-      screensaverMode_ = ScreensaverMode::Matrix;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::ScreenOff):
-      screensaverMode_ = ScreensaverMode::ScreenOff;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Life):
-    default:
-      screensaverMode_ = ScreensaverMode::Life;
-      break;
-  }
+  screensaverMode_ = screensaverModeFromStored(
+      preferences_.getUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_)));
   screensaverTimeoutIndex_ = preferences_.getUChar(kPrefScreensaverTimeout, 2);
   if (screensaverTimeoutIndex_ >= kScreensaverTimeoutCount) {
     screensaverTimeoutIndex_ = 2;
@@ -2132,27 +2113,8 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       break;
   }
 
-  switch (preferences_.getUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_))) {
-    case static_cast<uint8_t>(ScreensaverMode::Maze):
-      screensaverMode_ = ScreensaverMode::Maze;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Voronoi):
-      screensaverMode_ = ScreensaverMode::Voronoi;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Stars):
-      screensaverMode_ = ScreensaverMode::Stars;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Matrix):
-      screensaverMode_ = ScreensaverMode::Matrix;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::ScreenOff):
-      screensaverMode_ = ScreensaverMode::ScreenOff;
-      break;
-    case static_cast<uint8_t>(ScreensaverMode::Life):
-    default:
-      screensaverMode_ = ScreensaverMode::Life;
-      break;
-  }
+  screensaverMode_ = screensaverModeFromStored(
+      preferences_.getUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_)));
   screensaverTimeoutIndex_ = preferences_.getUChar(kPrefScreensaverTimeout, screensaverTimeoutIndex_);
   if (screensaverTimeoutIndex_ >= kScreensaverTimeoutCount) {
     screensaverTimeoutIndex_ = 2;
@@ -10148,11 +10110,10 @@ void App::seedStandbyScreensaver(uint32_t nowMs) {
     case ScreensaverMode::Voronoi:
       seedStandbyVoronoi(nowMs);
       return;
-    case ScreensaverMode::Stars:
-      seedStandbyStars(nowMs);
-      return;
-    case ScreensaverMode::Matrix:
-      seedStandbyMatrix(nowMs);
+    case ScreensaverMode::Book:
+    case ScreensaverMode::Words:
+    case ScreensaverMode::Waves:
+      seedStandbyScene(nowMs);
       return;
     case ScreensaverMode::ScreenOff:
       seedStandbyScreenOff(nowMs);
@@ -10173,11 +10134,10 @@ void App::stepStandbyScreensaver(uint32_t nowMs) {
     case ScreensaverMode::Voronoi:
       stepStandbyVoronoi();
       return;
-    case ScreensaverMode::Stars:
-      stepStandbyStars();
-      return;
-    case ScreensaverMode::Matrix:
-      stepStandbyMatrix();
+    case ScreensaverMode::Book:
+    case ScreensaverMode::Words:
+    case ScreensaverMode::Waves:
+      ++standbySceneFrame_;
       return;
     case ScreensaverMode::ScreenOff:
       return;
@@ -10512,219 +10472,11 @@ void App::seedStandbyScreenOff(uint32_t nowMs) {
   standbyVoronoiY_.clear();
   standbyVoronoiDx_.clear();
   standbyVoronoiDy_.clear();
-  standbyStarsX_.clear();
-  standbyStarsY_.clear();
-  standbyStarsSpeed_.clear();
-  standbyStarsBright_.clear();
-  standbyMatrixColumns_.clear();
-  standbyMatrixHeads_.clear();
-  standbyMatrixTrails_.clear();
+  standbyLaneWords_.clear();
+  standbySceneSeeded_ = false;
   standbyLifeGeneration_ = 0;
   standbyScreenOffActive_ = true;
   display_.prepareForSleep();
-}
-
-void App::seedStandbyStars(uint32_t nowMs) {
-  const size_t cellCount =
-      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
-  const size_t wordCount = packedLifeWordCount(cellCount);
-  standbyLifeCells_.assign(wordCount, 0);
-  standbyLifeNextCells_.assign(wordCount, 0);
-  standbyScreensaverDimCells_.assign(wordCount, 0);
-  standbyMazeVisited_.clear();
-  standbyMazeStack_.clear();
-  standbyLifeGeneration_ = 0;
-
-  standbyScreensaverRng_ =
-      nowMs ^ micros() ^ (static_cast<uint32_t>(reader_.currentIndex() + 1) * 2246822519UL) ^
-      0x57A25EEDUL;
-
-  // Initialize 60 stars at random positions with random speeds and brightness
-  constexpr size_t kStarCount = 60;
-  standbyStarsX_.resize(kStarCount);
-  standbyStarsY_.resize(kStarCount);
-  standbyStarsSpeed_.resize(kStarCount);
-  standbyStarsBright_.resize(kStarCount);
-
-  for (size_t i = 0; i < kStarCount; ++i) {
-    standbyStarsX_[i] = static_cast<int16_t>(
-        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeColumns);
-    standbyStarsY_[i] = static_cast<int16_t>(
-        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeRows);
-    standbyStarsSpeed_[i] = static_cast<int8_t>(
-        1 + ((advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3));
-    standbyStarsBright_[i] = static_cast<uint8_t>(
-        (advanceStandbyRng(standbyScreensaverRng_) >> 16) % 2);
-  }
-
-  // Render initial frame
-  std::fill(standbyLifeCells_.begin(), standbyLifeCells_.end(), 0);
-  for (size_t i = 0; i < kStarCount; ++i) {
-    const size_t idx = static_cast<size_t>(standbyStarsY_[i]) * kStandbyLifeColumns +
-                       static_cast<size_t>(standbyStarsX_[i]);
-    if (idx < cellCount) {
-      setPackedLifeCell(standbyLifeCells_, idx, true);
-      if (standbyStarsBright_[i]) {
-        setPackedLifeCell(standbyScreensaverDimCells_, idx, true);
-      }
-    }
-  }
-}
-
-void App::stepStandbyStars() {
-  constexpr size_t kStarCount = 60;
-  const size_t cellCount =
-      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
-
-  if (standbyStarsX_.size() != kStarCount) return;
-
-  std::fill(standbyLifeCells_.begin(), standbyLifeCells_.end(), 0);
-  std::fill(standbyScreensaverDimCells_.begin(), standbyScreensaverDimCells_.end(), 0);
-
-  for (size_t i = 0; i < kStarCount; ++i) {
-    // Move star down by its speed (simulating falling stars / starfield)
-    standbyStarsY_[i] += standbyStarsSpeed_[i];
-    if (standbyStarsY_[i] >= static_cast<int16_t>(kStandbyLifeRows)) {
-      // Respawn at top with new random x
-      standbyStarsY_[i] = 0;
-      standbyStarsX_[i] = static_cast<int16_t>(
-          (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeColumns);
-      standbyStarsSpeed_[i] = static_cast<int8_t>(
-          1 + ((advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3));
-      standbyStarsBright_[i] = static_cast<uint8_t>(
-          (advanceStandbyRng(standbyScreensaverRng_) >> 16) % 2);
-    }
-
-    const size_t idx = static_cast<size_t>(standbyStarsY_[i]) * kStandbyLifeColumns +
-                       static_cast<size_t>(standbyStarsX_[i]);
-    if (idx < cellCount) {
-      setPackedLifeCell(standbyLifeCells_, idx, true);
-      if (standbyStarsBright_[i]) {
-        setPackedLifeCell(standbyScreensaverDimCells_, idx, true);
-      }
-    }
-
-    // Draw a short trail behind
-    for (int8_t t = 1; t <= 2; ++t) {
-      const int16_t trailY = standbyStarsY_[i] - t * standbyStarsSpeed_[i];
-      if (trailY >= 0 && trailY < static_cast<int16_t>(kStandbyLifeRows)) {
-        const size_t trailIdx = static_cast<size_t>(trailY) * kStandbyLifeColumns +
-                                static_cast<size_t>(standbyStarsX_[i]);
-        if (trailIdx < cellCount) {
-          setPackedLifeCell(standbyScreensaverDimCells_, trailIdx, true);
-        }
-      }
-    }
-  }
-
-  // Occasionally twinkle: randomly toggle a few dim cells
-  for (uint8_t t = 0; t < 4; ++t) {
-    const size_t twinkleIdx =
-        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % cellCount;
-    setPackedLifeCell(standbyScreensaverDimCells_, twinkleIdx,
-                      !packedLifeCellAlive(standbyScreensaverDimCells_, twinkleIdx));
-  }
-
-  standbyLifeGeneration_++;
-}
-
-void App::seedStandbyMatrix(uint32_t nowMs) {
-  const size_t cellCount =
-      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
-  const size_t wordCount = packedLifeWordCount(cellCount);
-  standbyLifeCells_.assign(wordCount, 0);
-  standbyLifeNextCells_.assign(wordCount, 0);
-  standbyScreensaverDimCells_.assign(wordCount, 0);
-  standbyMazeVisited_.clear();
-  standbyMazeStack_.clear();
-  standbyLifeGeneration_ = 0;
-
-  standbyScreensaverRng_ =
-      nowMs ^ micros() ^ (static_cast<uint32_t>(reader_.currentIndex() + 1) * 3266489917UL) ^
-      0xAA7E1CEDUL;
-
-  // Initialize column raindrop heads
-  const uint16_t numCols = kStandbyLifeColumns;
-  standbyMatrixColumns_.resize(numCols);
-  standbyMatrixHeads_.resize(numCols);
-  standbyMatrixTrails_.resize(numCols);
-
-  for (uint16_t c = 0; c < numCols; ++c) {
-    standbyMatrixHeads_[c] = static_cast<uint8_t>(
-        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % kStandbyLifeRows);
-    standbyMatrixTrails_[c] = static_cast<uint8_t>(
-        4 + ((advanceStandbyRng(standbyScreensaverRng_) >> 16) % 8));
-    // Speed: 0 = slow (skip some frames), 1 = normal, 2 = fast
-    standbyMatrixColumns_[c] = static_cast<uint8_t>(
-        (advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3);
-  }
-}
-
-void App::stepStandbyMatrix() {
-  const size_t cellCount =
-      static_cast<size_t>(kStandbyLifeColumns) * static_cast<size_t>(kStandbyLifeRows);
-  const uint16_t numCols = kStandbyLifeColumns;
-  const uint16_t numRows = kStandbyLifeRows;
-
-  if (standbyMatrixHeads_.size() != numCols) return;
-
-  std::fill(standbyLifeCells_.begin(), standbyLifeCells_.end(), 0);
-  std::fill(standbyScreensaverDimCells_.begin(), standbyScreensaverDimCells_.end(), 0);
-
-  standbyLifeGeneration_++;
-
-  for (uint16_t c = 0; c < numCols; ++c) {
-    // Determine if this column should advance this frame based on speed
-    const uint8_t speed = standbyMatrixColumns_[c];
-    bool shouldAdvance = true;
-    if (speed == 0) {
-      shouldAdvance = (standbyLifeGeneration_ % 3) == 0;
-    } else if (speed == 1) {
-      shouldAdvance = (standbyLifeGeneration_ % 2) == 0;
-    }
-
-    if (shouldAdvance) {
-      standbyMatrixHeads_[c]++;
-      if (standbyMatrixHeads_[c] >= numRows + standbyMatrixTrails_[c]) {
-        // Respawn from top with new trail length and speed
-        standbyMatrixHeads_[c] = 0;
-        standbyMatrixTrails_[c] = static_cast<uint8_t>(
-            4 + ((advanceStandbyRng(standbyScreensaverRng_) >> 16) % 8));
-        standbyMatrixColumns_[c] = static_cast<uint8_t>(
-            (advanceStandbyRng(standbyScreensaverRng_) >> 24) % 3);
-      }
-    }
-
-    // Draw the head (bright pixel)
-    const int16_t headY = static_cast<int16_t>(standbyMatrixHeads_[c]);
-    if (headY >= 0 && headY < numRows) {
-      const size_t headIdx = static_cast<size_t>(headY) * numCols + c;
-      setPackedLifeCell(standbyLifeCells_, headIdx, true);
-    }
-
-    // Draw the trail (dimmer pixels)
-    const uint8_t trail = standbyMatrixTrails_[c];
-    for (uint8_t t = 1; t <= trail; ++t) {
-      const int16_t trailY = headY - static_cast<int16_t>(t);
-      if (trailY >= 0 && trailY < numRows) {
-        const size_t trailIdx = static_cast<size_t>(trailY) * numCols + c;
-        if (t <= 2) {
-          // Near-head trail: bright
-          setPackedLifeCell(standbyLifeCells_, trailIdx, true);
-        } else {
-          // Far trail: dim
-          setPackedLifeCell(standbyScreensaverDimCells_, trailIdx, true);
-        }
-      }
-    }
-  }
-
-  // Add occasional random bright flickers for the "digital rain" effect
-  for (uint8_t f = 0; f < 3; ++f) {
-    const size_t flickerIdx =
-        (advanceStandbyRng(standbyScreensaverRng_) >> 8) % cellCount;
-    setPackedLifeCell(standbyScreensaverDimCells_, flickerIdx, true);
-  }
 }
 
 void App::openScreensaverSettings() {
@@ -10747,28 +10499,7 @@ void App::selectScreensaverSettingsItem(uint32_t nowMs) {
       renderSettings();
       return;
     case kScreensaverSettingsStyleIndex:
-      // Cycle through all screensaver modes
-      switch (screensaverMode_) {
-        case ScreensaverMode::Life:
-          screensaverMode_ = ScreensaverMode::Maze;
-          break;
-        case ScreensaverMode::Maze:
-          screensaverMode_ = ScreensaverMode::Voronoi;
-          break;
-        case ScreensaverMode::Voronoi:
-          screensaverMode_ = ScreensaverMode::Stars;
-          break;
-        case ScreensaverMode::Stars:
-          screensaverMode_ = ScreensaverMode::Matrix;
-          break;
-        case ScreensaverMode::Matrix:
-          screensaverMode_ = ScreensaverMode::ScreenOff;
-          break;
-        case ScreensaverMode::ScreenOff:
-        default:
-          screensaverMode_ = ScreensaverMode::Life;
-          break;
-      }
+      screensaverMode_ = nextScreensaverMode(screensaverMode_);
       preferences_.putUChar(kPrefScreensaverMode, static_cast<uint8_t>(screensaverMode_));
       rebuildSettingsMenuItems();
       showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
@@ -10861,13 +10592,13 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
     return;
   }
 
-  if (!force && nowMs - lastStandbyFrameMs_ < kStandbyFrameMs) {
+  if (!force && nowMs - lastStandbyFrameMs_ < standbyFrameIntervalMs()) {
     return;
   }
 
   if (!force) {
     stepStandbyScreensaver(nowMs);
-  } else if (standbyLifeCells_.empty()) {
+  } else if (screensaverIsScene() ? !standbySceneSeeded_ : standbyLifeCells_.empty()) {
     seedStandbyScreensaver(nowMs);
   }
 
@@ -10908,11 +10639,24 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
     styleLabel = screensaverModeLabel();
   }
 
-  display_.renderLifeScreensaver(standbyLifeCells_, kStandbyLifeColumns, kStandbyLifeRows,
-                                 standbyLifeGeneration_,
-                                 standbyScreensaverDimCells_.empty() ? nullptr
-                                                                      : &standbyScreensaverDimCells_,
-                                 hintText, hintAlpha, styleLabel, styleLabelAlpha);
+  // Menu palette colors; outside the Official nav mode the classic one
+  // (reading theme + highlight color), as the rest of that UI.
+  const bool classicColors = navMode_ != NavMode::Modern;
+  if (classicColors) {
+    display_.overrideNanoPalette(DisplayManager::kNanoPaletteClassic, false);
+  }
+  if (screensaverIsScene()) {
+    renderStandbyScene(nowMs, hintText, hintAlpha, styleLabel, styleLabelAlpha);
+  } else {
+    display_.renderLifeScreensaver(standbyLifeCells_, kStandbyLifeColumns, kStandbyLifeRows,
+                                   standbyLifeGeneration_,
+                                   standbyScreensaverDimCells_.empty() ? nullptr
+                                                                        : &standbyScreensaverDimCells_,
+                                   hintText, hintAlpha, styleLabel, styleLabelAlpha);
+  }
+  if (classicColors) {
+    display_.overrideNanoPalette(nanoPalette_, nanoOwnAccent_);
+  }
 }
 
 void App::enterPowerOff(uint32_t nowMs) {
@@ -11827,10 +11571,12 @@ String App::screensaverModeLabel() const {
       return tr(TrKey::Maze);
     case ScreensaverMode::Voronoi:
       return "Voronoi";
-    case ScreensaverMode::Stars:
-      return tr(TrKey::Stars);
-    case ScreensaverMode::Matrix:
-      return tr(TrKey::MatrixRain);
+    case ScreensaverMode::Book:
+      return tr4(TrKey4::SaverBook);
+    case ScreensaverMode::Words:
+      return tr(TrKey::SaverWords);
+    case ScreensaverMode::Waves:
+      return tr(TrKey::SaverWaves);
     case ScreensaverMode::ScreenOff:
       return tr(TrKey::ScreenOff);
     case ScreensaverMode::Life:
@@ -12543,3 +12289,4 @@ void App::handleStorageStatus(void *context, const char *title, const char *line
 
 #include "AppNano.inl"
 #include "AppExtras.inl"
+#include "AppSavers.inl"

@@ -66,8 +66,8 @@ enum class TrKey : uint8_t {
   ScreensaverSleepGuard,
   ScreensaverStyle,
   ScreensaverPreview,
-  Stars,
-  MatrixRain,
+  SaverWords,
+  SaverWaves,
   ScreensaverHint,
   Minutes1,
   Minutes2,
@@ -344,6 +344,9 @@ enum class TrKey4 : uint8_t {
   LayoutSideRight,
   LayoutTapToPick,
   LayoutTapAgainHint,
+  SaverBook,
+  SaverNoBook,
+  SaverWordsFallback,
 };
 
 namespace Translations3 {
