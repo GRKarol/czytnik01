@@ -528,13 +528,11 @@ class App {
   void finishWelcomeWizard(uint32_t nowMs);
   void wizardStepBack(uint32_t nowMs);
   void openTutorialStep1();
-  void openTutorialStep2();
-  void openTutorialStep3();
-  void openTutorialStep4();
-  void openTutorialStep5();
   void finishTutorial(uint32_t nowMs);
   void renderTutorialStep();
   void handleTutorialTap(uint32_t nowMs);
+  // Samouczek tap: Wstecz / Dalej / Pomiń targets, elsewhere = next page.
+  void handleTutorialTouchAt(uint16_t x, uint16_t y, uint32_t nowMs);
   void previousTutorialStep(uint32_t nowMs);
   String pacingDelayLabel(uint16_t delayMs) const;
   // Full-screen drag-slider editor for the three pacing delays (long words /
@@ -1514,6 +1512,9 @@ class App {
   bool showHelpHints_ = true;
   bool showingHelpPopup_ = false;
   bool tutorialCompleted_ = false;
+  uint8_t tutorialPage_ = 0;
+  std::vector<std::pair<ui::Rect, int>> tutorialTargets_;
+  int tutorialPressedId_ = -1;
   const char* helpPopupTitle_ = nullptr;
   const char* helpPopupDesc_ = nullptr;
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;

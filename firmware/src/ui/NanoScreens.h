@@ -458,4 +458,39 @@ struct SaverWavesView {
 };
 void paintSaverWaves(DisplayManager &d, const SaverWavesView &view);
 
+// ── Samouczek ──
+// One page: a drawing on the left, title and text on the right, Wstecz /
+// dots / Dalej along the bottom, Pomiń in the top-right corner.
+enum class TutorialArt : uint8_t {
+  Rsvp,     // a word with its focus letter
+  Start,    // "Czytaj" button and a held finger
+  Speed,    // tempo with - and +
+  Scrub,    // words with arrows and the top bar
+  Menu,     // the tab rail
+  Help,     // a setting tile with its ? button
+};
+struct TutorialView {
+  String caption;  // "Samouczek"
+  size_t page = 0;
+  size_t pageCount = 1;
+  TutorialArt art = TutorialArt::Rsvp;
+  String title;
+  String body;
+  // Words the drawings use (translated): the sample word, the play button,
+  // the tempo unit, the four tab names, the tile label.
+  String artWord;
+  String artStart;
+  String artUnit;
+  String artTabs[4];
+  String artTile;
+  int backId = kNoTarget;  // hidden on the first page
+  String backLabel;
+  int nextId = kNoTarget;
+  String nextLabel;        // "Dalej", "Gotowe" on the last page
+  int skipId = kNoTarget;  // hidden on the last page
+  String skipLabel;
+};
+void paintTutorial(DisplayManager &d, Sink &sink, const TutorialView &view);
+
+
 }  // namespace nano

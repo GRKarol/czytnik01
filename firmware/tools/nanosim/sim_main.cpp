@@ -30,6 +30,7 @@ void runScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const 
 void runPluginScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runUpdateScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runSaverScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
+void runTutorialScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 
 int main() {
   DisplayManager d;
@@ -43,5 +44,6 @@ int main() {
   runUpdateScreens(d, dump);
   d.setNanoUiFont(0);
   runSaverScreens(d, dump);
+  runTutorialScreens(d, dump);
   return 0;
 }

@@ -1551,6 +1551,7 @@ void App::updateState(uint32_t nowMs) {
     tutorialCompleted_ = preferences_.getBool(kPrefTutorialDone, false);
     if (!tutorialCompleted_) {
       menuScreen_ = MenuScreen::TutorialStep1;
+      tutorialPage_ = 0;
       suppressBootStorageStatusRender_ = false;
       fadeOutSplashOnce();
       setState(AppState::Menu, nowMs);
@@ -3310,11 +3311,7 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
       menuScreen_ == MenuScreen::TutorialStep3 || menuScreen_ == MenuScreen::TutorialStep4 ||
       menuScreen_ == MenuScreen::TutorialStep5) {
     if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
-      if (event.x < 40 && event.y < 40) {
-        previousTutorialStep(nowMs);
-      } else {
-        handleTutorialTap(nowMs);
-      }
+      handleTutorialTouchAt(event.x, event.y, nowMs);
     }
     return;
   }
@@ -7085,96 +7082,6 @@ void App::wizardStepBack(uint32_t nowMs) {
 }
 
 // ─── Post-wizard tutorial ────────────────────────────────────────────────────
-
-void App::openTutorialStep1() {
-  menuScreen_ = MenuScreen::TutorialStep1;
-  renderTutorialStep();
-}
-
-void App::openTutorialStep2() {
-  menuScreen_ = MenuScreen::TutorialStep2;
-  renderTutorialStep();
-}
-
-void App::openTutorialStep3() {
-  menuScreen_ = MenuScreen::TutorialStep3;
-  renderTutorialStep();
-}
-
-void App::openTutorialStep4() {
-  menuScreen_ = MenuScreen::TutorialStep4;
-  renderTutorialStep();
-}
-
-void App::openTutorialStep5() {
-  menuScreen_ = MenuScreen::TutorialStep5;
-  renderTutorialStep();
-}
-
-void App::renderTutorialStep() {
-  const char *title = "";
-  const char *desc = "";
-  int step = 0;
-
-  switch (menuScreen_) {
-    case MenuScreen::TutorialStep1:
-      title = "RSVP";
-      desc = tr3(TrKey3::TutorialRsvpDesc);
-      step = 1;
-      break;
-    case MenuScreen::TutorialStep2:
-      title = tr3(TrKey3::SpeedLabel);
-      desc = tr3(TrKey3::TutorialSpeedDesc);
-      step = 2;
-      break;
-    case MenuScreen::TutorialStep3:
-      title = tr3(TrKey3::PauseLabel);
-      desc = tr3(TrKey3::TutorialPauseDesc);
-      step = 3;
-      break;
-    case MenuScreen::TutorialStep4:
-      title = "Menu";
-      desc = tr3(TrKey3::TutorialMenuDesc);
-      step = 4;
-      break;
-    case MenuScreen::TutorialStep5:
-      title = tr3(TrKey3::HelpQLabel);
-      desc = tr3(TrKey3::TutorialHelpDesc);
-      step = 5;
-      break;
-    default:
-      return;
-  }
-
-  String progress = String(step) + "/5";
-  display_.renderStatus(title, desc, progress);
-}
-
-void App::handleTutorialTap(uint32_t nowMs) {
-  switch (menuScreen_) {
-    case MenuScreen::TutorialStep1: openTutorialStep2(); break;
-    case MenuScreen::TutorialStep2: openTutorialStep3(); break;
-    case MenuScreen::TutorialStep3: openTutorialStep4(); break;
-    case MenuScreen::TutorialStep4: openTutorialStep5(); break;
-    case MenuScreen::TutorialStep5: finishTutorial(nowMs); break;
-    default: break;
-  }
-}
-
-void App::previousTutorialStep(uint32_t nowMs) {
-  (void)nowMs;
-  switch (menuScreen_) {
-    // Krok 1 to początek — nie ma dokąd wrócić (tutorial bywa uruchamiany
-    // zarówno z kreatora pierwszego uruchomienia, jak i ręcznie z Ustawienia
-    // > O aplikacji, więc nie ma jednego stałego ekranu "przed" nim).
-    case MenuScreen::TutorialStep1: renderTutorialStep(); break;
-    case MenuScreen::TutorialStep2: openTutorialStep1(); break;
-    case MenuScreen::TutorialStep3: openTutorialStep2(); break;
-    case MenuScreen::TutorialStep4: openTutorialStep3(); break;
-    case MenuScreen::TutorialStep5: openTutorialStep4(); break;
-    default: break;
-  }
-}
 
 void App::finishTutorial(uint32_t nowMs) {
   tutorialCompleted_ = true;
@@ -12290,3 +12197,4 @@ void App::handleStorageStatus(void *context, const char *title, const char *line
 #include "AppNano.inl"
 #include "AppExtras.inl"
 #include "AppSavers.inl"
+#include "AppTutorial.inl"

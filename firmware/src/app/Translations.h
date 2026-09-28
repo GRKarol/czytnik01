@@ -347,6 +347,20 @@ enum class TrKey4 : uint8_t {
   SaverBook,
   SaverNoBook,
   SaverWordsFallback,
+  TutTitleRsvp,
+  TutBodyRsvp,
+  TutTitleStart,
+  TutBodyStart,
+  TutTitleSpeed,
+  TutBodySpeed,
+  TutTitleMove,
+  TutBodyMove,
+  TutTitleMenu,
+  TutBodyMenu,
+  TutTitleHelp,
+  TutBodyHelp,
+  TutWord,
+  TutDone,
 };
 
 namespace Translations3 {

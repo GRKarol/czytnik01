@@ -1168,4 +1168,169 @@ void paintSaverWaves(DisplayManager &d, const SaverWavesView &view) {
   d.nanoEndFrame();
 }
 
+// ── Samouczek ───────────────────────────────────────────────────────────────
+
+namespace {
+
+void paintTutorialArt(DisplayManager &d, const Rect &area, const TutorialView &view) {
+  const uint16_t surface = d.nanoColor(Role::SurfaceMuted);
+  d.nanoFillRoundRect(area.x, area.y, area.w, area.h, 12, surface);
+  const int cx = area.x + area.w / 2;
+  const int cy = area.y + area.h / 2;
+  const uint16_t fg = d.nanoColor(Role::Foreground);
+  const uint16_t muted = d.nanoColor(Role::Muted);
+  const uint16_t accent = d.nanoColor(Role::Accent);
+  switch (view.art) {
+    case TutorialArt::Rsvp: {
+      // The word in the reading typeface, its focus letter in the accent,
+      // with the guide lines the reading screen draws.
+      const String word = view.artWord.isEmpty() ? String("czytanie") : view.artWord;
+      constexpr uint8_t kScale = 52;
+      const int focus =
+          std::min<int>(static_cast<int>(word.length()) - 1, (static_cast<int>(word.length()) + 2) / 4);
+      const String head = word.substring(0, focus);
+      const String letter = word.substring(focus, focus + 1);
+      const String tail = word.substring(focus + 1);
+      const int headW = d.nanoTypefaceTextWidth(head, kScale);
+      const int letterW = d.nanoTypefaceTextWidth(letter, kScale);
+      // 69 = kEmbeddedAtkinsonHeight (that header carries the glyph bitmaps).
+      const int textH = 69 * kScale / 100;
+      const int letterX = cx - letterW / 2;
+      const int top = cy - textH / 2 - 4;
+      d.nanoTypefaceText(letterX - headW, top, head, fg, kScale);
+      d.nanoTypefaceText(letterX, top, letter, accent, kScale);
+      d.nanoTypefaceText(letterX + letterW, top, tail, fg, kScale);
+      d.nanoFillRect(cx - 1, area.y + 10, 2, 10, muted);
+      d.nanoFillRect(cx - 1, area.y + area.h - 20, 2, 10, muted);
+      d.nanoDrawLine(area.x + 20, area.y + 15, area.x + area.w - 20, area.y + 15, d.nanoBlend(Role::Muted, 90));
+      d.nanoDrawLine(area.x + 20, area.y + area.h - 15, area.x + area.w - 20, area.y + area.h - 15,
+                     d.nanoBlend(Role::Muted, 90));
+      break;
+    }
+    case TutorialArt::Start: {
+      const Rect pill(area.x + 16, cy - 18, 124, 36);
+      d.nanoFillRoundRect(pill.x, pill.y, pill.w, pill.h, 18, accent);
+      d.nanoIcon(Rect(pill.x + 8, pill.y, 26, pill.h), Icon::Play, d.nanoColor(Role::OnAccent), accent);
+      d.nanoText(Rect(pill.x + 34, pill.y, pill.w - 40, pill.h), view.artStart, 2, d.nanoColor(Role::OnAccent),
+                 Align::Center);
+      // A finger held on the word: a dot with two rings.
+      const int fx = area.x + area.w - 54;
+      d.nanoFillCircle(fx, cy, 9, fg);
+      d.nanoDrawCircle(fx, cy, 17, d.nanoBlend(Role::Foreground, 150));
+      d.nanoDrawCircle(fx, cy, 26, d.nanoBlend(Role::Foreground, 80));
+      break;
+    }
+    case TutorialArt::Speed: {
+      const int r = 17;
+      const uint16_t knob = d.nanoColor(Role::SurfaceActive);
+      d.nanoFillCircle(area.x + 34, cy - 6, r, knob);
+      d.nanoIcon(Rect(area.x + 34 - r, cy - 6 - r, 2 * r, 2 * r), Icon::Minus, fg, knob);
+      d.nanoFillCircle(area.x + area.w - 34, cy - 6, r, knob);
+      d.nanoIcon(Rect(area.x + area.w - 34 - r, cy - 6 - r, 2 * r, 2 * r), Icon::Plus, fg, knob);
+      d.nanoText(Rect(area.x + 56, cy - 34, area.w - 112, 40), "300", 4, fg, Align::Center);
+      d.nanoText(Rect(area.x + 56, cy + 6, area.w - 112, 18), view.artUnit, 1, muted, Align::Center);
+      const Rect bar(area.x + 20, area.y + area.h - 16, area.w - 40, 6);
+      d.nanoFillRoundRect(bar.x, bar.y, bar.w, bar.h, 3, d.nanoColor(Role::ProgressTrack));
+      d.nanoFillRoundRect(bar.x, bar.y, bar.w * 30 / 100, bar.h, 3, accent);
+      break;
+    }
+    case TutorialArt::Scrub: {
+      // The status bar a tap on which jumps somewhere else in the book.
+      const Rect bar(area.x + 16, area.y + 14, area.w - 32, 5);
+      d.nanoFillRoundRect(bar.x, bar.y, bar.w, bar.h, 2, d.nanoColor(Role::ProgressTrack));
+      d.nanoFillRoundRect(bar.x, bar.y, bar.w * 42 / 100, bar.h, 2, accent);
+      d.nanoText(Rect(area.x + 40, cy - 14, area.w - 80, 28), view.artWord, 2, fg, Align::Center);
+      d.nanoIcon(Rect(area.x + 6, cy - 14, 28, 28), Icon::ChevronLeft, accent, surface);
+      d.nanoIcon(Rect(area.x + area.w - 34, cy - 14, 28, 28), Icon::ChevronRight, accent, surface);
+      d.nanoDrawLine(area.x + 60, cy + 26, area.x + area.w - 60, cy + 26, d.nanoBlend(Role::Muted, 140));
+      d.nanoFillCircle(area.x + area.w - 60, cy + 26, 5, fg);
+      break;
+    }
+    case TutorialArt::Menu: {
+      const Icon icons[4] = {Icon::Book, Icon::Sliders, Icon::Palette, Icon::Device};
+      const int rowH = (area.h - 12) / 4;
+      for (int i = 0; i < 4; ++i) {
+        const Rect row(area.x + 8, area.y + 6 + i * rowH, area.w - 16, rowH - 2);
+        const uint16_t rowSurface = i == 0 ? d.nanoColor(Role::SurfaceActive) : surface;
+        if (i == 0) {
+          d.nanoFillRoundRect(row.x, row.y, row.w, row.h, 6, rowSurface);
+          d.nanoFillRoundRect(row.x + 2, row.y + 4, 3, row.h - 8, 1, accent);
+        }
+        d.nanoIcon(Rect(row.x + 10, row.y, 22, row.h), icons[i], i == 0 ? accent : muted, rowSurface);
+        d.nanoText(Rect(row.x + 40, row.y, row.w - 44, row.h), view.artTabs[i], 1, i == 0 ? fg : muted);
+      }
+      break;
+    }
+    case TutorialArt::Help: {
+      const Rect tile(area.x + 16, cy - 26, area.w - 32, 52);
+      d.nanoFillRoundRect(tile.x, tile.y, tile.w, tile.h, 10, d.nanoColor(Role::SurfaceActive));
+      d.nanoText(Rect(tile.x + 14, tile.y, tile.w - 70, tile.h), view.artTile, 2, fg);
+      const int qx = tile.x + tile.w - 26;
+      d.nanoFillCircle(qx, cy, 14, accent);
+      d.nanoText(Rect(qx - 14, cy - 14, 28, 28), "?", 2, d.nanoColor(Role::OnAccent), Align::Center);
+      d.nanoDrawCircle(qx, cy, 21, d.nanoBlend(Role::Accent, 120));
+      break;
+    }
+  }
+}
+
+}  // namespace
+
+void paintTutorial(DisplayManager &d, Sink &sink, const TutorialView &view) {
+  d.nanoBeginFrame();
+  // Top row: caption with the page count, Pomiń on the right.
+  const String counter =
+      String(static_cast<unsigned>(view.page + 1)) + "/" + String(static_cast<unsigned>(view.pageCount));
+  d.nanoText(Rect(14, 4, 300, 22), view.caption + "  " + counter, 1, d.nanoColor(Role::Muted));
+  if (view.skipId != kNoTarget) {
+    const int w = std::max(76, DisplayManager::nanoTextWidth(view.skipLabel, 1) + 28);
+    const Rect skip(kScreenW - w - 8, 3, w, 24);
+    d.nanoPill(skip, view.skipLabel, Icon::None, sink.pressed(view.skipId), false);
+    addTarget(sink, Rect(skip.x - 8, 0, skip.w + 16, 34), view.skipId);
+  }
+
+  const Rect art(10, 32, 244, 100);
+  paintTutorialArt(d, art, view);
+
+  const int textX = right(art) + 16;
+  const int textW = kScreenW - textX - 12;
+  d.nanoText(Rect(textX, 30, textW, 30), view.title, 3, d.nanoColor(Role::Foreground));
+  const std::vector<String> lines = DisplayManager::nanoWrapText(view.body, textW, 1);
+  const int lineH = DisplayManager::nanoLineHeight(1);
+  int y = 62;
+  for (const String &line : lines) {
+    if (y + lineH > 138) break;
+    d.nanoText(Rect(textX, y, textW, lineH), line, 1, d.nanoColor(Role::Muted));
+    y += lineH;
+  }
+
+  // Bottom row: Wstecz, page dots, Dalej / Gotowe.
+  const int rowY = kScreenH - 32;
+  if (view.backId != kNoTarget) {
+    const Rect back(10, rowY, 120, 28);
+    d.nanoPill(back, view.backLabel, Icon::ChevronLeft, sink.pressed(view.backId), false);
+    addTarget(sink, Rect(0, rowY - 6, 150, kScreenH - rowY + 6), view.backId);
+  }
+  const int dotGap = 14;
+  const int dotsW = static_cast<int>(view.pageCount) * dotGap;
+  int dotX = (kScreenW - dotsW) / 2 + dotGap / 2;
+  for (size_t i = 0; i < view.pageCount; ++i) {
+    const bool on = i == view.page;
+    d.nanoFillCircle(dotX, rowY + 14, on ? 4 : 3, on ? d.nanoColor(Role::Accent) : d.nanoColor(Role::Subtle));
+    dotX += dotGap;
+  }
+  const Rect next(kScreenW - 150, rowY, 140, 28);
+  const bool pressedNext = sink.pressed(view.nextId);
+  const uint16_t nextFill = pressedNext ? d.nanoBlend(Role::Accent, 170) : d.nanoColor(Role::Accent);
+  d.nanoFillRoundRect(next.x, next.y, next.w, next.h, 14, nextFill);
+  d.nanoText(Rect(next.x + 6, next.y, next.w - 30, next.h), view.nextLabel, 2, d.nanoColor(Role::OnAccent),
+             Align::Center);
+  d.nanoIcon(Rect(next.x + next.w - 30, next.y, 24, next.h), Icon::ChevronRight, d.nanoColor(Role::OnAccent),
+             nextFill);
+  addTarget(sink, Rect(kScreenW - 170, rowY - 6, 170, kScreenH - rowY + 6), view.nextId);
+
+  d.nanoEndFrame();
+}
+
+
 }  // namespace nano
