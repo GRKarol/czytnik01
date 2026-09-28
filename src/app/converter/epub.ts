@@ -72,6 +72,48 @@ export async function parseEpub(file: File): Promise<ParsedBook> {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+/**
+ * The cover picture packed in an EPUB, if it has one: the manifest item
+ * marked `properties="cover-image"` (EPUB 3), the one named by
+ * `<meta name="cover">` (EPUB 2), or any image called "cover". Starting
+ * point for the cover editor, so the reader shows the book's real cover.
+ */
+export async function extractEpubCover(file: Blob): Promise<Blob | null> {
+  try {
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const opfPath = findRootfilePath(await readZipText(zip, "META-INF/container.xml"));
+    if (!opfPath) return null;
+    const opfDoc = new DOMParser().parseFromString(await readZipText(zip, opfPath), "application/xml");
+
+    const items: { id: string; href: string; type: string; props: string }[] = [];
+    let coverId = "";
+    for (const el of Array.from(opfDoc.getElementsByTagName("*"))) {
+      const name = localName(el);
+      if (name === "item") {
+        items.push({
+          id: el.getAttribute("id") ?? "",
+          href: el.getAttribute("href") ?? "",
+          type: el.getAttribute("media-type") ?? "",
+          props: el.getAttribute("properties") ?? "",
+        });
+      } else if (name === "meta" && el.getAttribute("name") === "cover") {
+        coverId = el.getAttribute("content") ?? "";
+      }
+    }
+    const images = items.filter((i) => i.type.startsWith("image/") && i.href);
+    const pick =
+      images.find((i) => i.props.split(/\s+/).includes("cover-image")) ??
+      images.find((i) => coverId && i.id === coverId) ??
+      images.find((i) => /cover/i.test(i.id) || /cover/i.test(i.href));
+    if (!pick) return null;
+    const entry = zip.file(joinZipPath(opfPath, pick.href));
+    if (!entry) return null;
+    return new Blob([await entry.async("arraybuffer")], { type: pick.type });
+  } catch {
+    return null;
+  }
+}
+
 async function readZipText(zip: JSZip, name: string): Promise<string> {
   const f = zip.file(name);
   if (!f) throw new Error(`Brak pliku w EPUB: ${name}`);

@@ -30,7 +30,20 @@ import {
   type BookPosition,
   type DeviceCapabilities,
   type DeviceInfo,
+  type BookTextPage,
+  type ChapterMark,
+  type PictureKind,
 } from "./api";
+
+// Requests to the reader never hang: a phone that silently left the
+// reader's Wi-Fi otherwise waits a minute or more before fetch gives up.
+const TIMEOUT_MS = 12_000;
+// Opening a book for the chapter editor can convert an EPUB on the reader.
+const SLOW_TIMEOUT_MS = 120_000;
+
+function timed(ms = TIMEOUT_MS): AbortSignal {
+  return AbortSignal.timeout(ms);
+}
 
 const LANG_INDEX: Language[] = ["pl", "en", "de", "es", "fr", "it"];
 
@@ -54,9 +67,11 @@ interface FirmwareSettings {
     fontSizeIndex?: number;
     footerMetric?: FooterMetric;
     batteryLabel?: BatteryLabel;
+    brightnessPercent?: number;
   };
   typography?: {
     typeface?: Typeface;
+    typefaceIndex?: number;
     focusHighlight?: boolean;
     tracking?: number;
     anchorPercent?: number;
@@ -82,10 +97,14 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
   const lang: Language = LANG_INDEX[d.language ?? 0] ?? "pl";
   // brightnessIndex w firmware to 0..N gdzie N to kMaxBrightness — skalujemy
   // przybliżenie do 0..100 dla UI.
+  // Newer firmware keeps a smooth percent (20-100); older only the 5-step
+  // index, scaled to 0-100 as before.
   const brightness =
-    typeof d.brightnessIndex === "number"
-      ? Math.min(100, Math.round((d.brightnessIndex / 4) * 100))
-      : DEFAULT_SETTINGS.brightness;
+    typeof d.brightnessPercent === "number"
+      ? d.brightnessPercent
+      : typeof d.brightnessIndex === "number"
+        ? Math.min(100, Math.round((d.brightnessIndex / 4) * 100))
+        : DEFAULT_SETTINGS.brightness;
   return {
     ...DEFAULT_SETTINGS,
     theme,
@@ -109,6 +128,9 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
     // Typography (RSVP)
     fontSizeIndex: d.fontSizeIndex ?? DEFAULT_SETTINGS.fontSizeIndex,
     typeface: t.typeface ?? DEFAULT_SETTINGS.typeface,
+    typefaceIndex:
+      t.typefaceIndex ??
+      Math.max(0, ["standard", "open_dyslexic", "atkinson"].indexOf(t.typeface ?? "standard")),
     phantomWords: d.phantomWords ?? DEFAULT_SETTINGS.phantomWords,
     focusHighlight: t.focusHighlight ?? DEFAULT_SETTINGS.focusHighlight,
     tracking: t.tracking ?? DEFAULT_SETTINGS.tracking,
@@ -130,8 +152,10 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
     out.nightMode = p.theme === "night";
   }
   if (p.brightness != null) {
-    // PWA daje 0..100, firmware oczekuje brightnessIndex 0..4 (kMaxBrightness).
+    // Old firmware: 5-step index. New firmware reads the percent after the
+    // index and keeps it (the reader's smooth slider value).
     out.brightnessIndex = Math.max(0, Math.min(4, Math.round((p.brightness / 100) * 4)));
+    out.brightnessPercent = Math.max(20, Math.min(100, Math.round(p.brightness)));
   }
   if (p.language != null) {
     const idx = LANG_INDEX.indexOf(p.language);
@@ -157,6 +181,7 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
   // Typography (RSVP)
   if (p.fontSizeIndex != null) out.fontSizeIndex = p.fontSizeIndex;
   if (p.typeface != null) out.typeface = p.typeface;
+  if (p.typefaceIndex != null) out.typefaceIndex = p.typefaceIndex;
   if (p.phantomWords != null) out.phantomWords = p.phantomWords;
   if (p.focusHighlight != null) out.focusHighlight = p.focusHighlight;
   if (p.tracking != null) out.tracking = p.tracking;
@@ -185,21 +210,53 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async listBooks(): Promise<Book[]> {
-    const data = await this.json<{ books: Book[] }>(await fetch(this.url("/api/books")));
+    const data = await this.json<{ books: Book[] }>(await fetch(this.url("/api/books"), { signal: timed() }));
     return data.books;
   }
 
-  async uploadBook(file: Blob, name: string, category: "book" | "article" = "book"): Promise<void> {
+  async uploadBook(
+    file: Blob,
+    name: string,
+    category: "book" | "article" = "book",
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<string> {
     const fd = new FormData();
     fd.append("file", file, name);
     // name+category jako query params — firmware (CompanionSyncManager::handleBookUpload)
     // czyta je przez server_.arg(), nie z multipart body.
     const query = `name=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`;
-    const res = await fetch(this.url(`/api/books?${query}`), { method: "POST", body: fd });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Upload nie powiódł się (${res.status}). ${text}`);
+    // XHR for upload progress (fetch has none). No overall timeout: a big
+    // book over the reader's WiFi takes a while; a stalled upload is caught
+    // by the 60 s without progress below.
+    const responseText = await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", this.url(`/api/books?${query}`));
+      let stallTimer = setTimeout(() => xhr.abort(), 60_000);
+      xhr.upload.onprogress = (e) => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => xhr.abort(), 60_000);
+        if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+      };
+      xhr.onload = () => {
+        clearTimeout(stallTimer);
+        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+        else reject(new Error(`Upload nie powiódł się (${xhr.status}). ${xhr.responseText}`));
+      };
+      xhr.onerror = () => {
+        clearTimeout(stallTimer);
+        reject(new Error("Połączenie z czytnikiem zerwane w trakcie wysyłania."));
+      };
+      xhr.onabort = () => reject(new Error("Wysyłanie stanęło na minutę, przerwane. Spróbuj ponownie bliżej czytnika."));
+      xhr.send(fd);
+    });
+    // {"ok":true,"path":"/books/books/x.epub"} -> "books/x.epub"
+    try {
+      const path = (JSON.parse(responseText) as { path?: string }).path ?? "";
+      if (path.startsWith("/books/")) return path.slice("/books/".length);
+    } catch {
+      /* older firmware: fall back to the requested name */
     }
+    return `${category === "article" ? "articles" : "books"}/${name}`;
   }
 
   async deleteBook(name: string): Promise<void> {
@@ -215,7 +272,7 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async getSettings(): Promise<DeviceSettings> {
-    const fw = await this.json<FirmwareSettings>(await fetch(this.url("/api/settings")));
+    const fw = await this.json<FirmwareSettings>(await fetch(this.url("/api/settings"), { signal: timed() }));
     return fromFirmware(fw);
   }
 
@@ -261,7 +318,7 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async getWifiStation(): Promise<WifiStationConfig> {
-    return this.json<WifiStationConfig>(await fetch(this.url("/api/wifi")));
+    return this.json<WifiStationConfig>(await fetch(this.url("/api/wifi"), { signal: timed() }));
   }
 
   async setWifiStation(ssid: string, password: string): Promise<WifiStationConfig> {
@@ -278,7 +335,7 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async getRssFeeds(): Promise<string[]> {
-    const data = await this.json<{ feeds: string[] }>(await fetch(this.url("/api/rss-feeds")));
+    const data = await this.json<{ feeds: string[] }>(await fetch(this.url("/api/rss-feeds"), { signal: timed() }));
     return data.feeds;
   }
 
@@ -293,7 +350,7 @@ export class HttpDeviceApi implements DeviceApi {
   }
 
   async getPlugins(): Promise<PluginInfo[]> {
-    const data = await this.json<{ plugins: PluginInfo[] }>(await fetch(this.url("/api/plugins")));
+    const data = await this.json<{ plugins: PluginInfo[] }>(await fetch(this.url("/api/plugins"), { signal: timed() }));
     return data.plugins;
   }
 
@@ -312,12 +369,12 @@ export class HttpDeviceApi implements DeviceApi {
       api: number;
       firmwareVersion: string;
       features: Omit<DeviceCapabilities, "api" | "firmwareVersion">;
-    }>(await fetch(this.url("/api/capabilities")));
+    }>(await fetch(this.url("/api/capabilities"), { signal: timed() }));
     return { api: data.api, firmwareVersion: data.firmwareVersion, ...data.features };
   }
 
   async getDeviceInfo(): Promise<DeviceInfo> {
-    const data = await this.json<{ info: DeviceInfo }>(await fetch(this.url("/api/state")));
+    const data = await this.json<{ info: DeviceInfo }>(await fetch(this.url("/api/state"), { signal: timed() }));
     return data.info;
   }
 
@@ -347,6 +404,74 @@ export class HttpDeviceApi implements DeviceApi {
       body: JSON.stringify(patch),
     });
     return this.json<BookPosition>(res);
+  }
+
+  async getBookText(name: string, from: number, count: number, words = 24): Promise<BookTextPage> {
+    const query = `name=${encodeURIComponent(name)}&from=${from}&count=${count}&words=${words}`;
+    const res = await fetch(this.url(`/api/books/text?${query}`), { signal: timed(SLOW_TIMEOUT_MS) });
+    if (res.status === 404) {
+      throw new Error("Czytnik nie ma jeszcze edytora rozdziałów. Zaktualizuj firmware.");
+    }
+    return this.json<BookTextPage>(res);
+  }
+
+  async setBookChapters(name: string, chapters: ChapterMark[]): Promise<void> {
+    // One "word<TAB>title" line per chapter: the reader parses it without JSON.
+    const body = chapters
+      .map((c) => `${Math.max(0, Math.floor(c.w))}\t${c.t.replace(/[\t\r\n]+/g, " ").trim()}`)
+      .join("\n");
+    const res = await fetch(this.url(`/api/books/chapters?name=${encodeURIComponent(name)}`), {
+      method: "PUT",
+      headers: { "content-type": "text/plain; charset=utf-8" },
+      body,
+      signal: timed(),
+    });
+    await this.json(res);
+  }
+
+  async resetBookChapters(name: string): Promise<void> {
+    const res = await fetch(this.url(`/api/books/chapters?name=${encodeURIComponent(name)}`), {
+      method: "DELETE",
+      signal: timed(),
+    });
+    await this.json(res);
+  }
+
+  async getBookPicture(name: string, kind: PictureKind): Promise<Blob | null> {
+    const res = await fetch(
+      this.url(`/api/books/picture?name=${encodeURIComponent(name)}&kind=${kind}`),
+      { signal: timed() },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Nie udało się pobrać obrazka (HTTP ${res.status}).`);
+    return res.blob();
+  }
+
+  async uploadBookPicture(name: string, kind: PictureKind, data: Blob): Promise<void> {
+    const fd = new FormData();
+    fd.append("picture", data, `${kind}.img`);
+    const res = await fetch(
+      this.url(`/api/books/picture?name=${encodeURIComponent(name)}&kind=${kind}`),
+      { method: "POST", body: fd, signal: timed() },
+    );
+    if (res.ok) return;
+    const text = await res.text().catch(() => "");
+    if (res.status === 404) {
+      throw new Error(
+        text.includes("Book not found")
+          ? "Czytnik nie widzi tej książki. Odśwież listę."
+          : "Czytnik nie obsługuje jeszcze okładek. Zaktualizuj firmware.",
+      );
+    }
+    throw new Error(`Czytnik nie przyjął obrazka (HTTP ${res.status}). ${text}`);
+  }
+
+  async deleteBookPicture(name: string, kind: PictureKind): Promise<void> {
+    const res = await fetch(
+      this.url(`/api/books/picture?name=${encodeURIComponent(name)}&kind=${kind}`),
+      { method: "DELETE", signal: timed() },
+    );
+    await this.json(res);
   }
 }
 

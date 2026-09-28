@@ -18,6 +18,7 @@ import type {
   PluginInfo,
   DeviceLogTail,
   BookPosition,
+  BookTextPage,
   DeviceCapabilities,
   DeviceInfo,
 } from "./api";
@@ -192,6 +193,31 @@ export class BleDeviceApi implements DeviceApi {
   }
 
   async setBookPosition(): Promise<BookPosition> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  // Covers and the chapter editor move too much data for BLE: WiFi only.
+  async getBookText(): Promise<BookTextPage> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async setBookChapters(): Promise<void> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async resetBookChapters(): Promise<void> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async getBookPicture(): Promise<Blob | null> {
+    return null;
+  }
+
+  async uploadBookPicture(): Promise<void> {
+    throw new Error(BLE_UNSUPPORTED);
+  }
+
+  async deleteBookPicture(): Promise<void> {
     throw new Error(BLE_UNSUPPORTED);
   }
 }

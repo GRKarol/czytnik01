@@ -3,7 +3,14 @@ import { customElement, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { BRAND_NAME, DEVICE_LABEL, APP_VERSION } from "../shared/config";
 import type { DeviceLink } from "./device/device-link";
-import { WifiLink } from "./device/wifi-link";
+import { WifiLink, helloDevice } from "./device/wifi-link";
+import {
+  isNativeApp,
+  joinReaderNetwork,
+  openWifiSettings,
+  pinToReaderNetwork,
+  unpinReaderNetwork,
+} from "./device/network-pin";
 import { BluetoothLink } from "./device/bluetooth-link";
 import { SerialLink } from "./device/serial-link";
 import { dandelionIcon } from "./components/flower-icon";
@@ -21,7 +28,7 @@ import {
   type DeviceSettings,
   type PluginInfo,
 } from "./device/api";
-import { HttpDeviceApi, pingDevice } from "./device/http-api";
+import { HttpDeviceApi } from "./device/http-api";
 import { getTutorialStatus } from "./onboarding/onboarding-store";
 
 type View = "home" | "library" | "converter" | "plugins" | "updates" | "settings";
@@ -106,6 +113,8 @@ export class CzytnikApp extends LitElement {
   @state() private showAdvanced = false;
   @state() private devMode = false;
   @state() private showTutorial = false;
+  @state() private readerFirmware = "";
+  @state() private joinUnsupported = false;
 
   @state() private plugins: PluginInfo[] = [];
   @state() private pluginsLoading = false;
@@ -127,7 +136,34 @@ export class CzytnikApp extends LitElement {
     this.addEventListener("restart-tutorial", this.handleRestartTutorial);
     // Handle Web Share Target: if we were opened via share intent with a file
     this.handleSharedFile();
+    // Already on the reader's WiFi (or coming back from WiFi settings):
+    // connect without asking.
+    void this.autoConnect();
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
+
+  private onVisibilityChange = () => {
+    if (document.visibilityState === "visible") void this.autoConnect();
+  };
+
+  /**
+   * Silent check for a reader at 192.168.4.1. The native app pins itself to
+   * the current WiFi first (without that Android may send the request over
+   * mobile data) and lets go again when nobody answers.
+   */
+  private autoConnect = async () => {
+    if (this.connected || this.connecting) return;
+    if (this.chosenTransport && this.chosenTransport !== "wifi") return;
+    const pinned = await pinToReaderNetwork();
+    const hello = await helloDevice();
+    if (!hello) {
+      if (pinned) await unpinReaderNetwork();
+      return;
+    }
+    if (this.connected || this.connecting) return;
+    this.chosenTransport = "wifi";
+    await this.connect();
+  };
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -135,6 +171,7 @@ export class CzytnikApp extends LitElement {
     this.unsubApi?.();
     this.removeEventListener("tutorial-close", this.handleTutorialClose);
     this.removeEventListener("restart-tutorial", this.handleRestartTutorial);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   private handleTutorialClose = () => {
@@ -251,7 +288,9 @@ export class CzytnikApp extends LitElement {
           ${this.devMode ? html`<span class="badge dev">DEV</span>` : ""}
           <div class=${`pill ${this.connected ? "ok" : ""}`}>
             <span class="dot"></span>
-            ${this.connected ? `Połączono · ${this.link?.transport.label}` : "Brak połączenia"}
+            ${this.connected
+              ? `Połączono · ${this.link?.transport.label}${this.readerFirmware ? ` · ${this.readerFirmware}` : ""}`
+              : "Brak połączenia"}
           </div>
         </div>
       </header>
@@ -337,7 +376,7 @@ export class CzytnikApp extends LitElement {
           <span class="choice-ico">${iconWifi()}</span>
           <span class="choice-body">
             <strong>WiFi</strong>
-            <span>Polecane. Działa na iPhonie i Androidzie. Szybki transfer książek.</span>
+            <span>Polecane. Książki, okładki, rozdziały, ustawienia i aktualizacje.</span>
           </span>
         </button>
 
@@ -391,27 +430,37 @@ export class CzytnikApp extends LitElement {
         : this.chosenTransport === "bluetooth"
           ? "Bluetooth"
           : "USB";
+    const nativeJoin = this.chosenTransport === "wifi" && isNativeApp() && !this.joinUnsupported;
     return html`
       <section class="card">
         <h3>Łączenie przez ${label}…</h3>
         ${this.chosenTransport === "wifi"
           ? html`
               <ol class="steps">
-                <li>Włącz urządzenie i poczekaj, aż wyświetli kod sieci (np. <code>Flower-AB12</code>).</li>
                 <li>
-                  Otwórz ustawienia WiFi telefonu i wybierz tę sieć.
-                  <button class="cta ghost small" @click=${this.openSystemWifiSettings}>
-                    Otwórz ustawienia WiFi
-                  </button>
+                  Na czytniku otwórz <strong>Urządzenie → Aplikacja</strong>. Czytnik włączy
+                  swoją sieć <code>Flower-…</code> i pokaże kod QR.
                 </li>
-                <li class="callout">
-                  Telefon prawdopodobnie ostrzeże „Połączono, brak internetu" —
-                  to normalne, czytnik nie ma dostępu do internetu, tylko
-                  lokalne WiFi. Wybierz <strong>„Połącz mimo to"</strong> albo
-                  <strong>„Zostań połączony"</strong> — inaczej telefon sam się
-                  rozłączy i przeskoczy na inną sieć.
-                </li>
-                <li>Wróć tutaj i naciśnij „Sprawdź połączenie".</li>
+                ${nativeJoin
+                  ? html`<li>
+                      Naciśnij <strong>„Połącz z czytnikiem"</strong> i wybierz sieć
+                      <code>Flower-…</code> w okienku telefonu.
+                    </li>`
+                  : html`
+                      <li>
+                        Zeskanuj kod QR aparatem albo wybierz sieć <code>Flower-…</code> w
+                        ustawieniach WiFi telefonu.
+                        <button class="cta ghost small" @click=${() => void openWifiSettings()}>
+                          Otwórz ustawienia WiFi
+                        </button>
+                      </li>
+                      <li class="callout">
+                        Telefon może ostrzec „Brak internetu". To normalne, czytnik ma tylko
+                        lokalną sieć. Wybierz <strong>„Zostań połączony"</strong>, inaczej telefon
+                        sam przeskoczy na inną sieć.
+                      </li>
+                      <li>Wróć tutaj. Aplikacja połączy się sama albo po „Sprawdź połączenie".</li>
+                    `}
               </ol>
             `
           : this.chosenTransport === "bluetooth"
@@ -419,8 +468,16 @@ export class CzytnikApp extends LitElement {
             : html`<p class="muted">Wybierz port USB w okienku przeglądarki.</p>`}
 
         <div class="row">
-          <button class="cta" ?disabled=${this.connecting} @click=${this.connect}>
-            ${this.connecting ? "Łączenie…" : "Sprawdź połączenie"}
+          <button
+            class="cta"
+            ?disabled=${this.connecting}
+            @click=${nativeJoin ? this.joinAndConnect : this.connect}
+          >
+            ${this.connecting
+              ? "Łączenie…"
+              : nativeJoin
+                ? "Połącz z czytnikiem"
+                : "Sprawdź połączenie"}
           </button>
           <button class="cta ghost" @click=${this.cancelChoice}>Wróć</button>
         </div>
@@ -642,13 +699,25 @@ export class CzytnikApp extends LitElement {
   };
 
   /**
-   * Best-effort otwarcie systemowych ustawień WiFi przez Android intent URI.
-   * Działa w Chrome i w TWA (bo TWA to Chrome pod maską) — nie ma
-   * standardowego web API do tego, więc na innych przeglądarkach/platformach
-   * (iOS, desktop) ten link po prostu nic nie zrobi zamiast crashować.
+   * Android 10+: the system dialog joins "Flower-…" and pins the app to it,
+   * no trip to the WiFi settings. Older Android falls back to the manual
+   * steps.
    */
-  private openSystemWifiSettings = () => {
-    window.location.href = "intent:#Intent;action=android.settings.WIFI_SETTINGS;end";
+  private joinAndConnect = async () => {
+    this.error = null;
+    this.connecting = true;
+    const joined = await joinReaderNetwork();
+    this.connecting = false;
+    if (!joined.supported) {
+      this.joinUnsupported = true;
+      return;
+    }
+    if (!joined.connected) {
+      this.error =
+        "Telefon nie połączył się z siecią czytnika. Sprawdź, czy na czytniku jest otwarty ekran Aplikacja, i spróbuj jeszcze raz.";
+      return;
+    }
+    await this.connect();
   };
 
   private connect = async () => {
@@ -664,6 +733,8 @@ export class CzytnikApp extends LitElement {
             : new SerialLink();
       await this.link.connect();
       this.connected = true;
+      this.readerFirmware =
+        this.link instanceof WifiLink ? (this.link.hello?.firmwareVersion ?? "") : "";
 
       // Show tutorial wizard if not yet seen (after first device connection)
       if (getTutorialStatus() === "not_seen") {
@@ -674,8 +745,7 @@ export class CzytnikApp extends LitElement {
       // od teraz gadają z urządzeniem zamiast z mockiem.
       // (BLE i USB jeszcze nie mają back-end API, więc dopiero WiFi to robi.)
       if (this.chosenTransport === "wifi") {
-        const reachable = await pingDevice();
-        if (reachable) setDeviceApi(new HttpDeviceApi());
+        setDeviceApi(new HttpDeviceApi());
         this.startHeartbeat();
       }
     } catch (err) {
@@ -691,6 +761,7 @@ export class CzytnikApp extends LitElement {
     await this.link?.disconnect();
     this.link = null;
     this.connected = false;
+    this.readerFirmware = "";
     this.chosenTransport = null;
     this.view = "home";
     // Wróć do mocka — szybkie testy bez podłączonego urządzenia dalej działają.
@@ -729,7 +800,7 @@ export class CzytnikApp extends LitElement {
     }
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (await pingDevice()) return;
+      if (await helloDevice()) return;
     }
     await this.handleLinkLost();
   };
@@ -739,8 +810,10 @@ export class CzytnikApp extends LitElement {
     await this.link?.disconnect().catch(() => {});
     this.link = null;
     this.connected = false;
+    this.readerFirmware = "";
     this.chosenTransport = null;
-    this.error = "Połączenie z czytnikiem zerwane. Sprawdź WiFi i połącz ponownie.";
+    this.error =
+      "Połączenie z czytnikiem zerwane. Czytnik mógł wyjść z ekranu Aplikacja albo się zrestartować. Otwórz go ponownie i połącz się jeszcze raz.";
     const { MockDeviceApi } = await import("./device/api");
     setDeviceApi(new MockDeviceApi());
   };
@@ -808,6 +881,12 @@ export class CzytnikApp extends LitElement {
     nav {
       position: relative;
       z-index: 1;
+    }
+
+    /* Full-screen sheets (cover and chapter editors) live inside main;
+       above header and nav so their buttons are not covered. */
+    main {
+      z-index: 2;
     }
 
     header {

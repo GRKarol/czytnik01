@@ -1,4 +1,5 @@
 import { OTA_RELEASES_API } from "../../shared/config";
+import { withInternet } from "../device/network-pin";
 
 export interface ReleaseAsset {
   name: string;
@@ -40,9 +41,12 @@ interface GhRelease {
  * Nie wszystkie repo mają release'y — wtedy 404 i zwracamy `null`.
  */
 export async function fetchLatestRelease(): Promise<ReleaseInfo | null> {
-  const res = await fetch(OTA_RELEASES_API, {
-    headers: { accept: "application/vnd.github+json" },
-  });
+  // The app may be pinned to the reader's network (no internet there).
+  const res = await withInternet(() =>
+    fetch(OTA_RELEASES_API, {
+      headers: { accept: "application/vnd.github+json" },
+    }),
+  );
   if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(`GitHub API zwrócił ${res.status}. Sprawdź połączenie.`);
@@ -87,6 +91,13 @@ export function pickFirmwareAsset(release: ReleaseInfo): ReleaseAsset | null {
 
 /** Pobiera .bin z release'a i zwraca jako Blob (do dalszego POST-a na urządzenie). */
 export async function downloadAsset(
+  asset: ReleaseAsset,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Blob> {
+  return withInternet(() => readAsset(asset, onProgress));
+}
+
+async function readAsset(
   asset: ReleaseAsset,
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<Blob> {

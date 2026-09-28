@@ -1157,6 +1157,10 @@ void CompanionSyncManager::handleSettings() {
   // Detect changes that require restart (typeface, font size)
   String prevTypeface;
   readJsonString(body, "typeface", prevTypeface);
+  int prevTypefaceIndex = -1;
+  if (readJsonInt(body, "typefaceIndex", prevTypefaceIndex)) {
+    prevTypeface = String(prevTypefaceIndex);
+  }
   int prevFontSize = -1;
   readJsonInt(body, "fontSizeIndex", prevFontSize);
 
@@ -2320,11 +2324,22 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"phantomWords\":" +
           String(preferences_.getBool(kPrefPhantomWords, true) ? "true" : "false");
   body += ",\"fontSizeIndex\":" + String(fontSize);
+  {
+    // Smooth brightness the reader's slider stores; old firmware only had
+    // the 5-step index, whose steps map to these percentages.
+    static const uint8_t kIndexPercent[] = {55, 65, 78, 90, 100};
+    uint8_t percent = preferences_.getUChar("bright_pct", 0);
+    if (percent < 20 || percent > 100) {
+      percent = kIndexPercent[brightness];
+    }
+    body += ",\"brightnessPercent\":" + String(percent);
+  }
   body += "}";
   body += ",\"typography\":{";
   body += "\"typeface\":\"";
   body += enumLabel(typeface, typefaceLabels, 3);
   body += "\"";
+  body += ",\"typefaceIndex\":" + String(typeface);
   body += ",\"focusHighlight\":" +
           String(preferences_.getBool(kPrefTypographyFocusHighlight, true) ? "true" : "false");
   body += ",\"tracking\":" + String(tracking);
@@ -2493,6 +2508,29 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
       return false;
     }
     preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(value));
+  }
+  if (readJsonInt(body, "typefaceIndex", intValue)) {
+    if (intValue < 0 || intValue > kMaxReaderTypeface) {
+      error = "typefaceIndex must be between 0 and 19";
+      return false;
+    }
+    preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(intValue));
+  }
+  if (readJsonInt(body, "brightnessPercent", intValue)) {
+    if (intValue < 20 || intValue > 100) {
+      error = "brightnessPercent must be between 20 and 100";
+      return false;
+    }
+    preferences_.putUChar("bright_pct", static_cast<uint8_t>(intValue));
+    // Nearest of the old steps, for anything that still reads the index.
+    static const uint8_t kIndexPercent[] = {55, 65, 78, 90, 100};
+    uint8_t nearest = 0;
+    for (uint8_t i = 1; i < 5; ++i) {
+      if (abs(kIndexPercent[i] - intValue) < abs(kIndexPercent[nearest] - intValue)) {
+        nearest = i;
+      }
+    }
+    preferences_.putUChar(kPrefBrightness, nearest);
   }
   if (readJsonBool(body, "focusHighlight", boolValue)) {
     preferences_.putBool(kPrefTypographyFocusHighlight, boolValue);

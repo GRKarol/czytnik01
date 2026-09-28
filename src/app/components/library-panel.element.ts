@@ -1,7 +1,12 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { deviceApi, onDeviceApiChange, type Book } from "../device/api";
+import { deviceApi, onDeviceApiChange, type Book, type DeviceCapabilities } from "../device/api";
+import { HttpDeviceApi } from "../device/http-api";
+import { extractEpubCover } from "../converter/epub";
+import { decodePicture, readerCoverColor, readerInitials } from "../books/pictures";
 import "./first-use-hint.element";
+import "./cover-editor.element";
+import "./chapter-editor.element";
 
 type SortMode = "added" | "title" | "progress";
 
@@ -14,6 +19,15 @@ const SORT_LABEL: Record<SortMode, string> = {
   progress: "Postęp",
 };
 
+// Covers downloaded from the reader, by book name (data URLs).
+const coverCache = new Map<string, string>();
+
+interface JustSent {
+  name: string;
+  title: string;
+  epubCover: Blob | null;
+}
+
 @customElement("library-panel")
 export class LibraryPanel extends LitElement {
   @state() private books: Book[] = [];
@@ -22,6 +36,12 @@ export class LibraryPanel extends LitElement {
   @state() private filter: "all" | "book" | "article" = "all";
   @state() private sort: SortMode = readSort();
   @state() private favorites: Set<string> = readFavorites();
+  @state() private caps: DeviceCapabilities | null = null;
+  @state() private uploadProgress: number | null = null;
+  @state() private justSent: JustSent | null = null;
+  @state() private coverFor: { book: Book; epubCover: Blob | null } | null = null;
+  @state() private chaptersFor: Book | null = null;
+  @state() private covers = new Map<string, string>();
   private unsubApi: (() => void) | null = null;
 
   connectedCallback(): void {
@@ -35,41 +55,60 @@ export class LibraryPanel extends LitElement {
     this.unsubApi?.();
   }
 
+  private get onReader(): boolean {
+    return deviceApi.current instanceof HttpDeviceApi;
+  }
+
+  private get picturesSupported(): boolean {
+    return !this.onReader || !!this.caps?.bookPictures;
+  }
+
+  private get chaptersSupported(): boolean {
+    return !this.onReader || !!this.caps?.chapterEditor;
+  }
+
   render() {
     if (this.loading) return html`<p class="muted">Wczytuję bibliotekę…</p>`;
-    if (this.error) return html`<p class="error">${this.error}</p>`;
 
     const list = this.filtered();
     return html`
       <first-use-hint screen-key="reading"></first-use-hint>
+      ${this.error ? html`<p class="error">${this.error}</p>` : nothing}
+      ${!this.onReader
+        ? html`<p class="notice">
+            To przykładowa lista. Połącz się z czytnikiem na ekranie Start, żeby zobaczyć swoje książki.
+          </p>`
+        : nothing}
+      ${this.onReader && (!this.picturesSupported || !this.chaptersSupported)
+        ? html`<p class="notice">
+            Okładki i edytor rozdziałów wymagają nowszego firmware'u czytnika. Zaktualizuj go w zakładce
+            Aktualizacje.
+          </p>`
+        : nothing}
+
       <div class="actions">
         <input id="upload" type="file" accept=".rsvp,.txt,.epub" hidden @change=${this.onUpload} />
-        <label for="upload" class="btn">Wyślij plik na urządzenie</label>
+        <label for="upload" class="btn ${this.uploadProgress !== null ? "busy" : ""}">
+          ${this.uploadProgress !== null ? `Wysyłam… ${this.uploadProgress}%` : "Wyślij plik na czytnik"}
+        </label>
         <button class="btn ghost" @click=${this.refresh}>Odśwież</button>
       </div>
+      ${this.uploadProgress !== null
+        ? html`<div class="progress"><span style="width:${this.uploadProgress}%"></span></div>`
+        : nothing}
+      ${this.justSent ? this.renderJustSent(this.justSent) : nothing}
 
       <div class="tabs">
         ${this.tabButton("all", "Wszystko", this.books.length)}
-        ${this.tabButton(
-          "book",
-          "Książki",
-          this.books.filter((b) => b.category !== "article").length,
-        )}
-        ${this.tabButton(
-          "article",
-          "Artykuły",
-          this.books.filter((b) => b.category === "article").length,
-        )}
+        ${this.tabButton("book", "Książki", this.books.filter((b) => b.category !== "article").length)}
+        ${this.tabButton("article", "Artykuły", this.books.filter((b) => b.category === "article").length)}
       </div>
 
       <div class="sortbar">
         <span class="sortbar-label">Sortuj:</span>
         ${(Object.keys(SORT_LABEL) as SortMode[]).map(
           (mode) => html`
-            <button
-              class=${this.sort === mode ? "sortbtn active" : "sortbtn"}
-              @click=${() => this.setSort(mode)}
-            >
+            <button class=${this.sort === mode ? "sortbtn active" : "sortbtn"} @click=${() => this.setSort(mode)}>
               ${SORT_LABEL[mode]}
             </button>
           `,
@@ -78,67 +117,139 @@ export class LibraryPanel extends LitElement {
 
       ${list.length === 0
         ? html`<p class="muted">
-            Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce
-            <strong>Konwerter</strong>.
+            Pusto. Wyślij coś z telefonu albo przekonwertuj plik w zakładce <strong>Konwerter</strong>.
           </p>`
         : html`<ul class="list">
             ${list.map((b) => this.row(b))}
           </ul>`}
 
-      <p class="hint muted">
-        Lista jest na razie symulowana w pamięci telefonu — kiedy firmware zacznie odpowiadać przez
-        WiFi, ta sama logika pójdzie na realne API.
-      </p>
+      ${this.coverFor
+        ? html`<cover-editor
+            .bookName=${this.coverFor.book.name}
+            .bookTitle=${bookTitle(this.coverFor.book)}
+            .bookAuthor=${this.coverFor.book.author ?? ""}
+            .hasCover=${!!this.coverFor.book.hasCover}
+            .hasSpine=${!!this.coverFor.book.hasSpine}
+            .epubCover=${this.coverFor.epubCover}
+            @close=${() => (this.coverFor = null)}
+            @saved=${this.onCoverSaved}
+          ></cover-editor>`
+        : nothing}
+      ${this.chaptersFor
+        ? html`<chapter-editor
+            .bookName=${this.chaptersFor.name}
+            .bookTitle=${bookTitle(this.chaptersFor)}
+            @close=${() => (this.chaptersFor = null)}
+            @saved=${() => void this.refresh(true)}
+          ></chapter-editor>`
+        : nothing}
+    `;
+  }
+
+  private renderJustSent(sent: JustSent) {
+    const book = this.books.find((b) => b.name === sent.name);
+    return html`
+      <div class="sent">
+        <p>Wysłano „${sent.title}”. Chcesz od razu dodać okładkę albo ustawić rozdziały?</p>
+        <div class="row">
+          ${this.picturesSupported
+            ? html`<button
+                class="btn small"
+                ?disabled=${!book}
+                @click=${() => book && this.openCover(book, sent.epubCover)}
+              >
+                ${sent.epubCover ? "Okładka (jest w pliku EPUB)" : "Dodaj okładkę"}
+              </button>`
+            : nothing}
+          ${this.chaptersSupported
+            ? html`<button class="btn small ghost" ?disabled=${!book} @click=${() => book && this.openChapters(book)}>
+                Rozdziały
+              </button>`
+            : nothing}
+          <button class="btn small ghost" @click=${() => (this.justSent = null)}>Nie teraz</button>
+        </div>
+      </div>
     `;
   }
 
   private tabButton(key: typeof this.filter, label: string, count: number) {
     return html`
-      <button
-        class=${this.filter === key ? "tab active" : "tab"}
-        @click=${() => (this.filter = key)}
-      >
+      <button class=${this.filter === key ? "tab active" : "tab"} @click=${() => (this.filter = key)}>
         ${label} <span>${count}</span>
       </button>
     `;
   }
 
   private row(b: Book) {
-    const title = b.title || b.name.replace(/^.*\//, "");
+    const title = bookTitle(b);
     const isFav = this.favorites.has(b.name);
+    const picture = this.covers.get(b.name);
     return html`
       <li>
-        <div class="cover" style="background:${coverColor(title)}">${coverInitial(title)}</div>
-        <div class="meta">
-          <strong>${title}</strong>
-          <span>
-            ${b.author ? `${b.author} · ` : ""}${formatBytes(b.bytes)}
-            ${b.progressPercent != null ? html` · ${b.progressPercent}% przeczytane` : ""}
-          </span>
+        <div class="top">
+          <button
+            class="cover"
+            style=${picture ? `background-image:url(${picture})` : `background:${readerCoverColor(b.name)}`}
+            ?disabled=${!this.picturesSupported}
+            @click=${() => this.openCover(b, null)}
+            aria-label="Okładka"
+          >
+            ${picture ? nothing : html`<span>${readerInitials(title)}</span>`}
+          </button>
+          <div class="meta">
+            <strong>${title}</strong>
+            <span>
+              ${b.author ? `${b.author} · ` : ""}${formatBytes(b.bytes)}${b.progressPercent != null
+                ? ` · ${b.progressPercent}% przeczytane`
+                : ""}
+            </span>
+            ${b.customChapters || b.hasSpine
+              ? html`<span class="tags">
+                  ${b.customChapters ? html`<em>własne rozdziały</em>` : nothing}
+                  ${b.hasSpine ? html`<em>grzbiet</em>` : nothing}
+                </span>`
+              : nothing}
+          </div>
+          <button
+            class=${isFav ? "fav active" : "fav"}
+            @click=${() => this.toggleFavorite(b.name)}
+            aria-label=${isFav ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+          >
+            ${isFav ? "★" : "☆"}
+          </button>
         </div>
-        <button
-          class=${isFav ? "fav active" : "fav"}
-          @click=${() => this.toggleFavorite(b.name)}
-          aria-label=${isFav ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
-        >
-          ${isFav ? "★" : "☆"}
-        </button>
-        ${b.progressPercent
-          ? html`
-              <button
-                class="reset"
-                @click=${() => this.onResetProgress(b)}
-                aria-label="Zresetuj postęp czytania"
-                title="Zresetuj postęp czytania"
-              >
-                ⟲
-              </button>
-            `
-          : ""}
-        <button class="del" @click=${() => this.onDelete(b)} aria-label="Usuń">✕</button>
+        <div class="tools">
+          <button class="tool" ?disabled=${!this.picturesSupported} @click=${() => this.openCover(b, null)}>
+            Okładka
+          </button>
+          <button class="tool" ?disabled=${!this.chaptersSupported} @click=${() => this.openChapters(b)}>
+            Rozdziały
+          </button>
+          ${b.progressPercent
+            ? html`<button class="tool" @click=${() => this.onResetProgress(b)}>Od początku</button>`
+            : nothing}
+          <button class="tool danger" @click=${() => this.onDelete(b)}>Usuń</button>
+        </div>
       </li>
     `;
   }
+
+  private openCover(book: Book, epubCover: Blob | null): void {
+    this.justSent = null;
+    this.coverFor = { book, epubCover };
+  }
+
+  private openChapters(book: Book): void {
+    this.justSent = null;
+    this.chaptersFor = book;
+  }
+
+  private onCoverSaved = async () => {
+    const name = this.coverFor?.book.name;
+    this.coverFor = null;
+    if (name) coverCache.delete(name);
+    await this.refresh(true);
+  };
 
   private setSort(mode: SortMode): void {
     this.sort = mode;
@@ -157,13 +268,11 @@ export class LibraryPanel extends LitElement {
     const byCategory =
       this.filter === "all"
         ? this.books
-        : this.books.filter((b) =>
-            this.filter === "book" ? b.category !== "article" : b.category === "article",
-          );
+        : this.books.filter((b) => (this.filter === "book" ? b.category !== "article" : b.category === "article"));
     const sorted = [...byCategory].sort((a, b) => {
       switch (this.sort) {
         case "title":
-          return (a.title || a.name).localeCompare(b.title || b.name, "pl");
+          return bookTitle(a).localeCompare(bookTitle(b), "pl");
         case "progress":
           return (b.progressPercent ?? 0) - (a.progressPercent ?? 0);
         case "added":
@@ -175,46 +284,87 @@ export class LibraryPanel extends LitElement {
     return sorted;
   }
 
-  private refresh = async () => {
-    this.loading = true;
+  private refresh = async (quiet = false) => {
+    if (quiet !== true) this.loading = true;
     this.error = "";
     try {
       this.books = await deviceApi.listBooks();
+      this.caps = await deviceApi.getCapabilities().catch(() => null);
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.loading = false;
     }
+    void this.loadCovers();
   };
+
+  // Pictures the reader has, one at a time (the reader serves one request
+  // at a time anyway), cached for the session.
+  private async loadCovers(): Promise<void> {
+    const next = new Map<string, string>();
+    for (const book of this.books) {
+      if (!book.hasCover) continue;
+      let url = coverCache.get(book.name);
+      if (!url) {
+        try {
+          const blob = await deviceApi.getBookPicture(book.name, "cover");
+          const canvas = blob ? await decodePicture(blob) : null;
+          if (!canvas) continue;
+          url = canvas.toDataURL();
+          coverCache.set(book.name, url);
+        } catch {
+          continue;
+        }
+      }
+      next.set(book.name, url);
+      this.covers = new Map(next);
+    }
+    this.covers = next;
+  }
 
   private onUpload = async (e: Event) => {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
+    this.error = "";
+    this.justSent = null;
+    this.uploadProgress = 0;
     try {
-      await deviceApi.uploadBook(file, file.name);
-      await this.refresh();
+      const stored = await deviceApi.uploadBook(file, file.name, "book", (loaded, total) => {
+        this.uploadProgress = total ? Math.round((loaded / total) * 100) : null;
+      });
+      const epubCover = /\.epub$/i.test(file.name) ? await extractEpubCover(file) : null;
+      await this.refresh(true);
+      const name = stored || `books/${file.name}`;
+      const book = this.books.find((b) => b.name === name);
+      this.justSent = { name, title: book ? bookTitle(book) : file.name, epubCover };
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.uploadProgress = null;
     }
   };
 
   private onDelete = async (b: Book) => {
-    if (!confirm(`Usunąć „${b.title || b.name}"?`)) return;
+    const extras = this.onReader
+      ? "\n\nOkładka, rozdziały i punkty zapisu trafią do archiwum na karcie. Wrócą, jeśli kiedyś dodasz tę samą książkę."
+      : "";
+    if (!confirm(`Usunąć „${bookTitle(b)}” z czytnika?${extras}`)) return;
     try {
       await deviceApi.deleteBook(b.name);
-      await this.refresh();
+      coverCache.delete(b.name);
+      await this.refresh(true);
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     }
   };
 
   private onResetProgress = async (b: Book) => {
-    if (!confirm(`Zresetować postęp czytania „${b.title || b.name}"?`)) return;
+    if (!confirm(`Zacząć „${bookTitle(b)}” od początku?`)) return;
     try {
       await deviceApi.setBookPosition(b.name, { wordIndex: 0 });
-      await this.refresh();
+      await this.refresh(true);
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     }
@@ -222,22 +372,30 @@ export class LibraryPanel extends LitElement {
 
   static styles = css`
     :host {
-      display: block;
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    .muted {
+    .muted,
+    .notice {
       color: var(--muted);
       font: 0.92rem/1.45 var(--ns);
       margin: 0;
+    }
+    .notice {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm, 9px);
+      background: rgba(227, 179, 85, 0.16);
+      color: var(--ink-soft);
+      font-size: 0.86rem;
     }
     .error {
       color: var(--err);
       font: 0.92rem var(--ns);
       margin: 0;
     }
-    .actions {
+    .actions,
+    .row {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
@@ -253,16 +411,47 @@ export class LibraryPanel extends LitElement {
       font: 700 0.85rem var(--mn);
       letter-spacing: 0.02em;
       cursor: pointer;
-      transition: background 0.15s ease;
     }
-    .btn:active {
-      background: var(--accent-deep);
+    .btn.busy {
+      pointer-events: none;
+      opacity: 0.8;
+    }
+    .btn.small {
+      padding: 8px 12px;
+      font-size: 0.76rem;
     }
     .btn.ghost {
       flex: 0 0 auto;
       background: transparent;
       color: var(--accent);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+    }
+    .progress {
+      height: 4px;
+      border-radius: 2px;
+      background: var(--line);
+      overflow: hidden;
+    }
+    .progress span {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.2s ease;
+    }
+    .sent {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
       border: 1px solid var(--accent);
+      border-radius: var(--radius, 13px);
+      background: rgba(20, 136, 216, 0.06);
+    }
+    .sent p {
+      margin: 0;
+      font: 0.9rem/1.4 var(--ns);
     }
     .tabs {
       display: flex;
@@ -279,7 +468,6 @@ export class LibraryPanel extends LitElement {
       letter-spacing: 0.02em;
       text-transform: uppercase;
       cursor: pointer;
-      transition: background 0.15s ease;
     }
     .tab.active {
       background: var(--accent);
@@ -309,7 +497,6 @@ export class LibraryPanel extends LitElement {
       background: transparent;
       color: var(--ink-soft);
       font: 600 0.72rem var(--mn);
-      letter-spacing: 0.02em;
       cursor: pointer;
     }
     .sortbtn.active {
@@ -323,33 +510,52 @@ export class LibraryPanel extends LitElement {
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
     }
     .list li {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      flex-direction: column;
+      gap: 8px;
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: var(--radius, 13px);
       background: var(--paper-tint);
     }
-    .cover {
-      width: 34px;
-      height: 34px;
-      flex: 0 0 auto;
+    .top {
       display: flex;
       align-items: center;
-      justify-content: center;
-      border-radius: var(--radius-sm, 9px);
+      gap: 12px;
+    }
+    /* Same shape as the reader's cover: 46:58, rounded, binding line. */
+    .cover {
+      position: relative;
+      width: 40px;
+      height: 50px;
+      flex: 0 0 auto;
+      border: 0;
+      padding: 0 0 0 7px;
+      border-radius: 5px;
+      background-size: cover;
+      background-position: center;
       color: #fff;
-      font: 700 0.95rem var(--fr);
+      font: 600 0.95rem Inter, system-ui, sans-serif;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .cover::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 5px;
+      width: 2px;
+      background: rgba(8, 8, 10, 0.62);
     }
     .meta {
       flex: 1 1 auto;
       display: flex;
       flex-direction: column;
-      gap: 1px;
+      gap: 2px;
       min-width: 0;
     }
     .meta strong {
@@ -363,6 +569,16 @@ export class LibraryPanel extends LitElement {
       font: 0.78rem var(--ns);
       color: var(--muted);
     }
+    .tags {
+      display: flex;
+      gap: 6px;
+    }
+    .tags em {
+      font: 600 0.66rem var(--mn);
+      font-style: normal;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
     .fav {
       width: 32px;
       height: 32px;
@@ -373,45 +589,31 @@ export class LibraryPanel extends LitElement {
       font-size: 1.05rem;
       cursor: pointer;
       flex: 0 0 auto;
-      transition: transform 0.1s ease;
-    }
-    .fav:active,
-    .del:active {
-      transform: scale(0.88);
     }
     .fav.active {
       color: #e0a30d;
     }
-    .reset {
-      width: 32px;
-      height: 32px;
-      border: 0;
-      border-radius: 50%;
-      background: rgba(20, 136, 216, 0.1);
-      color: var(--accent);
-      font-size: 1rem;
+    .tools {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .tool {
+      flex: 1 1 auto;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm, 9px);
+      background: transparent;
+      color: var(--ink-soft);
+      font: 600 0.72rem var(--mn);
       cursor: pointer;
-      flex: 0 0 auto;
-      transition: transform 0.1s ease;
     }
-    .reset:active {
-      transform: scale(0.88) rotate(-40deg);
+    .tool:disabled {
+      opacity: 0.45;
     }
-    .del {
-      width: 32px;
-      height: 32px;
-      border: 0;
-      border-radius: 50%;
-      background: rgba(228, 77, 101, 0.1);
+    .tool.danger {
       color: var(--err);
-      font-size: 0.85rem;
-      cursor: pointer;
-      flex: 0 0 auto;
-      transition: transform 0.1s ease;
-    }
-    .hint {
-      font-size: 0.78rem;
-      font-style: italic;
+      border-color: rgba(184, 68, 58, 0.35);
     }
   `;
 }
@@ -420,6 +622,10 @@ declare global {
   interface HTMLElementTagNameMap {
     "library-panel": LibraryPanel;
   }
+}
+
+function bookTitle(b: Book): string {
+  return b.title || b.name.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
 }
 
 function formatBytes(n: number): string {
@@ -452,20 +658,4 @@ function write<T>(key: string, value: T): void {
   } catch {
     /* ignored */
   }
-}
-
-// Deterministyczna "okładka": kolor + inicjał z tytułu, bez ekstrakcji
-// obrazu z EPUB (RSVP na urządzeniu i tak nie renderuje grafik).
-const COVER_HUES = [4, 24, 44, 96, 152, 190, 210, 252, 280, 320];
-
-function coverColor(title: string): string {
-  let hash = 0;
-  for (let i = 0; i < title.length; i++) hash = (hash * 31 + title.charCodeAt(i)) | 0;
-  const hue = COVER_HUES[Math.abs(hash) % COVER_HUES.length];
-  return `hsl(${hue} 55% 42%)`;
-}
-
-function coverInitial(title: string): string {
-  const trimmed = title.trim();
-  return trimmed ? trimmed[0].toUpperCase() : "?";
 }

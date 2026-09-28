@@ -15,6 +15,7 @@ import {
   type WifiStationConfig,
   type DeviceInfo,
 } from "../device/api";
+import { TYPEFACE_NAMES } from "../device/api";
 import { setLang } from "../i18n/index";
 import { deviceLangToSupported } from "../i18n/lang-map";
 import "./help-panel.element";
@@ -63,12 +64,6 @@ const MARGIN_LABEL: Record<number, string> = {
   0: "Narrow",
   1: "Normal",
   2: "Wide",
-};
-
-const TYPEFACE_LABEL: Record<Typeface, string> = {
-  standard: "Standard",
-  open_dyslexic: "OpenDyslexic",
-  atkinson: "Atkinson",
 };
 
 const RSVP_FONT_SIZE_LABEL: Record<number, string> = {
@@ -283,13 +278,25 @@ export class SettingsPanel extends LitElement {
                 RSVP_FONT_SIZE_LABEL,
                 "Rozmiar czcionki",
               )}
-              ${this.segmented(
-                "typeface",
-                s.typeface,
-                ["standard", "open_dyslexic", "atkinson"],
-                TYPEFACE_LABEL,
-                "Krój czcionki",
-              )}
+              <label class="select">
+                <span>Krój czcionki</span>
+                <select
+                  @change=${(e: Event) => {
+                    const index = Number((e.target as HTMLSelectElement).value);
+                    const legacy = (["standard", "open_dyslexic", "atkinson"] as Typeface[])[index];
+                    this.put(legacy ? { typefaceIndex: index, typeface: legacy } : { typefaceIndex: index });
+                  }}
+                >
+                  ${TYPEFACE_NAMES.map(
+                    (name, index) =>
+                      html`<option value=${index} ?selected=${index === s.typefaceIndex}>${name}</option>`,
+                  )}
+                </select>
+                <small class="muted small">
+                  Kroje od Literaty w dół czytnik wczytuje z karty SD. Bez paczki czcionek na karcie użyje
+                  Atkinsona.
+                </small>
+              </label>
               ${this.toggle("focusHighlight", "Podświetlenie fokusowe", s.focusHighlight)}
               ${this.slider("tracking", "Tracking (odstępy)", s.tracking, -2, 3, 1, "")}
               ${this.slider("anchorPercent", "Pozycja kotwicy", s.anchorPercent, 30, 40, 1, "%")}
@@ -334,7 +341,7 @@ export class SettingsPanel extends LitElement {
           undefined,
           "theme",
         )}
-        ${this.slider("brightness", "Jasność", s.brightness, 10, 100, 5, "%", "brightness")}
+        ${this.slider("brightness", "Jasność", Math.max(20, s.brightness), 20, 100, 1, "%", "brightness")}
         ${this.segmented(
           "readerHand",
           s.readerHand,

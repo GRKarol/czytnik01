@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   detectFormat,
@@ -9,7 +9,10 @@ import {
 } from "../converter";
 import { deviceApi, onDeviceApiChange } from "../device/api";
 import { HttpDeviceApi } from "../device/http-api";
+import { extractEpubCover } from "../converter/epub";
 import "./first-use-hint.element";
+import "./cover-editor.element";
+import "./chapter-editor.element";
 
 type Stage = "idle" | "parsing" | "ready" | "error";
 type SendState = "idle" | "sending" | "sent" | "error";
@@ -27,6 +30,11 @@ export class ConverterPanel extends LitElement {
   @state() private deviceConnected = deviceApi.current instanceof HttpDeviceApi;
   @state() private sendState: SendState = "idle";
   @state() private sendError = "";
+  @state() private sendProgress = 0;
+  /** Name the reader stored the sent book under ("books/x.rsvp"). */
+  @state() private sentName = "";
+  @state() private editor: "cover" | "chapters" | null = null;
+  @state() private epubCover: Blob | null = null;
 
   private unsubApi: (() => void) | null = null;
 
@@ -121,10 +129,35 @@ export class ConverterPanel extends LitElement {
             title=${this.deviceConnected ? "" : "Połącz się z czytnikiem przez WiFi, żeby wysłać bezpośrednio"}
             @click=${this.sendToDevice}
           >
-            ${this.sendState === "sending" ? "Wysyłam…" : "Wyślij na urządzenie"}
+            ${this.sendState === "sending" ? `Wysyłam… ${this.sendProgress}%` : "Wyślij na urządzenie"}
           </button>
         </div>
-        ${this.sendState === "sent" ? html`<p class="status ok">Wysłano do biblioteki na czytniku.</p>` : ""}
+        ${this.sendState === "sent"
+          ? html`<p class="status ok">Wysłano do biblioteki na czytniku.</p>
+              <div class="row">
+                <button class="cta ghost" @click=${() => (this.editor = "cover")}>
+                  ${this.epubCover ? "Okładka (jest w pliku EPUB)" : "Dodaj okładkę"}
+                </button>
+                <button class="cta ghost" @click=${() => (this.editor = "chapters")}>Rozdziały</button>
+              </div>`
+          : ""}
+        ${this.editor === "cover"
+          ? html`<cover-editor
+              .bookName=${this.sentName}
+              .bookTitle=${this.bookTitle}
+              .bookAuthor=${this.bookAuthor}
+              .epubCover=${this.epubCover}
+              @close=${() => (this.editor = null)}
+              @saved=${() => (this.editor = null)}
+            ></cover-editor>`
+          : nothing}
+        ${this.editor === "chapters"
+          ? html`<chapter-editor
+              .bookName=${this.sentName}
+              .bookTitle=${this.bookTitle}
+              @close=${() => (this.editor = null)}
+            ></chapter-editor>`
+          : nothing}
         ${this.sendState === "error" ? html`<p class="error">${this.sendError}</p>` : ""}
         <details class="preview">
           <summary>Podgląd pierwszych linii</summary>
@@ -164,6 +197,9 @@ export class ConverterPanel extends LitElement {
     this.fileName = file.name;
     this.sendState = "idle";
     this.sendError = "";
+    this.sentName = "";
+    this.editor = null;
+    this.epubCover = null;
 
     const detection = detectFormat(file);
     if (detection.kind === "unknown") {
@@ -180,6 +216,7 @@ export class ConverterPanel extends LitElement {
       this.bookAuthor = book.metadata.author;
       this.rsvp = writeRsvp(book);
       this.stage = "ready";
+      if (detection.format === "epub") this.epubCover = await extractEpubCover(file);
     } catch (err) {
       this.stage = "error";
       this.error = err instanceof Error ? err.message : String(err);
@@ -217,7 +254,11 @@ export class ConverterPanel extends LitElement {
     this.sendError = "";
     try {
       const { blob, fileName } = this.buildOutput();
-      await deviceApi.uploadBook(blob, fileName);
+      this.sendProgress = 0;
+      const stored = await deviceApi.uploadBook(blob, fileName, "book", (loaded, total) => {
+        this.sendProgress = total ? Math.round((loaded / total) * 100) : 0;
+      });
+      this.sentName = stored || `books/${fileName}`;
       this.sendState = "sent";
     } catch (err) {
       this.sendState = "error";

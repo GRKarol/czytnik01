@@ -1,26 +1,56 @@
 /**
  * WiFi transport — telefon łączy się do AP urządzenia (np. "Flower-AB12CD")
- * a app gada z `http://192.168.4.1` po HTTP (komendy) + WebSocket (eventy).
+ * a app gada z `http://192.168.4.1` po HTTP.
  *
- * Działa na iOS i Androidzie (bo to zwykłe fetch + WebSocket), nie wymaga
- * Web Serial ani Web Bluetooth. Wymaga jednak, żeby klient ręcznie
- * przełączył sieć WiFi telefonu — instrukcję pokazujemy w wizardzie.
+ * Działa na iOS i Androidzie (zwykły fetch), nie wymaga Web Serial ani Web
+ * Bluetooth. W natywnej appce na Androidzie proces jest przypinany do sieci
+ * czytnika (network-pin.ts), inaczej system wysyła ruch przez dane
+ * komórkowe, bo sieć czytnika nie ma internetu.
+ *
+ * Firmware nie ma kanału zdarzeń (WebSocket /api/events). Wcześniejsza
+ * wersja wymagała go przy łączeniu, więc każde połączenie przez WiFi
+ * kończyło się błędem "Nie udało się otworzyć kanału eventów", mimo że
+ * czytnik odpowiadał. Teraz połączenie = czytnik odpowiada na /api/hello.
  */
 
 import { DEVICE_AP_BASE_URL } from "../../shared/config";
 import type { DeviceCommand, DeviceEvent } from "../../shared/device-protocol";
-import { parseEvent } from "../../shared/device-protocol";
 import type { DeviceLink, TransportInfo } from "./device-link";
+import { isNativeApp, pinToReaderNetwork, releaseReaderNetwork } from "./network-pin";
 
 export interface WifiLinkOptions {
   /** Bazowy URL urządzenia. Domyślnie `http://192.168.4.1`. */
   baseUrl?: string;
+  /** Ile razy pytać /api/hello, zanim uznamy, że czytnika nie ma. */
+  attempts?: number;
+}
+
+export interface HelloInfo {
+  firmwareVersion?: string;
+  name?: string;
+}
+
+const HELLO_TIMEOUT_MS = 4000;
+const RETRY_GAP_MS = 1200;
+
+/** One /api/hello with a timeout; the reader's reply, or null. */
+export async function helloDevice(baseUrl: string = DEVICE_AP_BASE_URL): Promise<HelloInfo | null> {
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/hello`, {
+      signal: AbortSignal.timeout(HELLO_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return ((await res.json().catch(() => ({}))) as HelloInfo) ?? {};
+  } catch {
+    return null;
+  }
 }
 
 export class WifiLink implements DeviceLink {
-  private socket: WebSocket | null = null;
   private handlers = new Set<(ev: DeviceEvent) => void>();
   private isConnected = false;
+  hello: HelloInfo | null = null;
   readonly transport: TransportInfo = { kind: "wifi", label: "WiFi" };
 
   constructor(private opts: WifiLinkOptions = {}) {}
@@ -34,55 +64,37 @@ export class WifiLink implements DeviceLink {
   }
 
   async connect(): Promise<void> {
-    // 1. Sprawdź czy urządzenie odpowiada na /hello.
-    const hello = await fetch(`${this.base}/api/hello`, { method: "GET" }).catch(() => null);
-    if (!hello || !hello.ok) {
-      // Najczęstsza przyczyna gdy aplikacja jest hostowana na HTTPS
-      // (grkarol.github.io): mixed content block — przeglądarka odmawia
-      // wykonania HTTP requestu z HTTPS strony. CORS tu nie pomoże, bo
-      // request nigdy nie opuszcza klienta. Workaround: otworzyć
-      // http://192.168.4.1/ bezpośrednio w przeglądarce telefonu i użyć
-      // zakładki "Update" w Companion UI.
-      const isHttps = typeof location !== "undefined" && location.protocol === "https:";
-      throw new Error(
-        isHttps
-          ? `Przeglądarka zablokowała połączenie HTTPS → HTTP. Otwórz w telefonie ${this.base}/ bezpośrednio (Chrome/Safari), tam wgrywaj firmware i książki.`
-          : `Nie udało się złapać urządzenia pod ${this.base}. Czy telefon jest podłączony do sieci urządzenia (Flower-…)?`,
-      );
+    // Native app: requests to 192.168.4.1 must go through the reader's WiFi.
+    await pinToReaderNetwork();
+
+    const attempts = Math.max(1, this.opts.attempts ?? 3);
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      this.hello = await helloDevice(this.base);
+      if (this.hello) {
+        this.isConnected = true;
+        return;
+      }
+      if (attempt + 1 < attempts) {
+        await new Promise((r) => setTimeout(r, RETRY_GAP_MS));
+      }
     }
 
-    // 2. Otwórz WebSocket na eventy.
-    const wsUrl = this.base.replace(/^http/, "ws") + "/api/events";
-    this.socket = new WebSocket(wsUrl);
-    await new Promise<void>((resolve, reject) => {
-      const s = this.socket!;
-      const onOpen = () => {
-        s.removeEventListener("error", onErr);
-        resolve();
-      };
-      const onErr = () => {
-        s.removeEventListener("open", onOpen);
-        reject(new Error("Nie udało się otworzyć kanału eventów (WebSocket)."));
-      };
-      s.addEventListener("open", onOpen, { once: true });
-      s.addEventListener("error", onErr, { once: true });
-    });
-
-    this.socket.addEventListener("message", (e) => {
-      const ev = parseEvent(typeof e.data === "string" ? e.data : "");
-      if (ev) for (const h of this.handlers) h(ev);
-    });
-    this.socket.addEventListener("close", () => {
-      this.isConnected = false;
-    });
-
-    this.isConnected = true;
+    // Najczęstsza przyczyna, gdy aplikacja jest hostowana na HTTPS
+    // (grkarol.github.io): mixed content block — przeglądarka odmawia
+    // requestu HTTP ze strony HTTPS.
+    const isHttps = typeof location !== "undefined" && location.protocol === "https:";
+    throw new Error(
+      isHttps
+        ? `Przeglądarka zablokowała połączenie HTTPS → HTTP. Otwórz w telefonie ${this.base}/ bezpośrednio albo użyj aplikacji Flower.`
+        : isNativeApp()
+          ? "Czytnik nie odpowiada. Sprawdź, czy telefon jest w sieci Flower-… i czy na czytniku jest otwarty ekran Aplikacja (Urządzenie → Synchronizacja)."
+          : `Nie udało się złapać urządzenia pod ${this.base}. Czy telefon jest podłączony do sieci urządzenia (Flower-…)?`,
+    );
   }
 
   async disconnect(): Promise<void> {
-    this.socket?.close();
-    this.socket = null;
     this.isConnected = false;
+    await releaseReaderNetwork();
   }
 
   async send(cmd: DeviceCommand): Promise<void> {
@@ -90,6 +102,7 @@ export class WifiLink implements DeviceLink {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(cmd),
+      signal: AbortSignal.timeout(HELLO_TIMEOUT_MS),
     });
     if (!res.ok) {
       throw new Error(`Urządzenie odrzuciło komendę (${res.status}).`);
@@ -102,6 +115,6 @@ export class WifiLink implements DeviceLink {
   }
 
   static isSupported(): boolean {
-    return typeof fetch === "function" && typeof WebSocket === "function";
+    return typeof fetch === "function";
   }
 }
