@@ -493,4 +493,55 @@ struct TutorialView {
 void paintTutorial(DisplayManager &d, Sink &sink, const TutorialView &view);
 
 
+// ── Kreator pierwszego uruchomienia ──
+// One step: a segmented step bar on top, title and subtitle, the body
+// (option chips, a message, a loading bar or a QR code), Wstecz / Dalej
+// along the bottom.
+enum class WizardBody : uint8_t {
+  Chips,    // options side by side, one selected
+  Message,  // big centred title (Super!, Skonfigurujmy...)
+  Loading,  // rotating phrase over a sliding bar
+  Qr,       // code on the right, text on the left
+};
+enum class WizardChipArt : uint8_t {
+  Label,     // just the name
+  Swatch,    // a color dot before the name
+  Theme,     // reading theme preview (DisplayManager::nanoReadingThemeChip)
+  Rsvp,      // a word with its focus letter
+  Scroll,    // a few lines of text
+};
+struct WizardChip {
+  int id = kNoTarget;
+  String label;
+  bool selected = false;
+  WizardChipArt art = WizardChipArt::Label;
+  uint16_t swatch = 0;  // Swatch
+  uint8_t theme = 0;    // Theme: 0 dark, 1 light, 2 night
+};
+struct WizardView {
+  size_t step = 0;  // 0-based
+  size_t stepCount = 1;
+  String title;
+  String subtitle;
+  WizardBody body = WizardBody::Chips;
+  std::vector<WizardChip> chips;
+  // Loading: advances every frame; Message: auto-advance progress, -1 none.
+  uint32_t phase = 0;
+  int autoPercent = -1;
+  // Qr
+  const bool *qr = nullptr;
+  uint8_t qrSize = 0;
+  String qrLine;  // e.g. the network name
+  String qrHint;  // waiting / connected
+  int backId = kNoTarget;
+  String backLabel;
+  int nextId = kNoTarget;
+  String nextLabel;
+  int extraId = kNoTarget;  // optional pill next to Dalej (Podgląd)
+  String extraLabel;
+  String footer;  // muted line in the bottom row
+};
+void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view);
+
+
 }  // namespace nano

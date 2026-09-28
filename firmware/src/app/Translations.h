@@ -361,6 +361,15 @@ enum class TrKey4 : uint8_t {
   TutBodyHelp,
   TutWord,
   TutDone,
+  WizLanguageSub,
+  WizThemeSub,
+  WizColorSub,
+  WizModeSub,
+  WizPreview,
+  WizSuperSub,
+  WizConfigureSub,
+  WizConnectLook,
+  WizPairSub,
 };
 
 namespace Translations3 {

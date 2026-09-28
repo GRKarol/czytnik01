@@ -3307,6 +3307,13 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   // przyciski (albo w nic, gdy nawigacja nie była w trybie Swipe — jedynym,
   // dla którego istniała logika "róg = Wróć") i przycisk Wróć w rogu nie
   // robił nic. Obsługujemy tap bezpośrednio, niezależnie od navMode_.
+  // First-run wizard pages (Nano skin): chips, Wstecz, Dalej, Podgląd.
+  if (wizardNanoScreen()) {
+    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
+      handleWizardTouchAt(event.x, event.y, nowMs);
+    }
+    return;
+  }
   if (menuScreen_ == MenuScreen::TutorialStep1 || menuScreen_ == MenuScreen::TutorialStep2 ||
       menuScreen_ == MenuScreen::TutorialStep3 || menuScreen_ == MenuScreen::TutorialStep4 ||
       menuScreen_ == MenuScreen::TutorialStep5) {
@@ -6084,9 +6091,11 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back("English");
     settingsMenuItems_.push_back("Polski");
     settingsMenuItems_.push_back("Deutsch");
-    settingsMenuItems_.push_back("Espanol");
-    settingsMenuItems_.push_back("Francais");
-    settingsMenuItems_.push_back("Romana");
+    // Firmware text encoding (src/text/LatinText.h): Latin-1 for the
+    // accents, custom slot 0x8B for the Romanian a-breve.
+    settingsMenuItems_.push_back("Espa\xF1" "ol");
+    settingsMenuItems_.push_back("Fran\xE7" "ais");
+    settingsMenuItems_.push_back("Rom\xE2" "n\x8B");
   } else if (menuScreen_ == MenuScreen::WelcomeTheme) {
     // First-run wizard — krok 2/5. Po wyborze języka w step 1 (już zapisanym
     // w uiLanguage_), te labele lecą przez UiText więc są przetłumaczone.
@@ -6481,12 +6490,8 @@ void ensureInstallAppQr() {
                 static_cast<unsigned>(g_installAppQrSize));
 }
 
-// Krok "Ładowanie" (~15s) — trzy frazy rotują w pętli, każda widoczna ~2s z
-// krótką przerwą między nimi. To jest cięcie czas-na-czas, nie prawdziwy
-// pixel-alpha fade (ten wymagałby nowej prymitywy w DisplayManager) — wygląda
-// jak "pojawia się / znika", tylko bez płynnego blendu.
+// Krok "Ładowanie": a new phrase every kWelcomeLoadingPhraseCycleMs.
 constexpr uint32_t kWelcomeLoadingPhraseCycleMs = 2500;
-constexpr uint32_t kWelcomeLoadingPhraseVisibleMs = 2000;
 constexpr uint32_t kWelcomeLoadingMinMs = 15000;
 // Siatka bezpieczeństwa — gdyby pobieranie fontów utknęło (np. słabe Wi-Fi),
 // ekran i tak rusza dalej zamiast wisieć w nieskończoność.
@@ -6505,10 +6510,8 @@ void App::openWelcomeLanguage() {
   // Bez „Back" — w wizardzie zaczynamy od pierwszego elementu listy.
   settingsSelectedIndex_ = 0;
   rebuildSettingsMenuItems();
+  // The power-button hint sits in the page's bottom row (renderWizardPage).
   renderSettings();
-  // Jedyne miejsce, gdzie tłumaczymy co robi PWR w kreatorze — na kolejnych
-  // krokach ten sam toast byłby już tylko szumem.
-  showGridToast(tr3(TrKey3::WelcomePowerBackHint), millis());
 }
 
 namespace {
@@ -6658,35 +6661,9 @@ void App::updateWelcomeLoading(uint32_t nowMs) {
 }
 
 void App::renderWelcomeLoading(uint32_t nowMs) {
+  // Rotating phrase over a sliding bar (renderWizardPage, WizardBody::Loading).
   welcomeLoadingLastRenderMs_ = nowMs;
-  const uint32_t elapsed = nowMs - welcomeScreenEnteredMs_;
-
-  const uint32_t phraseCycle = elapsed % (kWelcomeLoadingPhraseCycleMs * 3);
-  const size_t phraseIndex = static_cast<size_t>(phraseCycle / kWelcomeLoadingPhraseCycleMs);
-  const uint32_t phraseLocal = phraseCycle % kWelcomeLoadingPhraseCycleMs;
-  String phrase;
-  if (phraseLocal < kWelcomeLoadingPhraseVisibleMs) {
-    switch (phraseIndex) {
-      case 0: phrase = tr3(TrKey3::WelcomeLoadingPhrase1); break;
-      case 1: phrase = tr3(TrKey3::WelcomeLoadingPhrase2); break;
-      default: phrase = tr3(TrKey3::WelcomeLoadingPhrase3); break;
-    }
-  }
-
-  const bool downloading = fontDownloadInProgress_;
-  const String bottomLabel = downloading ? tr3(TrKey3::WelcomeLoadingBottomDownloading)
-                                          : tr3(TrKey3::WelcomeLoadingBottomLoading);
-  // Pasek postępu jako zastępnik "kręcącego się kółka" — prawdziwa animacja
-  // spinnera wymagałaby nowej prymitywy rysującej w DisplayManager, a pasek
-  // 0->100 w pętli daje ten sam efekt "coś się dzieje" bez nowego kodu w
-  // warstwie wyświetlacza.
-  const int sawtoothPercent = static_cast<int>((elapsed % 2000UL) / 20UL);
-  // Skala 64/44 — 42/38 wciąż było za małe na tym ekranie ("Odzyskaj stan
-  // Flow" itp. czytane jako "malutki druczek" mimo dużo wolnego miejsca na
-  // 640x172 ekranie); fitSerifTextScaled i tak bezpiecznie skróci z "..." dla
-  // najdłuższych tłumaczeń (np. niemiecki dolny label), więc nie ma ryzyka
-  // wyjścia poza ekran.
-  display_.renderProgress("", phrase, bottomLabel, sawtoothPercent, 64, 44);
+  renderWizardPage();
 }
 
 // ─── Ekrany "Super!" / "Skonfigurujmy Twoje urządzenie!" ────────────────────
@@ -6705,9 +6682,10 @@ void App::openWelcomeConfigureIntro(uint32_t nowMs) {
 }
 
 void App::renderWelcomeTimedMessage(const String &line1, const String &line2) {
-  // Skala 48% zamiast domyślnej 36% — to jedyny tekst na tych ekranach
-  // ("Super!" / "Skonfigurujmy Twoje urządzenie!"), więc może być duży.
-  display_.renderStatus("", line1, line2, 48, 28);
+  // The Nano page builds its own title/subtitle for each timed screen.
+  (void)line1;
+  (void)line2;
+  renderWizardPage();
 }
 
 void App::updateWelcomeTimedScreens(uint32_t nowMs) {
@@ -6720,7 +6698,10 @@ void App::updateWelcomeTimedScreens(uint32_t nowMs) {
     // once the 5s look-first delay passes, with no extra input needed —
     // see renderWelcomeConnect(). Cheap: DisplayManager's render-key cache
     // skips the actual redraw except right at that 5s edge.
-    renderWelcomeConnect();
+    if (nowMs - welcomeLoadingLastRenderMs_ >= kWelcomeScreenFrameMs) {
+      welcomeLoadingLastRenderMs_ = nowMs;
+      renderWelcomeConnect();
+    }
     return;
   }
   if (menuScreen_ != MenuScreen::WelcomeSuper && menuScreen_ != MenuScreen::WelcomeConfigureIntro &&
@@ -6728,6 +6709,11 @@ void App::updateWelcomeTimedScreens(uint32_t nowMs) {
     return;
   }
   if (nowMs - welcomeScreenEnteredMs_ < kWelcomeTimedMessageMs) {
+    // The auto-advance bar fills while we wait (frame dedup skips no-ops).
+    if (nowMs - welcomeLoadingLastRenderMs_ >= kWelcomeScreenFrameMs) {
+      welcomeLoadingLastRenderMs_ = nowMs;
+      renderWizardPage();
+    }
     return;
   }
   if (menuScreen_ == MenuScreen::WelcomeSuper) {
@@ -6900,22 +6886,9 @@ void App::openWelcomeConnect(uint32_t nowMs) {
 }
 
 void App::renderWelcomeConnect() {
-  ensureInstallAppQr();
-  // First 5s: just the QR, no tap-through — give the user a chance to
-  // actually point their camera at it before offering a way past it. See
-  // isWizardNextCornerTap() for the matching touch hit-test.
-  const bool showNext = millis() - welcomeScreenEnteredMs_ >= kWelcomeConnectNextDelayMs;
-  const String cornerHint = showNext ? tr3(TrKey3::NextLabel) : "";
-  if (g_installAppQrSize > 0) {
-    // No waiting/connected hint here anymore — that's the pairing screen's
-    // job now (renderWelcomeAppPairing()), not this download-only step.
-    display_.renderStatusWithQr(tr3(TrKey3::WelcomeConnectTitle), tr3(TrKey3::WelcomeConnectLine1),
-                                g_installAppQrData, g_installAppQrSize, "", cornerHint);
-  } else {
-    // QR generation failed (rare) — no corner button to gate on, so the
-    // whole screen stays a single tap-through like it always was.
-    display_.renderStatus(tr3(TrKey3::WelcomeConnectTitle), kInstallAppUrl, "");
-  }
+  // QR to the app download page; Dalej appears after
+  // kWelcomeConnectNextDelayMs (see renderWizardPage).
+  renderWizardPage();
 }
 
 bool App::isWizardNextCornerTap(uint16_t x, uint16_t y) const {
@@ -6968,17 +6941,7 @@ void App::openWelcomeAppPairing(uint32_t nowMs) {
 }
 
 void App::renderWelcomeAppPairing() {
-  const String hint = autoSyncClientConnected_ ? tr3(TrKey3::WelcomeConnectHintConnected)
-                                                : tr3(TrKey3::WelcomeConnectHintWaiting);
-  if (companionSync_.hasQrCode()) {
-    // statusLine1() is the AP's SSID once begin() finishes (see its own
-    // startAccessPoint()-then-overwrite sequence) — the same value the
-    // Ustawienia > Sync screen shows next to this exact QR.
-    display_.renderStatusWithQr(tr3(TrKey3::WelcomeAppPairingTitle), companionSync_.statusLine1(),
-                                companionSync_.qrCodeData(), companionSync_.qrCodeSize(), hint);
-  } else {
-    display_.renderStatus(tr3(TrKey3::WelcomeAppPairingTitle), companionSync_.statusLine1(), hint);
-  }
+  renderWizardPage();
 }
 
 void App::selectWelcomeAppPairingTap(uint32_t nowMs) {
@@ -11126,6 +11089,10 @@ void App::renderSettings() {
   if (settingsMenuItems_.empty()) {
     rebuildSettingsMenuItems();
   }
+  if (wizardNanoScreen()) {
+    renderWizardPage();
+    return;
+  }
 
   // Show "?" indicator on selected item only if help is available
   std::vector<String> renderItems = settingsMenuItems_;
@@ -12198,3 +12165,4 @@ void App::handleStorageStatus(void *context, const char *title, const char *line
 #include "AppExtras.inl"
 #include "AppSavers.inl"
 #include "AppTutorial.inl"
+#include "AppWizard.inl"

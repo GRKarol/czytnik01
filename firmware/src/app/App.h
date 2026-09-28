@@ -527,6 +527,12 @@ class App {
   void openWelcomeBookPicker(uint32_t nowMs);
   void finishWelcomeWizard(uint32_t nowMs);
   void wizardStepBack(uint32_t nowMs);
+  // Nano wizard pages (app/AppWizard.inl): the wizard's own screens, not
+  // the reused Wi-Fi / font / library ones.
+  bool wizardNanoScreen() const;
+  size_t wizardStepIndex() const;
+  void renderWizardPage();
+  void handleWizardTouchAt(uint16_t x, uint16_t y, uint32_t nowMs);
   void openTutorialStep1();
   void finishTutorial(uint32_t nowMs);
   void renderTutorialStep();
@@ -1515,6 +1521,7 @@ class App {
   uint8_t tutorialPage_ = 0;
   std::vector<std::pair<ui::Rect, int>> tutorialTargets_;
   int tutorialPressedId_ = -1;
+  std::vector<std::pair<ui::Rect, int>> wizardTargets_;
   const char* helpPopupTitle_ = nullptr;
   const char* helpPopupDesc_ = nullptr;
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;

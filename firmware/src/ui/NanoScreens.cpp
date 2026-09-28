@@ -1333,4 +1333,190 @@ void paintTutorial(DisplayManager &d, Sink &sink, const TutorialView &view) {
 }
 
 
+// ── Kreator ─────────────────────────────────────────────────────────────────
+
+namespace {
+
+void paintWizardChip(DisplayManager &d, Sink &sink, const Rect &rect, const WizardChip &chip) {
+  const bool pressed = sink.pressed(chip.id);
+  if (chip.art == WizardChipArt::Theme) {
+    d.nanoReadingThemeChip(rect, chip.theme, chip.label, chip.selected, pressed);
+    addTarget(sink, rect, chip.id);
+    return;
+  }
+  const uint16_t surface = d.nanoColor(chip.selected || pressed ? Role::SurfaceActive : Role::SurfaceMuted);
+  d.nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, 10, surface);
+  if (chip.selected) {
+    d.nanoDrawRoundRect(rect.x, rect.y, rect.w, rect.h, 10, d.nanoColor(Role::Accent));
+    d.nanoDrawRoundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 9, d.nanoColor(Role::Accent));
+  }
+  const uint16_t ink = d.nanoColor(chip.selected ? Role::Foreground : Role::Muted);
+  switch (chip.art) {
+    case WizardChipArt::Swatch: {
+      const int r = std::min(12, static_cast<int>(rect.h) / 4);
+      d.nanoFillCircle(rect.x + rect.w / 2, rect.y + rect.h / 2 - 8, r, chip.swatch);
+      d.nanoText(Rect(rect.x + 4, rect.y + rect.h - 24, rect.w - 8, 20), chip.label, 1, ink, Align::Center);
+      break;
+    }
+    case WizardChipArt::Rsvp: {
+      // "czy t anie": the focus letter in the accent, as the reader shows it.
+      const String head = "czy";
+      const String letter = "t";
+      const String tail = "anie";
+      const int headW = DisplayManager::nanoTextWidth(head, 3);
+      const int letterW = DisplayManager::nanoTextWidth(letter, 3);
+      const int tailW = DisplayManager::nanoTextWidth(tail, 3);
+      const int x = rect.x + (rect.w - headW - letterW - tailW) / 2;
+      const int cy = rect.y + rect.h / 2 - 8;
+      d.nanoTextLineAt(x, cy, head, 3, d.nanoColor(Role::Foreground));
+      d.nanoTextLineAt(x + headW, cy, letter, 3, d.nanoColor(Role::Accent));
+      d.nanoTextLineAt(x + headW + letterW, cy, tail, 3, d.nanoColor(Role::Foreground));
+      d.nanoText(Rect(rect.x + 4, rect.y + rect.h - 22, rect.w - 8, 20), chip.label, 1, ink, Align::Center);
+      break;
+    }
+    case WizardChipArt::Scroll: {
+      const int lineW[] = {rect.w - 60, rect.w - 40, rect.w - 76};
+      for (int i = 0; i < 3; ++i) {
+        const int y = rect.y + 12 + i * 10;
+        d.nanoFillRoundRect(rect.x + 20, y, lineW[i], 4, 2,
+                            i == 1 ? d.nanoColor(Role::Foreground) : d.nanoBlend(Role::Muted, 120));
+      }
+      d.nanoFillRoundRect(rect.x + 20 + lineW[1] / 3, rect.y + 20, 36, 6, 3, d.nanoColor(Role::Accent));
+      d.nanoText(Rect(rect.x + 4, rect.y + rect.h - 22, rect.w - 8, 20), chip.label, 1, ink, Align::Center);
+      break;
+    }
+    default:
+      d.nanoText(Rect(rect.x + 4, rect.y, rect.w - 8, rect.h), chip.label, 2, ink, Align::Center);
+      break;
+  }
+  addTarget(sink, rect, chip.id);
+}
+
+void paintWizardQr(DisplayManager &d, const Rect &box, const bool *qr, uint8_t size) {
+  // White quiet zone behind dark modules, whatever the palette: phone
+  // cameras want dark-on-light.
+  d.nanoFillRoundRect(box.x, box.y, box.w, box.h, 8, 0xFFFF);
+  if (qr == nullptr || size == 0) {
+    return;
+  }
+  const int module = std::max(1, (std::min<int>(box.w, box.h) - 12) / size);
+  const int side = module * size;
+  const int x0 = box.x + (box.w - side) / 2;
+  const int y0 = box.y + (box.h - side) / 2;
+  for (int y = 0; y < size; ++y) {
+    for (int x = 0; x < size; ++x) {
+      if (qr[y * size + x]) {
+        d.nanoFillRect(x0 + x * module, y0 + y * module, module, module, 0x0000);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view) {
+  d.nanoBeginFrame();
+  const uint16_t fg = d.nanoColor(Role::Foreground);
+  const uint16_t muted = d.nanoColor(Role::Muted);
+  const uint16_t accent = d.nanoColor(Role::Accent);
+
+  // Step bar: one segment per step, done and current in the accent.
+  if (view.stepCount > 1) {
+    const int gap = 4;
+    const int barX = 16;
+    const int barW = kScreenW - 32;
+    const int count = static_cast<int>(view.stepCount);
+    const int segW = (barW - gap * (count - 1)) / count;
+    for (int i = 0; i < count; ++i) {
+      const bool done = static_cast<size_t>(i) <= view.step;
+      d.nanoFillRoundRect(barX + i * (segW + gap), 5, segW, 4, 2,
+                          done ? accent : d.nanoColor(Role::ProgressTrack));
+    }
+  }
+
+  const bool qr = view.body == WizardBody::Qr;
+  const int textW = qr ? 440 : kScreenW - 32;
+  if (view.body != WizardBody::Message) {
+    d.nanoText(Rect(16, 14, textW, 32), view.title, 3, fg);
+    d.nanoText(Rect(16, 46, textW, 20), view.subtitle, 1, muted);
+  }
+
+  const Rect content(16, 68, kScreenW - 32, 64);
+  switch (view.body) {
+    case WizardBody::Chips: {
+      const int count = std::max<int>(1, static_cast<int>(view.chips.size()));
+      const int gap = 8;
+      const int chipW = (content.w - gap * (count - 1)) / count;
+      for (int i = 0; i < static_cast<int>(view.chips.size()); ++i) {
+        paintWizardChip(d, sink, Rect(content.x + i * (chipW + gap), content.y, chipW, content.h), view.chips[i]);
+      }
+      break;
+    }
+    case WizardBody::Message: {
+      d.nanoText(Rect(16, 30, kScreenW - 32, 44), view.title, 4, fg, Align::Center);
+      d.nanoText(Rect(16, 78, kScreenW - 32, 22), view.subtitle, 2, muted, Align::Center);
+      if (view.autoPercent >= 0) {
+        const Rect bar(kScreenW / 2 - 80, 114, 160, 4);
+        d.nanoFillRoundRect(bar.x, bar.y, bar.w, bar.h, 2, d.nanoColor(Role::ProgressTrack));
+        d.nanoFillRoundRect(bar.x, bar.y, std::max(4, bar.w * std::min(100, view.autoPercent) / 100), bar.h, 2,
+                            accent);
+      }
+      break;
+    }
+    case WizardBody::Loading: {
+      // A segment gliding along the track, back and forth.
+      const Rect track(content.x + 40, content.y + 30, content.w - 80, 6);
+      d.nanoFillRoundRect(track.x, track.y, track.w, track.h, 3, d.nanoColor(Role::ProgressTrack));
+      const int segW = track.w / 4;
+      const int travel = track.w - segW;
+      const int period = 40;
+      const int t = static_cast<int>(view.phase % (2 * period));
+      const int pos = t < period ? t : 2 * period - t;
+      d.nanoFillRoundRect(track.x + travel * pos / period, track.y, segW, track.h, 3, accent);
+      break;
+    }
+    case WizardBody::Qr: {
+      paintWizardQr(d, Rect(kScreenW - 16 - 124, 14, 124, 124), view.qr, view.qrSize);
+      d.nanoText(Rect(16, 70, textW, 24), view.qrLine, 2, fg);
+      d.nanoText(Rect(16, 98, textW, 36), view.qrHint, 1, d.nanoColor(Role::Accent), Align::Start, 2);
+      break;
+    }
+  }
+
+  // Bottom row.
+  const int rowY = kScreenH - 32;
+  if (view.backId != kNoTarget) {
+    const Rect back(10, rowY, 120, 28);
+    d.nanoPill(back, view.backLabel, Icon::ChevronLeft, sink.pressed(view.backId), false);
+    addTarget(sink, Rect(0, rowY - 6, 150, kScreenH - rowY + 6), view.backId);
+  }
+  int rightEdge = kScreenW - 10;
+  if (view.nextId != kNoTarget) {
+    const Rect next(rightEdge - 140, rowY, 140, 28);
+    const uint16_t fill = sink.pressed(view.nextId) ? d.nanoBlend(Role::Accent, 170) : accent;
+    d.nanoFillRoundRect(next.x, next.y, next.w, next.h, 14, fill);
+    d.nanoText(Rect(next.x + 6, next.y, next.w - 30, next.h), view.nextLabel, 2, d.nanoColor(Role::OnAccent),
+               Align::Center);
+    d.nanoIcon(Rect(next.x + next.w - 30, next.y, 24, next.h), Icon::ChevronRight, d.nanoColor(Role::OnAccent),
+               fill);
+    addTarget(sink, Rect(next.x - 10, rowY - 6, next.w + 20, kScreenH - rowY + 6), view.nextId);
+    rightEdge = next.x - 10;
+  }
+  if (view.extraId != kNoTarget) {
+    const int w = std::max(100, DisplayManager::nanoTextWidth(view.extraLabel, 1) + 44);
+    const Rect extra(rightEdge - w, rowY, w, 28);
+    d.nanoPill(extra, view.extraLabel, Icon::Play, sink.pressed(view.extraId), false);
+    addTarget(sink, Rect(extra.x - 6, rowY - 6, extra.w + 12, kScreenH - rowY + 6), view.extraId);
+    rightEdge = extra.x - 10;
+  }
+  if (!view.footer.isEmpty()) {
+    const int left = view.backId != kNoTarget ? 140 : 16;
+    d.nanoText(Rect(left, rowY, std::max(0, rightEdge - left), 28), view.footer, 1, muted,
+               view.backId != kNoTarget ? Align::Center : Align::Start);
+  }
+
+  d.nanoEndFrame();
+}
+
+
 }  // namespace nano
