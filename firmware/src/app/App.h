@@ -1314,6 +1314,8 @@ class App {
   // Reader panel: a horizontal scrub is running (the classic scroll view
   // shows the text while the finger moves, the panel comes back on lift).
   bool nanoPanelScrubbing_ = false;
+  // A touch that started on a plugin's header back button.
+  bool pluginExitTouch_ = false;
   // Extra screens (app/AppExtras.inl).
   size_t extraSelectedIndex_ = 0;
   uint8_t goToSegment_ = 0;  // 0 percent, 1 page, 2 chapter

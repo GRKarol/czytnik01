@@ -39,13 +39,20 @@ static int sLanguageIndex = 0;
 
 // IMU register constants (QMI8658 on Wire1)
 namespace {
-constexpr uint8_t kImuAddress = 0x6B;
+constexpr uint8_t kImuAddresses[] = {0x6B, 0x6A};
+constexpr uint8_t kImuWhoAmIReg = 0x00;
+constexpr uint8_t kImuWhoAmI = 0x05;
 constexpr uint8_t kImuAccelStartReg = 0x35;
 constexpr float kAccelScale = 4.0f / 32768.0f;
 constexpr uint8_t kImuRegCtrl1 = 0x02;
 constexpr uint8_t kImuRegCtrl2 = 0x03;
+constexpr uint8_t kImuRegCtrl5 = 0x06;
 constexpr uint8_t kImuRegCtrl7 = 0x08;
-bool sImuInitialized = false;
+constexpr uint8_t kImuRegCtrl8 = 0x09;
+constexpr uint8_t kImuRegResetResult = 0x4D;
+constexpr uint8_t kImuRegReset = 0x60;
+uint8_t sImuAddress = 0;  // 0 = not set up yet
+uint32_t sImuLastAttemptMs = 0;
 }  // namespace
 
 // ─── Path Validation (sandbox enforcement) ──────────────────────────────────
@@ -142,6 +149,14 @@ static ui::IconId mapPluginIcon(PluginIconId icon) {
     }
 }
 
+// Height of the header row above every button pair; its left end is the
+// "leave the plugin" back button.
+static constexpr int kPluginExitZoneHeight = 36;
+// Render key of the last button pair: while the display still shows it,
+// the header back button is on screen.
+static String sPairRenderKey;
+static String sPluginTitle;
+
 static void bridgeRenderButtonPair(const char* leftLabel, PluginIconId leftIcon, bool leftActive,
                                     const char* rightLabel, PluginIconId rightIcon) {
     if (!sDisplay) return;
@@ -149,16 +164,28 @@ static void bridgeRenderButtonPair(const char* leftLabel, PluginIconId leftIcon,
     const int width = BoardConfig::DISPLAY_WIDTH;
     const int height = BoardConfig::DISPLAY_HEIGHT;
     const int halfWidth = width / 2;
+    // The pair sits under a header row whose back chevron leaves the plugin
+    // (App hit-tests it, see DeviceServicesBridge::exitZoneActive()). The
+    // plugins only split taps into halves, so the halves keep working.
+    const int top = kPluginExitZoneHeight + 4;
 
     std::vector<DisplayManager::Button> buttons;
-    buttons.reserve(2);
+    buttons.reserve(3);
+
+    DisplayManager::Button back;
+    back.icon = ui::IconId::Back;
+    back.x = 4;
+    back.y = 2;
+    back.width = 48;
+    back.height = static_cast<uint16_t>(kPluginExitZoneHeight - 4);
+    buttons.push_back(back);
 
     DisplayManager::Button left;
     left.label = leftLabel ? leftLabel : "";
     left.x = 0;
-    left.y = 0;
+    left.y = static_cast<uint16_t>(top);
     left.width = static_cast<uint16_t>(halfWidth);
-    left.height = static_cast<uint16_t>(height);
+    left.height = static_cast<uint16_t>(height - top);
     left.icon = mapPluginIcon(leftIcon);
     left.active = leftActive;
     buttons.push_back(left);
@@ -166,13 +193,14 @@ static void bridgeRenderButtonPair(const char* leftLabel, PluginIconId leftIcon,
     DisplayManager::Button right;
     right.label = rightLabel ? rightLabel : "";
     right.x = static_cast<uint16_t>(halfWidth);
-    right.y = 0;
+    right.y = static_cast<uint16_t>(top);
     right.width = static_cast<uint16_t>(width - halfWidth);
-    right.height = static_cast<uint16_t>(height);
+    right.height = static_cast<uint16_t>(height - top);
     right.icon = mapPluginIcon(rightIcon);
     buttons.push_back(right);
 
-    sDisplay->renderButtonGrid("", buttons, 0, 1);
+    sDisplay->renderButtonGrid(sPluginTitle, buttons, 0, 1);
+    sPairRenderKey = sDisplay->lastRenderKey();
 }
 
 // Width of the trailing delete-icon zone in renderDeletableList rows — kept
@@ -267,8 +295,13 @@ static int bridgeLanguageIndex() {
     return static_cast<int>(sLanguageIndex);
 }
 
+// High byte of `key` picks the plugin's table: 0x00 DictStr (Dyktafon),
+// 0x01 FtStr (Klepsydra).
 static const char* bridgePluginTr(uint16_t key, int lang) {
-    return TranslationsData::dictStrLookup(static_cast<uint8_t>(key), static_cast<uint8_t>(lang));
+    const uint8_t index = static_cast<uint8_t>(key & 0xFF);
+    const uint8_t language = static_cast<uint8_t>(lang);
+    if ((key >> 8) == 1) return TranslationsData::ftStrLookup(index, language);
+    return TranslationsData::dictStrLookup(index, language);
 }
 
 static void bridgeRenderPlaybackControls(const char* title, bool paused, uint8_t volumePercent,
@@ -437,54 +470,84 @@ static void bridgeAudioSetVolume(uint8_t percent) {
 
 // ─── IMU Service Wrappers ───────────────────────────────────────────────────
 
-static bool imuWriteRegister(uint8_t reg, uint8_t value) {
-    Wire1.beginTransmission(kImuAddress);
+static bool imuWriteRegister(uint8_t address, uint8_t reg, uint8_t value) {
+    Wire1.beginTransmission(address);
     Wire1.write(reg);
     Wire1.write(value);
     return Wire1.endTransmission() == 0;
 }
 
-// The QMI8658 powers up with sensor sampling disabled — CTRL7's aEN bit is
-// 0 by default, so the accelerometer data registers just return stale/zero
-// bytes until something enables it. Nothing in this firmware ever did,
-// which is why FocusTimerPlugin's orientation classifier always saw
-// Orientation::Unknown no matter how the device was actually held (every
-// axis read near 0, well under the classifier's thresholds). Runs once,
-// lazily, the first time a caller actually wants a reading — enables the
-// accelerometer at +-4g (matching kAccelScale below) and a normal output
-// rate; the gyroscope stays off since nothing here uses it.
-static void ensureImuInitialized() {
-    if (sImuInitialized) return;
+static bool imuReadRegisters(uint8_t address, uint8_t reg, uint8_t* out, size_t length) {
+    Wire1.beginTransmission(address);
+    Wire1.write(reg);
+    if (Wire1.endTransmission(false) != 0) return false;
+    if (Wire1.requestFrom(static_cast<int>(address), static_cast<int>(length), 1) != static_cast<int>(length)) {
+        return false;
+    }
+    for (size_t i = 0; i < length; ++i) out[i] = static_cast<uint8_t>(Wire1.read());
+    return true;
+}
 
-    Wire1.beginTransmission(kImuAddress);
-    if (Wire1.endTransmission(true) != 0) return;  // not present yet — retry next call
+static bool imuUpdateRegister(uint8_t address, uint8_t reg, uint8_t mask, uint8_t value) {
+    uint8_t current = 0;
+    return imuReadRegisters(address, reg, &current, 1) &&
+           imuWriteRegister(address, reg, static_cast<uint8_t>((current & ~mask) | (value & mask)));
+}
 
-    imuWriteRegister(kImuRegCtrl1, 0x40);  // address auto-increment
-    imuWriteRegister(kImuRegCtrl2, 0x13);  // accel: +-4g range, ~470 Hz ODR
-    imuWriteRegister(kImuRegCtrl7, 0x01);  // enable accelerometer only
-    sImuInitialized = true;
+// The QMI8658 powers up with sampling off (CTRL7 aEN = 0), so the data
+// registers read back stale zeros until something enables it -- the
+// orientation classifier then only ever sees Orientation::Unknown. Same
+// bring-up as rsvpnano's focus::OrientationReader::begin(): find the chip
+// by WHO_AM_I at either address, soft-reset it, wait for the reset flag,
+// then accel +-4 g (matches kAccelScale), low-pass filter on, accel only.
+// Only marks the IMU ready when every step answered; retried at most once
+// a second while it doesn't. Caller holds the I2C bus lock.
+static bool ensureImuInitialized() {
+    if (sImuAddress != 0) return true;
+    const uint32_t now = millis();
+    if (sImuLastAttemptMs != 0 && now - sImuLastAttemptMs < 1000) return false;
+    sImuLastAttemptMs = now == 0 ? 1 : now;
+
+    for (uint8_t address : kImuAddresses) {
+        uint8_t value = 0;
+        if (!imuReadRegisters(address, kImuWhoAmIReg, &value, 1) || value != kImuWhoAmI) continue;
+        if (!imuWriteRegister(address, kImuRegReset, 0xB0)) continue;
+        const uint32_t resetStarted = millis();
+        value = 0;
+        while (millis() - resetStarted < 500) {
+            if (imuReadRegisters(address, kImuRegResetResult, &value, 1) && value == 0x80) break;
+            delay(10);
+        }
+        if (value != 0x80) {
+            ESP_LOGW(TAG, "IMU 0x%02X: soft reset not confirmed", address);
+            continue;
+        }
+        if (!imuUpdateRegister(address, kImuRegCtrl1, 0x40, 0x40) ||   // address auto-increment
+            !imuWriteRegister(address, kImuRegCtrl8, 0x80) ||           // ctrl9 handshake via STATUSINT
+            !imuWriteRegister(address, kImuRegCtrl2, 0x16) ||           // accel +-4 g, ODR 125 Hz
+            !imuUpdateRegister(address, kImuRegCtrl5, 0x07, 0x07) ||    // accel low-pass filter
+            !imuUpdateRegister(address, kImuRegCtrl7, 0x01, 0x01)) {    // enable accelerometer
+            ESP_LOGW(TAG, "IMU 0x%02X: config write failed", address);
+            continue;
+        }
+        sImuAddress = address;
+        ESP_LOGI(TAG, "IMU ready at 0x%02X", address);
+        Serial.printf("[plugin] IMU ready at 0x%02X\n", address);
+        return true;
+    }
+    ESP_LOGW(TAG, "IMU not found (WHO_AM_I != 0x05 at 0x6B/0x6A)");
+    Serial.println("[plugin] IMU not found");
+    return false;
 }
 
 static bool bridgeImuReadAccelerometer(float* x, float* y, float* z) {
     if (!x || !y || !z) return false;
 
-    // Direct I2C read from QMI8658 on Wire1 (same approach as FocusTimer)
     BoardConfig::I2cBusLock lock;
-    ensureImuInitialized();
-    Wire1.beginTransmission(kImuAddress);
-    Wire1.write(kImuAccelStartReg);
-    if (Wire1.endTransmission(false) != 0) {
-        return false;
-    }
-
-    if (Wire1.requestFrom(static_cast<int>(kImuAddress), 6, 1) != 6) {
-        return false;
-    }
+    if (!ensureImuInitialized()) return false;
 
     uint8_t buffer[6];
-    for (int i = 0; i < 6; ++i) {
-        buffer[i] = Wire1.read();
-    }
+    if (!imuReadRegisters(sImuAddress, kImuAccelStartReg, buffer, sizeof(buffer))) return false;
 
     const int16_t rawX = static_cast<int16_t>((buffer[1] << 8) | buffer[0]);
     const int16_t rawY = static_cast<int16_t>((buffer[3] << 8) | buffer[2]);
@@ -497,10 +560,8 @@ static bool bridgeImuReadAccelerometer(float* x, float* y, float* z) {
 }
 
 static bool bridgeImuAvailable() {
-    // Probe the IMU address on Wire1
     BoardConfig::I2cBusLock lock;
-    Wire1.beginTransmission(kImuAddress);
-    return Wire1.endTransmission(true) == 0;
+    return ensureImuInitialized();
 }
 
 // ─── Orientation Service Wrappers ───────────────────────────────────────────
@@ -1025,3 +1086,13 @@ void DeviceServicesBridge::teardown() {
 void DeviceServicesBridge::setLanguageIndex(int index) {
     sLanguageIndex = index;
 }
+
+bool DeviceServicesBridge::exitZoneActive() {
+    return sDisplay != nullptr && !sPairRenderKey.isEmpty() && sDisplay->lastRenderKey() == sPairRenderKey;
+}
+
+bool DeviceServicesBridge::isExitZoneTouch(uint16_t x, uint16_t y) {
+    return exitZoneActive() && x < 80 && y < kPluginExitZoneHeight + 4;
+}
+
+void DeviceServicesBridge::setPluginTitle(const String &title) { sPluginTitle = title; }

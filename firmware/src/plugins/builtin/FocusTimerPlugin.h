@@ -42,6 +42,10 @@ class Session {
  public:
     void begin(uint16_t focusMinutes, uint16_t breakMinutes, uint8_t rounds);
     void update(uint32_t nowMs, Orientation orientation);
+    // Touch control, for when the accelerometer can't be trusted: starts a
+    // waiting phase, pauses a running one, resumes a paused one. A phase
+    // touched this way ignores orientation until it ends.
+    void tap(uint32_t nowMs);
     void stop();
 
     Phase phase() const { return phase_; }
@@ -50,11 +54,12 @@ class Session {
     uint32_t remainingMs(uint32_t nowMs) const;
     uint16_t progressPermille(uint32_t nowMs) const;
     bool consumeCompletionCue();
+    bool manual() const { return manual_; }
 
  private:
     static bool shortSide(Orientation orientation);
     static Orientation opposite(Orientation orientation);
-    void startPhase(Phase phase, uint32_t nowMs, Orientation orientation);
+    void startPhase(Phase phase, uint32_t nowMs, Orientation orientation, bool manual);
     void finishPhase(Orientation orientation);
 
     Phase phase_ = Phase::Complete;
@@ -69,6 +74,7 @@ class Session {
     uint8_t rounds_ = 0;
     bool targetPresentAtWaitStart_ = false;
     bool completionCuePending_ = false;
+    bool manual_ = false;
 };
 
 // Classifies the device's resting orientation from the accelerometer, with
@@ -80,12 +86,17 @@ class OrientationSampler {
  public:
     void begin(PluginImuService* imu) { imu_ = imu; }
     Orientation update(uint32_t nowMs);
-    bool available() const { return imu_ && imu_->available && imu_->available(); }
 
  private:
     static Orientation classify(float x, float y, float z);
+    // Probing the IMU is an I2C transaction; do it every few seconds while
+    // it's missing, not on every 33 ms frame.
+    bool probe(uint32_t nowMs);
 
     PluginImuService* imu_ = nullptr;
+    bool available_ = false;
+    bool probed_ = false;
+    uint32_t lastProbeMs_ = 0;
     Orientation candidate_ = Orientation::Unknown;
     Orientation stable_ = Orientation::Unknown;
     uint32_t candidateSinceMs_ = 0;
@@ -149,6 +160,10 @@ class FocusTimerCore {
     // release, same as DictaphoneCore::lastActionMs_.
     uint32_t lastActionMs_ = 0;
     static constexpr uint32_t kActionCooldownMs = 350;
+    // Top-left chevron of the session screen (drawn by the Nano skin's
+    // renderNanoFocusTimer): stops the session and goes back to the picker.
+    static constexpr uint16_t kBackZoneW = 72;
+    static constexpr uint16_t kBackZoneH = 44;
 };
 
 }  // namespace focustimer

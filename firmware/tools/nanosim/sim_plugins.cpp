@@ -9,16 +9,25 @@ using Button = DisplayManager::Button;
 void runPluginScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const char *)) {
   const int W = BoardConfig::DISPLAY_WIDTH;
   const int H = BoardConfig::DISPLAY_HEIGHT;
-  {
-    std::vector<Button> b(2);
-    b[0].label = "Nagraj"; b[0].x = 0; b[0].y = 0; b[0].width = W / 2; b[0].height = H; b[0].icon = ui::IconId::Record;
-    b[1].label = "Biblioteka"; b[1].x = W / 2; b[1].y = 0; b[1].width = W - W / 2; b[1].height = H; b[1].icon = ui::IconId::Book;
-    d.renderButtonGrid("", b, 0, 1);
-    dump(d, "plugin_dict_home");
-    b[0].label = "Stop 00:12"; b[0].icon = ui::IconId::Stop; b[0].active = true;
-    d.renderButtonGrid("", b, 0, 1);
-    dump(d, "plugin_dict_recording");
-  }
+  // Button pair = DeviceServicesBridge's bridgeRenderButtonPair: header row
+  // with the plugin name and a back button that leaves the plugin.
+  auto pair = [&](const char *title, const char *left, ui::IconId leftIcon, bool leftActive, const char *right,
+                  ui::IconId rightIcon) {
+    const int top = 36 + 4;
+    std::vector<Button> b(3);
+    b[0].icon = ui::IconId::Back; b[0].x = 4; b[0].y = 2; b[0].width = 48; b[0].height = 32;
+    b[1].label = left; b[1].x = 0; b[1].y = top; b[1].width = W / 2; b[1].height = H - top; b[1].icon = leftIcon;
+    b[1].active = leftActive;
+    b[2].label = right; b[2].x = W / 2; b[2].y = top; b[2].width = W - W / 2; b[2].height = H - top;
+    b[2].icon = rightIcon;
+    d.renderButtonGrid(title, b, 0, 1);
+  };
+  pair("Dyktafon", "Nagraj", ui::IconId::Record, false, "Biblioteka (3)", ui::IconId::Book);
+  dump(d, "plugin_dict_home");
+  pair("Dyktafon", "Stop 00:12", ui::IconId::Stop, true, "Biblioteka (3)", ui::IconId::Book);
+  dump(d, "plugin_dict_recording");
+  pair("Klepsydra", "Pomodoro 25/5 x4", ui::IconId::None, false, "Start", ui::IconId::Play);
+  dump(d, "plugin_focus_home");
   {
     const char *items[] = {"Nagranie 2026-09-27 10:14", "Nagranie 2026-09-26 21:03", "Notatka"};
     const int n = 3, rowH = H / n, iconZone = 120, backZone = 64;
@@ -49,6 +58,9 @@ void runPluginScreens(DisplayManager &d, void (*dump)(const DisplayManager &, co
     d.renderButtonGrid("Nagranie 2026-09-27 10:14", b, 0, 1);
     dump(d, "plugin_dict_playing");
   }
-  d.renderFocusTimerScreen("Skupienie", "", "24:13", "Dotknij, by zatrzyma\x9B", "", 18, false);
+  d.renderFocusTimerScreen("Gotowy", "", "25:00",
+                           "Runda 1/4. Postaw na kr\xF3" "tszym boku albo dotknij, by zacz\x97" "\x9B", "", -1, false);
+  dump(d, "plugin_focus_ready");
+  d.renderFocusTimerScreen("Skupienie", "", "24:13", "Runda 1/4. Dotknij, by zapauzowa\x9B", "", 18, false);
   dump(d, "plugin_focus");
 }

@@ -382,3 +382,21 @@ TrKey4.LayoutSideLeft;Z lewej;Left;Izquierda;À gauche;Links;Stânga
 TrKey4.LayoutSideRight;Z prawej;Right;Derecha;À droite;Rechts;Dreapta
 TrKey4.LayoutTapToPick;Dotknij, by wybrać;Tap to pick;Toca para elegir;Touchez pour choisir;Tippen zum Wählen;Atinge pentru a alege
 TrKey4.LayoutTapAgainHint;Dotknij wybranego jeszcze raz: pasek przejdzie na drugą stronę;Tap the selected one again: the bar moves to the other side;Toca de nuevo el elegido: la barra cambia de lado;Touchez à nouveau : la barre change de côté;Erneut tippen: die Leiste wechselt die Seite;Atinge din nou: bara trece pe cealaltă parte
+FtStr.PresetPomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro;Pomodoro
+FtStr.PresetShort;Krótka sesja;Short session;Sesion corta;Session courte;Kurze Sitzung;Sesiune scurta
+FtStr.PresetDeep;Długa sesja;Deep work;Trabajo profundo;Travail profond;Vertiefte Arbeit;Munca profunda
+FtStr.Start;Start;Start;Iniciar;Demarrer;Start;Start
+FtStr.ModeReadyFocus;Gotowy;Ready;Listo;Pret;Bereit;Gata
+FtStr.ModeFocus;Skupienie;Focus;Concentracion;Concentration;Fokus;Concentrare
+FtStr.ModePaused;Pauza;Paused;Pausa;Pause;Pause;Pauza
+FtStr.ModeReadyBreak;Zaraz przerwa;Break soon;Descanso pronto;Pause bientot;Pause bald;Pauza in curand
+FtStr.ModeBreak;Przerwa;Break;Descanso;Pause;Pause;Pauza
+FtStr.ModeComplete;Koniec!;Complete;Completado;Termine;Fertig;Finalizat
+FtStr.InstrFlipToStartFocus;Postaw na krótszym boku albo dotknij, by zacząć;Stand it on a short edge or tap to start;Apoya sobre el lado corto o toca para empezar;Posez sur la tranche ou touchez pour commencer;Auf die Schmalseite stellen oder tippen zum Starten;Aseaza pe latura scurta sau atinge pentru start
+FtStr.InstrFlipToStartBreak;Odwróć na drugi bok albo dotknij, by zacząć przerwę;Flip to the other edge or tap for the break;Gira al otro lado o toca para el descanso;Retournez ou touchez pour la pause;Umdrehen oder tippen fuer die Pause;Intoarce sau atinge pentru pauza
+FtStr.InstrLayFlatToPause;Połóż płasko, by zapauzować;Lay it flat to pause;Ponlo plano para pausar;Posez a plat pour mettre en pause;Flach legen zum Pausieren;Aseaza plat pentru pauza
+FtStr.InstrFlipToResume;Wróć do poprzedniej pozycji, by wznowić;Flip back to resume;Vuelve a la posicion anterior para continuar;Revenez a la position precedente pour reprendre;Zurueckdrehen zum Fortsetzen;Revino la pozitia anterioara pentru a continua
+FtStr.InstrTapToPause;Dotknij, by zapauzować;Tap to pause;Toca para pausar;Touchez pour mettre en pause;Tippen zum Pausieren;Atinge pentru pauza
+FtStr.InstrTapToResume;Dotknij, by wznowić;Tap to resume;Toca para continuar;Touchez pour reprendre;Tippen zum Fortsetzen;Atinge pentru a continua
+FtStr.InstrTapToFinish;Dotknij, by zakończyć;Tap to finish;Toca para terminar;Touchez pour terminer;Zum Beenden tippen;Atinge pentru a termina
+FtStr.Round;Runda;Round;Ronda;Tour;Runde;Runda

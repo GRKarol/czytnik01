@@ -400,6 +400,8 @@ class DisplayManager {
   // Logical frame (landscape, RGB565 byte-swapped as the panel takes it) --
   // for the serial screenshot command and tools/nanosim.
   const uint16_t *frameBuffer() const { return virtualFrame_; }
+  // Key of the last screen drawn (plugins check whether theirs is still up).
+  const String &lastRenderKey() const { return lastRenderKey_; }
   static int frameStride();
   // Every primitive below clips to this rect (default: whole screen).
   void nanoSetClip(int x, int y, int w, int h);

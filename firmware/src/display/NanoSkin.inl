@@ -2067,7 +2067,9 @@ void DisplayManager::renderNanoFocusTimer(const String &mode, const String &time
                                           int progressPercent, bool breakAccent) {
   nanoBeginFrame();
   const uint16_t accent = breakAccent ? focusTimerBreakColor() : nanoColor(NanoRole::Accent);
-  nanoText(ui::Rect(16, 4, kNanoScreenW - 130, 22), mode, 2, nanoReadable(accent, nanoColor(NanoRole::Background)));
+  // Back chevron: FocusTimerCore hit-tests the top-left corner (kBackZone*).
+  nanoIcon(ui::Rect(8, 4, 22, 22), NanoIcon::ChevronLeft, nanoColor(NanoRole::Muted), nanoColor(NanoRole::Background));
+  nanoText(ui::Rect(40, 4, kNanoScreenW - 150, 22), mode, 2, nanoReadable(accent, nanoColor(NanoRole::Background)));
   nanoBatteryInline(ui::Rect(kNanoScreenW - 96, 4, 90, 22));
   // The time in the reading font's big embedded face (Atkinson): the UI
   // strikes top out at ~26 px.

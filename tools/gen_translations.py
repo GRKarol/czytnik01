@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TRANSLATIONS_H = ROOT / "firmware/src/app/Translations.h"
 LOCALIZATION_H = ROOT / "firmware/src/app/Localization.h"
 DICTAPHONE_PLUGIN_CPP = ROOT / "firmware/src/plugins/builtin/DictaphonePlugin.cpp"
+FOCUS_TIMER_PLUGIN_CPP = ROOT / "firmware/src/plugins/builtin/FocusTimerPlugin.cpp"
 CSV_PATH = ROOT / "tools/translations.csv"
 OUT_PATH = ROOT / "firmware/src/app/generated/TranslationsData.h"
 
@@ -40,6 +41,7 @@ TABLES = [
     (TRANSLATIONS_H, "TrKey4", "trKey4Lookup"),
     (LOCALIZATION_H, "UiText", "uiTextLookup"),
     (DICTAPHONE_PLUGIN_CPP, "DictStr", "dictStrLookup"),
+    (FOCUS_TIMER_PLUGIN_CPP, "FtStr", "ftStrLookup"),
 ]
 
 

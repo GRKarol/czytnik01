@@ -22,6 +22,7 @@ void Session::begin(uint16_t focusMinutes, uint16_t breakMinutes, uint8_t rounds
     pausedRemainingMs_ = 0;
     targetPresentAtWaitStart_ = false;
     completionCuePending_ = false;
+    manual_ = false;
 }
 
 void Session::update(uint32_t nowMs, Orientation orientation) {
@@ -40,23 +41,48 @@ void Session::update(uint32_t nowMs, Orientation orientation) {
             if (shortSide(orientation) &&
                 (waitTarget_ == Orientation::Unknown || orientation == waitTarget_) &&
                 !targetPresentAtWaitStart_) {
-                startPhase(phase_ == Phase::WaitingFocus ? Phase::Focus : Phase::Break, nowMs, orientation);
+                startPhase(phase_ == Phase::WaitingFocus ? Phase::Focus : Phase::Break, nowMs, orientation, false);
             }
             break;
         case Phase::Focus:
         case Phase::Break:
-            if (orientation == Orientation::Flat) {
+            if (!manual_ && orientation == Orientation::Flat) {
                 pausedRemainingMs_ = remainingMs(nowMs);
                 phase_ = phase_ == Phase::Focus ? Phase::PausedFocus : Phase::PausedBreak;
             }
             break;
         case Phase::PausedFocus:
         case Phase::PausedBreak:
-            if (orientation == activeSide_) {
+            if (!manual_ && orientation == activeSide_) {
                 durationMs_ = pausedRemainingMs_;
                 startedMs_ = nowMs;
                 phase_ = phase_ == Phase::PausedFocus ? Phase::Focus : Phase::Break;
             }
+            break;
+        case Phase::Complete:
+            break;
+    }
+}
+
+void Session::tap(uint32_t nowMs) {
+    switch (phase_) {
+        case Phase::WaitingFocus:
+        case Phase::WaitingBreak:
+            startPhase(phase_ == Phase::WaitingFocus ? Phase::Focus : Phase::Break, nowMs, Orientation::Unknown,
+                       true);
+            break;
+        case Phase::Focus:
+        case Phase::Break:
+            pausedRemainingMs_ = remainingMs(nowMs);
+            phase_ = phase_ == Phase::Focus ? Phase::PausedFocus : Phase::PausedBreak;
+            manual_ = true;
+            break;
+        case Phase::PausedFocus:
+        case Phase::PausedBreak:
+            durationMs_ = pausedRemainingMs_;
+            startedMs_ = nowMs;
+            phase_ = phase_ == Phase::PausedFocus ? Phase::Focus : Phase::Break;
+            manual_ = true;
             break;
         case Phase::Complete:
             break;
@@ -103,8 +129,9 @@ Orientation Session::opposite(Orientation orientation) {
                                                  : Orientation::Unknown;
 }
 
-void Session::startPhase(Phase phase, uint32_t nowMs, Orientation orientation) {
+void Session::startPhase(Phase phase, uint32_t nowMs, Orientation orientation, bool manual) {
     phase_ = phase;
+    manual_ = manual;
     activeSide_ = orientation;
     startedMs_ = nowMs;
     durationMs_ = phase == Phase::Focus ? focusDurationMs_ : breakDurationMs_;
@@ -114,6 +141,7 @@ void Session::startPhase(Phase phase, uint32_t nowMs, Orientation orientation) {
 }
 
 void Session::finishPhase(Orientation orientation) {
+    manual_ = false;
     if (phase_ == Phase::Focus && round_ >= rounds_) {
         phase_ = Phase::Complete;
         durationMs_ = 0;
@@ -137,8 +165,18 @@ constexpr float kCrossLimit = 0.42f;
 constexpr float kFlatThreshold = 0.84f;
 }  // namespace
 
+bool OrientationSampler::probe(uint32_t nowMs) {
+    if (available_) return true;
+    if (!imu_ || !imu_->available) return false;
+    if (probed_ && nowMs - lastProbeMs_ < 2000) return false;
+    probed_ = true;
+    lastProbeMs_ = nowMs;
+    available_ = imu_->available();
+    return available_;
+}
+
 Orientation OrientationSampler::update(uint32_t nowMs) {
-    if (!available()) return Orientation::Unknown;
+    if (!probe(nowMs)) return Orientation::Unknown;
     if (nowMs - lastSampleMs_ < kSampleIntervalMs) return stable_;
     lastSampleMs_ = nowMs;
 
@@ -183,10 +221,10 @@ constexpr Preset kPresets[focustimer::kPresetCount] = {
 
 // ─── Localization ────────────────────────────────────────────────────────────
 //
-// Same reasoning as DictaphonePlugin's DictStr table: this plugin is built
-// standalone from the app, so it carries its own copy of the app's 6
-// language ordering (0=English, 1=Spanish, 2=French, 3=German, 4=Romanian,
-// 5=Polish) instead of depending on app/Translations.h.
+// Same scheme as DictaphonePlugin's DictStr: the strings live in
+// tools/translations.csv (FtStr.* rows, Polish with diacritics) and come
+// back through PluginDisplayService::pluginTr(). The bridge tells the two
+// plugins' tables apart by the key's high byte (kFtStrTable).
 enum class FtStr : uint8_t {
     PresetPomodoro,
     PresetShort,
@@ -194,168 +232,27 @@ enum class FtStr : uint8_t {
     Start,
     ModeReadyFocus,
     ModeFocus,
-    ModePausedFocus,
+    ModePaused,
     ModeReadyBreak,
     ModeBreak,
-    ModePausedBreak,
     ModeComplete,
     InstrFlipToStartFocus,
     InstrFlipToStartBreak,
     InstrLayFlatToPause,
     InstrFlipToResume,
+    InstrTapToPause,
+    InstrTapToResume,
     InstrTapToFinish,
     Round,
 };
 
+constexpr uint16_t kFtStrTable = 0x0100;
+
+PluginDisplayService* s_display = nullptr;
+
 const char* ftText(FtStr key, int lang) {
-    switch (key) {
-        case FtStr::PresetPomodoro:
-            switch (lang) {
-                case 1: return "Pomodoro";
-                case 2: return "Pomodoro";
-                case 3: return "Pomodoro";
-                case 4: return "Pomodoro";
-                case 5: return "Pomodoro";
-                default: return "Pomodoro";
-            }
-        case FtStr::PresetShort:
-            switch (lang) {
-                case 1: return "Sesion corta";
-                case 2: return "Session courte";
-                case 3: return "Kurze Sitzung";
-                case 4: return "Sesiune scurta";
-                case 5: return "Krotka sesja";
-                default: return "Short session";
-            }
-        case FtStr::PresetDeep:
-            switch (lang) {
-                case 1: return "Trabajo profundo";
-                case 2: return "Travail profond";
-                case 3: return "Vertiefte Arbeit";
-                case 4: return "Munca profunda";
-                case 5: return "Dluga sesja";
-                default: return "Deep work";
-            }
-        case FtStr::Start:
-            switch (lang) {
-                case 1: return "Iniciar";
-                case 2: return "Demarrer";
-                case 3: return "Start";
-                case 4: return "Start";
-                case 5: return "Start";
-                default: return "Start";
-            }
-        case FtStr::ModeReadyFocus:
-            switch (lang) {
-                case 1: return "Listo";
-                case 2: return "Pret";
-                case 3: return "Bereit";
-                case 4: return "Gata";
-                case 5: return "Gotowy";
-                default: return "Ready";
-            }
-        case FtStr::ModeFocus:
-            switch (lang) {
-                case 1: return "Concentracion";
-                case 2: return "Concentration";
-                case 3: return "Fokus";
-                case 4: return "Concentrare";
-                case 5: return "Skupienie";
-                default: return "Focus";
-            }
-        case FtStr::ModePausedFocus:
-        case FtStr::ModePausedBreak:
-            switch (lang) {
-                case 1: return "Pausa";
-                case 2: return "Pause";
-                case 3: return "Pause";
-                case 4: return "Pauza";
-                case 5: return "Pauza";
-                default: return "Paused";
-            }
-        case FtStr::ModeReadyBreak:
-            switch (lang) {
-                case 1: return "Descanso pronto";
-                case 2: return "Pause bientot";
-                case 3: return "Pause bald";
-                case 4: return "Pauza in curand";
-                case 5: return "Zaraz przerwa";
-                default: return "Break soon";
-            }
-        case FtStr::ModeBreak:
-            switch (lang) {
-                case 1: return "Descanso";
-                case 2: return "Pause";
-                case 3: return "Pause";
-                case 4: return "Pauza";
-                case 5: return "Przerwa";
-                default: return "Break";
-            }
-        case FtStr::ModeComplete:
-            switch (lang) {
-                case 1: return "Completado";
-                case 2: return "Termine";
-                case 3: return "Fertig";
-                case 4: return "Finalizat";
-                case 5: return "Koniec!";
-                default: return "Complete";
-            }
-        case FtStr::InstrFlipToStartFocus:
-            switch (lang) {
-                case 1: return "Apoya sobre el lado corto para empezar";
-                case 2: return "Posez sur la tranche pour commencer";
-                case 3: return "Auf die Schmalseite stellen zum Starten";
-                case 4: return "Aseaza pe latura scurta pentru start";
-                case 5: return "Postaw na krotszym boku, by zaczac";
-                default: return "Stand it on a short edge to start";
-            }
-        case FtStr::InstrFlipToStartBreak:
-            switch (lang) {
-                case 1: return "Gira al lado opuesto para el descanso";
-                case 2: return "Retournez pour la pause";
-                case 3: return "Zur anderen Seite drehen fuer die Pause";
-                case 4: return "Intoarce pe partea opusa pentru pauza";
-                case 5: return "Odwroc na druga strone, by zaczac przerwe";
-                default: return "Flip to the other side for the break";
-            }
-        case FtStr::InstrLayFlatToPause:
-            switch (lang) {
-                case 1: return "Ponlo plano para pausar";
-                case 2: return "Posez a plat pour mettre en pause";
-                case 3: return "Flach legen zum Pausieren";
-                case 4: return "Aseaza plat pentru pauza";
-                case 5: return "Poloz plasko, by zapauzowac";
-                default: return "Lay it flat to pause";
-            }
-        case FtStr::InstrFlipToResume:
-            switch (lang) {
-                case 1: return "Vuelve a la posicion anterior para continuar";
-                case 2: return "Revenez a la position precedente pour reprendre";
-                case 3: return "Zurueckdrehen zum Fortsetzen";
-                case 4: return "Revino la pozitia anterioara pentru a continua";
-                case 5: return "Wroc do poprzedniej pozycji, by wznowic";
-                default: return "Flip back to resume";
-            }
-        case FtStr::InstrTapToFinish:
-            switch (lang) {
-                case 1: return "Toca para terminar";
-                case 2: return "Touchez pour terminer";
-                case 3: return "Zum Beenden tippen";
-                case 4: return "Atinge pentru a termina";
-                case 5: return "Dotknij, by zakonczyc";
-                default: return "Tap to finish";
-            }
-        case FtStr::Round:
-            switch (lang) {
-                case 1: return "Ronda";
-                case 2: return "Tour";
-                case 3: return "Runde";
-                case 4: return "Runda";
-                case 5: return "Runda";
-                default: return "Round";
-            }
-    }
-    return "";
+    if (!s_display || !s_display->pluginTr) return "";
+    return s_display->pluginTr(static_cast<uint16_t>(kFtStrTable | static_cast<uint16_t>(key)), lang);
 }
 
 focustimer::FocusTimerCore* s_instance = nullptr;
@@ -369,6 +266,7 @@ FocusTimerCore::FocusTimerCore(PluginDisplayService* display, PluginAudioService
     : display_(display), audio_(audio), imu_(imu), storage_(storage) {}
 
 bool FocusTimerCore::begin() {
+    s_display = display_;
     orientation_.begin(imu_);
     loadPreset();
     screen_ = Screen::Main;
@@ -452,11 +350,18 @@ void FocusTimerCore::handleTouch(const PluginTouchEvent* event) {
             break;
         }
         case Screen::Session:
+            if (event->x < kBackZoneW && event->y < kBackZoneH) {
+                session_.stop();
+                goToScreen(Screen::Main);
+                break;
+            }
             // Once it is over, any tap dismisses the summary and heads
-            // back to the picker. While a round is running, control stays
-            // with the accelerometer on purpose — see InstrLayFlatToPause.
+            // back to the picker. Before that a tap starts, pauses or
+            // resumes the phase (flipping the device still works too).
             if (session_.phase() == Phase::Complete) {
                 goToScreen(Screen::Main);
+            } else {
+                session_.tap(event->timestampMs);
             }
             break;
     }
@@ -510,12 +415,12 @@ void FocusTimerCore::drawSession(uint32_t nowMs) {
             break;
         case Phase::Focus:
             modeKey = FtStr::ModeFocus;
-            instrKey = FtStr::InstrLayFlatToPause;
+            instrKey = session_.manual() ? FtStr::InstrTapToPause : FtStr::InstrLayFlatToPause;
             progressPercent = session_.progressPermille(nowMs) / 10;
             break;
         case Phase::PausedFocus:
-            modeKey = FtStr::ModePausedFocus;
-            instrKey = FtStr::InstrFlipToResume;
+            modeKey = FtStr::ModePaused;
+            instrKey = session_.manual() ? FtStr::InstrTapToResume : FtStr::InstrFlipToResume;
             progressPercent = session_.progressPermille(nowMs) / 10;
             break;
         case Phase::WaitingBreak:
@@ -525,12 +430,12 @@ void FocusTimerCore::drawSession(uint32_t nowMs) {
             break;
         case Phase::Break:
             modeKey = FtStr::ModeBreak;
-            instrKey = FtStr::InstrLayFlatToPause;
+            instrKey = session_.manual() ? FtStr::InstrTapToPause : FtStr::InstrLayFlatToPause;
             progressPercent = session_.progressPermille(nowMs) / 10;
             break;
         case Phase::PausedBreak:
-            modeKey = FtStr::ModePausedBreak;
-            instrKey = FtStr::InstrFlipToResume;
+            modeKey = FtStr::ModePaused;
+            instrKey = session_.manual() ? FtStr::InstrTapToResume : FtStr::InstrFlipToResume;
             progressPercent = session_.progressPermille(nowMs) / 10;
             break;
         case Phase::Complete:
@@ -590,6 +495,7 @@ void focusTimerDestroy() {
         delete s_instance;
         s_instance = nullptr;
     }
+    s_display = nullptr;
 }
 
 void focusTimerUpdate(uint32_t nowMs) {

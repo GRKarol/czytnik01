@@ -425,4 +425,28 @@ inline const char *dictStrLookup(uint8_t keyIndex, uint8_t langIndex) {
   return kTable[keyIndex][langIndex];
 }
 
+inline const char *ftStrLookup(uint8_t keyIndex, uint8_t langIndex) {
+  static const char *const kTable[18][6] = {
+      {"Pomodoro", "Pomodoro", "Pomodoro", "Pomodoro", "Pomodoro", "Pomodoro"},  // PresetPomodoro
+      {"Short session", "Sesion corta", "Session courte", "Kurze Sitzung", "Sesiune scurta", "Kr\xF3""tka sesja"},  // PresetShort
+      {"Deep work", "Trabajo profundo", "Travail profond", "Vertiefte Arbeit", "Munca profunda", "D\x83""uga sesja"},  // PresetDeep
+      {"Start", "Iniciar", "Demarrer", "Start", "Start", "Start"},  // Start
+      {"Ready", "Listo", "Pret", "Bereit", "Gata", "Gotowy"},  // ModeReadyFocus
+      {"Focus", "Concentracion", "Concentration", "Fokus", "Concentrare", "Skupienie"},  // ModeFocus
+      {"Paused", "Pausa", "Pause", "Pause", "Pauza", "Pauza"},  // ModePaused
+      {"Break soon", "Descanso pronto", "Pause bientot", "Pause bald", "Pauza in curand", "Zaraz przerwa"},  // ModeReadyBreak
+      {"Break", "Descanso", "Pause", "Pause", "Pauza", "Przerwa"},  // ModeBreak
+      {"Complete", "Completado", "Termine", "Fertig", "Finalizat", "Koniec!"},  // ModeComplete
+      {"Stand it on a short edge or tap to start", "Apoya sobre el lado corto o toca para empezar", "Posez sur la tranche ou touchez pour commencer", "Auf die Schmalseite stellen oder tippen zum Starten", "Aseaza pe latura scurta sau atinge pentru start", "Postaw na kr\xF3""tszym boku albo dotknij, by zacz\x97""\x9B"""},  // InstrFlipToStartFocus
+      {"Flip to the other edge or tap for the break", "Gira al otro lado o toca para el descanso", "Retournez ou touchez pour la pause", "Umdrehen oder tippen fuer die Pause", "Intoarce sau atinge pentru pauza", "Odwr\xF3""\x9B"" na drugi bok albo dotknij, by zacz\x97""\x9B"" przerw\x99"""},  // InstrFlipToStartBreak
+      {"Lay it flat to pause", "Ponlo plano para pausar", "Posez a plat pour mettre en pause", "Flach legen zum Pausieren", "Aseaza plat pentru pauza", "Po\x83""\xF3""\xB5"" p\x83""asko, by zapauzowa\x9B"""},  // InstrLayFlatToPause
+      {"Flip back to resume", "Vuelve a la posicion anterior para continuar", "Revenez a la position precedente pour reprendre", "Zurueckdrehen zum Fortsetzen", "Revino la pozitia anterioara pentru a continua", "Wr\xF3""\x9B"" do poprzedniej pozycji, by wznowi\x9B"""},  // InstrFlipToResume
+      {"Tap to pause", "Toca para pausar", "Touchez pour mettre en pause", "Tippen zum Pausieren", "Atinge pentru pauza", "Dotknij, by zapauzowa\x9B"""},  // InstrTapToPause
+      {"Tap to resume", "Toca para continuar", "Touchez pour reprendre", "Tippen zum Fortsetzen", "Atinge pentru a continua", "Dotknij, by wznowi\x9B"""},  // InstrTapToResume
+      {"Tap to finish", "Toca para terminar", "Touchez pour terminer", "Zum Beenden tippen", "Atinge pentru a termina", "Dotknij, by zako\x9D""czy\x9B"""},  // InstrTapToFinish
+      {"Round", "Ronda", "Tour", "Runde", "Runda", "Runda"},  // Round
+  };
+  return kTable[keyIndex][langIndex];
+}
+
 }  // namespace TranslationsData

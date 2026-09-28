@@ -1,6 +1,8 @@
 // firmware/src/plugins/DeviceServicesBridge.h
 #pragma once
 
+#include <Arduino.h>
+
 #include "plugins/sdk/PluginDisplayService.h"
 #include "plugins/sdk/PluginAudioService.h"
 #include "plugins/sdk/PluginImuService.h"
@@ -52,6 +54,14 @@ void setup(const char* pluginId,
 
 /// Release bridge resources and null-out static pointers.
 void teardown();
+
+/// True while a button-pair screen (with its header back button) is what
+/// the display shows, and a touch at (x, y) lands on that back button —
+/// App then leaves the plugin instead of forwarding the touch.
+bool exitZoneActive();
+bool isExitZoneTouch(uint16_t x, uint16_t y);
+/// Name shown in the header row of button-pair screens.
+void setPluginTitle(const String &title);
 
 /// Current UI language, as an index into the app's UiLanguage enum
 /// (0=English, 1=Spanish, 2=French, 3=German, 4=Romanian, 5=Polish).

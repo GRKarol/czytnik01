@@ -1205,9 +1205,27 @@ void App::update(uint32_t nowMs) {
       pluginLoader_.forwardButton(btnEvent);
     }
 
-    // Forward touch events to the plugin
+    // Forward touch events to the plugin (except the header back button of
+    // button-pair screens: that one leaves the plugin).
     TouchEvent touchEv;
     if (touch_.poll(touchEv)) {
+      lastActivityMs_ = nowMs;
+      if (touchEv.phase == TouchPhase::Start) {
+        pluginExitTouch_ = DeviceServicesBridge::isExitZoneTouch(touchEv.x, touchEv.y);
+      }
+      if (pluginExitTouch_) {
+        if (touchEv.phase == TouchPhase::End) {
+          pluginExitTouch_ = false;
+          if (DeviceServicesBridge::isExitZoneTouch(touchEv.x, touchEv.y)) {
+            Serial.println("[plugin] header back tapped — unloading plugin");
+            pluginLoader_.unload();
+            returnFromPlugin();
+            return;
+          }
+        }
+        updateBatteryStatus(nowMs);
+        return;
+      }
       PluginTouchEvent pluginTouch = {};
       pluginTouch.x = touchEv.x;
       pluginTouch.y = touchEv.y;
@@ -9409,6 +9427,8 @@ void App::selectPluginsActiveItem(uint32_t nowMs) {
   display_.renderStatus(uiText(UiText::Plugins), tr2(TrKey2::PluginLaunch),
                         entry.name.c_str());
 
+  DeviceServicesBridge::setPluginTitle(entry.name);
+  pluginExitTouch_ = false;
   PluginLoader::LoadResult result = pluginLoader_.load(pluginId);
   if (result.success) {
     Serial.printf("[plugin] launched plugin: %s\n", pluginId);
