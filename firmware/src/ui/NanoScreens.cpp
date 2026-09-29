@@ -365,37 +365,6 @@ void paintThemes(DisplayManager &d, Sink &sink, const ThemesView &view) {
       addTarget(sink, rect, view.ownAccentId);
     }
   } else if (view.section == 1) {
-    const int hintH = view.readingHint.isEmpty() ? 0 : 18;
-    const Rect row(body.x, body.y, body.w, body.h - hintH);
-    const int themes = static_cast<int>(view.readingThemes.size());
-    const int colorW = 124;
-    const int themesW = row.w - (view.letterColorId != kNoTarget ? colorW + kGap : 0);
-    const int cellW = themes > 0 ? (themesW - kGap * (themes - 1)) / themes : themesW;
-    for (int i = 0; i < themes; ++i) {
-      const auto &chip = view.readingThemes[static_cast<size_t>(i)];
-      const int x = row.x + i * (cellW + kGap);
-      const Rect rect(x, row.y, i == themes - 1 ? row.x + themesW - x : cellW, row.h);
-      d.nanoReadingThemeChip(rect, chip.theme, chip.name, chip.selected, sink.pressed(chip.id));
-      addTarget(sink, rect, chip.id);
-    }
-    if (view.letterColorId != kNoTarget) {
-      const Rect rect(right(row) - colorW, row.y, colorW, row.h);
-      const bool pressed = sink.pressed(view.letterColorId);
-      d.nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, 8,
-                          d.nanoColor(pressed ? Role::SurfaceActive : Role::SurfaceMuted));
-      const int cy = rect.y + rect.h / 2 - 14;
-      d.nanoFillCircle(rect.x + rect.w / 2, cy, 13, view.letterColor);
-      d.nanoText(Rect(rect.x + 6, cy + 17, rect.w - 12, 20), view.letterColorLabel, 2, d.nanoColor(Role::Foreground),
-                 Align::Center);
-      d.nanoText(Rect(rect.x + 6, cy + 35, rect.w - 12, 16), view.letterColorName, 1, d.nanoColor(Role::Muted),
-                 Align::Center);
-      addTarget(sink, rect, view.letterColorId);
-    }
-    if (hintH > 0) {
-      d.nanoLabel(Rect(body.x, bottom(body) - hintH + 2, body.w, hintH - 2), view.readingHint, 1, Role::Muted,
-                  Align::Center);
-    }
-  } else if (view.section == 2) {
     constexpr int kColumns = 4;
     constexpr int kRows = 2;
     const int cellW = (body.w - kGap * (kColumns - 1)) / kColumns;
@@ -675,6 +644,60 @@ void paintWheel(DisplayManager &d, Sink &sink, const WheelView &view) {
 
 // ─── Lists ──────────────────────────────────────────────────────────────────
 
+// One control of a list or of a Wyglad czytania row.
+void paintListItem(DisplayManager &d, Sink &sink, const Rect &rect, const ListItem &item) {
+  const bool pressed = sink.pressed(item.id);
+  switch (item.kind) {
+    case ListItem::Kind::Separator:
+      d.nanoSeparator(Rect(rect.x, rect.y + rect.h / 2 - 7, rect.w, 14), item.label);
+      break;
+    case ListItem::Kind::Label:
+      d.nanoLabel(rect, item.label, 2, Role::Muted, Align::Start, 3);
+      break;
+    case ListItem::Kind::Setting:
+      d.nanoSetting(rect, item.label, item.value, true, pressed);
+      addTarget(sink, rect, item.id);
+      break;
+    case ListItem::Kind::Toggle:
+      d.nanoToggle(rect, item.label, item.on, pressed);
+      addTarget(sink, rect, item.id);
+      break;
+    case ListItem::Kind::Slider:
+      d.nanoSlider(rect, item.label, item.value, item.sliderValue, item.sliderMin, item.sliderMax, pressed,
+                   item.dragging);
+      sink.slider(rect, item.id);
+      addTarget(sink, rect, item.id);
+      break;
+    case ListItem::Kind::Row: {
+      const int trailingW = item.trailingId == kNoTarget ? 0 : std::min(120, rect.w / 4);
+      const Rect name(rect.x, rect.y, rect.w - (trailingW > 0 ? trailingW + kGap : 0), rect.h);
+      d.nanoButton(name, item.label, true, item.icon, 1, item.value, "", pressed, item.armed || sink.armed(item.id));
+      addTarget(sink, name, item.id);
+      if (trailingW > 0) {
+        const Rect trailing(right(rect) - trailingW, rect.y, trailingW, rect.h);
+        const bool armed = item.trailingArmed || sink.armed(item.trailingId);
+        d.nanoButton(trailing, armed ? item.trailingLabel : String(), true, Icon::Trash, 1, "", "",
+                     sink.pressed(item.trailingId), armed);
+        addTarget(sink, trailing, item.trailingId);
+      }
+      break;
+    }
+    case ListItem::Kind::Button:
+    default: {
+      const bool armed = item.armed || sink.armed(item.id);
+      d.nanoButton(rect, item.label, true, item.icon, rect.h >= 48 ? 2 : 1, item.value, "", pressed, armed,
+                   item.typeface);
+      if (item.marked && !armed) {
+        d.nanoFillCircle(right(rect) - 16, rect.y + rect.h / 2, 8, d.nanoColor(Role::Accent));
+        d.nanoIcon(Rect(right(rect) - 26, rect.y + rect.h / 2 - 10, 20, 20), Icon::Check, d.nanoColor(Role::OnAccent),
+                   d.nanoColor(Role::Accent));
+      }
+      addTarget(sink, rect, item.id);
+      break;
+    }
+  }
+}
+
 void paintList(DisplayManager &d, Sink &sink, const ListView &view) {
   const Rect area = view.fullScreen ? fullContent() : tabContent();
   const int top = paintHeader(d, sink, Rect(area.x, area.y, area.w, kHeaderH), view.header);
@@ -701,57 +724,7 @@ void paintList(DisplayManager &d, Sink &sink, const ListView &view) {
     const int y = grid.y + row * (cellH + gap);
     const int w = wide ? grid.w : (column == columns - 1 ? right(grid) - x : cellW);
     const int h = span * cellH + (span - 1) * gap;
-    const Rect rect = withHelpButton(d, sink, Rect(x, y, w, h), item.helpId);
-    const bool pressed = sink.pressed(item.id);
-    switch (item.kind) {
-      case ListItem::Kind::Separator:
-        d.nanoSeparator(Rect(rect.x, rect.y + rect.h / 2 - 7, rect.w, 14), item.label);
-        break;
-      case ListItem::Kind::Label:
-        d.nanoLabel(rect, item.label, 2, Role::Muted, Align::Start, 3);
-        break;
-      case ListItem::Kind::Setting:
-        d.nanoSetting(rect, item.label, item.value, true, pressed);
-        addTarget(sink, rect, item.id);
-        break;
-      case ListItem::Kind::Toggle:
-        d.nanoToggle(rect, item.label, item.on, pressed);
-        addTarget(sink, rect, item.id);
-        break;
-      case ListItem::Kind::Slider:
-        d.nanoSlider(rect, item.label, item.value, item.sliderValue, item.sliderMin, item.sliderMax, pressed,
-                     item.dragging);
-        sink.slider(rect, item.id);
-        addTarget(sink, rect, item.id);
-        break;
-      case ListItem::Kind::Row: {
-        const int trailingW = item.trailingId == kNoTarget ? 0 : std::min(120, rect.w / 4);
-        const Rect name(rect.x, rect.y, rect.w - (trailingW > 0 ? trailingW + kGap : 0), rect.h);
-        d.nanoButton(name, item.label, true, item.icon, 1, item.value, "", pressed, item.armed || sink.armed(item.id));
-        addTarget(sink, name, item.id);
-        if (trailingW > 0) {
-          const Rect trailing(right(rect) - trailingW, rect.y, trailingW, rect.h);
-          const bool armed = item.trailingArmed || sink.armed(item.trailingId);
-          d.nanoButton(trailing, armed ? item.trailingLabel : String(), true, Icon::Trash, 1, "", "",
-                       sink.pressed(item.trailingId), armed);
-          addTarget(sink, trailing, item.trailingId);
-        }
-        break;
-      }
-      case ListItem::Kind::Button:
-      default: {
-        const bool armed = item.armed || sink.armed(item.id);
-        d.nanoButton(rect, item.label, true, item.icon, rect.h >= 48 ? 2 : 1, item.value, "", pressed, armed,
-                     item.typeface);
-        if (item.marked && !armed) {
-          d.nanoFillCircle(right(rect) - 16, rect.y + rect.h / 2, 8, d.nanoColor(Role::Accent));
-          d.nanoIcon(Rect(right(rect) - 26, rect.y + rect.h / 2 - 10, 20, 20), Icon::Check, d.nanoColor(Role::OnAccent),
-                     d.nanoColor(Role::Accent));
-        }
-        addTarget(sink, rect, item.id);
-        break;
-      }
-    }
+    paintListItem(d, sink, withHelpButton(d, sink, Rect(x, y, w, h), item.helpId), item);
     if (wide) {
       column = 0;
       row += span;
@@ -853,12 +826,12 @@ void paintReaderPanel(DisplayManager &d, Sink &sink, const ReaderPanelView &view
   }
   d.nanoProgress(Rect(12, 122, kScreenW - 24, 3), view.progressPercent, 0, 100);
 
-  // Bottom bar: Menu | chapters | go to | bookmark | << | - WPM + | Czytaj.
+  // Bottom bar: Menu | chapters | go to | bookmark | << | colors | - WPM + | Czytaj.
   const int y = 132;
   const int h = kScreenH - y - 4;
   constexpr int kSmall = 44;
   int x = 10;
-  const Rect menu(x, y, 92, h);
+  const Rect menu(x, y, 72, h);
   d.nanoButton(menu, view.menuLabel, true, Icon::None, 1, "", "", sink.pressed(view.menuId));
   addTarget(sink, menu, view.menuId);
   x += menu.w + kGap;
@@ -887,6 +860,7 @@ void paintReaderPanel(DisplayManager &d, Sink &sink, const ReaderPanelView &view
   addTarget(sink, bookmark, view.bookmarkId);
   x += bookmark.w + kGap;
   small(view.rewindId, Icon::Rewind);
+  small(view.lookId, Icon::Palette);
 
   // WPM stepper: one pill with - and + ends.
   const int stepperW = 164;
@@ -1607,5 +1581,65 @@ void paintSync(DisplayManager &d, Sink &sink, const SyncView &view) {
   d.nanoEndFrame();
 }
 
+
+// ─── Wyglad czytania ────────────────────────────────────────────────────────
+
+namespace {
+constexpr int kTypographySampleH = 80;
+constexpr int kTypographyBarH = 28;
+}  // namespace
+
+Rect typographySampleRect() { return Rect(0, 0, kScreenW, kTypographySampleH); }
+
+void paintTypography(DisplayManager &d, Sink &sink, const TypographyView &view) {
+  // The sample is the reading screen, so it keeps the reading colors while
+  // the controls below wear the menu palette: what changes the reading
+  // screen sits on the reading screen.
+  const Rect sample = typographySampleRect();
+  d.nanoReaderSample(sample, view.before, view.word, view.after, view.fontSizeLevel);
+  addTarget(sink, sample, view.sampleId);
+
+  const int barY = bottom(sample) + 4;
+  const Rect back(kMargin, barY, 44, kTypographyBarH);
+  iconButton(d, sink, back, view.backId, Icon::ChevronLeft);
+  const Rect segments(right(back) + kGap, barY, kScreenW - kMargin - right(back) - kGap, kTypographyBarH);
+  paintSegments(d, sink, segments, view.segmentIds, view.segmentLabels, view.section);
+
+  const int rowY = barY + kTypographyBarH + 6;
+  const Rect row(kMargin, rowY, kScreenW - kMargin * 2, kScreenH - 4 - rowY);
+  // Theme chips are narrow, the letter color and the other controls share
+  // what is left equally.
+  const int themeCount = static_cast<int>(view.themes.size());
+  const int otherCount = static_cast<int>(view.items.size()) + (view.letterColorId != kNoTarget ? 1 : 0);
+  const int cells = themeCount + otherCount;
+  if (cells == 0) {
+    return;
+  }
+  const int gaps = kGap * (cells - 1);
+  const int themeW = themeCount > 0 ? std::min(100, (row.w - gaps) / cells) : 0;
+  const int otherW = otherCount > 0 ? (row.w - gaps - themeW * themeCount) / otherCount : 0;
+  int x = row.x;
+  int cell = 0;
+  auto nextRect = [&](int width) {
+    ++cell;
+    const int w = cell == cells ? right(row) - x : width;
+    const Rect rect(x, row.y, w, row.h);
+    x += w + kGap;
+    return rect;
+  };
+  for (const TypographyView::ThemeChip &chip : view.themes) {
+    const Rect rect = nextRect(themeW);
+    d.nanoReadingThemePill(rect, chip.theme, chip.name, chip.selected, sink.pressed(chip.id));
+    addTarget(sink, rect, chip.id);
+  }
+  if (view.letterColorId != kNoTarget) {
+    const Rect rect = nextRect(otherW);
+    d.nanoLetterColorTile(rect, view.letterColor, view.letterColorLabel, sink.pressed(view.letterColorId));
+    addTarget(sink, rect, view.letterColorId);
+  }
+  for (const ListItem &item : view.items) {
+    paintListItem(d, sink, nextRect(otherW), item);
+  }
+}
 
 }  // namespace nano

@@ -531,3 +531,16 @@ TrStatus.KeyShow;pokaż;show;mostrar;afficher;zeigen;arată
 TrStatus.KeyClear;wyczyść;clear;limpiar;vider;leeren;golește
 TrStatus.KeySave;zapisz;save;guardar;valider;speichern;salvează
 TrStatus.KeyCancel;anuluj;cancel;cancelar;annuler;abbrechen;anulează
+TrKey4.TypoTitle;Wygląd czytania;Reading look;Aspecto de lectura;Aspect de lecture;Leseansicht;Aspect lectură
+TrKey4.TypoColors;Kolory;Colors;Colores;Couleurs;Farben;Culori
+TrKey4.TypoText;Tekst;Text;Texto;Texte;Text;Text
+TrKey4.TypoGuide;Prowadnica;Guide;Guía;Repère;Führung;Ghid
+TrKey4.TypoHighlight;Wyróżnij literę;Highlight letter;Resaltar letra;Lettre en relief;Buchstabe betonen;Evidențiază litera
+TrKey4.TypoSpacing;Odstęp liter;Letter spacing;Espaciado;Espacement;Laufweite;Spațiere
+TrKey4.TypoNeighbours;Słowa obok;Nearby words;Palabras vecinas;Mots voisins;Nachbarwörter;Cuvinte vecine
+TrKey4.TypoPosition;Pozycja słowa;Word position;Posición;Position du mot;Wortposition;Poziția cuvântului
+TrKey4.TypoLineLength;Długość linii;Line length;Largo de línea;Longueur trait;Linienlänge;Lungime linie
+TrKey4.TypoLineGap;Przerwa w linii;Line gap;Hueco;Écart;Lücke;Spațiu
+TrKey4.TypoDefaults;Domyślne;Defaults;Por defecto;Par défaut;Standard;Implicit
+TrKey4.ThemeMenuColors;Kolory menu;Menu colors;Colores menú;Couleurs menu;Menüfarben;Culori meniu
+TrKey4.ThemeMenuFont;Czcionka menu;Menu font;Fuente menú;Police menu;Menüschrift;Font meniu

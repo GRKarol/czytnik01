@@ -143,10 +143,11 @@ void paintSections(DisplayManager &d, Sink &sink, const Rect &area, const std::v
 
 // ── Motywy ──
 
+// Menu look only: reading colors live on the Wyglad czytania screen.
 struct ThemesView {
-  int section = 0;  // 0 menu colors, 1 reading, 2 font, 3 layout
-  static constexpr int kSections = 4;
-  int segmentIds[kSections] = {kNoTarget, kNoTarget, kNoTarget, kNoTarget};
+  int section = 0;  // 0 menu colors, 1 menu font, 2 layout
+  static constexpr int kSections = 3;
+  int segmentIds[kSections] = {kNoTarget, kNoTarget, kNoTarget};
   String segmentLabels[kSections];
   struct PaletteChip {
     int id = kNoTarget;
@@ -158,19 +159,6 @@ struct ThemesView {
   int ownAccentId = kNoTarget;  // kNoTarget = hide the switch
   String ownAccentLabel;
   bool ownAccentOn = false;
-  // Reading: the three reading themes and the letter color.
-  struct ReadingChip {
-    int id = kNoTarget;
-    uint8_t theme = 0;  // 0 dark, 1 light, 2 night
-    String name;
-    bool selected = false;
-  };
-  std::vector<ReadingChip> readingThemes;
-  int letterColorId = kNoTarget;
-  String letterColorLabel;
-  String letterColorName;
-  uint16_t letterColor = 0;
-  String readingHint;
   struct FontChip {
     int id = kNoTarget;
     uint8_t family = 0;
@@ -286,6 +274,38 @@ struct ListView {
 };
 void paintList(DisplayManager &d, Sink &sink, const ListView &view);
 
+// ── Wyglad czytania (reading colors + typography) ──
+// Top: the reading screen itself with a sample word. Bottom: Back, three
+// segments and one row of controls for the chosen segment.
+
+struct TypographyView {
+  int backId = kNoTarget;
+  static constexpr int kSections = 3;
+  int section = 0;  // 0 colors, 1 text, 2 guide
+  int segmentIds[kSections] = {kNoTarget, kNoTarget, kNoTarget};
+  String segmentLabels[kSections];
+  int sampleId = kNoTarget;  // tap on the sample = next sample word
+  String before;
+  String word;
+  String after;
+  uint8_t fontSizeLevel = 0;
+  // Colors: the three reading themes, then the letter color.
+  struct ThemeChip {
+    int id = kNoTarget;
+    uint8_t theme = 0;  // 0 dark, 1 light, 2 night
+    String name;
+    bool selected = false;
+  };
+  std::vector<ThemeChip> themes;
+  int letterColorId = kNoTarget;
+  String letterColorLabel;
+  uint16_t letterColor = 0;
+  // The rest of the row (toggles, sliders, buttons), left to right.
+  std::vector<ListItem> items;
+};
+Rect typographySampleRect();
+void paintTypography(DisplayManager &d, Sink &sink, const TypographyView &view);
+
 // ── Book details ──
 
 struct BookDetailsView {
@@ -333,6 +353,7 @@ struct ReaderPanelView {
   size_t currentLocal = 0;
   int menuId = kNoTarget;
   int rewindId = kNoTarget;   // back to the start of the sentence
+  int lookId = kNoTarget;     // Wyglad czytania (reading colors, typeface)
   int gotoId = kNoTarget;     // jump to %, page or chapter
   int statusId = kNoTarget;   // the top line + progress bar (also opens "go to")
   int chaptersId = kNoTarget;

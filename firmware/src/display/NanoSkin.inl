@@ -940,6 +940,64 @@ void DisplayManager::nanoReaderPreview(const ui::Rect &area, const String &befor
   nanoResetClip();
 }
 
+void DisplayManager::nanoReaderSample(const ui::Rect &area, const String &before, const String &word,
+                                      const String &after, uint8_t fontSizeLevel) {
+  const int areaX = area.x;
+  const int areaY = area.y;
+  const int areaW = area.w;
+  const int areaH = area.h;
+  nanoFillRect(areaX, areaY, areaW, areaH, backgroundColor());
+  if (word.isEmpty() || areaH < 16 || areaW < 40) {
+    return;
+  }
+  const ReaderTypeface face = currentReaderTypeface();
+  const int baseHeight = std::max(1, baseGlyphHeightForTypeface(face));
+  const ReaderTextStyle style = readerTextStyle(fontSizeLevel);
+  // Room for the guide lines above and below the word.
+  const int fit = (areaH - kRsvpGuideTopOffset - kRsvpGuideBottomOffset - 4) * 100 / baseHeight;
+  const uint8_t scalePercent = static_cast<uint8_t>(std::max(20, std::min<int>(style.scalePercent, fit)));
+  const int textHeight = scaledPercentDimension(baseHeight, scalePercent);
+  const int textY = areaY + (areaH - textHeight) / 2;
+  const int focusIndex = findFocusLetterIndex(word);
+  const int currentX = areaX + rsvpStartXScaledPercent(word, focusIndex, areaW, scalePercent, false);
+  const TextLayoutMetrics layout = serifWordLayoutScaledPercent(word, focusIndex, scalePercent);
+  const int anchorX = areaX + (areaW * currentAnchorPercent()) / 100;
+  const uint16_t ink = wordColor();
+  const uint16_t focus = focusColor();
+  const uint16_t phantom = blendOverBackground(ink, style.alpha);
+
+  nanoSetClip(areaX, areaY, areaW, areaH);
+  drawRsvpAnchorGuide(anchorX, textY, textHeight);
+  if (!before.isEmpty()) {
+    const TextLayoutMetrics beforeLayout = serifWordLayoutScaledPercent(before, -1, scalePercent);
+    nanoTypefaceText(currentX + layout.minX - style.currentGap - beforeLayout.maxX, textY, before, phantom,
+                     scalePercent);
+  }
+  int cursorX = currentX;
+  for (size_t i = 0; i < word.length(); ++i) {
+    const ReaderGlyph glyph = glyphFor(word[i], face);
+    const int xOffset = scaledSignedPercent(glyph.xOffset, scalePercent);
+    const int width = glyph.width == 0 ? 0 : scaledPercentDimension(glyph.width, scalePercent);
+    nanoTypefaceGlyph(cursorX + xOffset, textY, word[i],
+                      static_cast<int>(i) == focusIndex && currentFocusHighlightEnabled() ? focus : ink,
+                      scalePercent, face);
+    int tracked = trackedAdvanceScaledPercent(glyph.xAdvance, scalePercent, i, word.length());
+    if (i + 1 < word.length()) {
+      const ReaderGlyph nextGlyph = glyphFor(word[i + 1], face);
+      tracked -= opticalKerningAdjustment(word[i], word[i + 1], xOffset, width, tracked,
+                                          scaledSignedPercent(nextGlyph.xOffset, scalePercent),
+                                          scaledPercentDesiredGap(scalePercent));
+    }
+    cursorX += std::max(1, tracked);
+  }
+  if (!after.isEmpty()) {
+    const TextLayoutMetrics afterLayout = serifWordLayoutScaledPercent(after, -1, scalePercent);
+    nanoTypefaceText(currentX + layout.maxX + style.currentGap - afterLayout.minX, textY, after, phantom,
+                     scalePercent);
+  }
+  nanoResetClip();
+}
+
 void DisplayManager::nanoScrollPreview(const ui::Rect &area, const std::vector<ContextWord> &words,
                                        size_t currentLocal) {
   if (words.empty() || area.h < 20 || area.w < 40) {
@@ -1744,18 +1802,24 @@ void DisplayManager::nanoSlider(const ui::Rect &rect, const String &label, const
   // empty part, so each half keeps its contrast.
   constexpr int kPad = 12;
   const int textWidth = std::max(0, w - kPad * 2);
-  const int valueWidth = std::min(nanoTextWidth(valueText, 2), textWidth / 2);
-  const int labelWidth = std::max(0, textWidth - valueWidth - 10);
-  const ui::Rect labelRect(x + kPad, y, labelWidth, h);
-  const ui::Rect valueRect(x + w - kPad - valueWidth, y, valueWidth, h);
+  // A narrow tile that cannot hold both on one line puts the label in small
+  // type above the value instead of cutting the label short.
+  const bool stacked = h >= 44 && nanoTextWidth(label, 2) + nanoTextWidth(valueText, 2) + 10 > textWidth;
+  const uint8_t labelSize = stacked ? 1 : 2;
+  const NanoAlign valueAlign = stacked ? NanoAlign::Start : NanoAlign::End;
+  const int valueWidth = stacked ? textWidth : std::min(nanoTextWidth(valueText, 2), textWidth / 2);
+  const int labelWidth = stacked ? textWidth : std::max(0, textWidth - valueWidth - 10);
+  const ui::Rect labelRect = stacked ? ui::Rect(x + kPad, y + 4, labelWidth, h / 2 - 4) : ui::Rect(x + kPad, y, labelWidth, h);
+  const ui::Rect valueRect = stacked ? ui::Rect(x + kPad, y + h / 2 - 2, valueWidth, h / 2)
+                                     : ui::Rect(x + w - kPad - valueWidth, y, valueWidth, h);
   const uint16_t onAccent = nanoColor(NanoRole::OnAccent);
   const uint16_t foreground = nanoColor(NanoRole::Foreground);
   nanoSetClip(x + fill, y, w - fill, h);
-  nanoText(labelRect, label, 2, foreground, NanoAlign::Start);
-  nanoText(valueRect, valueText, 2, foreground, NanoAlign::End);
+  nanoText(labelRect, label, labelSize, foreground, NanoAlign::Start);
+  nanoText(valueRect, valueText, 2, foreground, valueAlign);
   nanoSetClip(x, y, fill, h);
-  nanoText(labelRect, label, 2, onAccent, NanoAlign::Start);
-  nanoText(valueRect, valueText, 2, onAccent, NanoAlign::End);
+  nanoText(labelRect, label, labelSize, onAccent, NanoAlign::Start);
+  nanoText(valueRect, valueText, 2, onAccent, valueAlign);
   nanoResetClip();
 }
 
@@ -1913,6 +1977,49 @@ void DisplayManager::nanoReadingThemeChip(const ui::Rect &rect, uint8_t theme, c
   nanoFillRect(ax, ty + textH + 2, 2, 5, focus);
   nanoResetClip();
   nanoText(ui::Rect(x + 6, y + h - 24, w - 12, 20), name, 2, nanoMix565(background, word, 190), NanoAlign::Center);
+}
+
+void DisplayManager::nanoReadingThemePill(const ui::Rect &rect, uint8_t theme, const String &name, bool selected,
+                                          bool pressed) {
+  uint16_t background = 0;
+  uint16_t word = 0;
+  uint16_t focus = 0;
+  readerThemeColors(theme, background, word, focus);
+  const int x = rect.x;
+  const int y = rect.y;
+  const int w = rect.w;
+  const int h = rect.h;
+  if (selected) {
+    nanoFillRoundRect(x, y, w, h, kNanoRadius, nanoColor(NanoRole::Accent));
+    nanoFillRoundRect(x + 3, y + 3, w - 6, h - 6, kNanoRadius - 2, background);
+  } else {
+    nanoFillRoundRect(x, y, w, h, kNanoRadius, pressed ? nanoColor(NanoRole::SurfaceActive) : background);
+    nanoDrawRoundRect(x, y, w, h, kNanoRadius, nanoColor(NanoRole::SurfaceActive));
+    if (pressed) {
+      nanoFillRoundRect(x + 3, y + 3, w - 6, h - 6, kNanoRadius - 2, background);
+    }
+  }
+  // The focus letter's color as a dot, the name in the theme's word color.
+  constexpr int kDotR = 5;
+  const int textW = std::min(nanoTextWidth(name, 2), w - 16 - kDotR * 2 - 6);
+  const int startX = x + std::max(8, (w - (kDotR * 2 + 6 + textW)) / 2);
+  nanoFillCircle(startX + kDotR, y + h / 2, kDotR, focus);
+  nanoText(ui::Rect(startX + kDotR * 2 + 6, y, std::max(0, x + w - 8 - (startX + kDotR * 2 + 6)), h), name, 2, word,
+           NanoAlign::Start);
+}
+
+void DisplayManager::nanoLetterColorTile(const ui::Rect &rect, uint16_t color, const String &label, bool pressed) {
+  const uint16_t surface = nanoColor(pressed ? NanoRole::SurfaceActive : NanoRole::SurfaceMuted);
+  nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, kNanoRadius, surface);
+  const int r = std::max(5, std::min(12, static_cast<int>(rect.h) / 2 - 7));
+  const int cx = rect.x + 12 + r;
+  const int cy = rect.y + rect.h / 2;
+  // Thin ring so a color close to the tile still reads as a swatch.
+  nanoFillCircle(cx, cy, r + 2, nanoColor(NanoRole::Muted));
+  nanoFillCircle(cx, cy, r, color);
+  const int textX = cx + r + 10;
+  nanoText(ui::Rect(textX, rect.y, std::max(0, rect.x + rect.w - 10 - textX), rect.h), label, 2,
+           nanoColor(NanoRole::Foreground), NanoAlign::Start, rect.h >= 48 ? 2 : 1);
 }
 
 void DisplayManager::nanoColorSwatch(const ui::Rect &rect, uint16_t color, bool selected, bool pressed) {

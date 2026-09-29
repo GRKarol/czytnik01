@@ -128,8 +128,8 @@ void App::extraScreenBack(uint32_t nowMs) {
       openSavePointsList();
       return;
     case MenuScreen::FocusColorPicker:
-      nanoThemeSection_ = 1;  // back to Motywy > Czytanie
-      openNanoThemes();
+      // Back to Wyglad czytania > Kolory, keeping where that screen came from.
+      openNanoTypography(0, nanoTypographyReturn_, nowMs);
       return;
     case MenuScreen::HelpPage:
       menuScreen_ = helpReturnScreen_;

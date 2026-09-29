@@ -52,6 +52,8 @@ enum NanoAction : int {
   kNanoThemeReading = 600,   // + 0 dark / 1 light / 2 night reading theme
   kNanoThemeLetterColor = 610,
   kNanoThemeLayoutType = 620,  // + 0 icons only / 1 icons + labels
+  kNanoTypoSection = 630,      // + 0 colors / 1 text / 2 guide
+  kNanoTypoBack = 640,
 };
 
 // DeviceHome rows (App::deviceHomeActions_).
@@ -79,6 +81,7 @@ enum NanoPanelAction : int {
   kPanelStart,
   kPanelRewind,
   kPanelGoTo,
+  kPanelLook,
 };
 
 // Library order (NVS lib_sort).
@@ -602,7 +605,7 @@ void App::renderNanoSettingsHome() {
   std::vector<nano::Section> sections(3);
   sections[0].title = tr3(TrKey3::NanoReadingSection);
   sections[0].items = {item(kSettingsHomeReadingIndex, tr3(TrKey3::NanoPacingTile), NanoIcon::Sliders),
-                       item(kSettingsHomeTypographyIndex, uiText(UiText::TypographyTune), NanoIcon::Font)};
+                       item(kSettingsHomeTypographyIndex, tr4(TrKey4::TypoTitle), NanoIcon::Font)};
   sections[1].title = tr3(TrKey3::NanoSystemSection);
   sections[1].items = {item(kSettingsHomeDisplayIndex, uiText(UiText::Display), NanoIcon::Sun),
                        item(kNanoActionBase + kNanoSettingsScreensaver, nanoStripColon(tr(TrKey::Screensaver)),
@@ -844,8 +847,8 @@ void App::renderNanoThemes() {
 
   nano::ThemesView view;
   view.section = std::min<int>(nanoThemeSection_, nano::ThemesView::kSections - 1);
-  const String segmentLabels[nano::ThemesView::kSections] = {tr4(TrKey4::MenuSection), tr3(TrKey3::NanoReadingSection),
-                                                             tr3(TrKey3::NanoFontSection), tr3(TrKey3::NanoLayoutTab)};
+  const String segmentLabels[nano::ThemesView::kSections] = {tr4(TrKey4::ThemeMenuColors), tr4(TrKey4::ThemeMenuFont),
+                                                             tr3(TrKey3::NanoLayoutTab)};
   for (int i = 0; i < nano::ThemesView::kSections; ++i) {
     view.segmentIds[i] = kNanoActionBase + kNanoThemeSection + i;
     view.segmentLabels[i] = segmentLabels[i];
@@ -868,24 +871,6 @@ void App::renderNanoThemes() {
       view.ownAccentOn = nanoOwnAccent_;
     }
   } else if (view.section == 1) {
-    const uint8_t current = nightMode_ ? 2 : (darkMode_ ? 0 : 1);
-    const String names[3] = {uiText(UiText::Dark), uiText(UiText::Light), uiText(UiText::Night)};
-    for (uint8_t theme = 0; theme < 3; ++theme) {
-      nano::ThemesView::ReadingChip chip;
-      chip.id = kNanoActionBase + kNanoThemeReading + theme;
-      chip.theme = theme;
-      chip.name = names[theme];
-      chip.selected = theme == current;
-      view.readingThemes.push_back(chip);
-    }
-    view.letterColorId = kNanoActionBase + kNanoThemeLetterColor;
-    view.letterColorLabel = tr4(TrKey4::LetterColorTitle);
-    view.letterColorName = focusColorLabel();
-    view.letterColor = display_.focusColorFor(nightMode_);
-    if (nanoPalette_ == DisplayManager::kNanoPaletteClassic) {
-      view.readingHint = tr4(TrKey4::ReadingThemeHint);
-    }
-  } else if (view.section == 2) {
     nano::ThemesView::FontChip follow;
     follow.id = kNanoActionBase + kNanoThemeFont;
     follow.family = nanoFamilyForTypeface(typographyConfig_.typeface);
@@ -942,6 +927,151 @@ void App::setNanoUiFontChoice(uint8_t choice) {
                 DisplayManager::nanoUiFontName(nanoResolvedUiFont()));
   rebuildSettingsMenuItems();
   renderSettings();
+}
+
+// ─── Wyglad czytania ────────────────────────────────────────────────────────
+// Reading colors and typography on one screen, over the reading screen
+// itself (the current word of the open book, or the demo text), so every
+// change shows as it will look while reading. The menu palette and menu
+// font stay on Motywy.
+
+void App::openNanoTypography(uint8_t section, uint8_t returnTo, uint32_t nowMs) {
+  nanoTypographySection_ = static_cast<uint8_t>(std::min<int>(section, nano::TypographyView::kSections - 1));
+  nanoTypographyReturn_ = returnTo;
+  typographyTuningSelectedIndex_ = TypographyTuningFontSize;
+  menuScreen_ = MenuScreen::TypographyTuning;
+  if (state_ != AppState::Menu) {
+    setState(AppState::Menu, nowMs);
+  } else {
+    renderMenu();
+  }
+}
+
+void App::nanoTypographyBack(uint32_t nowMs) {
+  switch (nanoTypographyReturn_) {
+    case kNanoTypographyFromRead:
+      menuScreen_ = MenuScreen::Main;
+      renderMainMenu();
+      return;
+    case kNanoTypographyFromPanel:
+      menuScreen_ = MenuScreen::Main;
+      setState(AppState::Paused, nowMs);
+      return;
+    default:
+      settingsSelectedIndex_ = kSettingsHomeTypographyIndex;
+      menuScreen_ = MenuScreen::SettingsHome;
+      rebuildSettingsMenuItems();
+      renderSettings();
+      return;
+  }
+}
+
+void App::renderNanoTypography() {
+  applyReaderUiOrientation();
+  display_.setModernCardStyle(true);
+  nanoSyncLayout();
+  currentGridButtons_.clear();
+  currentGridItemIndices_.clear();
+  nanoSliderTargets_.clear();
+  gridHeaderRows_ = 0;
+  gridHasBack_ = false;
+  gridItemsPerPage_ = 1;
+  gridPageCount_ = 1;
+  gridPage_ = 0;
+  gridPagesVertically_ = false;
+  nanoPage_ = 0;
+  nanoPageFirstIndex_.clear();
+
+  nano::TypographyView view;
+  view.backId = kNanoActionBase + kNanoTypoBack;
+  view.section = std::min<int>(nanoTypographySection_, nano::TypographyView::kSections - 1);
+  const String segmentLabels[nano::TypographyView::kSections] = {tr4(TrKey4::TypoColors), tr4(TrKey4::TypoText),
+                                                                 tr4(TrKey4::TypoGuide)};
+  for (int i = 0; i < nano::TypographyView::kSections; ++i) {
+    view.segmentIds[i] = kNanoActionBase + kNanoTypoSection + i;
+    view.segmentLabels[i] = segmentLabels[i];
+  }
+  view.word = reader_.currentWord();
+  if (view.word.isEmpty()) {
+    view.word = tr4(TrKey4::TutWord);
+  } else if (phantomWordsEnabled_) {
+    view.before = phantomBeforeText();
+    view.after = phantomAfterText();
+  }
+  view.fontSizeLevel = readerFontSizeIndex_;
+
+  auto slider = [this](int index, const String &label, const String &value) {
+    nano::ListItem item;
+    item.kind = nano::ListItem::Kind::Slider;
+    item.id = index;
+    item.label = label;
+    item.value = value;
+    NanoSliderSpec spec;
+    if (nanoSliderSpec(static_cast<size_t>(index), spec)) {
+      item.sliderMin = spec.minimum;
+      item.sliderMax = spec.maximum;
+      item.sliderValue = spec.value;
+    }
+    item.dragging = nanoSliderDragging_ && nanoSliderIndex_ == index;
+    return item;
+  };
+  auto toggle = [](int index, const String &label, bool on) {
+    nano::ListItem item;
+    item.kind = nano::ListItem::Kind::Toggle;
+    item.id = index;
+    item.label = label;
+    item.on = on;
+    return item;
+  };
+
+  if (view.section == 0) {
+    const uint8_t current = nightMode_ ? 2 : (darkMode_ ? 0 : 1);
+    const String names[3] = {uiText(UiText::Dark), uiText(UiText::Light), uiText(UiText::Night)};
+    for (uint8_t theme = 0; theme < 3; ++theme) {
+      nano::TypographyView::ThemeChip chip;
+      chip.id = kNanoActionBase + kNanoThemeReading + theme;
+      chip.theme = theme;
+      chip.name = names[theme];
+      chip.selected = theme == current;
+      view.themes.push_back(chip);
+    }
+    view.letterColorId = kNanoActionBase + kNanoThemeLetterColor;
+    view.letterColorLabel = tr4(TrKey4::LetterColorTitle);
+    view.letterColor = display_.focusColorFor(nightMode_);
+    view.items.push_back(
+        toggle(TypographyTuningFocusHighlight, tr4(TrKey4::TypoHighlight), typographyConfig_.focusHighlight));
+  } else if (view.section == 1) {
+    nano::ListItem face;
+    face.kind = nano::ListItem::Kind::Button;
+    face.id = TypographyTuningTypeface;
+    face.label = typefaceDisplayName(typographyConfig_.typeface);
+    face.icon = NanoIcon::Font;
+    face.typeface = typographyConfig_.typeface;
+    view.items.push_back(face);
+    view.items.push_back(slider(TypographyTuningFontSize, uiText(UiText::FontSize), readerFontSizeLabel()));
+    view.items.push_back(slider(TypographyTuningTracking, tr4(TrKey4::TypoSpacing),
+                                String(typographyConfig_.trackingPx > 0 ? "+" : "") +
+                                    String(static_cast<int>(typographyConfig_.trackingPx)) + " px"));
+    view.items.push_back(toggle(TypographyTuningPhantomWords, tr4(TrKey4::TypoNeighbours), phantomWordsEnabled_));
+  } else {
+    view.items.push_back(slider(TypographyTuningAnchor, tr4(TrKey4::TypoPosition),
+                                String(static_cast<unsigned>(effectiveAnchorPercent())) + "%"));
+    view.items.push_back(slider(TypographyTuningGuideWidth, tr4(TrKey4::TypoLineLength),
+                                String(static_cast<unsigned>(typographyConfig_.guideHalfWidth)) + " px"));
+    view.items.push_back(slider(TypographyTuningGuideGap, tr4(TrKey4::TypoLineGap),
+                                String(static_cast<unsigned>(typographyConfig_.guideGap)) + " px"));
+    nano::ListItem reset;
+    reset.kind = nano::ListItem::Kind::Button;
+    reset.id = TypographyTuningReset;
+    reset.label = tr4(TrKey4::TypoDefaults);
+    reset.icon = NanoIcon::Restart;
+    view.items.push_back(reset);
+  }
+
+  NanoSinkAdapter sink(*this);
+  display_.nanoBeginFrame();
+  nano::paintTypography(display_, sink, view);
+  display_.nanoEndFrame();
 }
 
 // ─── Pluginy ────────────────────────────────────────────────────────────────
@@ -1498,6 +1628,15 @@ void App::runNanoAction(int action, uint32_t nowMs) {
     runExtraAction(action, nowMs);
     return;
   }
+  if (action == kNanoTypoBack) {
+    nanoTypographyBack(nowMs);
+    return;
+  }
+  if (action >= kNanoTypoSection && action < kNanoTypoSection + nano::TypographyView::kSections) {
+    nanoTypographySection_ = static_cast<uint8_t>(action - kNanoTypoSection);
+    renderMenu();
+    return;
+  }
   if (action >= kNanoThemeLayoutType) {
     // Same type again = the rail goes to the other side; the other type
     // keeps the current side.
@@ -1598,8 +1737,9 @@ void App::runNanoAction(int action, uint32_t nowMs) {
       openBookPicker(false);
       return;
     case kNanoReadFonts:
-      nanoFontPickerFromRead_ = true;
-      openTypographyFontPicker();
+      // "Aa" on the Czytaj card: how the reading screen looks, starting on
+      // the typeface and size.
+      openNanoTypography(1, kNanoTypographyFromRead, nowMs);
       return;
     case kNanoSettingsScreensaver:
       nanoScreensaverFromSettingsHome_ = true;
@@ -1849,6 +1989,7 @@ void App::renderNanoReaderPanel() {
   view.bookmarkId = kPanelBookmark;
   view.bookmarkFilled = isCurrentPositionSaved();
   view.rewindId = kPanelRewind;
+  view.lookId = kPanelLook;
   view.gotoId = usingStorageBook_ ? kPanelGoTo : nano::kNoTarget;
   view.statusId = usingStorageBook_ ? kPanelGoTo : nano::kNoTarget;
   view.minusId = kPanelWpmMinus;
@@ -1945,6 +2086,10 @@ void App::runNanoReaderPanelAction(int action, uint32_t nowMs) {
     case kPanelGoTo:
       openGoToPosition(false, nowMs);
       return;
+    case kPanelLook:
+      // Reading colors one tap from the page.
+      openNanoTypography(0, kNanoTypographyFromPanel, nowMs);
+      return;
     case kPanelStart:
       playLocked_ = true;
       pauseAtSentenceEndRequested_ = false;
@@ -2008,6 +2153,27 @@ bool App::nanoSliderSpec(size_t index, NanoSliderSpec &spec) const {
         default:
           return false;
       }
+    case MenuScreen::TypographyTuning:
+      switch (index) {
+        case TypographyTuningFontSize:
+          // Small on the left, large on the right (readerFontSizeIndex_ is
+          // 0 = large), same flip as the typography value editor.
+          return set(0, kReaderFontSizeCount - 1, 1, kReaderFontSizeCount - 1 - readerFontSizeIndex_);
+        case TypographyTuningTracking:
+          return set(kTypographyTrackingMin, kTypographyTrackingMax, 1, typographyConfig_.trackingPx);
+        case TypographyTuningAnchor: {
+          const bool left = handednessMode_ == HandednessMode::Left;
+          return set(left ? kLeftHandAnchorMin : kTypographyAnchorMin, left ? kLeftHandAnchorMax : kTypographyAnchorMax, 1,
+                     effectiveAnchorPercent());
+        }
+        case TypographyTuningGuideWidth:
+          return set(kTypographyGuideWidthMin, kTypographyGuideWidthMax, kTypographyGuideWidthStep,
+                     typographyConfig_.guideHalfWidth);
+        case TypographyTuningGuideGap:
+          return set(kTypographyGuideGapMin, kTypographyGuideGapMax, 1, typographyConfig_.guideGap);
+        default:
+          return false;
+      }
     case MenuScreen::ScreensaverSettings:
       switch (index) {
         case kScreensaverSettingsTimeoutIndex:
@@ -2043,6 +2209,22 @@ void App::nanoSliderSet(size_t index, int value) {
       if (index == kSettingsPacingLongWordsIndex) pacingLongWordDelayMs_ = static_cast<uint16_t>(value);
       if (index == kSettingsPacingComplexityIndex) pacingComplexWordDelayMs_ = static_cast<uint16_t>(value);
       if (index == kSettingsPacingPunctuationIndex) pacingPunctuationDelayMs_ = static_cast<uint16_t>(value);
+      return;
+    case MenuScreen::TypographyTuning:
+      // Live: the sample above the controls follows the finger.
+      if (index == TypographyTuningFontSize) {
+        readerFontSizeIndex_ = static_cast<uint8_t>(kReaderFontSizeCount - 1 - value);
+        return;
+      }
+      if (index == TypographyTuningTracking) typographyConfig_.trackingPx = static_cast<int8_t>(value);
+      if (index == TypographyTuningAnchor) {
+        typographyConfig_.anchorPercent = handednessMode_ == HandednessMode::Left
+                                              ? static_cast<uint8_t>(value - kLeftHandAnchorOffset)
+                                              : static_cast<uint8_t>(value);
+      }
+      if (index == TypographyTuningGuideWidth) typographyConfig_.guideHalfWidth = static_cast<uint8_t>(value);
+      if (index == TypographyTuningGuideGap) typographyConfig_.guideGap = static_cast<uint8_t>(value);
+      applyTypographySettings(millis(), false);
       return;
     case MenuScreen::ScreensaverSettings:
       if (index == kScreensaverSettingsTimeoutIndex) screensaverTimeoutIndex_ = static_cast<uint8_t>(value);
@@ -2082,6 +2264,18 @@ void App::nanoSliderCommit(size_t index, uint32_t nowMs) {
       preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
       preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
       applyPacingSettings();
+      return;
+    case MenuScreen::TypographyTuning:
+      if (index == TypographyTuningFontSize) {
+        preferences_.putUChar(kPrefReaderFontSize, readerFontSizeIndex_);
+        applyDisplayPreferences(nowMs, false);
+        return;
+      }
+      preferences_.putChar(kPrefTypographyTracking, typographyConfig_.trackingPx);
+      preferences_.putUChar(kPrefTypographyAnchor, typographyConfig_.anchorPercent);
+      preferences_.putUChar(kPrefTypographyGuideWidth, typographyConfig_.guideHalfWidth);
+      preferences_.putUChar(kPrefTypographyGuideGap, typographyConfig_.guideGap);
+      applyTypographySettings(nowMs, false);
       return;
     case MenuScreen::ScreensaverSettings:
       preferences_.putUChar(kPrefScreensaverTimeout, screensaverTimeoutIndex_);
@@ -2150,8 +2344,7 @@ bool App::handleNanoSliderTouch(const TouchEvent &event, uint32_t nowMs) {
   if (event.phase == TouchPhase::Move) {
     if (nowMs - nanoSliderLastRenderMs_ >= kNanoDragFrameMs) {
       nanoSliderLastRenderMs_ = nowMs;
-      rebuildSettingsMenuItems();
-      renderSettings();
+      nanoSliderRerender();
     }
     return true;
   }
@@ -2159,9 +2352,17 @@ bool App::handleNanoSliderTouch(const TouchEvent &event, uint32_t nowMs) {
   nanoSliderCommit(index, nowMs);
   nanoSliderIndex_ = -1;
   nanoSliderDragging_ = false;
+  nanoSliderRerender();
+  return true;
+}
+
+void App::nanoSliderRerender() {
+  if (menuScreen_ == MenuScreen::TypographyTuning) {
+    renderMenu();
+    return;
+  }
   rebuildSettingsMenuItems();
   renderSettings();
-  return true;
 }
 
 bool App::batteryChargingNow() const {

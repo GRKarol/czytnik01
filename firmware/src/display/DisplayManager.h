@@ -466,6 +466,12 @@ class DisplayManager {
   // so the word doesn't jump when reading starts.
   void nanoReaderPreview(const ui::Rect &area, const String &before, const String &word,
                          const String &after);
+  // The reading screen itself inside `area`: reading background, word and
+  // letter colors, typeface, size level, letter spacing, anchor and guide
+  // lines exactly as set, shrunk only when the size does not fit. Used by
+  // Wyglad czytania so every change shows as it will look while reading.
+  void nanoReaderSample(const ui::Rect &area, const String &before, const String &word,
+                        const String &after, uint8_t fontSizeLevel);
   // Scroll-mode counterpart: three lines of the page around the current
   // word (words[currentLocal]), what was read above dimmed, the word itself
   // marked, in the reading typeface.
@@ -536,6 +542,12 @@ class DisplayManager {
   // theme's colors with the focus letter, as the reading screen shows it.
   void nanoReadingThemeChip(const ui::Rect &rect, uint8_t theme, const String &name, bool selected,
                             bool pressed = false);
+  // Low version of the chip for one row of controls: the theme's
+  // background with its name in the theme's word color.
+  void nanoReadingThemePill(const ui::Rect &rect, uint8_t theme, const String &name, bool selected,
+                            bool pressed = false);
+  // Round swatch of the letter color with a label next to it.
+  void nanoLetterColorTile(const ui::Rect &rect, uint16_t color, const String &label, bool pressed = false);
   // One color of the letter-color palette.
   void nanoColorSwatch(const ui::Rect &rect, uint16_t color, bool selected, bool pressed = false);
   // Battery icon with the percent label stacked under it.

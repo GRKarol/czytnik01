@@ -806,6 +806,12 @@ class App {
   void renderNanoBookDetails();
   void renderNanoThemes();
   void openNanoThemes();
+  // Wyglad czytania (MenuScreen::TypographyTuning in the Nano UI): reading
+  // colors and typography over a live sample. returnTo: kNanoTypographyFrom*.
+  void openNanoTypography(uint8_t section, uint8_t returnTo, uint32_t nowMs);
+  void renderNanoTypography();
+  void nanoTypographyBack(uint32_t nowMs);
+  void nanoSliderRerender();
   void setNanoTheme(uint8_t palette, bool ownAccent, uint8_t layout);
   // Copies nanoLayout_ into the Nano geometry helpers (AppNano.inl).
   void nanoSyncLayout();
@@ -1317,6 +1323,8 @@ class App {
   uint8_t nanoLayout_ = kNanoLayoutLeft;
   size_t nanoThemePage_ = 0;
   uint8_t nanoThemeSection_ = 0;  // Motywy: 0 colors, 1 font, 2 layout
+  uint8_t nanoTypographySection_ = 0;  // Wyglad czytania: 0 colors, 1 text, 2 guide
+  uint8_t nanoTypographyReturn_ = 0;   // where Back goes (kNanoTypographyFrom*)
   // Motywy > Czcionka (persisted: nano_font). kNanoUiFontFollowReader =
   // the family closest to the reading typeface.
   static constexpr uint8_t kNanoUiFontFollowReader = 0xFF;

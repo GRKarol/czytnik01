@@ -376,6 +376,19 @@ enum class TrKey4 : uint8_t {
   SyncPageApp,
   SyncAppTitle,
   SyncAppHint,
+  TypoTitle,
+  TypoColors,
+  TypoText,
+  TypoGuide,
+  TypoHighlight,
+  TypoSpacing,
+  TypoNeighbours,
+  TypoPosition,
+  TypoLineLength,
+  TypoLineGap,
+  TypoDefaults,
+  ThemeMenuColors,
+  ThemeMenuFont,
 };
 
 namespace Translations3 {

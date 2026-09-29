@@ -121,14 +121,14 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
       paintSections(d, sink, tabContent(), sections);
     });
 
-    for (int section = 0; section < 4; ++section) {
+    for (int section = 0; section < ThemesView::kSections; ++section) {
       frame("themes" + std::to_string(section) + suffix, 2, [&] {
         ThemesView v;
         v.section = section;
-        const char *segs[] = {"Menu", "Czytanie", "Czcionka", ""};
-        for (int i = 0; i < 4; ++i) {
+        const String segs[] = {"Kolory menu", "Czcionka menu", pl("Uk~lad")};
+        for (int i = 0; i < ThemesView::kSections; ++i) {
           v.segmentIds[i] = 30 + i;
-          v.segmentLabels[i] = i == 3 ? pl("Uk~lad") : String(segs[i]);
+          v.segmentLabels[i] = segs[i];
         }
         const char *names[] = {"Jak czytanie", "Mocha", "Macchiato", "Frappe", "Latte", "Dracula", "Nord",
                                "Gruvbox", "Tokyo", "Solarized", "Krem", "Sepia", "Grafit", "Las"};
@@ -140,20 +140,6 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
           chip.selected = p == 0;
           v.palettes.push_back(chip);
         }
-        const char *themes[] = {"Ciemny", "Jasny", "Nocny"};
-        for (uint8_t t = 0; t < 3; ++t) {
-          ThemesView::ReadingChip chip;
-          chip.id = 50 + t;
-          chip.theme = t;
-          chip.name = themes[t];
-          chip.selected = t == 0;
-          v.readingThemes.push_back(chip);
-        }
-        v.letterColorId = 55;
-        v.letterColorLabel = "Kolor litery";
-        v.letterColorName = "Niebieski";
-        v.letterColor = 0x001F;
-        v.readingHint = pl("Paleta menu \"Jak czytanie\" te~z bierze te kolory");
         ThemesView::FontChip follow;
         follow.id = 70;
         follow.family = 4;
@@ -354,6 +340,7 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
       v.gotoId = 187;
       v.statusId = 187;
       v.rewindId = 188;
+      v.lookId = 189;
       v.bookmarkId = 182;
       v.minusId = 183;
       v.wpmId = 184;
@@ -365,6 +352,87 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
       v.hint = pl("Przytrzymaj, by czyta~c  -  przesu~n w bok, by przewin~a~c");
       paintReaderPanel(d, sink, v);
     });
+
+    // Wyglad czytania: every segment, in the dark and the light reading theme.
+    for (int theme = 0; theme < 2; ++theme) {
+      d.setDarkMode(theme == 0);
+      for (int section = 0; section < TypographyView::kSections; ++section) {
+        frame("typography" + std::to_string(section) + (theme == 0 ? "" : "_light") + suffix, -1, [&] {
+          TypographyView v;
+          v.backId = 200;
+          v.section = section;
+          const String segs[] = {"Kolory", "Tekst", "Prowadnica"};
+          for (int i = 0; i < TypographyView::kSections; ++i) {
+            v.segmentIds[i] = 201 + i;
+            v.segmentLabels[i] = segs[i];
+          }
+          v.before = pl("kt~ory");
+          v.word = pl("przeczyta~l");
+          v.after = pl("ksi~a~zk~e");
+          v.fontSizeLevel = 0;
+          auto item = [](ListItem::Kind kind, int id, const String &label, const String &value) {
+            ListItem it;
+            it.kind = kind;
+            it.id = id;
+            it.label = label;
+            it.value = value;
+            return it;
+          };
+          if (section == 0) {
+            const char *names[] = {"Ciemny", "Jasny", "Nocny"};
+            for (uint8_t t = 0; t < 3; ++t) {
+              TypographyView::ThemeChip chip;
+              chip.id = 210 + t;
+              chip.theme = t;
+              chip.name = names[t];
+              chip.selected = t == (theme == 0 ? 0 : 1);
+              v.themes.push_back(chip);
+            }
+            v.letterColorId = 214;
+            v.letterColorLabel = "Kolor litery";
+            v.letterColor = d.focusColorFor(false);
+            ListItem hl = item(ListItem::Kind::Toggle, 215, pl("Wyr~o~znij liter~e"), "");
+            hl.on = true;
+            v.items.push_back(hl);
+          } else if (section == 1) {
+            ListItem face = item(ListItem::Kind::Button, 220, "Atkinson Hyperlegible", "");
+            face.icon = Icon::Font;
+            v.items.push_back(face);
+            ListItem size = item(ListItem::Kind::Slider, 221, "Rozmiar", pl("Du~zy"));
+            size.sliderMax = 2;
+            size.sliderValue = 2;
+            v.items.push_back(size);
+            ListItem track = item(ListItem::Kind::Slider, 222, pl("Odst~ep liter"), "0 px");
+            track.sliderMin = -3;
+            track.sliderMax = 6;
+            track.sliderValue = 0;
+            v.items.push_back(track);
+            ListItem nb = item(ListItem::Kind::Toggle, 223, pl("S~lowa obok"), "");
+            nb.on = true;
+            v.items.push_back(nb);
+          } else {
+            ListItem pos = item(ListItem::Kind::Slider, 230, pl("Pozycja s~lowa"), "35%");
+            pos.sliderMin = 20;
+            pos.sliderMax = 60;
+            pos.sliderValue = 35;
+            v.items.push_back(pos);
+            ListItem len = item(ListItem::Kind::Slider, 231, pl("D~lugo~s~c linii"), "20 px");
+            len.sliderMin = 0;
+            len.sliderMax = 60;
+            len.sliderValue = 20;
+            v.items.push_back(len);
+            ListItem gap = item(ListItem::Kind::Slider, 232, "Przerwa w linii", "0 px");
+            gap.sliderMax = 10;
+            v.items.push_back(gap);
+            ListItem reset = item(ListItem::Kind::Button, 233, pl("Domy~s~lne"), "");
+            reset.icon = Icon::Restart;
+            v.items.push_back(reset);
+          }
+          paintTypography(d, sink, v);
+        });
+      }
+    }
+    d.setDarkMode(true);
   }
 
   d.setNanoUiFont(0);

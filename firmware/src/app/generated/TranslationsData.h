@@ -300,7 +300,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[58][6] = {
+  static const char *const kTable[71][6] = {
       {"Battery indicator: ", "Indicador de bater\xED""a: ", "Indicateur batterie : ", "Akkuanzeige: ", "Indicator baterie: ", "Wska\xB3""nik baterii: "},  // BatteryStyleColon
       {"Icon + %", "Icono + %", "Ic\xF4""ne + %", "Symbol + %", "Pictogram\x8B"" + %", "Ikona + %"},  // BatteryStyleIconPercent
       {"Number in icon", "N\xFA""mero en icono", "Chiffre dans l'ic\xF4""ne", "Zahl im Symbol", "Num\x8B""r \xEE""n pictogram\x8B""", "Liczba w ikonie"},  // BatteryStyleNumberInIcon
@@ -359,6 +359,19 @@ inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Get the app", "Descargar la app", "T\xE9""l\xE9""charger l'app", "App laden", "Descarc\x8B"" aplica\x8F""ia", "Pobierz aplikacj\x99"""},  // SyncPageApp
       {"Flower app", "App Flower", "App Flower", "Flower-App", "Aplica\x8F""ia Flower", "Aplikacja Flower"},  // SyncAppTitle
       {"Scan with your phone camera and install the app. Then come back to Pairing.", "Escanea con la c\xE1""mara e instala la app. Luego vuelve a Conexi\xF3""n.", "Scannez avec l'appareil photo et installez l'app. Puis revenez \xE0"" Connexion.", "Mit der Handykamera scannen und die App installieren. Dann zur\xFC""ck zu Verbindung.", "Scaneaz\x8B"" cu camera \x8D""i instaleaz\x8B"" aplica\x8F""ia. Apoi revino la Conectare.", "Zeskanuj aparatem telefonu i zainstaluj aplikacj\x99"". Potem wr\xF3""\x9B"" na stron\x99"" Po\x83""\x97""czenie."},  // SyncAppHint
+      {"Reading look", "Aspecto de lectura", "Aspect de lecture", "Leseansicht", "Aspect lectur\x8B""", "Wygl\x97""d czytania"},  // TypoTitle
+      {"Colors", "Colores", "Couleurs", "Farben", "Culori", "Kolory"},  // TypoColors
+      {"Text", "Texto", "Texte", "Text", "Text", "Tekst"},  // TypoText
+      {"Guide", "Gu\xED""a", "Rep\xE8""re", "F\xFC""hrung", "Ghid", "Prowadnica"},  // TypoGuide
+      {"Highlight letter", "Resaltar letra", "Lettre en relief", "Buchstabe betonen", "Eviden\x8F""iaz\x8B"" litera", "Wyr\xF3""\xB5""nij liter\x99"""},  // TypoHighlight
+      {"Letter spacing", "Espaciado", "Espacement", "Laufweite", "Spa\x8F""iere", "Odst\x99""p liter"},  // TypoSpacing
+      {"Nearby words", "Palabras vecinas", "Mots voisins", "Nachbarw\xF6""rter", "Cuvinte vecine", "S\x83""owa obok"},  // TypoNeighbours
+      {"Word position", "Posici\xF3""n", "Position du mot", "Wortposition", "Pozi\x8F""ia cuv\xE2""ntului", "Pozycja s\x83""owa"},  // TypoPosition
+      {"Line length", "Largo de l\xED""nea", "Longueur trait", "Linienl\xE4""nge", "Lungime linie", "D\x83""ugo\x9F""\x9B"" linii"},  // TypoLineLength
+      {"Line gap", "Hueco", "\xC9""cart", "L\xFC""cke", "Spa\x8F""iu", "Przerwa w linii"},  // TypoLineGap
+      {"Defaults", "Por defecto", "Par d\xE9""faut", "Standard", "Implicit", "Domy\x9F""lne"},  // TypoDefaults
+      {"Menu colors", "Colores men\xFA""", "Couleurs menu", "Men\xFC""farben", "Culori meniu", "Kolory menu"},  // ThemeMenuColors
+      {"Menu font", "Fuente men\xFA""", "Police menu", "Men\xFC""schrift", "Font meniu", "Czcionka menu"},  // ThemeMenuFont
   };
   return kTable[keyIndex][langIndex];
 }

@@ -110,6 +110,13 @@ constexpr int kNanoActionBase = 10000;
 // Nano actions of the 2026-09-27 screens (app/AppExtras.inl) start here
 // (offsets from kNanoActionBase; AppNano.inl's own stay below it).
 constexpr int kExtraActionBase = 1000;
+
+// Where Back on Wyglad czytania (Nano TypographyTuning) goes.
+enum NanoTypographyFrom : uint8_t {
+  kNanoTypographyFromSettings = 0,
+  kNanoTypographyFromRead,
+  kNanoTypographyFromPanel,
+};
 // Minimum gap between two fires of the SAME grid button on the SAME
 // screen — see lastFiredGridItemIndex_ in App.h for why this exists
 // (capacitive-touch contact bounce reads as two quick taps from one
@@ -3398,7 +3405,7 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   // instead of only in legacy Swipe mode. Horizontal swipe now moves
   // between the 10 settings (matches the "swipe = change page" rule used
   // everywhere else); vertical swipe still cycles the preview sample word.
-  if (menuScreen_ == MenuScreen::TypographyTuning) {
+  if (menuScreen_ == MenuScreen::TypographyTuning && !nanoUiActive()) {
     if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
       uint16_t backZoneW = 0;
       uint16_t backZoneH = 0;
@@ -5841,6 +5848,7 @@ void App::commitTextEntry(uint32_t nowMs) {
 }
 
 void App::openTypographyTuning() {
+  nanoTypographyReturn_ = kNanoTypographyFromSettings;
   if (typographyTuningSelectedIndex_ >= TypographyTuningItemCount) {
     typographyTuningSelectedIndex_ = TypographyTuningFontSize;
   }
@@ -5854,10 +5862,7 @@ void App::openTypographyTuning() {
 void App::selectTypographyTuningItem(uint32_t nowMs) {
   switch (typographyTuningSelectedIndex_) {
     case TypographyTuningBack:
-      settingsSelectedIndex_ = kSettingsHomeTypographyIndex;
-      menuScreen_ = MenuScreen::SettingsHome;
-      rebuildSettingsMenuItems();
-      renderSettings();
+      nanoTypographyBack(nowMs);
       return;
     case TypographyTuningFontSize:
       // Was tap-to-cycle; now opens the same drag-slider widget as WPM, so
@@ -5865,6 +5870,7 @@ void App::selectTypographyTuningItem(uint32_t nowMs) {
       openTypographyValueEditor(TypographyValueEditorTarget::FontSize, nowMs);
       return;
     case TypographyTuningTypeface:
+      nanoFontPickerFromRead_ = false;  // back from the picker lands here
       // 10 fonts is too many to cycle one at a time (see font picker below)
       // — tapping this row now opens a grid where each button previews its
       // own name in its own font, tap one to select it directly.
@@ -11292,6 +11298,10 @@ void App::renderSettings() {
 }
 
 void App::renderTypographyTuning() {
+  if (nanoUiActive()) {
+    renderNanoTypography();
+    return;
+  }
   if (kTypographyPreviewWordCount == 0) {
     display_.renderStatus(uiText(UiText::Typography), uiText(UiText::NoSamples), "");
     return;
