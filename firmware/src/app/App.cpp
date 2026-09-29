@@ -1009,16 +1009,15 @@ void App::begin() {
   logApp("Initializing hardware modules");
   const bool displayReady = display_.begin();
 
-  // Boot splash: a beat of black, then the artwork appears at full
-  // brightness (see DisplayManager::renderBootSplash() for why this isn't a
-  // fade — the backlight PWM driver glitches on every ramp step). kBootSplashMs
+  // Boot splash: a beat of black, then the artwork fades in (the pixels
+  // fade, not the backlight; see DisplayManager::fadeFrame()). kBootSplashMs
   // (the total time the Booting state holds before handing off to the
   // wizard/reader) is sized to comfortably cover this sequence.
   if (displayReady) {
     display_.setPhraseLocalizer(
         [](void *context, const char *text) { return static_cast<const App *>(context)->localizedPhrase(text); },
         this);
-    display_.renderBootSplash(kBootSplashBlackMs);
+    display_.renderBootSplash(kBootSplashBlackMs, kBootSplashFadeMs);
     logApp("Display init ok");
   } else {
     ESP_LOGE(kAppTag, "Display init failed");
@@ -1507,7 +1506,7 @@ void App::setState(AppState nextState, uint32_t nowMs) {
     // wizard/reader screen underneath it (see updateState()'s
     // bootSplashFadedOut_ handling) — fade back in now that new content is
     // on screen, instead of an abrupt cut from black to full brightness.
-    display_.fadeInBacklight(kBootSplashFadeMs);
+    display_.fadeFrameIn(kBootSplashFadeMs);
   }
 
   ESP_LOGI(kAppTag, "state -> %s", stateName(state_));
@@ -1536,7 +1535,7 @@ void App::updateState(uint32_t nowMs) {
     auto fadeOutSplashOnce = [&]() {
       if (!bootSplashFadedOut_) {
         bootSplashFadedOut_ = true;
-        display_.fadeOutBacklight(kBootSplashFadeMs);
+        display_.fadeFrameOut(kBootSplashFadeMs);
       }
     };
 
@@ -7639,6 +7638,16 @@ bool App::blockNetworkActionForOtaCheck(const String &title, uint32_t nowMs) {
   return true;
 }
 
+void App::stopAutoSyncAccessPoint(const char *reason) {
+  if (!autoSyncActive_ || state_ == AppState::CompanionSync) {
+    return;
+  }
+  Serial.printf("[app] auto-sync AP stopped for %s\n", reason);
+  companionSync_.end();
+  autoSyncActive_ = false;
+  autoSyncClientConnected_ = false;
+}
+
 void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, uint32_t nowMs) {
   if (blockNetworkActionForOtaCheck("OTA", nowMs)) {
     return;
@@ -7646,6 +7655,12 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
 
   if (!automatic) {
     otaUpdatePromptPending_ = false;
+    // The phone-sync network from boot stays up for as long as the phone
+    // once connected, and OtaUpdater::connectWiFi() leaves the radio alone
+    // while it is up, so a tap on Update did nothing. Opening the Wi-Fi
+    // screen "fixed" it only because its scan switched the radio to station
+    // mode. The user asked for the update: the radio is theirs.
+    stopAutoSyncAccessPoint("update");
   }
 
   if (!otaUpdater_.isConfigured(config)) {
@@ -10884,6 +10899,37 @@ void App::saveReadingPosition(bool force) {
 bool App::loadBookAtIndex(size_t index, uint32_t nowMs, bool allowLegacyPositionFallback,
                           bool allowIndexBuild, bool allowEpubConversion,
                           bool rebuildTimeEstimate) {
+  if (loadBookAtIndexOnce(index, nowMs, allowLegacyPositionFallback, allowIndexBuild,
+                          allowEpubConversion, rebuildTimeEstimate)) {
+    return true;
+  }
+  // Only a book the reader picked by hand gets a second try on a freshly
+  // mounted card. Before this, a card read error kept every book closed
+  // until the reader was restarted.
+  if (!allowIndexBuild || sdRecoveryInProgress_) {
+    return false;
+  }
+  const String path = storage_.bookPath(index);
+  if (path.isEmpty()) {
+    return false;
+  }
+  sdRecoveryInProgress_ = true;
+  bool loaded = false;
+  if (remountStorageAfterReadError()) {
+    const int refreshedIndex = findBookIndexByPath(path);
+    loaded = refreshedIndex >= 0 &&
+             loadBookAtIndexOnce(static_cast<size_t>(refreshedIndex), nowMs,
+                                 allowLegacyPositionFallback, allowIndexBuild,
+                                 allowEpubConversion, rebuildTimeEstimate);
+  }
+  sdRecoveryInProgress_ = false;
+  Serial.printf("[storage] book open after remount %s\n", loaded ? "ok" : "failed");
+  return loaded;
+}
+
+bool App::loadBookAtIndexOnce(size_t index, uint32_t nowMs, bool allowLegacyPositionFallback,
+                              bool allowIndexBuild, bool allowEpubConversion,
+                              bool rebuildTimeEstimate) {
   BookMetadata book;
   String loadedPath;
   size_t loadedIndex = index;
@@ -12042,8 +12088,49 @@ bool App::ensureCurrentBookWordAvailable(uint32_t nowMs) {
     }
   }
 
+  // Fresh file handles did not help either, so the card itself is in a bad
+  // state. Remount it and reopen the book: this is what a reboot used to fix.
+  if (remountStorageAndReopenCurrentBook(nowMs, index)) {
+    return true;
+  }
+
   handleCurrentBookReadFailure(nowMs, "Word cache unreadable");
   return false;
+}
+
+bool App::remountStorageAfterReadError() {
+  if (fontDownloadInProgress_ || bookDownloadInProgress_ || usbTransfer_.active()) {
+    // A background task is writing to the card; pulling it out from under
+    // that task would corrupt the download.
+    Serial.println("[storage] remount skipped, card busy");
+    return false;
+  }
+  Serial.println("[storage] remounting SD after a read error");
+  activeBookStore_.close();
+  storage_.end();
+  delay(50);
+  storageReady_ = storage_.begin();
+  return storageReady_;
+}
+
+bool App::remountStorageAndReopenCurrentBook(uint32_t nowMs, size_t wordIndex) {
+  if (sdRecoveryInProgress_ || currentBookPath_.isEmpty()) {
+    return false;
+  }
+  sdRecoveryInProgress_ = true;
+  const String path = currentBookPath_;
+  bool recovered = false;
+  if (remountStorageAfterReadError()) {
+    const int bookIndex = findBookIndexByPath(path);
+    if (bookIndex >= 0 &&
+        loadBookAtIndex(static_cast<size_t>(bookIndex), nowMs, false, false, false, false)) {
+      reader_.seekTo(wordIndex);
+      recovered = !reader_.currentWord().isEmpty();
+    }
+  }
+  sdRecoveryInProgress_ = false;
+  Serial.printf("[storage] book recovery after remount %s\n", recovered ? "ok" : "failed");
+  return recovered;
 }
 
 void App::handleCurrentBookReadFailure(uint32_t nowMs, const char *detail) {

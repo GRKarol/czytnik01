@@ -2311,6 +2311,9 @@ void DisplayManager::applyBrightness() {
 
 void DisplayManager::flushScaledFrame(int scale, int virtualWidth, int virtualHeight) {
   tickerPlaybackFrameActive_ = false;
+  lastFlushScale_ = scale;
+  lastFlushWidth_ = virtualWidth;
+  lastFlushHeight_ = virtualHeight;
   for (int nativeYStart = 0; nativeYStart < kPanelNativeHeight;
        nativeYStart += kMaxChunkPhysicalRows) {
     const int nativeRows = std::min(kMaxChunkPhysicalRows, kPanelNativeHeight - nativeYStart);
@@ -2415,7 +2418,7 @@ void DisplayManager::renderCenteredWord(const String &word, uint16_t color) {
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
-void DisplayManager::renderBootSplash(uint32_t blackMs) {
+void DisplayManager::renderBootSplash(uint32_t blackMs, uint32_t fadeMs) {
   if (!initialized_) {
     return;
   }
@@ -2448,16 +2451,8 @@ void DisplayManager::renderBootSplash(uint32_t blackMs) {
   flushScaledFrame(1, kBootSplashImageWidth, kBootSplashImageHeight);
   lastRenderKey_ = "";
 
-  // No brightness ramp here (was fadeInBacklight()): writeBacklightPwm()
-  // (axs15231b.cpp) reconfigures the LEDC channel from scratch on every
-  // duty-cycle write, which briefly detaches the backlight pin from PWM —
-  // since the backlight is active-low, that detach reads as a flash to full
-  // brightness. Across a ~30-step ramp that showed up as a visible pop
-  // partway through the animation. One write still glitches once, but
-  // going straight from black to the fully lit splash hides it instead of
-  // interrupting a smooth fade.
-  axs15231bSetBrightnessPercent(brightnessPercent_);
-  axs15231bSetBacklight(true);
+  // The picture fades in rather than the backlight: see fadeFrame().
+  fadeFrameIn(fadeMs);
 }
 
 void DisplayManager::fadeInBacklight(uint32_t fadeMs) {
@@ -2520,6 +2515,90 @@ void DisplayManager::fadeOutBacklight(uint32_t fadeMs) {
     }
   }
   axs15231bSetBacklight(false);
+}
+
+void DisplayManager::fadeFrameIn(uint32_t fadeMs) {
+  if (!fadeFrame(true, fadeMs)) {
+    fadeInBacklight(fadeMs);
+  }
+}
+
+void DisplayManager::fadeFrameOut(uint32_t fadeMs) {
+  if (!fadeFrame(false, fadeMs)) {
+    fadeOutBacklight(fadeMs);
+  }
+}
+
+bool DisplayManager::fadeFrame(bool fadeIn, uint32_t fadeMs) {
+  // The backlight cannot fade: the LED driver is dark below ~44% duty and the
+  // brightness curve keeps half the slider close to that floor, so at a low
+  // or medium setting a backlight ramp had almost nothing to travel and the
+  // boot splash just cut to black. Scaling the pixels instead works the same
+  // at every brightness.
+  if (!initialized_ || virtualFrame_ == nullptr || lastFlushScale_ <= 0 ||
+      lastFlushWidth_ <= 0 || lastFlushHeight_ <= 0 || fadeMs == 0) {
+    return false;
+  }
+
+  const int rows = std::min(lastFlushHeight_, kVirtualBufferHeight);
+  const size_t pixels = static_cast<size_t>(rows) * kVirtualBufferWidth;
+  uint16_t *original = static_cast<uint16_t *>(
+      heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (original == nullptr) {
+    return false;
+  }
+  std::memcpy(original, virtualFrame_, pixels * sizeof(uint16_t));
+
+  // The level follows the clock, so a slow full-frame flush drops steps
+  // instead of stretching the fade; a fast one waits for the next tick.
+  constexpr uint32_t kStepMs = 30;
+  constexpr uint32_t kMaxSteps = 64;
+  const uint32_t startedMs = millis();
+  for (uint32_t step = 0; step <= kMaxSteps; ++step) {
+    const uint32_t elapsedMs = millis() - startedMs;
+    uint32_t level = elapsedMs >= fadeMs ? 256U : (elapsedMs * 256U) / fadeMs;
+    if (step == kMaxSteps) {
+      level = 256U;
+    }
+    // Squared ramp: RGB565 values are gamma-encoded, so a straight line
+    // looks like it jumps at the dark end.
+    uint32_t scale = fadeIn ? level : 256U - level;
+    scale = (scale * scale) >> 8;
+
+    for (size_t i = 0; i < pixels; ++i) {
+      const uint16_t swapped = original[i];
+      const uint16_t rgb = static_cast<uint16_t>((swapped << 8) | (swapped >> 8));
+      const uint32_t r = (((rgb >> 11) & 0x1F) * scale) >> 8;
+      const uint32_t g = (((rgb >> 5) & 0x3F) * scale) >> 8;
+      const uint32_t b = ((rgb & 0x1F) * scale) >> 8;
+      virtualFrame_[i] = panelColor(static_cast<uint16_t>((r << 11) | (g << 5) | b));
+    }
+    flushScaledFrame(lastFlushScale_, lastFlushWidth_, lastFlushHeight_);
+
+    if (fadeIn && step == 0) {
+      // First frame is black, so lighting the backlight now shows nothing
+      // abrupt even when the new screen was drawn while it was off.
+      axs15231bSetBrightnessPercent(brightnessPercent_);
+      axs15231bSetBacklight(true);
+    }
+    if (level >= 256U) {
+      break;
+    }
+    const uint32_t nextTickMs = startedMs + (step + 1) * kStepMs;
+    while (static_cast<int32_t>(millis() - nextTickMs) < 0) {
+      delay(1);
+    }
+  }
+
+  std::memcpy(virtualFrame_, original, pixels * sizeof(uint16_t));
+  heap_caps_free(original);
+  if (fadeIn) {
+    flushScaledFrame(lastFlushScale_, lastFlushWidth_, lastFlushHeight_);
+  } else {
+    axs15231bSetBacklight(false);
+    lastRenderKey_ = "";
+  }
+  return true;
 }
 
 void DisplayManager::renderRsvpWord(const String &word, const String &chapterLabel,

@@ -36,6 +36,10 @@ constexpr size_t kInitialWordReserveMax = 50000;
 constexpr size_t kParseMemoryCheckWordInterval = 512;
 constexpr size_t kParseMinFreeHeapBytes = 32 * 1024;
 constexpr size_t kParseMinLargestHeapBlockBytes = 8 * 1024;
+// The open book holds two files for as long as it is open, and the app's
+// book-text request opens two more; with 5 slots a cover or font read on top
+// of that could fail.
+constexpr uint8_t kMaxOpenFiles = 8;
 constexpr int kSdFrequenciesKhz[] = {
     SDMMC_FREQ_DEFAULT,
     10000,
@@ -2004,7 +2008,7 @@ bool StorageManager::begin() {
     notifyStatus("SD", "Mounting card", "", 5);
     Serial.printf("[storage] Trying SD_MMC mount at %d kHz\n", frequencyKhz);
     SD_MMC.end();
-    mounted_ = SD_MMC.begin(kMountPoint, true, false, frequencyKhz, 5);
+    mounted_ = SD_MMC.begin(kMountPoint, true, false, frequencyKhz, kMaxOpenFiles);
     if (mounted_) {
       const uint64_t sizeMb = SD_MMC.cardSize() / (1024ULL * 1024ULL);
       Serial.printf("[storage] SD initialized (%llu MB) at %d kHz\n", sizeMb, frequencyKhz);
@@ -2811,7 +2815,7 @@ StorageManager::DiagnosticResult StorageManager::diagnoseSdCard() {
     for (int frequencyKhz : kSdFrequenciesKhz) {
       Serial.printf("[sd-check] trying mount at %d kHz\n", frequencyKhz);
       SD_MMC.end();
-      mounted_ = SD_MMC.begin(kMountPoint, true, false, frequencyKhz, 5);
+      mounted_ = SD_MMC.begin(kMountPoint, true, false, frequencyKhz, kMaxOpenFiles);
       if (mounted_) {
         break;
       }

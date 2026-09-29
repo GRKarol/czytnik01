@@ -337,9 +337,14 @@ class DisplayManager {
   void prepareForSleep();
   bool wakeFromSleep();
   void renderCenteredWord(const String &word, uint16_t color = 0xFFFF);
-  void renderBootSplash(uint32_t blackMs);
+  void renderBootSplash(uint32_t blackMs, uint32_t fadeMs);
   void fadeInBacklight(uint32_t fadeMs);
   void fadeOutBacklight(uint32_t fadeMs);
+  // Fades the picture itself (not the backlight) between black and the
+  // frame last drawn. Works at every brightness setting; fadeFrameOut()
+  // leaves the backlight off, fadeFrameIn() turns it on.
+  void fadeFrameIn(uint32_t fadeMs);
+  void fadeFrameOut(uint32_t fadeMs);
   void renderRsvpWord(const String &word, const String &chapterLabel = "",
                       uint8_t progressPercent = 0, bool showFooter = true,
                       const String &footerStatusLabel = "",
@@ -689,6 +694,7 @@ class DisplayManager {
   void applyBrightness();
   void flushScaledFrame(int scale, int virtualWidth, int virtualHeight);
   void flushFullWidthLogicalBand(int yStart, int yEnd);
+  bool fadeFrame(bool fadeIn, uint32_t fadeMs);
   int logicalWidth() const;
   int logicalHeight() const;
   uint16_t focusTimerBreakColor() const;
@@ -715,6 +721,9 @@ class DisplayManager {
       BoardConfig::UI_ROTATED_180 ? BoardConfig::UiOrientation::LandscapeFlipped
                                   : BoardConfig::UiOrientation::Landscape;
   bool tickerPlaybackFrameActive_ = false;
+  int lastFlushScale_ = 0;
+  int lastFlushWidth_ = 0;
+  int lastFlushHeight_ = 0;
   String lastRenderKey_;
   String batteryLabel_;
   bool batteryPresent_ = false;

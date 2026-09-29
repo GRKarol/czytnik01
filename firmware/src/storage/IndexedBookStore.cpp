@@ -124,6 +124,48 @@ bool IndexedBookStore::loadWordWindow(size_t index) const {
   if (!isOpen() || index >= wordCount()) {
     return false;
   }
+  if (readWordWindow(index)) {
+    return true;
+  }
+
+  // A failed seek/read can leave the File handles stuck in an error state,
+  // so every later read of this book failed too until a reboot. Fresh
+  // handles on the same files clear that.
+  Serial.printf("[book] word window read failed at %u, reopening %s\n",
+                static_cast<unsigned>(index), dataPath_.c_str());
+  if (!reopenFiles()) {
+    return false;
+  }
+  return readWordWindow(index);
+}
+
+bool IndexedBookStore::reopenFiles() const {
+  if (indexPath_.isEmpty() || dataPath_.isEmpty()) {
+    return false;
+  }
+  if (indexFile_) {
+    indexFile_.close();
+  }
+  if (dataFile_) {
+    dataFile_.close();
+  }
+  cachedWords_.clear();
+  cachedStart_ = static_cast<size_t>(-1);
+  cachedCount_ = 0;
+
+  indexFile_ = SD_MMC.open(indexPath_, FILE_READ);
+  dataFile_ = SD_MMC.open(dataPath_, FILE_READ);
+  const bool ok = indexFile_ && dataFile_;
+  if (!ok) {
+    Serial.println("[book] reopen failed");
+  }
+  return ok;
+}
+
+bool IndexedBookStore::readWordWindow(size_t index) const {
+  if (!isOpen() || index >= wordCount()) {
+    return false;
+  }
 
   const size_t start = (index / kWordCacheSize) * kWordCacheSize;
   const size_t count = std::min(kWordCacheSize, wordCount() - start);

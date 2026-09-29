@@ -392,6 +392,7 @@ class App {
   void applyPacingSettings();
   void maybeAutoCheckForUpdates(uint32_t nowMs);
   bool startBackgroundOtaCheck(const OtaUpdater::Config &config);
+  void stopAutoSyncAccessPoint(const char *reason);
   static void otaCheckTask(void *params);
   void pollOtaCheckResult(uint32_t nowMs);
   // Font pack (Etap 4/5+ planu fontów na SD): no user action required — the
@@ -1045,6 +1046,11 @@ class App {
   // three call sites in App.cpp that used to duplicate this.
   String savePointDefaultName() const;
   bool ensureCurrentBookWordAvailable(uint32_t nowMs);
+  bool remountStorageAfterReadError();
+  bool remountStorageAndReopenCurrentBook(uint32_t nowMs, size_t wordIndex);
+  bool loadBookAtIndexOnce(size_t index, uint32_t nowMs, bool allowLegacyPositionFallback,
+                           bool allowIndexBuild, bool allowEpubConversion,
+                           bool rebuildTimeEstimate);
   void handleCurrentBookReadFailure(uint32_t nowMs, const char *detail);
   void renderReaderWord();
   void renderContextPreview();
@@ -1490,6 +1496,7 @@ class App {
   bool fontPackComplete_ = false;
   uint32_t lastFontDownloadAttemptMs_ = 0;
   bool bookDownloadInProgress_ = false;
+  bool sdRecoveryInProgress_ = false;
   uint8_t pwrTapCount_ = 0;
   uint32_t pwrFirstTapMs_ = 0;
   bool contextViewVisible_ = false;

@@ -58,6 +58,8 @@ class IndexedBookStore : public BookWordSource {
 
  private:
   bool loadWordWindow(size_t index) const;
+  bool readWordWindow(size_t index) const;
+  bool reopenFiles() const;
   bool readRecords(size_t startIndex, size_t count, std::vector<WordRecord> &records) const;
 
   String indexPath_;
