@@ -36,6 +36,9 @@ public class NetworkPinPlugin extends Plugin {
 
     private ConnectivityManager.NetworkCallback readerCallback;
     private Network readerNetwork;
+    // The JS call still waiting for the system dialog; answered "not
+    // connected" when a newer request (the QR fallback) replaces it.
+    private PluginCall pendingJoinCall;
 
     @PluginMethod
     public void pin(PluginCall call) {
@@ -75,11 +78,39 @@ public class NetworkPinPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
-        releaseReaderRequest(cm);
-
         WifiNetworkSpecifier specifier = new WifiNetworkSpecifier.Builder()
                 .setSsidPattern(new PatternMatcher(READER_SSID_PREFIX, PatternMatcher.PATTERN_PREFIX))
                 .build();
+        requestReader(cm, call, specifier);
+    }
+
+    /**
+     * QR fallback: the exact network name (and password, if the code has
+     * one) read from the reader's screen, for when the "Flower-…" list
+     * stays empty.
+     */
+    @PluginMethod
+    public void connectToNetwork(PluginCall call) {
+        ConnectivityManager cm = getConnectivityManager();
+        String ssid = call.getString("ssid", "");
+        String password = call.getString("password", "");
+        if (cm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || ssid == null || ssid.isEmpty()) {
+            JSObject ret = new JSObject();
+            ret.put("connected", false);
+            ret.put("supported", cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q);
+            call.resolve(ret);
+            return;
+        }
+        WifiNetworkSpecifier.Builder builder = new WifiNetworkSpecifier.Builder().setSsid(ssid);
+        if (password != null && !password.isEmpty()) {
+            builder.setWpa2Passphrase(password);
+        }
+        requestReader(cm, call, builder.build());
+    }
+
+    private void requestReader(ConnectivityManager cm, PluginCall call, WifiNetworkSpecifier specifier) {
+        releaseReaderRequest(cm);
+        pendingJoinCall = call;
         NetworkRequest request = new NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                 .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -94,6 +125,7 @@ public class NetworkPinPlugin extends Plugin {
                 cm.bindProcessToNetwork(network);
                 if (!answered[0]) {
                     answered[0] = true;
+                    pendingJoinCall = null;
                     JSObject ret = new JSObject();
                     ret.put("connected", true);
                     ret.put("supported", true);
@@ -106,6 +138,7 @@ public class NetworkPinPlugin extends Plugin {
                 readerNetwork = null;
                 if (!answered[0]) {
                     answered[0] = true;
+                    pendingJoinCall = null;
                     JSObject ret = new JSObject();
                     ret.put("connected", false);
                     ret.put("supported", true);
@@ -144,6 +177,14 @@ public class NetworkPinPlugin extends Plugin {
     }
 
     private void releaseReaderRequest(ConnectivityManager cm) {
+        if (pendingJoinCall != null) {
+            JSObject ret = new JSObject();
+            ret.put("connected", false);
+            ret.put("supported", true);
+            ret.put("replaced", true);
+            pendingJoinCall.resolve(ret);
+            pendingJoinCall = null;
+        }
         if (readerCallback != null) {
             try {
                 cm.unregisterNetworkCallback(readerCallback);

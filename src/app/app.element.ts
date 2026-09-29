@@ -6,8 +6,10 @@ import type { DeviceLink } from "./device/device-link";
 import { WifiLink, helloDevice } from "./device/wifi-link";
 import {
   isNativeApp,
+  joinNetworkFromQr,
   joinReaderNetwork,
   openWifiSettings,
+  readerNetworkFromQr,
   pinToReaderNetwork,
   unpinReaderNetwork,
 } from "./device/network-pin";
@@ -21,6 +23,7 @@ import "./components/settings-panel.element";
 import "./components/onboarding.element";
 import "./components/pwa-install-dialog.element";
 import "./components/tutorial-wizard.element";
+import "./components/qr-scanner.element";
 import {
   deviceApi,
   onDeviceApiChange,
@@ -115,6 +118,11 @@ export class CzytnikApp extends LitElement {
   @state() private showTutorial = false;
   @state() private readerFirmware = "";
   @state() private joinUnsupported = false;
+  // QR fallback: offered once "Połącz z czytnikiem" has gone 20 s without
+  // the phone finding the reader's network.
+  @state() private qrFallbackVisible = false;
+  @state() private scanningQr = false;
+  private qrFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   @state() private plugins: PluginInfo[] = [];
   @state() private pluginsLoading = false;
@@ -443,9 +451,22 @@ export class CzytnikApp extends LitElement {
                 </li>
                 ${nativeJoin
                   ? html`<li>
-                      Naciśnij <strong>„Połącz z czytnikiem"</strong> i wybierz sieć
-                      <code>Flower-…</code> w okienku telefonu.
-                    </li>`
+                        Naciśnij <strong>„Połącz z czytnikiem"</strong> i wybierz sieć
+                        <code>Flower-…</code> w okienku telefonu.
+                      </li>
+                      ${this.qrFallbackVisible
+                        ? html`<li class="callout">
+                            Telefon nie widzi sieci czytnika? Zeskanuj kod QR z ekranu
+                            czytnika, aplikacja połączy się z tą konkretną siecią.
+                            <button
+                              class="cta ghost small"
+                              ?disabled=${this.scanningQr}
+                              @click=${this.openQrScanner}
+                            >
+                              Zeskanuj kod QR
+                            </button>
+                          </li>`
+                        : ""}`
                   : html`
                       <li>
                         Zeskanuj kod QR aparatem albo wybierz sieć <code>Flower-…</code> w
@@ -481,6 +502,12 @@ export class CzytnikApp extends LitElement {
           </button>
           <button class="cta ghost" @click=${this.cancelChoice}>Wróć</button>
         </div>
+        ${this.scanningQr
+          ? html`<qr-scanner
+              @qr-result=${this.onQrResult}
+              @qr-cancel=${() => (this.scanningQr = false)}
+            ></qr-scanner>`
+          : ""}
       </section>
     `;
   }
@@ -696,7 +723,17 @@ export class CzytnikApp extends LitElement {
   private cancelChoice = () => {
     this.chosenTransport = null;
     this.error = null;
+    this.resetQrFallback();
   };
+
+  private resetQrFallback() {
+    if (this.qrFallbackTimer !== null) {
+      clearTimeout(this.qrFallbackTimer);
+      this.qrFallbackTimer = null;
+    }
+    this.qrFallbackVisible = false;
+    this.scanningQr = false;
+  }
 
   /**
    * Android 10+: the system dialog joins "Flower-…" and pins the app to it,
@@ -706,7 +743,19 @@ export class CzytnikApp extends LitElement {
   private joinAndConnect = async () => {
     this.error = null;
     this.connecting = true;
+    // The clock starts at the first press and keeps running across retries:
+    // 20 s without the reader's network brings up the QR scanner option.
+    if (this.qrFallbackTimer === null && !this.qrFallbackVisible) {
+      this.qrFallbackTimer = setTimeout(() => {
+        this.qrFallbackTimer = null;
+        if (!this.connected) this.qrFallbackVisible = true;
+      }, 20000);
+    }
     const joined = await joinReaderNetwork();
+    if (joined.replaced) {
+      // The QR scanner took over with the exact network; it finishes the job.
+      return;
+    }
     this.connecting = false;
     if (!joined.supported) {
       this.joinUnsupported = true;
@@ -717,6 +766,30 @@ export class CzytnikApp extends LitElement {
         "Telefon nie połączył się z siecią czytnika. Sprawdź, czy na czytniku jest otwarty ekran Aplikacja, i spróbuj jeszcze raz.";
       return;
     }
+    this.resetQrFallback();
+    await this.connect();
+  };
+
+  private openQrScanner = () => {
+    this.error = null;
+    this.scanningQr = true;
+  };
+
+  private onQrResult = async (event: CustomEvent<{ text: string }>) => {
+    this.scanningQr = false;
+    const network = readerNetworkFromQr(event.detail.text);
+    if (!network) {
+      this.error = "To nie jest kod czytnika Flower. Zeskanuj kod z ekranu Urządzenie → Aplikacja.";
+      return;
+    }
+    this.connecting = true;
+    const joined = await joinNetworkFromQr(network.ssid, network.password);
+    this.connecting = false;
+    if (!joined.connected) {
+      this.error = `Nie udało się połączyć z siecią ${network.ssid}. Sprawdź, czy czytnik ma otwarty ekran Aplikacja, i spróbuj jeszcze raz.`;
+      return;
+    }
+    this.resetQrFallback();
     await this.connect();
   };
 

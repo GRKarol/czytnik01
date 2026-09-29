@@ -17,7 +17,11 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 interface NetworkPinPlugin {
   pin(): Promise<{ pinned: boolean }>;
   unpin(): Promise<{ unpinned: boolean }>;
-  connectToReader(): Promise<{ connected: boolean; supported: boolean }>;
+  connectToReader(): Promise<{ connected: boolean; supported: boolean; replaced?: boolean }>;
+  connectToNetwork(options: {
+    ssid: string;
+    password?: string;
+  }): Promise<{ connected: boolean; supported: boolean; replaced?: boolean }>;
   releaseReader(): Promise<void>;
   openWifiSettings(): Promise<void>;
 }
@@ -56,7 +60,11 @@ export async function unpinReaderNetwork(): Promise<void> {
  * app is bound to it once the user picks it. `supported: false` on older
  * Android and in a browser (the user joins the network in settings).
  */
-export async function joinReaderNetwork(): Promise<{ connected: boolean; supported: boolean }> {
+export async function joinReaderNetwork(): Promise<{
+  connected: boolean;
+  supported: boolean;
+  replaced?: boolean;
+}> {
   if (!isNativeApp()) return { connected: false, supported: false };
   try {
     const result = await NetworkPin.connectToReader();
@@ -65,6 +73,49 @@ export async function joinReaderNetwork(): Promise<{ connected: boolean; support
   } catch {
     return { connected: false, supported: false };
   }
+}
+
+/**
+ * QR fallback: joins the exact network read from the reader's QR code.
+ * A still-open "Flower-…" request from joinReaderNetwork() is cancelled
+ * (it resolves with `replaced: true`).
+ */
+export async function joinNetworkFromQr(
+  ssid: string,
+  password: string,
+): Promise<{ connected: boolean; supported: boolean }> {
+  if (!isNativeApp()) return { connected: false, supported: false };
+  try {
+    const result = await NetworkPin.connectToNetwork({ ssid, password });
+    pinned = result.connected;
+    return result;
+  } catch {
+    return { connected: false, supported: false };
+  }
+}
+
+/**
+ * Network name (and password) from a code on the reader's screen: the
+ * standard WiFi QR ("WIFI:T:nopass;S:Flower-3A7F;;") or the pairing link
+ * ("flower://pair?t=…&n=Flower-3A7F", the name is also the network's).
+ */
+export function readerNetworkFromQr(text: string): { ssid: string; password: string } | null {
+  const raw = text.trim();
+  if (/^WIFI:/i.test(raw)) {
+    const field = (key: string) => {
+      // Values escape ; , : and \ with a backslash.
+      const match = raw.match(new RegExp(`[:;]${key}:((?:\\\\.|[^;])*)`, "i"));
+      return match ? match[1].replace(/\\(.)/g, "$1") : "";
+    };
+    const ssid = field("S");
+    return ssid ? { ssid, password: field("P") } : null;
+  }
+  if (/^flower:\/\/pair/i.test(raw)) {
+    const query = raw.slice(raw.indexOf("?") + 1);
+    const name = new URLSearchParams(query).get("n") ?? "";
+    return name ? { ssid: name, password: "" } : null;
+  }
+  return null;
 }
 
 /** Lets the phone leave the reader's network again. */
