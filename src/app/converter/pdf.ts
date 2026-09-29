@@ -68,14 +68,23 @@ export async function parsePdf(file: File): Promise<ParsedBook> {
   const chapterPageMap = await buildChapterPageMap(pdf);
   const hasOutline = chapterPageMap.size > 0;
 
-  const events: BookEvent[] = [];
+  const pages: string[][] = [];
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const content = await page.getTextContent();
-    const text = joinTextItems(content.items as Array<TextItemLike>);
-    if (!text.trim()) continue;
+    pages.push(joinTextItems(content.items as Array<TextItemLike>).split("\n"));
+  }
+  dropRunningHeaders(pages);
 
-    const outlineTitle = chapterPageMap.get(pageNum - 1);
+  const events: BookEvent[] = [];
+  let guessedChapters = 0;
+  let textPages = 0;
+  for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+    const text = pages[pageIndex].join("\n");
+    if (!text.trim()) continue;
+    textPages++;
+
+    const outlineTitle = chapterPageMap.get(pageIndex);
     if (outlineTitle) events.push({ kind: "chapter", text: outlineTitle });
 
     // Rozbij stronę na akapity po pustych liniach.
@@ -84,13 +93,23 @@ export async function parsePdf(file: File): Promise<ParsedBook> {
       const t = para.replace(/\s+/g, " ").trim();
       if (!t) continue;
       // Bez outline'u sprawdź, czy pierwszy akapit strony wygląda jak
-      // nagłówek rozdziału (np. "Rozdział 3" na osobnej linii).
-      if (!hasOutline && first && !outlineTitle && looksLikeChapterHeading(t)) {
+      // nagłówek rozdziału (np. "Rozdział 3" na osobnej linii). Sama liczba
+      // to w PDF-ie prawie zawsze numer strony, nie rozdział.
+      if (!hasOutline && first && !outlineTitle && !/^\d{1,4}\.?$/.test(t) && looksLikeChapterHeading(t)) {
         events.push({ kind: "chapter", text: t });
+        guessedChapters++;
       } else {
         events.push({ kind: "paragraph", text: t });
       }
       first = false;
+    }
+  }
+
+  // A "chapter" on every few pages is a page header the filter missed,
+  // not a chapter: keep the text, drop the guesses.
+  if (guessedChapters > Math.max(4, textPages / 3)) {
+    for (let i = 0; i < events.length; i++) {
+      if (events[i].kind === "chapter") events[i] = { kind: "paragraph", text: events[i].text };
     }
   }
 
@@ -108,6 +127,35 @@ export async function parsePdf(file: File): Promise<ParsedBook> {
     },
     events,
   };
+}
+
+/**
+ * Clears running headers and footers: page numbers and lines (book title,
+ * author, chapter name) repeated at the top or bottom of many pages. Left
+ * in, they came out as a "chapter" on nearly every page ("Dżuma": 186).
+ */
+function dropRunningHeaders(pages: string[][]): void {
+  const edgeLines = (lines: string[]) => {
+    const filled = lines.flatMap((l, i) => (l.trim() ? [i] : []));
+    return [...new Set([...filled.slice(0, 2), ...filled.slice(-2)])];
+  };
+  const key = (line: string) => line.toLocaleLowerCase().replace(/[\d\s\-–—.·|]+/g, "");
+
+  const seen = new Map<string, number>();
+  for (const lines of pages) {
+    const keys = new Set(edgeLines(lines).map((i) => key(lines[i])).filter(Boolean));
+    for (const k of keys) seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
+  const textPages = pages.filter((lines) => lines.some((l) => l.trim())).length;
+  const repeatAt = Math.max(3, Math.ceil(textPages * 0.25));
+
+  for (const lines of pages) {
+    for (const i of edgeLines(lines)) {
+      const line = lines[i].trim();
+      const pageNumber = /^[-–—(]?\s*\d{1,4}\s*[-–—)]?$/.test(line);
+      if (pageNumber || (seen.get(key(line)) ?? 0) >= repeatAt) lines[i] = "";
+    }
+  }
 }
 
 interface TextItemLike {

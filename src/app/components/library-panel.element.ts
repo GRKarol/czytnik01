@@ -81,8 +81,8 @@ export class LibraryPanel extends LitElement {
         : nothing}
       ${this.onReader && (!this.picturesSupported || !this.chaptersSupported)
         ? html`<p class="notice">
-            Okładki i edytor rozdziałów wymagają nowszego firmware'u czytnika. Zaktualizuj go w zakładce
-            Aktualizacje.
+            Okładki i edytor rozdziałów działają od firmware'u v0.3.63. Czytnik ma starszy, zaktualizuj go w
+            zakładce Aktualizacje.
           </p>`
         : nothing}
 

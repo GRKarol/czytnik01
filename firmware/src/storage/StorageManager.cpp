@@ -13,6 +13,7 @@
 #include "storage/BookExtras.h"
 #include "storage/EpubConverter.h"
 #include "text/LatinText.h"
+#include "text/UnicodeFold.h"
 
 #ifndef RSVP_ON_DEVICE_EPUB_CONVERSION
 #define RSVP_ON_DEVICE_EPUB_CONVERSION 0
@@ -578,6 +579,21 @@ void appendText(String &target, const char *text) {
 }
 
 void appendDisplayApproximation(String &target, uint32_t codepoint) {
+  // NFD text (letter + combining mark, e.g. "z" + U+0307) folds into the
+  // precomposed letter; a mark with nothing to join is dropped as before.
+  if (UnicodeFold::isCombiningMark(codepoint)) {
+    if (!target.isEmpty()) {
+      const size_t last = target.length() - 1;
+      const uint32_t composed = UnicodeFold::compose(
+          UnicodeFold::codepointForStorageByte(LatinText::byteValue(target[last])), codepoint);
+      uint8_t storedByte = 0;
+      if (composed != 0 && LatinText::storageByteForCodepoint(composed, storedByte)) {
+        target.setCharAt(last, static_cast<char>(storedByte));
+      }
+    }
+    return;
+  }
+
   if (codepoint >= 32 && codepoint <= 126) {
     target += static_cast<char>(codepoint);
     return;
@@ -1040,6 +1056,11 @@ void appendDisplayApproximation(String &target, uint32_t codepoint) {
       appendText(target, "st");
       return;
     default:
+      // Cyrillic and Greek aren't in the reader's fonts: spell them in Latin
+      // letters instead of dropping them.
+      if (const char *latin = UnicodeFold::transliterate(codepoint)) {
+        target += latin;
+      }
       return;
   }
 }

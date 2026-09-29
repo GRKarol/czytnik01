@@ -55,7 +55,7 @@ export async function parseMarkdown(file: File): Promise<ParsedBook> {
     const head = block.match(/^(#{1,6})\s+(.+?)\s*#*$/);
     if (head) {
       const text = stripMdInline(head[2]);
-      events.push({ kind: "chapter", text });
+      events.push({ kind: "chapter", text, level: head[1].length });
       if (!title && head[1].length <= 2) title = text;
       continue;
     }
@@ -63,7 +63,7 @@ export async function parseMarkdown(file: File): Promise<ParsedBook> {
     // Setext H1/H2: linia + "=== / ---" pod spodem.
     const setext = block.match(/^(.+)\n(=+|-+)\s*$/);
     if (setext) {
-      events.push({ kind: "chapter", text: stripMdInline(setext[1]) });
+      events.push({ kind: "chapter", text: stripMdInline(setext[1]), level: setext[2][0] === "=" ? 1 : 2 });
       if (!title && setext[2][0] === "=") title = stripMdInline(setext[1]);
       continue;
     }
@@ -129,10 +129,17 @@ const SKIP_TAGS = new Set(["HEAD", "SCRIPT", "STYLE", "SVG", "NAV", "MATH"]);
 
 /**
  * Eksportowane, bo używa też parser EPUB (chodzi po `<body>` każdego
- * spine-document). Zwraca listę eventów: rozdziały (z `<hN>`) i paragrafy
- * (cała reszta tekstu, scalona w bloki przez znaczniki blokowe).
+ * spine-document). Zwraca listę eventów: rozdziały (z `<hN>`, z poziomem)
+ * i paragrafy (cała reszta tekstu, scalona w bloki przez znaczniki blokowe).
+ *
+ * `toc` (EPUB ze spisem treści): id elementu -> tytuł rozdziału. Wtedy
+ * rozdziały biorą się tylko ze spisu, a nagłówki `<hN>` zostają zwykłym
+ * tekstem (chyba że powtarzają tytuł, który właśnie wstawił spis).
  */
-export function extractEventsFromElement(root: Element | null): BookEvent[] {
+export function extractEventsFromElement(
+  root: Element | null,
+  toc?: { anchors: Map<string, { title: string; level: number }> },
+): BookEvent[] {
   const events: BookEvent[] = [];
   if (!root) return events;
 
@@ -141,6 +148,14 @@ export function extractEventsFromElement(root: Element | null): BookEvent[] {
     const t = buffer.replace(/\s+/g, " ").trim();
     if (t) events.push({ kind: "paragraph", text: t });
     buffer = "";
+  };
+  const lastChapterTitle = () => {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e.kind === "chapter") return e.text;
+      if (e.kind === "paragraph") return "";
+    }
+    return "";
   };
 
   const walk = (node: Node) => {
@@ -153,10 +168,24 @@ export function extractEventsFromElement(root: Element | null): BookEvent[] {
     const tag = el.tagName.toUpperCase();
     if (SKIP_TAGS.has(tag)) return;
 
+    if (toc) {
+      const id = el.getAttribute("id") ?? el.getAttribute("name");
+      const entry = id ? toc.anchors.get(id) : undefined;
+      if (entry) {
+        flush();
+        events.push({ kind: "chapter", text: entry.title, level: entry.level });
+      }
+    }
+
     if (HEADING_TAGS.has(tag)) {
       flush();
       const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-      if (text) events.push({ kind: "chapter", text });
+      if (!text) return;
+      if (!toc) {
+        events.push({ kind: "chapter", text, level: Number(tag.slice(1)) });
+      } else if (!sameTitle(lastChapterTitle(), text)) {
+        events.push({ kind: "paragraph", text });
+      }
       return;
     }
     if (tag === "BR") {
@@ -173,4 +202,9 @@ export function extractEventsFromElement(root: Element | null): BookEvent[] {
   walk(root);
   flush();
   return events;
+}
+
+function sameTitle(a: string, b: string): boolean {
+  const norm = (t: string) => t.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return !!a && norm(a) === norm(b);
 }

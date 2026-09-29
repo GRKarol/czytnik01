@@ -435,6 +435,7 @@ void App::renderFocusColorPicker() {
   }
   const uint8_t theme = nightMode_ ? 2 : (darkMode_ ? 0 : 1);
   display_.readerThemeColors(theme, view.previewBackground, view.previewWord, view.previewFocus);
+  view.sampleWord = tr4(TrKey4::TutWord);
   NanoSinkAdapter sink(*this);
   sink.zeroIsBack = true;
   nano::paintColorPicker(display_, sink, view);

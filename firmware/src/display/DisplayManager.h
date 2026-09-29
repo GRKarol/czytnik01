@@ -318,6 +318,16 @@ class DisplayManager {
   // for built-in faces; for SD-backed faces only once both the base and
   // _70 .fnt files are present on the card. Safe to call from any task.
   static bool isTypefaceAvailableOnSd(ReaderTypeface typeface);
+
+  // Status and progress screens pass their text through this, so fixed
+  // English phrases (book opening, EPUB conversion, SD check) show in the
+  // UI language. Returns nullptr for text it doesn't know.
+  using PhraseLocalizer = const char *(*)(void *context, const char *text);
+  void setPhraseLocalizer(PhraseLocalizer localizer, void *context) {
+    phraseLocalizer_ = localizer;
+    phraseLocalizerContext_ = context;
+  }
+  String localizedPhrase(const String &text) const;
   void setScrollFontSize(uint8_t level);
   void setScrollLineSpacing(uint8_t level);
   void setScrollMargin(uint8_t level);
@@ -691,6 +701,8 @@ class DisplayManager {
   size_t txBufferBytes_ = 0;
   bool initialized_ = false;
   uint8_t brightnessPercent_ = 100;
+  PhraseLocalizer phraseLocalizer_ = nullptr;
+  void *phraseLocalizerContext_ = nullptr;
   uint8_t focusColorIndex_ = 1;  // 0=red, 1=blue, 2=green, 3=yellow, 4=orange, 5=purple, kFocusColorCustom
   uint16_t customFocusColor_ = 0x001F;
   bool darkMode_ = true;

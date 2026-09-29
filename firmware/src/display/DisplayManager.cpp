@@ -4628,9 +4628,20 @@ void DisplayManager::renderButtonGrid(const String &title, const std::vector<But
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
-void DisplayManager::renderStatus(const String &title, const String &line1, const String &line2,
+String DisplayManager::localizedPhrase(const String &text) const {
+  if (phraseLocalizer_ == nullptr || text.isEmpty()) {
+    return text;
+  }
+  const char *localized = phraseLocalizer_(phraseLocalizerContext_, text.c_str());
+  return localized == nullptr ? text : String(localized);
+}
+
+void DisplayManager::renderStatus(const String &rawTitle, const String &rawLine1, const String &rawLine2,
                                   uint8_t line1ScalePercentRequested,
                                   uint8_t line2ScalePercentRequested) {
+  const String title = localizedPhrase(rawTitle);
+  const String line1 = localizedPhrase(rawLine1);
+  const String line2 = localizedPhrase(rawLine2);
   if (modernCardStyle_) {
     if (initialized_) {
       renderNanoStatusScreen(title, line1, line2, -1);
@@ -4681,9 +4692,11 @@ void DisplayManager::renderStatus(const String &title, const String &line1, cons
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
-void DisplayManager::renderStatusWithQr(const String &title, const String &line1,
+void DisplayManager::renderStatusWithQr(const String &rawTitle, const String &rawLine1,
                                         const bool *qrData, uint8_t qrSize, const String &hint,
                                         const String &cornerHint) {
+  const String title = localizedPhrase(rawTitle);
+  const String line1 = localizedPhrase(rawLine1);
   if (!initialized_ || qrData == nullptr || qrSize == 0) {
     return;
   }
@@ -4814,9 +4827,12 @@ void DisplayManager::renderStatusWithQr(const String &title, const String &line1
   flushScaledFrame(scale, virtualWidth, virtualHeight);
 }
 
-void DisplayManager::renderProgress(const String &title, const String &line1, const String &line2,
+void DisplayManager::renderProgress(const String &rawTitle, const String &rawLine1, const String &rawLine2,
                                     int progressPercent, uint8_t line1ScalePercentRequested,
                                     uint8_t line2ScalePercentRequested) {
+  const String title = localizedPhrase(rawTitle);
+  const String line1 = localizedPhrase(rawLine1);
+  const String line2 = localizedPhrase(rawLine2);
   progressPercent = std::max(-1, std::min(100, progressPercent));
   if (modernCardStyle_) {
     if (initialized_) {

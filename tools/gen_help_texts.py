@@ -40,25 +40,27 @@ def main() -> None:
     for row in rows:
         out.append(f"  {row['key']},")
     out += ["  Count,", "};", "", "namespace HelpData {", ""]
-    out.append("// [topic][0 = Polish, 1 = English][0 = title, 1 = body]")
-    out.append(f"inline const char *const kHelp[{len(rows)}][2][2] = {{")
+    # Same order as UiLanguage (English, Spanish, French, German, Romanian, Polish).
+    langs = ["en", "es", "fr", "de", "ro", "pl"]
+    out.append("// [topic][UiLanguage][0 = title, 1 = body]")
+    out.append(f"inline const char *const kHelp[{len(rows)}][{len(langs)}][2] = {{")
     for row in rows:
-        out.append(
-            f'    {{{{"{literal(row["pl_title"])}", "{literal(row["pl_body"])}"}}, '
-            f'{{"{literal(row["en_title"])}", "{literal(row["en_body"])}"}}}},  // {row["key"]}'
+        cells = ", ".join(
+            f'{{"{literal(row[lang + "_title"] or row["en_title"])}", "{literal(row[lang + "_body"] or row["en_body"])}"}}'
+            for lang in langs
         )
+        out.append(f"    {{{cells}}},  // {row['key']}")
     out += [
         "};",
         "",
-        "// langIndex: UiLanguage (5 = Polish); everything else reads English.",
         "inline const char *title(HelpTopic topic, uint8_t langIndex) {",
         "  const uint8_t t = static_cast<uint8_t>(topic);",
-        f"  return t < {len(rows)} ? kHelp[t][langIndex == 5 ? 0 : 1][0] : \"\";",
+        f"  return t < {len(rows)} ? kHelp[t][langIndex < {len(langs)} ? langIndex : 0][0] : \"\";",
         "}",
         "",
         "inline const char *body(HelpTopic topic, uint8_t langIndex) {",
         "  const uint8_t t = static_cast<uint8_t>(topic);",
-        f"  return t < {len(rows)} ? kHelp[t][langIndex == 5 ? 0 : 1][1] : \"\";",
+        f"  return t < {len(rows)} ? kHelp[t][langIndex < {len(langs)} ? langIndex : 0][1] : \"\";",
         "}",
         "",
         "}  // namespace HelpData",

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "text/LatinText.h"
+#include "text/UnicodeFold.h"
 
 namespace {
 
@@ -878,6 +879,21 @@ bool decodeUtf8Codepoint(const String &text, size_t &index, uint32_t &codepoint)
 }
 
 void appendDisplayApproximation(String &target, uint32_t codepoint) {
+  // NFD text (letter + combining mark, e.g. "z" + U+0307) folds into the
+  // precomposed letter; a mark with nothing to join is dropped as before.
+  if (UnicodeFold::isCombiningMark(codepoint)) {
+    if (!target.isEmpty()) {
+      const size_t last = target.length() - 1;
+      const uint32_t composed = UnicodeFold::compose(
+          UnicodeFold::codepointForStorageByte(LatinText::byteValue(target[last])), codepoint);
+      uint8_t storedByte = 0;
+      if (composed != 0 && LatinText::storageByteForCodepoint(composed, storedByte)) {
+        target.setCharAt(last, static_cast<char>(storedByte));
+      }
+    }
+    return;
+  }
+
   if (codepoint >= 32 && codepoint <= 126) {
     target += static_cast<char>(codepoint);
     return;
@@ -944,6 +960,11 @@ void appendDisplayApproximation(String &target, uint32_t codepoint) {
       target += '>';
       return;
     default:
+      // Cyrillic and Greek aren't in the reader's fonts: spell them in Latin
+      // letters instead of dropping them.
+      if (const char *latin = UnicodeFold::transliterate(codepoint)) {
+        target += latin;
+      }
       return;
   }
 }

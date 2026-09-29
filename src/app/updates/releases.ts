@@ -1,5 +1,6 @@
+import { CapacitorHttp } from "@capacitor/core";
 import { OTA_RELEASES_API } from "../../shared/config";
-import { withInternet } from "../device/network-pin";
+import { isNativeApp, withInternet } from "../device/network-pin";
 
 export interface ReleaseAsset {
   name: string;
@@ -101,6 +102,26 @@ async function readAsset(
   asset: ReleaseAsset,
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<Blob> {
+  // github.com/.../releases/download answers without CORS headers (and so
+  // does the storage host it redirects to), so fetch() from the app's
+  // WebView fails with "Failed to fetch". The native HTTP stack has no
+  // CORS; it just gives no progress, so the bar jumps to 100% at the end.
+  if (isNativeApp()) {
+    onProgress?.(0, asset.size);
+    const res = await CapacitorHttp.get({
+      url: asset.downloadUrl,
+      responseType: "blob",
+      connectTimeout: 20_000,
+      readTimeout: 60_000,
+    });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`Nie udało się pobrać ${asset.name}: HTTP ${res.status}.`);
+    }
+    const bytes = base64ToBytes(String(res.data));
+    onProgress?.(bytes.byteLength, bytes.byteLength);
+    return new Blob([bytes as BlobPart], { type: asset.contentType });
+  }
+
   const res = await fetch(asset.downloadUrl);
   if (!res.ok || !res.body) {
     throw new Error(`Nie udało się pobrać ${asset.name}: HTTP ${res.status}.`);
@@ -121,6 +142,13 @@ async function readAsset(
     }
   }
   return new Blob(chunks as BlobPart[], { type: asset.contentType });
+}
+
+function base64ToBytes(data: string): Uint8Array {
+  const binary = atob(data.replace(/^data:[^,]*,/, ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 /** Porównanie semver lite: zwraca true gdy `latest` > `current`. */

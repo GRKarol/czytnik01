@@ -1,4 +1,4 @@
-import { LitElement, css, html, svg } from "lit";
+import { LitElement, css, html, nothing, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   deviceApi,
@@ -287,14 +287,17 @@ export class SettingsPanel extends LitElement {
                     this.put(legacy ? { typefaceIndex: index, typeface: legacy } : { typefaceIndex: index });
                   }}
                 >
-                  ${TYPEFACE_NAMES.map(
-                    (name, index) =>
-                      html`<option value=${index} ?selected=${index === s.typefaceIndex}>${name}</option>`,
+                  ${TYPEFACE_NAMES.map((name, index) =>
+                    offeredTypeface(s, index)
+                      ? html`<option value=${index} ?selected=${index === s.typefaceIndex}>${name}</option>`
+                      : nothing,
                   )}
                 </select>
                 <small class="muted small">
-                  Kroje od Literaty w dół czytnik wczytuje z karty SD. Bez paczki czcionek na karcie użyje
-                  Atkinsona.
+                  ${s.typefacesAvailable
+                    ? `Czytnik ma teraz ${s.typefacesAvailable.length} z ${TYPEFACE_NAMES.length} krojów. Resztę
+                      pobiera sam na kartę SD, gdy połączy się z domowym Wi-Fi.`
+                    : "Kroje od Literaty w dół czytnik wczytuje z karty SD. Bez paczki czcionek na karcie użyje Atkinsona."}
                 </small>
               </label>
               ${this.toggle("focusHighlight", "Podświetlenie fokusowe", s.focusHighlight)}
@@ -341,7 +344,7 @@ export class SettingsPanel extends LitElement {
           undefined,
           "theme",
         )}
-        ${this.slider("brightness", "Jasność", Math.max(20, s.brightness), 20, 100, 1, "%", "brightness")}
+        ${this.slider("brightness", "Jasność", Math.max(10, s.brightness), 10, 100, 1, "%", "brightness")}
         ${this.segmented(
           "readerHand",
           s.readerHand,
@@ -1140,4 +1143,9 @@ function formatKb(kb: number): string {
   if (kb < 1024) return `${kb} kB`;
   if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
   return `${(kb / 1024 / 1024).toFixed(2)} GB`;
+}
+
+/** The reader lists only faces it can draw; the app offers the same set (plus the one in use). */
+function offeredTypeface(s: DeviceSettings, index: number): boolean {
+  return !s.typefacesAvailable || s.typefacesAvailable.includes(index) || index === s.typefaceIndex;
 }

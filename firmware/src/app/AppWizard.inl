@@ -111,6 +111,9 @@ void App::renderWizardPage() {
       view.title = tr3(TrKey3::WelcomeReadingModeTitle);
       view.subtitle = tr4(TrKey4::WizModeSub);
       addChips(nano::WizardChipArt::Rsvp);
+      for (nano::WizardChip &chip : view.chips) {
+        chip.word = tr4(TrKey4::TutWord);
+      }
       if (view.chips.size() > 1) {
         view.chips[1].art = nano::WizardChipArt::Scroll;
       }

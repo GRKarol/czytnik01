@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Localization.h"
+#include <string.h>
+
 #include "generated/TranslationsData.h"
 
 /// Extended translation keys for strings that were previously only
@@ -391,3 +393,135 @@ inline const char *tr4(UiLanguage lang, TrKey4 key) {
 }
 
 }  // namespace Translations4
+
+/// UI phrases that used to be hard-coded English: book opening/indexing
+/// and EPUB progress, SD check, keyboard keys, scroll labels. The English
+/// column doubles as the lookup key (see localizedPhrase()), so status text
+/// built deep in StorageManager gets translated where it is drawn.
+enum class TrStatus : uint8_t {
+  OpeningBook,
+  CheckingIndex,
+  CheckingSavedIndex,
+  LoadingWordCache,
+  OpeningWordCache,
+  BookOpenFailed,
+  WordCacheUnreadable,
+  RestoringPosition,
+  UsingCachedEstimate,
+  ReadingTime,
+  FastEstimate,
+  WordsInBackground,
+  CurrentBook,
+  BookReadFailed,
+  ReopenFromLibrary,
+  ParsingContent,
+  ExtractingContent,
+  OpeningEpub,
+  ReadingArchive,
+  ReadingMetadata,
+  ReadingPackage,
+  BuildingOrder,
+  ParsedContent,
+  FinishingEpub,
+  EpubConverted,
+  PreviousRestart,
+  SkippingEpub,
+  MountingCard,
+  ScanningBooks,
+  EpubConvertsOnOpen,
+  EpubUnsupported,
+  BuildFlagDisabled,
+  PreparingBook,
+  EpubMissing,
+  ConvertingEpub,
+  EpubConversionFailed,
+  CheckSerialMonitor,
+  ConversionComplete,
+  IndexFailed,
+  FileUnreadable,
+  NoReadableWords,
+  BookTooLarge,
+  SourceReadFailed,
+  IndexingBook,
+  BuildingWordIndex,
+  SdWriteFailed,
+  RenameFailed,
+  IndexReady,
+  BookReady,
+  IndexIsCurrent,
+  IndexNeeded,
+  OpenFromLibrary,
+  IndexNeedsRebuild,
+  ValidationFailed,
+  SdNotMounted,
+  CheckCard,
+  FoldersMissing,
+  RunSdCheck,
+  NoBooksFound,
+  AddBooksToSd,
+  LibraryChanged,
+  OpenListAgain,
+  ConversionCacheMissing,
+  IndexInvalid,
+  IndexUnreadable,
+  SdCheck,
+  CheckingFolders,
+  ConfirmRepair,
+  ScanningBooksFolder,
+  TestingWrite,
+  ReadingLibrary,
+  MemoryLimit,
+  TryConverterApp,
+  FontTitle,
+  FontNotOnSd,
+  UsingAtkinson,
+  ScanningNetworks,
+  OtaCheckRunning,
+  TryAgainSoon,
+  Password,
+  WifiSecure,
+  WifiOpen,
+  Ready,
+  SleepWord,
+  OffTitle,
+  ChapterCaps,
+  FooterChapter,
+  FooterBook,
+  Preview,
+  SpacingCompact,
+  SpacingNormal,
+  SpacingRelaxed,
+  MarginNarrow,
+  MarginWide,
+  KeySpace,
+  KeyBack,
+  KeyHide,
+  KeyShow,
+  KeyClear,
+  KeySave,
+  KeyCancel,
+};
+
+constexpr uint8_t kTrStatusCount = 101;
+
+namespace TranslationsStatus {
+
+inline const char *trStatus(UiLanguage lang, TrStatus key) {
+  return TranslationsData::trStatusLookup(static_cast<uint8_t>(key), static_cast<uint8_t>(lang));
+}
+
+// The phrase in `lang` when `english` is one of the TrStatus phrases,
+// nullptr otherwise (book titles, file names, numbers pass through).
+inline const char *localizedPhrase(UiLanguage lang, const char *english) {
+  if (english == nullptr || english[0] == '\0' || lang == UiLanguage::English) {
+    return nullptr;
+  }
+  for (uint8_t i = 0; i < kTrStatusCount; ++i) {
+    if (strcmp(TranslationsData::trStatusLookup(i, 0), english) == 0) {
+      return TranslationsData::trStatusLookup(i, static_cast<uint8_t>(lang));
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace TranslationsStatus

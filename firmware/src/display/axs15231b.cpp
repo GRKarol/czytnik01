@@ -1,5 +1,8 @@
 #include "display/axs15231b.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include <driver/spi_master.h>
 #include <esp_log.h>
 
@@ -31,21 +34,49 @@ bool gBusReady = false;
 bool gBacklightOn = false;
 uint8_t gBrightnessPercent = 100;
 
-void writeBacklightPwm() {
-  pinMode(BoardConfig::PIN_LCD_BACKLIGHT, OUTPUT);
-  analogWriteResolution(8);
-  analogWriteFrequency(50000);
+// The backlight runs on its own LEDC channel, set up once. analogWrite()
+// re-runs ledcSetup() and re-attaches the pin on every call, and each of
+// those resets glitched the (active-low) backlight; dragging the brightness
+// slider made it blink.
+constexpr uint8_t kBacklightChannel = 0;
+constexpr uint32_t kBacklightPwmHz = 25000;
+constexpr uint8_t kBacklightPwmBits = 10;
+constexpr uint32_t kBacklightPwmMax = (1U << kBacklightPwmBits) - 1U;
+// The LED driver stays dark until the pin is low for ~40% of the period
+// (rsvpnano measured the same dead zone on this panel at 25 kHz). 10% on the
+// slider sits just above it, so the lowest setting is dim but never black.
+constexpr float kBacklightFloorShare = 0.44f;
+constexpr uint8_t kLowestUserPercent = 10;
+bool gPwmReady = false;
 
-  if (!gBacklightOn) {
-    analogWrite(BoardConfig::PIN_LCD_BACKLIGHT, 255);
+// Share of the period the pin is held low. Above the floor the light rises
+// fast and then flattens out, so the curve spends most of the slider near
+// the floor: equal slider steps look like roughly equal brightness steps.
+float backlightShareForPercent(uint8_t percent) {
+  if (percent >= 100) {
+    return 1.0f;
+  }
+  if (percent <= kLowestUserPercent) {
+    return kBacklightFloorShare;
+  }
+  const float t = static_cast<float>(percent - kLowestUserPercent) / static_cast<float>(100 - kLowestUserPercent);
+  return kBacklightFloorShare + (1.0f - kBacklightFloorShare) * powf(t, 2.5f);
+}
+
+void writeBacklightPwm() {
+  uint32_t lowTicks = 0;
+  if (gBacklightOn) {
+    lowTicks = static_cast<uint32_t>(backlightShareForPercent(gBrightnessPercent) * kBacklightPwmMax + 0.5f);
+  }
+  const uint32_t duty = kBacklightPwmMax - std::min(lowTicks, kBacklightPwmMax);
+  if (!gPwmReady) {
+    ledcSetup(kBacklightChannel, kBacklightPwmHz, kBacklightPwmBits);
+    ledcWrite(kBacklightChannel, duty);
+    ledcAttachPin(BoardConfig::PIN_LCD_BACKLIGHT, kBacklightChannel);
+    gPwmReady = true;
     return;
   }
-
-  // Waveshare drives the LCD backlight as active-low PWM; lower duty is brighter.
-  const uint8_t brightness = gBrightnessPercent == 0 ? 1 : gBrightnessPercent;
-  const uint8_t activeDuty =
-      static_cast<uint8_t>((static_cast<uint16_t>(brightness) * 255U) / 100U);
-  analogWrite(BoardConfig::PIN_LCD_BACKLIGHT, 255 - activeDuty);
+  ledcWrite(kBacklightChannel, duty);
 }
 
 void setBacklight(bool on) {
@@ -130,13 +161,10 @@ void axs15231bInit() {
 void axs15231bSetBacklight(bool on) { setBacklight(on); }
 
 void axs15231bSetBrightnessPercent(uint8_t percent) {
-  // Below this the backlight driver's active-low PWM reads as fully off on
-  // this panel — clamp here too, not just in the app-level presets, so any
-  // caller (companion sync API included) can't dim the screen past the
-  // point of it looking powered-down.
-  constexpr uint8_t kMinVisiblePercent = 15;
-  if (percent < kMinVisiblePercent) {
-    percent = kMinVisiblePercent;
+  // backlightShareForPercent() keeps 10% above the driver's dead zone; any
+  // lower value (companion sync API included) is lifted to it.
+  if (percent < kLowestUserPercent) {
+    percent = kLowestUserPercent;
   } else if (percent > 100) {
     percent = 100;
   }

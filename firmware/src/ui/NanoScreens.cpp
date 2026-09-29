@@ -8,6 +8,16 @@ namespace nano {
 
 namespace {
 
+// Head, focus letter and tail of a sample word, split near where the reader
+// puts its focus letter.
+void splitSampleWord(const String &word, String &head, String &focus, String &tail) {
+  const size_t n = word.length();
+  const size_t at = n <= 1 ? 0 : (n <= 5 ? 1 : (n <= 9 ? 2 : 3));
+  head = word.substring(0, at);
+  focus = word.substring(at, at + 1);
+  tail = word.substring(at + 1);
+}
+
 Layout gLayout;
 
 int right(const Rect &rect) { return rect.x + rect.w; }
@@ -1046,9 +1056,10 @@ void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view
   paintHeader(d, sink, Rect(area.x, area.y, area.w - previewW - kGap, kHeaderH), view.header);
   const Rect preview(right(area) - previewW, area.y, previewW, kHeaderH);
   d.nanoFillRoundRect(preview.x, preview.y, preview.w, preview.h, 8, view.previewBackground);
-  const String left = "prze";
-  const String mid = "c";
-  const String rest = "zytam";
+  String left;
+  String mid;
+  String rest;
+  splitSampleWord(view.sampleWord.isEmpty() ? String("reading") : view.sampleWord, left, mid, rest);
   constexpr uint8_t kScale = 48;
   const int wl = d.nanoTypefaceTextWidth(left, kScale);
   const int wm = d.nanoTypefaceTextWidth(mid, kScale);
@@ -1211,7 +1222,7 @@ void paintTutorialArt(DisplayManager &d, const Rect &area, const TutorialView &v
     case TutorialArt::Rsvp: {
       // The word in the reading typeface, its focus letter in the accent,
       // with the guide lines the reading screen draws.
-      const String word = view.artWord.isEmpty() ? String("czytanie") : view.artWord;
+      const String word = view.artWord.isEmpty() ? String("reading") : view.artWord;
       constexpr uint8_t kScale = 52;
       const int focus =
           std::min<int>(static_cast<int>(word.length()) - 1, (static_cast<int>(word.length()) + 2) / 4);
@@ -1386,10 +1397,11 @@ void paintWizardChip(DisplayManager &d, Sink &sink, const Rect &rect, const Wiza
       break;
     }
     case WizardChipArt::Rsvp: {
-      // "czy t anie": the focus letter in the accent, as the reader shows it.
-      const String head = "czy";
-      const String letter = "t";
-      const String tail = "anie";
+      // The focus letter in the accent, as the reader shows it.
+      String head;
+      String letter;
+      String tail;
+      splitSampleWord(chip.word.isEmpty() ? String("reading") : chip.word, head, letter, tail);
       const int headW = DisplayManager::nanoTextWidth(head, 3);
       const int letterW = DisplayManager::nanoTextWidth(letter, 3);
       const int tailW = DisplayManager::nanoTextWidth(tail, 3);

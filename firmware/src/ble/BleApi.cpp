@@ -1,4 +1,5 @@
 #include "ble/BleApi.h"
+#include "text/UnicodeFold.h"
 
 #if FLOWER_BLE_ENABLED
 
@@ -507,7 +508,7 @@ struct BleApi::Impl : public NimBLEServerCallbacks, public NimBLECharacteristicC
     app->bookProgressPercent(index, progress);
 
     String json = "{\"name\":\"" + jsonEscape(path) + "\",\"category\":\"" + category +
-                  "\",\"title\":\"" + jsonEscape(title) + "\",\"author\":\"" + jsonEscape(author) +
+                  "\",\"title\":\"" + jsonEscape(UnicodeFold::toUtf8(title)) + "\",\"author\":\"" + jsonEscape(UnicodeFold::toUtf8(author)) +
                   "\",\"progressPercent\":" + String(progress) + "}";
     return json;
   }

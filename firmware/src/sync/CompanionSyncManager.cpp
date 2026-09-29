@@ -9,7 +9,9 @@
 #include <cstdio>
 #include <vector>
 
+#include "display/DisplayManager.h"
 #include "sync/WifiQrCode.h"
+#include "text/UnicodeFold.h"
 #include "storage/BookExtras.h"
 #include "storage/IndexedBookStore.h"
 #include "storage/StorageManager.h"
@@ -1118,8 +1120,8 @@ String CompanionSyncManager::booksJsonArray() {
       }
       first = false;
       body += "{\"name\":\"" + jsonEscape(relativeLibraryName(path)) + "\",\"category\":\"" +
-              libraryCategoryForPath(path) + "\",\"title\":\"" + jsonEscape(metadata.title) +
-              "\",\"author\":\"" + jsonEscape(metadata.author) + "\",\"bytes\":" + String(file.second);
+              libraryCategoryForPath(path) + "\",\"title\":\"" + jsonEscape(UnicodeFold::toUtf8(metadata.title)) +
+              "\",\"author\":\"" + jsonEscape(UnicodeFold::toUtf8(metadata.author)) + "\",\"bytes\":" + String(file.second);
       if (hasProgress) {
         body += ",\"progressPercent\":" + String(progressPercent);
       }
@@ -1455,7 +1457,7 @@ void CompanionSyncManager::handleBookText() {
       body += ",";
     }
     body += "{\"w\":" + String(static_cast<uint32_t>(metadata.chapters[i].wordIndex)) + ",\"t\":\"" +
-            jsonEscape(metadata.chapters[i].title) + "\"}";
+            jsonEscape(UnicodeFold::toUtf8(metadata.chapters[i].title)) + "\"}";
   }
   body += "],\"paragraphs\":[";
   for (size_t p = from; p < from + count; ++p) {
@@ -1473,7 +1475,7 @@ void CompanionSyncManager::handleBookText() {
       body += ",";
     }
     body += "{\"w\":" + String(static_cast<uint32_t>(start)) + ",\"n\":" +
-            String(static_cast<uint32_t>(end > start ? end - start : 0)) + ",\"t\":\"" + jsonEscape(text) + "\"}";
+            String(static_cast<uint32_t>(end > start ? end - start : 0)) + ",\"t\":\"" + jsonEscape(UnicodeFold::toUtf8(text)) + "\"}";
   }
   body += "]}";
   store.close();
@@ -2329,7 +2331,7 @@ String CompanionSyncManager::settingsJson() {
     // the 5-step index, whose steps map to these percentages.
     static const uint8_t kIndexPercent[] = {55, 65, 78, 90, 100};
     uint8_t percent = preferences_.getUChar("bright_pct", 0);
-    if (percent < 20 || percent > 100) {
+    if (percent < 10 || percent > 100) {
       percent = kIndexPercent[brightness];
     }
     body += ",\"brightnessPercent\":" + String(percent);
@@ -2340,6 +2342,20 @@ String CompanionSyncManager::settingsJson() {
   body += enumLabel(typeface, typefaceLabels, 3);
   body += "\"";
   body += ",\"typefaceIndex\":" + String(typeface);
+  // Faces the reader can draw right now: the three in flash plus whichever
+  // SD fonts are on the card. The on-device picker lists only these, so the
+  // app offers the same set.
+  body += ",\"typefacesAvailable\":[";
+  for (uint8_t i = 0; i < static_cast<uint8_t>(DisplayManager::ReaderTypeface::Count); ++i) {
+    if (!DisplayManager::isTypefaceAvailableOnSd(static_cast<DisplayManager::ReaderTypeface>(i))) {
+      continue;
+    }
+    if (body.charAt(body.length() - 1) != '[') {
+      body += ",";
+    }
+    body += String(i);
+  }
+  body += "]";
   body += ",\"focusHighlight\":" +
           String(preferences_.getBool(kPrefTypographyFocusHighlight, true) ? "true" : "false");
   body += ",\"tracking\":" + String(tracking);
@@ -2517,8 +2533,8 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
     preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(intValue));
   }
   if (readJsonInt(body, "brightnessPercent", intValue)) {
-    if (intValue < 20 || intValue > 100) {
-      error = "brightnessPercent must be between 20 and 100";
+    if (intValue < 10 || intValue > 100) {
+      error = "brightnessPercent must be between 10 and 100";
       return false;
     }
     preferences_.putUChar("bright_pct", static_cast<uint8_t>(intValue));

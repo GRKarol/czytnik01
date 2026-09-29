@@ -63,6 +63,11 @@ export interface DeviceSettings {
   typeface: Typeface;
   /** 0..19 index into TYPEFACE_NAMES (firmware with the full font list). */
   typefaceIndex: number;
+  /**
+   * Indices the reader can draw now (built-in faces + fonts on its SD card).
+   * Null on firmware that doesn't report it: then every face is offered.
+   */
+  typefacesAvailable: number[] | null;
   phantomWords: boolean;
   focusHighlight: boolean;
   tracking: number; // -2 to +3
@@ -199,6 +204,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = {
   fontSizeIndex: 0,
   typeface: "standard",
   typefaceIndex: 0,
+  typefacesAvailable: null,
   phantomWords: true,
   focusHighlight: true,
   tracking: 0,

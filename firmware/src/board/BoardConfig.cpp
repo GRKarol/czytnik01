@@ -15,7 +15,6 @@ namespace {
 constexpr uint8_t kTca9554OutputReg = 0x01;
 constexpr uint8_t kTca9554ConfigReg = 0x03;
 bool gBatteryPowerHoldEnabled = false;
-bool gBatteryAdcPathEnabled = false;
 constexpr float kBatteryDividerRatio = 3.0f;
 constexpr float kBatteryVoltageOffset = 0.0f;
 
@@ -105,30 +104,15 @@ void holdBatteryPowerIfAvailable() {
   Serial.println("[board] TCA9554 not detected; battery power hold not configured");
 }
 
-void enableBatteryAdcPathIfAvailable() {
-  if (gBatteryAdcPathEnabled) {
-    return;
+// TCA9554 pin 1 is the LCD backlight power enable (rsvpnano's
+// kBacklightEnablePin), not a battery ADC gate: the divider on GPIO4 is always
+// connected. Earlier firmware pulled this pin low around every battery
+// sample, which cut the backlight for ~25 ms each time; with the 6 s charge
+// probe that was a visible blink every 6 s on every screen.
+void enableBacklightPowerIfAvailable() {
+  if (!configureTca9554OutputPin(TCA9554_PIN_BACKLIGHT_ENABLE, true)) {
+    Serial.println("[board] TCA9554 backlight enable not configured");
   }
-
-  if (!configureTca9554OutputPin(TCA9554_PIN_BATTERY_ADC_ENABLE, false)) {
-    Serial.println("[board] TCA9554 battery ADC gate not configured");
-    return;
-  }
-
-  gBatteryAdcPathEnabled = true;
-  Serial.println("[board] Battery ADC path enabled");
-}
-
-void disableBatteryAdcPathIfAvailable() {
-  // Keep the battery divider gate off outside short samples; it shares the board expander.
-  if (!configureTca9554OutputPin(TCA9554_PIN_BATTERY_ADC_ENABLE, true)) {
-    if (gBatteryAdcPathEnabled) {
-      Serial.println("[board] TCA9554 battery ADC gate disable failed");
-    }
-    return;
-  }
-
-  gBatteryAdcPathEnabled = false;
 }
 
 uint8_t batteryPercentForVoltage(float voltage) {
@@ -195,7 +179,7 @@ bool begin() {
   if (pwrButtonHeld) {
     holdBatteryPowerIfAvailable();
   }
-  disableBatteryAdcPathIfAvailable();
+  enableBacklightPowerIfAvailable();
 
   pinMode(PIN_BATTERY_ADC, INPUT);
   analogReadResolution(12);
@@ -245,8 +229,6 @@ void holdBacklightOffForDeepSleep() {
 
 bool readBatteryStatus(BatteryStatus &status) {
   status = BatteryStatus{};
-  enableBatteryAdcPathIfAvailable();
-  delay(12);
 
   constexpr uint8_t kMaxSamples = 24;
   uint32_t millivolts[kMaxSamples];
@@ -283,7 +265,6 @@ bool readBatteryStatus(BatteryStatus &status) {
         static_cast<float>(trimmedTotal) / static_cast<float>(std::max<uint8_t>(1, trimmedSamples));
     status.voltage = (pinMillivolts * kBatteryDividerRatio / 1000.0f) + kBatteryVoltageOffset;
   }
-  disableBatteryAdcPathIfAvailable();
 
   status.present = status.voltage >= 2.5f && status.voltage <= 4.6f;
   if (!status.present) {

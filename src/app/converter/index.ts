@@ -5,6 +5,7 @@ import { parseEpub } from "./epub";
 import { parsePdf } from "./pdf";
 import { parseMobi } from "./mobi";
 import { parseDocx } from "./docx";
+import { parseOdt } from "./odt";
 
 export type SupportedFormat =
   | "txt"
@@ -15,7 +16,8 @@ export type SupportedFormat =
   | "mobi"
   | "azw"
   | "azw3"
-  | "docx";
+  | "docx"
+  | "odt";
 
 const SUPPORTED_EXT: Record<string, SupportedFormat> = {
   txt: "txt",
@@ -32,6 +34,7 @@ const SUPPORTED_EXT: Record<string, SupportedFormat> = {
   azw: "azw",
   azw3: "azw3",
   docx: "docx",
+  odt: "odt",
 };
 
 export interface DetectionResult {
@@ -63,6 +66,8 @@ export async function parseFile(file: File, format: SupportedFormat): Promise<Pa
       return parseMobi(file);
     case "docx":
       return parseDocx(file);
+    case "odt":
+      return parseOdt(file);
   }
 }
 

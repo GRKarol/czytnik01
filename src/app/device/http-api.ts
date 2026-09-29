@@ -72,6 +72,7 @@ interface FirmwareSettings {
   typography?: {
     typeface?: Typeface;
     typefaceIndex?: number;
+    typefacesAvailable?: number[];
     focusHighlight?: boolean;
     tracking?: number;
     anchorPercent?: number;
@@ -131,6 +132,7 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
     typefaceIndex:
       t.typefaceIndex ??
       Math.max(0, ["standard", "open_dyslexic", "atkinson"].indexOf(t.typeface ?? "standard")),
+    typefacesAvailable: Array.isArray(t.typefacesAvailable) ? t.typefacesAvailable : null,
     phantomWords: d.phantomWords ?? DEFAULT_SETTINGS.phantomWords,
     focusHighlight: t.focusHighlight ?? DEFAULT_SETTINGS.focusHighlight,
     tracking: t.tracking ?? DEFAULT_SETTINGS.tracking,
@@ -155,7 +157,7 @@ function toFirmware(p: Partial<DeviceSettings>): Record<string, unknown> {
     // Old firmware: 5-step index. New firmware reads the percent after the
     // index and keeps it (the reader's smooth slider value).
     out.brightnessIndex = Math.max(0, Math.min(4, Math.round((p.brightness / 100) * 4)));
-    out.brightnessPercent = Math.max(20, Math.min(100, Math.round(p.brightness)));
+    out.brightnessPercent = Math.max(10, Math.min(100, Math.round(p.brightness)));
   }
   if (p.language != null) {
     const idx = LANG_INDEX.indexOf(p.language);

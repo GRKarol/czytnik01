@@ -62,14 +62,14 @@ export class ConverterPanel extends LitElement {
         <input
           id="picker"
           type="file"
-          accept=".txt,.md,.markdown,.html,.htm,.xhtml,.epub,.pdf,.mobi,.azw,.azw3,.docx"
+          accept=".txt,.md,.markdown,.html,.htm,.xhtml,.epub,.pdf,.mobi,.azw,.azw3,.docx,.odt"
           @change=${this.onPick}
           hidden
         />
         <label for="picker" class="picker">
           <strong>Wybierz plik</strong>
           <span>lub upuść go tutaj</span>
-          <span class="formats">EPUB · PDF · MOBI · AZW3 · DOCX · TXT · MD · HTML</span>
+          <span class="formats">EPUB · PDF · MOBI · AZW3 · DOCX · ODT · TXT · MD · HTML</span>
         </label>
       </div>
 

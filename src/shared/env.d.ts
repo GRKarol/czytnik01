@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly MODE: string;
   readonly DEV: boolean;
   readonly PROD: boolean;
+  readonly VITE_RELEASES_REPO?: string;
 }
 
 interface ImportMeta {

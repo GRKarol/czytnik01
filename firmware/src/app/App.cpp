@@ -211,7 +211,7 @@ constexpr uint8_t kNightBrightnessLevels[] = {45, 52, 58, 65, 72};
 constexpr size_t kBrightnessLevelCount = sizeof(kBrightnessLevels) / sizeof(kBrightnessLevels[0]);
 // Smooth slider range. Night mode runs the same setting at ~72 % of it
 // (the old night presets were 45-72 against 55-100).
-constexpr uint8_t kBrightnessMinPercent = 20;
+constexpr uint8_t kBrightnessMinPercent = 10;
 
 namespace {
 
@@ -576,10 +576,6 @@ DisplayManager::TypographyConfig defaultTypographyConfig() {
 
 bool wifiNetworkRequiresPassword(uint8_t authMode) {
   return static_cast<wifi_auth_mode_t>(authMode) != WIFI_AUTH_OPEN;
-}
-
-String wifiSecurityLabel(uint8_t authMode) {
-  return wifiNetworkRequiresPassword(authMode) ? "Secure" : "Open";
 }
 
 String maskedValue(const String &value) {
@@ -1019,6 +1015,9 @@ void App::begin() {
   // (the total time the Booting state holds before handing off to the
   // wizard/reader) is sized to comfortably cover this sequence.
   if (displayReady) {
+    display_.setPhraseLocalizer(
+        [](void *context, const char *text) { return static_cast<const App *>(context)->localizedPhrase(text); },
+        this);
     display_.renderBootSplash(kBootSplashBlackMs);
     logApp("Display init ok");
   } else {
@@ -1492,10 +1491,10 @@ void App::setState(AppState nextState, uint32_t nowMs) {
       updateStandbyScreensaver(nowMs, true);
       break;
     case AppState::Sleeping:
-      display_.renderCenteredWord("SLEEP");
+      display_.renderCenteredWord(trs(TrStatus::SleepWord));
       break;
     case AppState::Booting:
-      display_.renderCenteredWord("READY");
+      display_.renderCenteredWord(trs(TrStatus::Ready));
       break;
   }
 
@@ -1976,7 +1975,7 @@ void App::openMainMenu(uint32_t nowMs) {
 
 uint8_t App::currentBrightnessPercent() const {
   const uint8_t percent = std::max<uint8_t>(kBrightnessMinPercent, std::min<uint8_t>(100, brightnessPercentSetting_));
-  return nightMode_ ? static_cast<uint8_t>(std::max(18, percent * 72 / 100)) : percent;
+  return nightMode_ ? static_cast<uint8_t>(std::max<int>(kBrightnessMinPercent, percent * 72 / 100)) : percent;
 }
 
 void App::setBrightnessSetting(uint8_t percent, bool persist) {
@@ -2029,7 +2028,7 @@ void App::applyDisplayPreferences(uint32_t nowMs, bool rerender) {
   }
 
   if (state_ == AppState::Booting) {
-    display_.renderCenteredWord("READY");
+    display_.renderCenteredWord(trs(TrStatus::Ready));
   }
 }
 
@@ -5384,7 +5383,9 @@ void App::scanWifiNetworks() {
   wifiNetworkMenuItems_.reserve(wifiNetworks_.size() + 1);
   for (const WifiNetworkInfo &network : wifiNetworks_) {
     wifiNetworkMenuItems_.push_back(
-        {network.ssid, wifiSecurityLabel(network.authMode) + "  " + String(network.rssi) + " dBm"});
+        {network.ssid, String(trs(wifiNetworkRequiresPassword(network.authMode) ? TrStatus::WifiSecure
+                                                                                  : TrStatus::WifiOpen)) +
+                           "  " + String(network.rssi) + " dBm"});
   }
 
   wifiNetworkSelectedIndex_ =
@@ -5442,7 +5443,7 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
     if (configuredWifiSsid() == network.ssid) {
       initialValue = preferredOtaConfig().wifiPassword;
     }
-    openTextEntry(TextEntryPurpose::WifiPassword, network.ssid, "Password", "",
+    openTextEntry(TextEntryPurpose::WifiPassword, network.ssid, trs(TrStatus::Password), "",
                   initialValue, network.ssid, true, kWifiPasswordMaxLength,
                   MenuScreen::WifiNetworks);
     return;
@@ -5557,13 +5558,13 @@ void App::rebuildTextEntryButtons() {
        textEntrySession_.mode == KeyboardMode::Upper},
       {"123", TextEntryAction::SetSymbols, 11, false,
        textEntrySession_.mode == KeyboardMode::Symbols},
-      {"space", TextEntryAction::Space, 24, false, false},
-      {"back", TextEntryAction::Backspace, 13, false, false},
-      {textEntrySession_.masked ? (revealActive ? "hide" : "show") : "clear",
+      {trs(TrStatus::KeySpace), TextEntryAction::Space, 24, false, false},
+      {trs(TrStatus::KeyBack), TextEntryAction::Backspace, 13, false, false},
+      {trs(textEntrySession_.masked ? (revealActive ? TrStatus::KeyHide : TrStatus::KeyShow) : TrStatus::KeyClear),
        textEntrySession_.masked ? TextEntryAction::ToggleMask : TextEntryAction::Clear, 13, false,
        revealActive},
-      {"save", TextEntryAction::Save, 12, true, false},
-      {"cancel", TextEntryAction::Cancel, 14, false, false},
+      {trs(TrStatus::KeySave), TextEntryAction::Save, 12, true, false},
+      {trs(TrStatus::KeyCancel), TextEntryAction::Cancel, 14, false, false},
   };
 
   uint16_t totalUnits = 0;
@@ -6174,7 +6175,7 @@ void App::rebuildSettingsMenuItems() {
       settingsMenuItems_.push_back(uiText(UiText::FontSize) + ": " + scrollFontSizeLabel());
       settingsMenuItems_.push_back(uiText(UiText::ScrollLineSpacing) + ": " + scrollLineSpacingLabel());
       settingsMenuItems_.push_back(uiText(UiText::ScrollMargins) + ": " + scrollMarginLabel());
-      settingsMenuItems_.push_back(String("Preview"));
+      settingsMenuItems_.push_back(String(trs(TrStatus::Preview)));
     } else {
       settingsMenuItems_.push_back(String(tr(TrKey::PauseBehaviour)) +
                                    pauseModeLabel());
@@ -6340,6 +6341,12 @@ const char *App::tr3(TrKey3 key) const {
 
 const char *App::tr4(TrKey4 key) const {
   return Translations4::tr4(uiLanguage_, key);
+}
+
+const char *App::trs(TrStatus key) const { return TranslationsStatus::trStatus(uiLanguage_, key); }
+
+const char *App::localizedPhrase(const char *english) const {
+  return TranslationsStatus::localizedPhrase(uiLanguage_, english);
 }
 
 // ─── SettingsConnectivity ────────────────────────────────────────────────────
@@ -8283,15 +8290,15 @@ String App::scrollFontSizeLabel() const {
 }
 
 String App::scrollLineSpacingLabel() const {
-  static const char *const labels[] = {"Compact", "Normal", "Relaxed"};
+  static const TrStatus labels[] = {TrStatus::SpacingCompact, TrStatus::SpacingNormal, TrStatus::SpacingRelaxed};
   const uint8_t idx = scrollLineSpacing_ <= 2 ? scrollLineSpacing_ : 1;
-  return String(labels[idx]);
+  return String(trs(labels[idx]));
 }
 
 String App::scrollMarginLabel() const {
-  static const char *const labels[] = {"Narrow", "Normal", "Wide"};
+  static const TrStatus labels[] = {TrStatus::MarginNarrow, TrStatus::SpacingNormal, TrStatus::MarginWide};
   const uint8_t idx = scrollMargin_ <= 2 ? scrollMargin_ : 1;
-  return String(labels[idx]);
+  return String(trs(labels[idx]));
 }
 
 String App::pauseModeLabel() const {
@@ -11391,7 +11398,7 @@ void App::renderChapterTransition() {
   }
 
   applyReaderUiOrientation();
-  const String title = String("CHAPTER ") + String(chapterTransitionIndex_ + 1);
+  const String title = String(trs(TrStatus::ChapterCaps)) + " " + String(chapterTransitionIndex_ + 1);
   String subtitle = chapterMarkers_[chapterTransitionIndex_].title;
   if (subtitle.length() > 42) {
     subtitle = subtitle.substring(0, 42) + "...";
@@ -11494,16 +11501,16 @@ String App::currentFooterMetricLabel() const {
       endIndex = chapterMarkers_[chapterIndex + 1].wordIndex;
     }
     if (generatingEstimate) {
-      return String("CH ") + String(generatingPercent) + "% gen";
+      return String(trs(TrStatus::FooterChapter)) + " " + String(generatingPercent) + "%...";
     }
-    return String("CH ") +
+    return String(trs(TrStatus::FooterChapter)) + " " +
            formatReadingTimeRemaining(estimatedReadingTimeRemainingMs(currentIndex, endIndex));
   }
 
   if (generatingEstimate) {
-    return String("BOOK ") + String(generatingPercent) + "% gen";
+    return String(trs(TrStatus::FooterBook)) + " " + String(generatingPercent) + "%...";
   }
-  return String("BOOK ") +
+  return String(trs(TrStatus::FooterBook)) + " " +
          formatReadingTimeRemaining(estimatedReadingTimeRemainingMs(currentIndex, endIndex));
 }
 
@@ -11700,7 +11707,7 @@ void App::rebuildTimeEstimateCache() {
   timeEstimateBuildLastLogMs_ = timeEstimateBuildStartedMs_;
   timeEstimateBuildInProgress_ = true;
 
-  const String detail = String(static_cast<unsigned int>(n)) + " words in background";
+  const String detail = String(static_cast<unsigned int>(n)) + " " + trs(TrStatus::WordsInBackground);
   renderStorageStatus("Reading time", label.c_str(), detail.c_str(), 0);
   Serial.printf("[time-est] background build started words=%u blocks=%u book=%s\n",
                 static_cast<unsigned int>(timeEstimateBuildWordCount_),
@@ -12020,6 +12027,19 @@ void App::renderActiveReader(uint32_t nowMs) {
 bool App::ensureCurrentBookWordAvailable(uint32_t nowMs) {
   if (!usingStorageBook_ || reader_.wordCount() == 0 || !reader_.currentWord().isEmpty()) {
     return true;
+  }
+
+  // One SD read of the word window can fail on its own (a jump from the
+  // go-to screen hit it once); read it again before calling the book broken.
+  const size_t index = reader_.currentIndex();
+  for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+    delay(15);
+    reader_.seekTo(index);
+    if (!reader_.currentWord().isEmpty()) {
+      Serial.printf("[storage] word %u read on retry %u\n", static_cast<unsigned>(index),
+                    static_cast<unsigned>(attempt + 1));
+      return true;
+    }
   }
 
   handleCurrentBookReadFailure(nowMs, "Word cache unreadable");

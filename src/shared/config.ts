@@ -17,8 +17,10 @@ export const FLASHER_URL = BASE;
 // Sklep pluginów (statyczny katalog w naszym repo, ładowany przez app).
 export const PLUGIN_INDEX_URL = `${BASE}plugins/index.json`;
 
-// OTA — pobierane z GitHub Releases tego repo.
-export const OTA_RELEASES_API = "https://api.github.com/repos/GRKarol/czytnik01/releases/latest";
+// OTA — pobierane z GitHub Releases tego repo. Build testowy apki może
+// wskazać repo staging: VITE_RELEASES_REPO=GRKarol/czytnik01-staging.
+export const OTA_RELEASES_REPO: string = import.meta.env.VITE_RELEASES_REPO || "GRKarol/czytnik01";
+export const OTA_RELEASES_API = `https://api.github.com/repos/${OTA_RELEASES_REPO}/releases/latest`;
 
 // ─── Wersja ──────────────────────────────────────────────────────────────────
 export const APP_VERSION = __APP_VERSION__;

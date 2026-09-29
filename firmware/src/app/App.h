@@ -475,6 +475,9 @@ class App {
   const char *tr2(TrKey2 key) const;
   const char *tr3(TrKey3 key) const;
   const char *tr4(TrKey4 key) const;
+  const char *trs(TrStatus key) const;
+  // `english` in the UI language when it is one of the TrStatus phrases.
+  const char *localizedPhrase(const char *english) const;
 
   /// Nowe ekrany ustawień zorganizowane wokół codziennego użycia (a nie
   /// odziedziczonej hierarchii rsvpnano). Otwieranie + handlery wyboru.

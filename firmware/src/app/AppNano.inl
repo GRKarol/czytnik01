@@ -124,8 +124,10 @@ bool nanoSplitSetting(const String &item, String &label, String &value) {
 }
 
 bool nanoIsDeleteLabel(const String &label) {
+  // German and Romanian labels carry ö / ș (single-byte glyph codes), and
+  // "Buch löschen" puts the verb last, so match the ASCII tail of the verb.
   return label.startsWith("Usu") || label.startsWith("Delete") || label.startsWith("Eliminar") ||
-         label.startsWith("Supprimer") || label.startsWith("Loeschen") || label.startsWith("Sterge");
+         label.startsWith("Supprimer") || label.indexOf("schen") >= 0 || label.indexOf("terge") >= 0;
 }
 
 // Cover of the current book on the Czytaj card: a stable color per book.

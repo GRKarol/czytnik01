@@ -39,6 +39,7 @@ TABLES = [
     (TRANSLATIONS_H, "TrKey2", "trKey2Lookup"),
     (TRANSLATIONS_H, "TrKey3", "trKey3Lookup"),
     (TRANSLATIONS_H, "TrKey4", "trKey4Lookup"),
+    (TRANSLATIONS_H, "TrStatus", "trStatusLookup"),
     (LOCALIZATION_H, "UiText", "uiTextLookup"),
     (DICTAPHONE_PLUGIN_CPP, "DictStr", "dictStrLookup"),
     (FOCUS_TIMER_PLUGIN_CPP, "FtStr", "ftStrLookup"),
@@ -80,7 +81,16 @@ def storage_byte(ch: str) -> int:
     return ord(base) if base and ord(base) < 0x80 else ord("?")
 
 
+# Punctuation the reader's fonts don't have: typographic quotes and dashes
+# fall back to their ASCII forms instead of "?".
+_ASCII_PUNCTUATION = str.maketrans({
+    "„": '"', "“": '"', "”": '"', "«": '"', "»": '"',
+    "‘": "'", "’": "'", "–": "-", "—": "-",
+})
+
+
 def escape_cpp(s: str) -> str:
+    s = s.translate(_ASCII_PUNCTUATION).replace("…", "...")
     out = []
     for ch in s:
         if ch == "\\":

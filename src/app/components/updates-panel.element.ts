@@ -8,6 +8,10 @@ import {
   type ReleaseInfo,
 } from "../updates/releases";
 import { deviceApi } from "../device/api";
+import { OTA_RELEASES_REPO } from "../../shared/config";
+import { isNativeApp } from "../device/network-pin";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 type Stage =
   | "idle"
@@ -34,7 +38,7 @@ export class UpdatesPanel extends LitElement {
     return html`
       <div class="head">
         <strong>Aktualizacje firmware</strong>
-        <span class="muted">repo: GRKarol/czytnik01 · ostatni release</span>
+        <span class="muted">repo: ${OTA_RELEASES_REPO} · ostatni release</span>
       </div>
 
       ${this.renderStage()}
@@ -175,10 +179,26 @@ export class UpdatesPanel extends LitElement {
     }
   };
 
-  private savePhone = () => {
+  private savePhone = async () => {
     if (!this.downloaded || !this.release) return;
     const asset = pickFirmwareAsset(this.release);
     if (!asset) return;
+    if (isNativeApp()) {
+      // A WebView ignores <a download>; hand the file to Android's share
+      // sheet instead (Pliki, Dysk, komunikator…).
+      try {
+        const { uri } = await Filesystem.writeFile({
+          path: asset.name,
+          data: await blobToBase64(this.downloaded),
+          directory: Directory.Cache,
+        });
+        await Share.share({ title: asset.name, files: [uri] });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/cancel/i.test(message)) this.error = message;
+      }
+      return;
+    }
     const url = URL.createObjectURL(this.downloaded);
     const a = document.createElement("a");
     a.href = url;
@@ -353,4 +373,13 @@ function formatBytes(n: number): string {
 function trimChangelog(text: string): string {
   const lines = text.split("\n");
   return lines.slice(0, 12).join("\n") + (lines.length > 12 ? "\n…" : "");
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }

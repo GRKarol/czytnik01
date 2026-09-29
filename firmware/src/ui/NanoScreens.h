@@ -418,6 +418,7 @@ struct ColorPickerView {
   uint16_t previewBackground = 0;
   uint16_t previewWord = 0xFFFF;
   uint16_t previewFocus = 0x001F;
+  String sampleWord;  // in the UI language
 };
 void paintColorPicker(DisplayManager &d, Sink &sink, const ColorPickerView &view);
 
@@ -531,6 +532,7 @@ struct WizardChip {
   WizardChipArt art = WizardChipArt::Label;
   uint16_t swatch = 0;  // Swatch
   uint8_t theme = 0;    // Theme: 0 dark, 1 light, 2 night
+  String word;          // Rsvp: sample word in the UI language
 };
 struct WizardView {
   size_t step = 0;  // 0-based
