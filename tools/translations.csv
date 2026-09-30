@@ -544,3 +544,16 @@ TrKey4.TypoLineGap;Przerwa w linii;Line gap;Hueco;Écart;Lücke;Spațiu
 TrKey4.TypoDefaults;Domyślne;Defaults;Por defecto;Par défaut;Standard;Implicit
 TrKey4.ThemeMenuColors;Kolory menu;Menu colors;Colores menú;Couleurs menu;Menüfarben;Culori meniu
 TrKey4.ThemeMenuFont;Czcionka menu;Menu font;Fuente menú;Police menu;Menüschrift;Font meniu
+TrKey4.WizSdMissingTitle;Włóż kartę microSD;Insert a microSD card;Inserta una tarjeta microSD;Insérez une carte microSD;Lege eine microSD-Karte ein;Introdu un card microSD
+TrKey4.WizSdMissingSub;Na karcie są książki i czcionki. Włóż ją i dotknij Sprawdź.;Books and fonts live on the card. Insert it and tap Check.;Los libros y las fuentes van en la tarjeta. Insértala y toca Comprobar.;Livres et polices sont sur la carte. Insérez-la et touchez Vérifier.;Bücher und Schriften liegen auf der Karte. Einlegen und Prüfen tippen.;Cărțile și fonturile stau pe card. Introdu-l și atinge Verifică.
+TrKey4.WizSdFormatTitle;Karta wymaga formatowania;The card needs formatting;La tarjeta necesita formato;La carte doit être formatée;Die Karte muss formatiert werden;Cardul trebuie formatat
+TrKey4.WizSdFormatSub;Czytnik nie może jej odczytać. Formatowanie usunie wszystko, co na niej jest.;The reader can't read it. Formatting erases everything on it.;El lector no puede leerla. Formatear borra todo su contenido.;Le lecteur ne peut pas la lire. Le formatage efface tout son contenu.;Der Reader kann sie nicht lesen. Formatieren löscht alles darauf.;Cititorul nu îl poate citi. Formatarea șterge tot de pe el.
+TrKey4.WizSdConfirmSub;Na pewno? Tego nie da się cofnąć.;Sure? This can't be undone.;¿Seguro? No se puede deshacer.;Sûr ? C'est irréversible.;Sicher? Das lässt sich nicht rückgängig machen.;Sigur? Nu se poate anula.
+TrKey4.WizSdFormatting;Formatuję kartę;Formatting the card;Formateando la tarjeta;Formatage de la carte;Karte wird formatiert;Se formatează cardul
+TrKey4.WizSdFormattingSub;Nie wyjmuj karty;Don't remove the card;No saques la tarjeta;Ne retirez pas la carte;Karte nicht entnehmen;Nu scoate cardul
+TrKey4.WizSdFailedTitle;Nie udało się sformatować;Formatting failed;No se pudo formatear;Échec du formatage;Formatieren fehlgeschlagen;Formatarea a eșuat
+TrKey4.WizSdFailedSub;Sformatuj kartę w komputerze jako FAT32 albo użyj innej.;Format the card as FAT32 on a computer, or try another card.;Formatea la tarjeta como FAT32 en un ordenador o usa otra.;Formatez la carte en FAT32 sur un ordinateur ou utilisez-en une autre.;Formatiere die Karte am Computer als FAT32 oder nimm eine andere.;Formatează cardul ca FAT32 pe calculator sau folosește altul.
+TrKey4.WizSdCheck;Sprawdź;Check;Comprobar;Vérifier;Prüfen;Verifică
+TrKey4.WizSdFormat;Formatuj;Format;Formatear;Formater;Formatieren;Formatează
+TrKey4.WizSdFormatYes;Tak, formatuj;Yes, format;Sí, formatear;Oui, formater;Ja, formatieren;Da, formatează
+TrKey4.WizSdSkip;Pomiń;Skip;Omitir;Passer;Überspringen;Omite

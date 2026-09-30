@@ -154,6 +154,7 @@ class App {
     SdCardRepairConfirm,
     UpdateConfirm,
     WelcomeLanguage,
+    WelcomeSdCard,
     WelcomeTheme,
     WelcomeHighlightColor,
     WelcomeLoading,
@@ -497,6 +498,10 @@ class App {
   /// poniżej), żeby nie duplikować całej logiki skanowania/pobierania.
   void openWelcomeLanguage();
   void selectWelcomeLanguageItem(uint32_t nowMs);
+  // Shown after the language step only when the card did not mount: asks
+  // for a card, or offers to format one the reader cannot read.
+  void openWelcomeSdCard(uint32_t nowMs);
+  void selectWelcomeSdCardNext(uint32_t nowMs);
   void openWelcomeTheme();
   void selectWelcomeThemeItem(uint32_t nowMs);
   void openWelcomeHighlightColor();
@@ -1160,6 +1165,8 @@ class App {
   bool wizardFontPickerActive_ = false;
   bool wizardBookPickerActive_ = false;
   uint32_t welcomeScreenEnteredMs_ = 0;
+  enum class WelcomeSdState : uint8_t { Missing, Unreadable, ConfirmFormat, Formatting, Failed };
+  WelcomeSdState welcomeSdState_ = WelcomeSdState::Missing;
   uint32_t welcomeLoadingLastRenderMs_ = 0;
   bool welcomeLoadingWorkStarted_ = false;
   uint8_t welcomeReadingModePreviewMode_ = 0;  // 0=RSVP, 1=Scroll

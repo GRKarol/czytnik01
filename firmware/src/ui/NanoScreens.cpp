@@ -1467,7 +1467,12 @@ void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view) {
     }
     case WizardBody::Message: {
       d.nanoText(Rect(16, 30, kScreenW - 32, 44), view.title, 4, fg, Align::Center);
-      d.nanoText(Rect(16, 78, kScreenW - 32, 22), view.subtitle, 2, muted, Align::Center);
+      if (view.autoPercent >= 0) {
+        d.nanoText(Rect(16, 78, kScreenW - 32, 22), view.subtitle, 2, muted, Align::Center);
+      } else {
+        // No auto-advance bar: room for a two-line explanation.
+        d.nanoText(Rect(16, 78, kScreenW - 32, 50), view.subtitle, 2, muted, Align::Center, 2);
+      }
       if (view.autoPercent >= 0) {
         const Rect bar(kScreenW / 2 - 80, 114, 160, 4);
         d.nanoFillRoundRect(bar.x, bar.y, bar.w, bar.h, 2, d.nanoColor(Role::ProgressTrack));

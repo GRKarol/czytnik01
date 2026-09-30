@@ -389,6 +389,19 @@ enum class TrKey4 : uint8_t {
   TypoDefaults,
   ThemeMenuColors,
   ThemeMenuFont,
+  WizSdMissingTitle,
+  WizSdMissingSub,
+  WizSdFormatTitle,
+  WizSdFormatSub,
+  WizSdConfirmSub,
+  WizSdFormatting,
+  WizSdFormattingSub,
+  WizSdFailedTitle,
+  WizSdFailedSub,
+  WizSdCheck,
+  WizSdFormat,
+  WizSdFormatYes,
+  WizSdSkip,
 };
 
 namespace Translations3 {

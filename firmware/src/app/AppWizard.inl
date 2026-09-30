@@ -22,6 +22,7 @@ constexpr uint8_t kWizardThemeChip[] = {1, 0, 2};
 bool App::wizardNanoScreen() const {
   switch (menuScreen_) {
     case MenuScreen::WelcomeLanguage:
+    case MenuScreen::WelcomeSdCard:
     case MenuScreen::WelcomeTheme:
     case MenuScreen::WelcomeHighlightColor:
     case MenuScreen::WelcomeLoading:
@@ -41,6 +42,7 @@ size_t App::wizardStepIndex() const {
   switch (menuScreen_) {
     case MenuScreen::WelcomeLanguage:
       return 0;
+    case MenuScreen::WelcomeSdCard:
     case MenuScreen::WelcomeTheme:
       return 1;
     case MenuScreen::WelcomeHighlightColor:
@@ -105,6 +107,41 @@ void App::renderWizardPage() {
       addChips(nano::WizardChipArt::Swatch);
       for (size_t i = 0; i < view.chips.size(); ++i) {
         view.chips[i].swatch = DisplayManager::presetFocusColor(static_cast<uint8_t>(i));
+      }
+      break;
+    case MenuScreen::WelcomeSdCard:
+      view.body = nano::WizardBody::Message;
+      view.extraId = kWizardExtra;
+      view.extraLabel = tr4(TrKey4::WizSdSkip);
+      switch (welcomeSdState_) {
+        case WelcomeSdState::Missing:
+          view.title = tr4(TrKey4::WizSdMissingTitle);
+          view.subtitle = tr4(TrKey4::WizSdMissingSub);
+          view.nextLabel = tr4(TrKey4::WizSdCheck);
+          break;
+        case WelcomeSdState::Unreadable:
+          view.title = tr4(TrKey4::WizSdFormatTitle);
+          view.subtitle = tr4(TrKey4::WizSdFormatSub);
+          view.nextLabel = tr4(TrKey4::WizSdFormat);
+          break;
+        case WelcomeSdState::ConfirmFormat:
+          view.title = tr4(TrKey4::WizSdFormatTitle);
+          view.subtitle = tr4(TrKey4::WizSdConfirmSub);
+          view.nextLabel = tr4(TrKey4::WizSdFormatYes);
+          break;
+        case WelcomeSdState::Formatting:
+          view.body = nano::WizardBody::Loading;
+          view.title = tr4(TrKey4::WizSdFormatting);
+          view.subtitle = tr4(TrKey4::WizSdFormattingSub);
+          view.backId = nano::kNoTarget;
+          view.nextId = nano::kNoTarget;
+          view.extraId = nano::kNoTarget;
+          break;
+        case WelcomeSdState::Failed:
+          view.title = tr4(TrKey4::WizSdFailedTitle);
+          view.subtitle = tr4(TrKey4::WizSdFailedSub);
+          view.nextLabel = tr4(TrKey4::WizSdFormat);
+          break;
       }
       break;
     case MenuScreen::WelcomeReadingMode:
@@ -220,12 +257,17 @@ void App::handleWizardTouchAt(uint16_t x, uint16_t y, uint32_t nowMs) {
   if (hit == kWizardExtra) {
     if (menuScreen_ == MenuScreen::WelcomeReadingMode) {
       openWelcomeReadingModePreview(static_cast<uint8_t>(settingsSelectedIndex_ == 1 ? 1 : 0));
+    } else if (menuScreen_ == MenuScreen::WelcomeSdCard) {
+      openWelcomeTheme();
     }
     return;
   }
   switch (menuScreen_) {
     case MenuScreen::WelcomeLanguage:
       selectWelcomeLanguageItem(nowMs);
+      return;
+    case MenuScreen::WelcomeSdCard:
+      selectWelcomeSdCardNext(nowMs);
       return;
     case MenuScreen::WelcomeTheme:
       selectWelcomeThemeItem(nowMs);

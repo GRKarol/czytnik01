@@ -245,6 +245,7 @@ bool App::nanoUiActive() const {
   }
   switch (menuScreen_) {
     case MenuScreen::WelcomeLanguage:
+    case MenuScreen::WelcomeSdCard:
     case MenuScreen::WelcomeTheme:
     case MenuScreen::WelcomeHighlightColor:
     case MenuScreen::WelcomeLoading:

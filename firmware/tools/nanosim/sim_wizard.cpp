@@ -25,6 +25,48 @@ void runWizardScreens(DisplayManager &d, void (*dump)(const DisplayManager &, co
   WizSink sink;
   fakeQr();
   {
+    // Karta SD step: missing, unreadable, confirm, formatting, failed, plus
+    // the longest German/French lines.
+    struct SdPage {
+      const char *name, *title, *sub, *next;
+      bool loading;
+    };
+    const SdPage pages[] = {
+        {"wizard_sd_1_missing", "W\x83""\xF3""\xB5"" kart\x99"" microSD",
+         "Na karcie s\x97"" ksi\x97""\xB5""ki i czcionki. W\x83""\xF3""\xB5"" j\x97"" i dotknij Sprawd\xB3"".", "Sprawd\xB3""", false},
+        {"wizard_sd_2_unreadable", "Karta wymaga formatowania",
+         "Czytnik nie mo\xB5""e jej odczyta\x9B"". Formatowanie usunie wszystko, co na niej jest.", "Formatuj", false},
+        {"wizard_sd_3_confirm", "Karta wymaga formatowania", "Na pewno? Tego nie da si\x99"" cofn\x97""\x9B"".",
+         "Tak, formatuj", false},
+        {"wizard_sd_4_formatting", "Formatuj\x99"" kart\x99""", "Nie wyjmuj karty", "", true},
+        {"wizard_sd_5_failed", "Nie uda\x83""o si\x99"" sformatowa\x9B""",
+         "Sformatuj kart\x99"" w komputerze jako FAT32 albo u\xB5""yj innej.", "Formatuj", false},
+        {"wizard_sd_6_de", "Die Karte muss formatiert werden",
+         "Der Reader kann sie nicht lesen. Formatieren l\xF6""scht alles darauf.", "Formatieren", false},
+        {"wizard_sd_7_fr", "\xC9""chec du formatage",
+         "Formatez la carte en FAT32 sur un ordinateur ou utilisez-en une autre.", "Formater", false},
+    };
+    for (const SdPage &pg : pages) {
+      nano::WizardView v;
+      v.step = 1;
+      v.stepCount = 10;
+      v.body = pg.loading ? nano::WizardBody::Loading : nano::WizardBody::Message;
+      v.title = pg.title;
+      v.subtitle = pg.sub;
+      if (!pg.loading) {
+        v.backId = 2;
+        v.backLabel = "Wr\xF3""\x9B""";
+        v.nextId = 1;
+        v.nextLabel = pg.next;
+        v.extraId = 3;
+        v.extraLabel = "Pomi\x9D""";
+      }
+      v.phase = 25;
+      nano::paintWizard(d, sink, v);
+      dump(d, pg.name);
+    }
+  }
+  {
     nano::WizardView v;
     v.step = 0;
     v.stepCount = 10;

@@ -1930,6 +1930,7 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
       if (menuScreen_ == MenuScreen::WelcomeConnect ||
           menuScreen_ == MenuScreen::WelcomeAppPairing ||
           menuScreen_ == MenuScreen::WelcomeConfigureInApp ||
+          menuScreen_ == MenuScreen::WelcomeSdCard ||
           menuScreen_ == MenuScreen::WelcomeTheme ||
           menuScreen_ == MenuScreen::WelcomeHighlightColor ||
           menuScreen_ == MenuScreen::WelcomeLoading ||
@@ -6592,7 +6593,56 @@ void App::selectWelcomeLanguageItem(uint32_t nowMs) {
                 uiLanguageLabel().c_str(),
                 static_cast<unsigned>(settingsSelectedIndex_),
                 static_cast<unsigned>(uiLanguage_));
+  if (!storageReady_) {
+    // The card may have gone in after boot.
+    storageReady_ = storage_.begin();
+  }
+  if (!storageReady_) {
+    openWelcomeSdCard(nowMs);
+    return;
+  }
   openWelcomeTheme();
+}
+
+void App::openWelcomeSdCard(uint32_t nowMs) {
+  menuScreen_ = MenuScreen::WelcomeSdCard;
+  welcomeScreenEnteredMs_ = nowMs;
+  welcomeSdState_ = storage_.probeCard() == StorageManager::CardProbe::Missing
+                        ? WelcomeSdState::Missing
+                        : WelcomeSdState::Unreadable;
+  renderWizardPage();
+}
+
+void App::selectWelcomeSdCardNext(uint32_t nowMs) {
+  switch (welcomeSdState_) {
+    case WelcomeSdState::Missing:
+      storageReady_ = storage_.begin();
+      if (storageReady_) {
+        applyTypographySettings(nowMs, false);
+        openWelcomeTheme();
+        return;
+      }
+      openWelcomeSdCard(nowMs);
+      return;
+    case WelcomeSdState::Unreadable:
+    case WelcomeSdState::Failed:
+      welcomeSdState_ = WelcomeSdState::ConfirmFormat;
+      renderWizardPage();
+      return;
+    case WelcomeSdState::ConfirmFormat:
+      welcomeSdState_ = WelcomeSdState::Formatting;
+      renderWizardPage();
+      storageReady_ = storage_.formatCard();
+      if (storageReady_) {
+        openWelcomeTheme();
+        return;
+      }
+      welcomeSdState_ = WelcomeSdState::Failed;
+      renderWizardPage();
+      return;
+    case WelcomeSdState::Formatting:
+      return;
+  }
 }
 
 void App::openWelcomeTheme() {
@@ -7024,6 +7074,11 @@ void App::finishWelcomeWizard(uint32_t nowMs) {
 // pierwszego uruchomienia musi się dać tylko przejść do końca, nie ominąć.
 void App::wizardStepBack(uint32_t nowMs) {
   switch (menuScreen_) {
+    case MenuScreen::WelcomeSdCard:
+      if (welcomeSdState_ != WelcomeSdState::Formatting) {
+        openWelcomeLanguage();
+      }
+      return;
     case MenuScreen::WelcomeTheme:
       openWelcomeLanguage();
       return;
@@ -11178,6 +11233,8 @@ void App::renderMenu() {
     renderSdCardRepairConfirm();
   } else if (menuScreen_ == MenuScreen::UpdateConfirm) {
     renderUpdateConfirm();
+  } else if (menuScreen_ == MenuScreen::WelcomeSdCard) {
+    renderWizardPage();
   } else if (menuScreen_ == MenuScreen::WelcomeConnect) {
     renderWelcomeConnect();
   } else if (menuScreen_ == MenuScreen::WelcomeAppPairing) {

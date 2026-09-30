@@ -52,6 +52,13 @@ class StorageManager {
                      size_t *loadedIndex = nullptr);
   DiagnosticResult diagnoseSdCard();
   bool repairSdCardFolders();
+  // Why begin() failed: no card answering at all, or a card that answers but
+  // holds no FAT volume (new, exFAT, or damaged). Unmounts first.
+  enum class CardProbe : uint8_t { Missing, Unreadable };
+  CardProbe probeCard();
+  // Erases the whole card: one MBR partition, FAT32 (FAT16 under 2 GB) with
+  // 32 KB clusters, then mounts it and creates the library folders.
+  bool formatCard();
   bool deleteBook(size_t index);
   // Same clean-up by path (the Flower app deletes by name, and the library
   // list the reader works from must not shift under it). No list refresh.

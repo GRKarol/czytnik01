@@ -5,7 +5,12 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <driver/sdmmc_host.h>
 #include <driver/sdmmc_types.h>
+#include <diskio_impl.h>
+#include <diskio_sdmmc.h>
+#include <ff.h>
+#include <sdmmc_cmd.h>
 #include <esp_heap_caps.h>
 #include <utility>
 
@@ -45,6 +50,38 @@ constexpr int kSdFrequenciesKhz[] = {
     10000,
     SDMMC_FREQ_PROBING,
 };
+
+// Card access below the file system, for probing and formatting a card that
+// SD_MMC cannot mount. Same slot, pins and 1-bit bus as SD_MMC.begin().
+bool openRawCard(sdmmc_card_t &card) {
+  if (sdmmc_host_init() != ESP_OK) {
+    return false;
+  }
+  sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
+  slot.clk = static_cast<gpio_num_t>(BoardConfig::PIN_SD_CLK);
+  slot.cmd = static_cast<gpio_num_t>(BoardConfig::PIN_SD_CMD);
+  slot.d0 = static_cast<gpio_num_t>(BoardConfig::PIN_SD_D0);
+  slot.d1 = GPIO_NUM_NC;
+  slot.d2 = GPIO_NUM_NC;
+  slot.d3 = GPIO_NUM_NC;
+  slot.width = 1;
+  if (sdmmc_host_init_slot(SDMMC_HOST_SLOT_1, &slot) != ESP_OK) {
+    sdmmc_host_deinit();
+    return false;
+  }
+  for (int frequencyKhz : kSdFrequenciesKhz) {
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.slot = SDMMC_HOST_SLOT_1;
+    host.flags = SDMMC_HOST_FLAG_1BIT;
+    host.max_freq_khz = frequencyKhz;
+    memset(&card, 0, sizeof(card));
+    if (sdmmc_card_init(&host, &card) == ESP_OK) {
+      return true;
+    }
+  }
+  sdmmc_host_deinit();
+  return false;
+}
 
 bool hasBookWordLimit() { return kMaxBookWords > 0; }
 
@@ -2797,6 +2834,62 @@ bool StorageManager::loadBookWords(size_t index, std::vector<String> &words, Str
   }
 
   words = std::move(book.words);
+  return true;
+}
+
+StorageManager::CardProbe StorageManager::probeCard() {
+  end();
+  sdmmc_card_t card;
+  if (!openRawCard(card)) {
+    Serial.println("[storage] probe: no card answers");
+    return CardProbe::Missing;
+  }
+  Serial.printf("[storage] probe: card answers (%llu MB), no mountable volume\n",
+                static_cast<unsigned long long>(static_cast<uint64_t>(card.csd.capacity) *
+                                                card.csd.sector_size / (1024ULL * 1024ULL)));
+  sdmmc_host_deinit();
+  return CardProbe::Unreadable;
+}
+
+bool StorageManager::formatCard() {
+  end();
+  sdmmc_card_t card;
+  if (!openRawCard(card)) {
+    Serial.println("[storage] format: no card answers");
+    return false;
+  }
+  BYTE pdrv = FF_DRV_NOT_USED;
+  if (ff_diskio_get_drive(&pdrv) != ESP_OK || pdrv == FF_DRV_NOT_USED) {
+    sdmmc_host_deinit();
+    Serial.println("[storage] format: no free FatFs drive");
+    return false;
+  }
+  ff_diskio_register_sdmmc(pdrv, &card);
+
+  constexpr size_t kWorkSize = 4096;
+  constexpr DWORD kClusterBytes = 32 * 1024;
+  void *work = malloc(kWorkSize);
+  FRESULT res = FR_NOT_ENOUGH_CORE;
+  if (work != nullptr) {
+    const DWORD wholeCard[] = {100, 0, 0, 0};
+    res = f_fdisk(pdrv, wholeCard, work);
+    if (res == FR_OK) {
+      const char drive[3] = {static_cast<char>('0' + pdrv), ':', 0};
+      res = f_mkfs(drive, FM_ANY, kClusterBytes, work, kWorkSize);
+    }
+    free(work);
+  }
+  ff_diskio_unregister(pdrv);
+  sdmmc_host_deinit();
+  if (res != FR_OK) {
+    Serial.printf("[storage] format failed (FatFs %d)\n",static_cast<int>(res));
+    return false;
+  }
+  Serial.println("[storage] card formatted");
+  if (!begin()) {
+    return false;
+  }
+  repairSdCardFolders();
   return true;
 }
 

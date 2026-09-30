@@ -300,7 +300,7 @@ inline const char *trKey3Lookup(uint8_t keyIndex, uint8_t langIndex) {
 }
 
 inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
-  static const char *const kTable[71][6] = {
+  static const char *const kTable[84][6] = {
       {"Battery indicator: ", "Indicador de bater\xED""a: ", "Indicateur batterie : ", "Akkuanzeige: ", "Indicator baterie: ", "Wska\xB3""nik baterii: "},  // BatteryStyleColon
       {"Icon + %", "Icono + %", "Ic\xF4""ne + %", "Symbol + %", "Pictogram\x8B"" + %", "Ikona + %"},  // BatteryStyleIconPercent
       {"Number in icon", "N\xFA""mero en icono", "Chiffre dans l'ic\xF4""ne", "Zahl im Symbol", "Num\x8B""r \xEE""n pictogram\x8B""", "Liczba w ikonie"},  // BatteryStyleNumberInIcon
@@ -372,6 +372,19 @@ inline const char *trKey4Lookup(uint8_t keyIndex, uint8_t langIndex) {
       {"Defaults", "Por defecto", "Par d\xE9""faut", "Standard", "Implicit", "Domy\x9F""lne"},  // TypoDefaults
       {"Menu colors", "Colores men\xFA""", "Couleurs menu", "Men\xFC""farben", "Culori meniu", "Kolory menu"},  // ThemeMenuColors
       {"Menu font", "Fuente men\xFA""", "Police menu", "Men\xFC""schrift", "Font meniu", "Czcionka menu"},  // ThemeMenuFont
+      {"Insert a microSD card", "Inserta una tarjeta microSD", "Ins\xE9""rez une carte microSD", "Lege eine microSD-Karte ein", "Introdu un card microSD", "W\x83""\xF3""\xB5"" kart\x99"" microSD"},  // WizSdMissingTitle
+      {"Books and fonts live on the card. Insert it and tap Check.", "Los libros y las fuentes van en la tarjeta. Ins\xE9""rtala y toca Comprobar.", "Livres et polices sont sur la carte. Ins\xE9""rez-la et touchez V\xE9""rifier.", "B\xFC""cher und Schriften liegen auf der Karte. Einlegen und Pr\xFC""fen tippen.", "C\x8B""r\x8F""ile \x8D""i fonturile stau pe card. Introdu-l \x8D""i atinge Verific\x8B"".", "Na karcie s\x97"" ksi\x97""\xB5""ki i czcionki. W\x83""\xF3""\xB5"" j\x97"" i dotknij Sprawd\xB3""."},  // WizSdMissingSub
+      {"The card needs formatting", "La tarjeta necesita formato", "La carte doit \xEA""tre format\xE9""e", "Die Karte muss formatiert werden", "Cardul trebuie formatat", "Karta wymaga formatowania"},  // WizSdFormatTitle
+      {"The reader can't read it. Formatting erases everything on it.", "El lector no puede leerla. Formatear borra todo su contenido.", "Le lecteur ne peut pas la lire. Le formatage efface tout son contenu.", "Der Reader kann sie nicht lesen. Formatieren l\xF6""scht alles darauf.", "Cititorul nu \xEE""l poate citi. Formatarea \x8D""terge tot de pe el.", "Czytnik nie mo\xB5""e jej odczyta\x9B"". Formatowanie usunie wszystko, co na niej jest."},  // WizSdFormatSub
+      {"Sure? This can't be undone.", "\x17""Seguro? No se puede deshacer.", "S\xFB""r ? C'est irr\xE9""versible.", "Sicher? Das l\xE4""sst sich nicht r\xFC""ckg\xE4""ngig machen.", "Sigur? Nu se poate anula.", "Na pewno? Tego nie da si\x99"" cofn\x97""\x9B""."},  // WizSdConfirmSub
+      {"Formatting the card", "Formateando la tarjeta", "Formatage de la carte", "Karte wird formatiert", "Se formateaz\x8B"" cardul", "Formatuj\x99"" kart\x99"""},  // WizSdFormatting
+      {"Don't remove the card", "No saques la tarjeta", "Ne retirez pas la carte", "Karte nicht entnehmen", "Nu scoate cardul", "Nie wyjmuj karty"},  // WizSdFormattingSub
+      {"Formatting failed", "No se pudo formatear", "\xC9""chec du formatage", "Formatieren fehlgeschlagen", "Formatarea a e\x8D""uat", "Nie uda\x83""o si\x99"" sformatowa\x9B"""},  // WizSdFailedTitle
+      {"Format the card as FAT32 on a computer, or try another card.", "Formatea la tarjeta como FAT32 en un ordenador o usa otra.", "Formatez la carte en FAT32 sur un ordinateur ou utilisez-en une autre.", "Formatiere die Karte am Computer als FAT32 oder nimm eine andere.", "Formateaz\x8B"" cardul ca FAT32 pe calculator sau folose\x8D""te altul.", "Sformatuj kart\x99"" w komputerze jako FAT32 albo u\xB5""yj innej."},  // WizSdFailedSub
+      {"Check", "Comprobar", "V\xE9""rifier", "Pr\xFC""fen", "Verific\x8B""", "Sprawd\xB3"""},  // WizSdCheck
+      {"Format", "Formatear", "Formater", "Formatieren", "Formateaz\x8B""", "Formatuj"},  // WizSdFormat
+      {"Yes, format", "S\xED"", formatear", "Oui, formater", "Ja, formatieren", "Da, formateaz\x8B""", "Tak, formatuj"},  // WizSdFormatYes
+      {"Skip", "Omitir", "Passer", "\xDC""berspringen", "Omite", "Pomi\x9D"""},  // WizSdSkip
   };
   return kTable[keyIndex][langIndex];
 }
