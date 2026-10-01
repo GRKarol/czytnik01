@@ -5,9 +5,7 @@
  * Firmware NVS mapping:
  *   0 = en, 1 = es, 2 = fr, 3 = de, 4 = ro, 5 = pl
  *
- * The device API Language type uses string codes that mostly overlap
- * with SupportedLang, except "it" (Italian) which isn't supported
- * by the i18n module — it falls back to Polish (app default).
+ * The device API Language type uses the same codes as SupportedLang.
  */
 
 import type { SupportedLang } from "./index";
@@ -27,7 +25,6 @@ export const UI_LANG_INDEX_MAP: Record<number, SupportedLang> = {
 /**
  * Mapping from device API Language string to SupportedLang.
  * Handles both the current app Language type and firmware-reported codes.
- * "it" (Italian) is not supported by the i18n module — defaults to "pl".
  */
 const DEVICE_LANG_TO_SUPPORTED: Record<string, SupportedLang> = {
   en: "en",
@@ -36,7 +33,6 @@ const DEVICE_LANG_TO_SUPPORTED: Record<string, SupportedLang> = {
   de: "de",
   pl: "pl",
   ro: "ro",
-  it: "pl", // Italian not supported by i18n → fall back to Polish
 };
 
 /**

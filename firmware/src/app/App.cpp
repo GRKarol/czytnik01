@@ -7,6 +7,7 @@
 #include <qrcode.h>
 #include <WiFi.h>
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <cstdio>
 #include <iterator>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "app/Translations.h"
+#include "app/generated/StarterTitles.h"
 #include "board/BoardConfig.h"
 #include "plugins/DeviceServicesBridge.h"
 #include "storage/BookExtras.h"
@@ -51,15 +53,16 @@ constexpr uint32_t kFontDownloadRetryIntervalMs = 60000;
 // jeden język kreator próbuje ściągnąć z GitHuba. Brakujący slot (Karol
 // jeszcze nie wgrał tego tytułu dla danego języka) to nie błąd, po prostu
 // mniej pozycji w bibliotece na starcie — patrz bookDownloadTask().
-constexpr uint8_t kStarterBookCountPerLanguage = 5;
+constexpr uint8_t kStarterBookCountPerLanguage = StarterTitles::kPerLanguage;
 // Minimum time the splash artwork stays up once the main loop starts (on
 // top of the black beat below and the two 600 ms fades) — was 5000 ms, an
 // artificial floor that had nothing to do with hardware readiness (all real
 // init already runs synchronously in setup(), before this is even checked);
-// it just made boot feel slow. Trimmed to keep the whole boot sequence
-// (black beat + hold + fade-out + fade-in) close to ~2 s.
-constexpr uint32_t kBootSplashMs = 800;
-constexpr uint32_t kBootSplashBlackMs = 200;
+// it just made boot feel slow. The splash now lights at once and the next
+// screen replaces it directly, so this is simply how long the picture shows
+// at least.
+constexpr uint32_t kBootSplashMs = 1200;
+constexpr uint32_t kBootSplashBlackMs = 0;
 constexpr uint32_t kBootSplashFadeMs = 600;
 // Extra budget (from bootStartedMs_, not on top of the splash) to let a
 // pending SD-backed typeface load finish before handing off to the reader.
@@ -122,11 +125,19 @@ enum NanoTypographyFrom : uint8_t {
 // (capacitive-touch contact bounce reads as two quick taps from one
 // physical touch).
 constexpr uint32_t kGridTapDebounceMs = 200;
-// Shorter than kGridTapDebounceMs on purpose: real typing legitimately hits
-// the same key twice in a row close together (double letters), so this only
-// needs to be long enough to eat capacitive contact-bounce (typically well
-// under 100ms) without eating a fast typist's real repeat keystroke.
-constexpr uint32_t kTextEntryTapDebounceMs = 90;
+// Keyboard keys fire on finger-down (handleTextEntryTouch). A finger that
+// loses contact for a sample or two mid-press comes back as a new touch
+// within a few tens of ms of its release; a real second press of the same
+// key (double letters) needs the finger lifted for longer than that.
+constexpr uint32_t kTextEntryBounceGapMs = 40;
+// Two presses of one key closer than this are one press, whatever the
+// release timing says.
+constexpr uint32_t kTextEntryRepeatMinMs = 80;
+// Taps in the 4 px gap between keys count for the nearer key.
+constexpr int kTextEntryKeySlopPx = 3;
+// The tap that opened the keyboard can bounce into a new touch; no key
+// fires this soon after it opens.
+constexpr uint32_t kTextEntryOpenGuardMs = 150;
 // Sentinel canonicalIndex for the wizard-picker Confirm corner button (see
 // App::applyConfirmButtonCornerLayout()) — far past any real item count, so
 // the `canonicalIndex < itemCount` guards in handleGridTap() never mistake
@@ -337,6 +348,28 @@ constexpr size_t kSettingsAboutTutorialIndex = 4;  // restart tutorial
 constexpr size_t kSettingsAboutDevModeIndex = 5;   // pokazywane gdy dev mode
 
 constexpr const char *kPrefSetupDone = "setup_done";
+// First-run wizard step the reader is on (WizardStep below); cleared when
+// the wizard ends. A restart mid-wizard (firmware update, power off) comes
+// back to this step with every earlier choice already saved.
+constexpr const char *kPrefWizardStep = "wiz_step";
+enum WizardStep : uint8_t {
+  kWizStepLanguage,
+  kWizStepTheme,
+  kWizStepColor,
+  kWizStepWifi,
+  kWizStepLoading,
+  kWizStepMenuTheme,
+  kWizStepFont,
+  kWizStepReadingMode,
+  kWizStepConnect,
+  kWizStepPairing,
+  kWizStepInApp,
+  kWizStepLibrary,
+  // Added after the rest so a step saved by an older build still means
+  // the same page.
+  kWizStepMenuFont,
+  kWizStepCount,
+};
 constexpr const char *kPrefTutorialDone = "tut_done";
 constexpr size_t kSettingsDisplayThemeIndex = 1;
 constexpr size_t kSettingsDisplayBrightnessIndex = 2;
@@ -1016,10 +1049,9 @@ void App::begin() {
   logApp("Initializing hardware modules");
   const bool displayReady = display_.begin();
 
-  // Boot splash: a beat of black, then the artwork fades in (the pixels
-  // fade, not the backlight; see DisplayManager::fadeFrame()). kBootSplashMs
-  // (the total time the Booting state holds before handing off to the
-  // wizard/reader) is sized to comfortably cover this sequence.
+  // Boot splash: drawn with the backlight off, then lit in one step (see
+  // DisplayManager::renderBootSplash()). It holds for at least
+  // kBootSplashMs; the wizard or the reader then replaces it directly.
   if (displayReady) {
     display_.setPhraseLocalizer(
         [](void *context, const char *text) { return static_cast<const App *>(context)->localizedPhrase(text); },
@@ -1508,14 +1540,6 @@ void App::setState(AppState nextState, uint32_t nowMs) {
     saveReadingPosition(true);
   }
 
-  if (previousState == AppState::Booting) {
-    // The boot splash faded the backlight out before this switch drew the
-    // wizard/reader screen underneath it (see updateState()'s
-    // bootSplashFadedOut_ handling) — fade back in now that new content is
-    // on screen, instead of an abrupt cut from black to full brightness.
-    display_.fadeFrameIn(kBootSplashFadeMs);
-  }
-
   ESP_LOGI(kAppTag, "state -> %s", stateName(state_));
   Serial.printf("[app] state -> %s at %lu ms\n", stateName(state_),
                 static_cast<unsigned long>(nowMs));
@@ -1527,42 +1551,37 @@ void App::updateState(uint32_t nowMs) {
       return;
     }
 
-    // Fade the splash artwork out to black exactly once, right as we're
-    // about to draw the next real screen underneath it — not up front. It
-    // used to run here, before the deferred SD/index book load below, which
-    // meant the backlight sat off (screen genuinely black, not just static)
-    // for however long that load took — worst case several seconds on a
-    // fresh index build or a failed/retried load, stacking silent dead time
-    // onto boot. Calling it right before each setState() instead keeps the
-    // splash fully lit (frozen, since render is suppressed) while that work
-    // happens, so the only guaranteed-black window is the fade transition
-    // itself. bootSplashFadedOut_ still guards it to exactly one call.
-    // setState() fades back in once the wizard/reader screen underneath has
-    // actually been drawn.
-    auto fadeOutSplashOnce = [&]() {
+    // The splash cross-fades into the first real screen: renders between
+    // beginSplashHandoff() and endSplashHandoff() only fill the frame
+    // buffer, then DisplayManager::finishCrossfade() blends the dandelion
+    // into the finished screen. The splash stays lit and still while the
+    // book load below runs.
+    auto beginSplashHandoff = [&]() {
       if (!bootSplashFadedOut_) {
         bootSplashFadedOut_ = true;
-        display_.fadeFrameOut(kBootSplashFadeMs);
+        display_.beginCrossfade();
       }
     };
+    auto endSplashHandoff = [&]() { display_.finishCrossfade(kBootSplashFadeMs); };
 
     // Pierwsze uruchomienie po flashowaniu — pokaż welcome wizard zamiast
     // od razu otwierać czytnik. Ważne: ustaw menuScreen_ ZANIM zawołamy
     // setState(Menu), bo setState→renderMenu() patrzy na menuScreen_ i bez
     // tego renderuje Main menu zamiast naszej listy języków.
     if (!preferences_.getBool(kPrefSetupDone, false)) {
-      // Krok 1 kreatora: wybór języka. rebuildSettingsMenuItems() MUSI polecieć
-      // przed setState(Menu) — renderMenu()->renderSettings() rysuje
-      // settingsMenuItems_ tak jak stoi, bez własnego rebuildu.
-      menuScreen_ = MenuScreen::WelcomeLanguage;
-      settingsSelectedIndex_ = 0;
-      rebuildSettingsMenuItems();
+      // Kreator: od języka albo od kroku zapisanego przed restartem.
+      // prepareWizardResume() ustawia ekran ZANIM setState(Menu) go
+      // narysuje; finishWizardResume() robi to, co wymaga już ekranu
+      // (skan Wi-Fi, sieć do parowania).
+      const uint8_t step = prepareWizardResume(nowMs);
       // Leaving Booting here without ever calling loadPendingBootBook() —
       // clear the suppress flag set in setup() so SD status text works
       // normally again from here on.
       suppressBootStorageStatusRender_ = false;
-      fadeOutSplashOnce();
+      beginSplashHandoff();
       setState(AppState::Menu, nowMs);
+      endSplashHandoff();
+      finishWizardResume(step, nowMs);
       return;
     }
 
@@ -1572,8 +1591,9 @@ void App::updateState(uint32_t nowMs) {
       menuScreen_ = MenuScreen::TutorialStep1;
       tutorialPage_ = 0;
       suppressBootStorageStatusRender_ = false;
-      fadeOutSplashOnce();
+      beginSplashHandoff();
       setState(AppState::Menu, nowMs);
+      endSplashHandoff();
       return;
     }
 
@@ -1589,7 +1609,7 @@ void App::updateState(uint32_t nowMs) {
     }
 
     // Do the deferred SD/index book load now, still under the boot splash
-    // (fully lit — see fadeOutSplashOnce() above), instead of switching to
+    // (fully lit — see beginSplashHandoff() above), instead of switching to
     // Paused first and showing a separate "Ładowanie książki" screen while
     // it runs — see loadPendingBootBook().
     loadPendingBootBook(nowMs);
@@ -1599,10 +1619,11 @@ void App::updateState(uint32_t nowMs) {
     // text suppressed for the rest of the session.
     suppressBootStorageStatusRender_ = false;
 
-    fadeOutSplashOnce();
+    beginSplashHandoff();
     setState((touchPlayHeld_ || playLocked_ || pauseAtSentenceEndRequested_) ? AppState::Playing
                                                                               : AppState::Paused,
              nowMs);
+    endSplashHandoff();
     return;
   }
 
@@ -1938,8 +1959,11 @@ void App::toggleMenuFromPowerButton(uint32_t nowMs) {
           menuScreen_ == MenuScreen::WelcomeConfigureIntro ||
           menuScreen_ == MenuScreen::WelcomeReadingMode ||
           menuScreen_ == MenuScreen::WelcomeReadingModePreview ||
-          (menuScreen_ == MenuScreen::TypographyFontPicker && wizardFontPickerActive_) ||
-          (menuScreen_ == MenuScreen::BookPicker && wizardBookPickerActive_)) {
+          menuScreen_ == MenuScreen::WelcomeMenuTheme ||
+          menuScreen_ == MenuScreen::WelcomeMenuFont ||
+          menuScreen_ == MenuScreen::WelcomeFont ||
+          menuScreen_ == MenuScreen::WelcomeLibrary ||
+          (menuScreen_ == MenuScreen::WifiNetworks && wifiFlowFromWizard_)) {
         // Kreatora pierwszego uruchomienia nie da się już pominąć jednym
         // kliknięciem PWR — krótkie kliknięcie cofa o krok, tak jak Back
         // gdziekolwiek indziej w aplikacji.
@@ -3252,6 +3276,19 @@ void App::applyBrowseHoldScroll(uint16_t y, uint32_t elapsedMs, uint32_t nowMs) 
 }
 
 void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
+  // Keyboard: a key fires the moment the finger lands, at the landing point
+  // (handleTextEntryTap). Waiting for the release added the press time to
+  // every letter, and a finger that rolled while lifting either missed the
+  // key or hit its neighbour.
+  if (menuScreen_ == MenuScreen::TextEntry) {
+    pausedTouch_.active = false;
+    if (event.phase == TouchPhase::Start && nowMs - textEntryOpenedAtMs_ >= kTextEntryOpenGuardMs) {
+      handleTextEntryTap(event.x, event.y, nowMs);
+    } else if (event.phase == TouchPhase::End) {
+      lastTextEntryReleaseAtMs_ = nowMs;
+    }
+    return;
+  }
   // Direct-drag slider screen: bypasses the tap/swipe state machine below
   // entirely — it needs live TouchPhase::Move updates, which that machine
   // only forwards on TouchPhase::End.
@@ -3312,13 +3349,6 @@ void App::applyMenuTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   const int deltaY = static_cast<int>(pausedTouch_.lastY) - static_cast<int>(pausedTouch_.startY);
   const int absDeltaX = abs(deltaX);
   const int absDeltaY = abs(deltaY);
-
-  if (menuScreen_ == MenuScreen::TextEntry) {
-    if (absDeltaX <= static_cast<int>(kTapSlopPx) && absDeltaY <= static_cast<int>(kTapSlopPx)) {
-      handleTextEntryTap(event.x, event.y, nowMs);
-    }
-    return;
-  }
 
   // Tutorial (5 kroków) nie jest ekranem siatki — renderTutorialStep()
   // rysuje przez renderStatus(), nie renderItemGrid(), więc currentGridButtons_
@@ -5333,7 +5363,11 @@ void App::scanWifiNetworks() {
     return;
   }
 
-  display_.renderProgress("Wi-Fi", "Scanning networks", "", 5);
+  if (wifiFlowFromWizard_) {
+    renderWizardBusy(tr4(TrKey4::WizWifiSearching), tr4(TrKey4::WizWifiSearchingSub));
+  } else {
+    display_.renderProgress("Wi-Fi", "Scanning networks", "", 5);
+  }
 
   WiFi.persistent(false);
   WiFi.disconnect(true, false);
@@ -5367,7 +5401,7 @@ void App::scanWifiNetworks() {
   WiFi.mode(WIFI_OFF);
 
   if (wifiNetworks_.empty()) {
-    display_.renderStatus("Wi-Fi", tr2(TrKey2::NoNetworksFound), "");
+    renderWifiStatus(tr2(TrKey2::NoNetworksFound), "");
     delay(1200);
     returnFromWifiFlow(millis());
     return;
@@ -5468,7 +5502,7 @@ void App::selectWifiNetworkItem(uint32_t nowMs) {
 // zostawiajac krok "auto-pobierz z GitHub" bez realnego Wi-Fi.
 bool App::attemptWifiConnection(const String &ssid, const String &password, uint32_t nowMs) {
   (void)nowMs;
-  display_.renderStatus("Wi-Fi", tr2(TrKey2::ConnectingToNetwork), ssid);
+  renderWifiStatus(tr2(TrKey2::ConnectingToNetwork), ssid);
 
   OtaUpdater::Config config;
   config.wifiSsid = ssid;
@@ -5482,9 +5516,9 @@ bool App::attemptWifiConnection(const String &ssid, const String &password, uint
   }
 
   if (connected) {
-    display_.renderStatus("Wi-Fi", tr(TrKey::Connected), ssid);
+    renderWifiStatus(tr(TrKey::Connected), ssid);
   } else {
-    display_.renderStatus("Wi-Fi", tr2(TrKey2::ConnectFailedCheckPassword), ssid);
+    renderWifiStatus(tr2(TrKey2::ConnectFailedCheckPassword), ssid);
   }
   delay(1200);
   return connected;
@@ -5508,6 +5542,9 @@ void App::openTextEntry(TextEntryPurpose purpose, const String &title, const Str
   textEntrySession_.masked = masked;
   textEntrySession_.revealValue = false;
   menuScreen_ = MenuScreen::TextEntry;
+  textEntryOpenedAtMs_ = millis();
+  lastFiredTextEntryButtonIndex_ = -1;
+  pendingTextEntryFlashIndex_ = -1;
   rebuildTextEntryButtons();
   renderTextEntry();
 }
@@ -5634,44 +5671,83 @@ bool App::handleTextEntryTap(uint16_t x, uint16_t y, uint32_t nowMs) {
     return false;
   }
 
+  // The key under the finger; in the gap between two keys, the nearer one.
+  int hitIndex = -1;
+  int hitDistance = INT_MAX;
   for (size_t i = 0; i < textEntryButtons_.size(); ++i) {
     const DisplayManager::Button &button = textEntryButtons_[i].view;
-    const uint16_t maxX = button.x + button.width;
-    const uint16_t maxY = button.y + button.height;
-    if (x < button.x || x > maxX || y < button.y || y > maxY) {
+    const int left = static_cast<int>(button.x) - kTextEntryKeySlopPx;
+    const int top = static_cast<int>(button.y) - kTextEntryKeySlopPx;
+    const int right = static_cast<int>(button.x + button.width) + kTextEntryKeySlopPx;
+    const int bottom = static_cast<int>(button.y + button.height) + kTextEntryKeySlopPx;
+    if (x < left || x > right || y < top || y > bottom) {
       continue;
     }
+    const int dx = static_cast<int>(x) - (static_cast<int>(button.x) + button.width / 2);
+    const int dy = static_cast<int>(y) - (static_cast<int>(button.y) + button.height / 2);
+    const int distance = dx * dx + dy * dy;
+    if (distance < hitDistance) {
+      hitDistance = distance;
+      hitIndex = static_cast<int>(i);
+    }
+  }
 
-    // Contact-bounce guard (see lastFiredTextEntryButtonIndex_): a physical
-    // tap that briefly loses and regains contact can reach here twice for
-    // the same key a few ms apart — this used to insert the same character
-    // (or fire Backspace/mode-switch) twice for one tap. Swallow the repeat.
-    if (lastFiredTextEntryButtonIndex_ == static_cast<int>(i) &&
-        (nowMs - lastFiredTextEntryAtMs_) < kTextEntryTapDebounceMs) {
+  if (hitIndex >= 0) {
+    const size_t i = static_cast<size_t>(hitIndex);
+    // Contact bounce (see kTextEntryBounceGapMs): the same key coming back
+    // right after its release is still the first press.
+    if (lastFiredTextEntryButtonIndex_ == hitIndex &&
+        (nowMs - lastFiredTextEntryAtMs_ < kTextEntryRepeatMinMs ||
+         nowMs - lastTextEntryReleaseAtMs_ < kTextEntryBounceGapMs)) {
       return true;
     }
     lastFiredTextEntryButtonIndex_ = static_cast<int>(i);
     lastFiredTextEntryAtMs_ = nowMs;
 
-    // Letter/space/backspace keys get typed immediately — never delay the
-    // character landing, or typing at any real speed drops keystrokes
-    // whenever the next tap lands inside the still-pending flash window.
-    // The visible "press" flash still happens, just *after* the character
-    // is already in, as a pure highlight-then-clear with no action queued
+    // A key still pending from the previous press: its highlight goes with
+    // this press's redraw; a queued Save/Cancel/Clear runs first.
+    if (pendingTextEntryFlashIndex_ != -1) {
+      if (pendingTextEntryFlashIsPostActionOnly_) {
+        const size_t previous = static_cast<size_t>(pendingTextEntryFlashIndex_);
+        if (previous < textEntryButtons_.size()) {
+          textEntryButtons_[previous].view.armed = false;
+        }
+        pendingTextEntryFlashIndex_ = -1;
+      } else {
+        firePendingTextEntryFlash(pendingTextEntryFlashFireAtMs_);
+        if (!textEntrySession_.active || menuScreen_ != MenuScreen::TextEntry) {
+          return true;
+        }
+      }
+    }
+
+    // Typing and mode keys act at once — never delay the character
+    // landing, or typing at any real speed drops keystrokes whenever the
+    // next tap lands inside the still-pending flash window. The visible
+    // "press" flash still happens, just *after* the action, as a pure
+    // highlight-then-clear with no action queued
     // (see pendingTextEntryFlashIsPostActionOnly_).
     const TextEntryAction action = textEntryButtons_[i].action;
     const bool isTypingKey = action == TextEntryAction::Insert ||
                              action == TextEntryAction::Space ||
-                             action == TextEntryAction::Backspace;
+                             action == TextEntryAction::Backspace ||
+                             action == TextEntryAction::SetLower ||
+                             action == TextEntryAction::SetUpper ||
+                             action == TextEntryAction::SetSymbols;
     if (isTypingKey) {
-      activateTextEntryButton(i, nowMs);
-      if (i < textEntryButtons_.size()) {
+      // One redraw per press: the new text and the pressed key together.
+      activateTextEntryButton(i, nowMs, false);
+      const bool modeKey = action == TextEntryAction::SetLower || action == TextEntryAction::SetUpper ||
+                           action == TextEntryAction::SetSymbols;
+      // A mode key rebuilt the layout, so index i may be another key now;
+      // its own selected look is the feedback.
+      if (!modeKey && i < textEntryButtons_.size()) {
         textEntryButtons_[i].view.armed = true;
         pendingTextEntryFlashIndex_ = static_cast<int>(i);
         pendingTextEntryFlashFireAtMs_ = nowMs + kPressFlashMs;
         pendingTextEntryFlashIsPostActionOnly_ = true;
-        renderTextEntry();
       }
+      renderTextEntry();
       return true;
     }
 
@@ -5705,7 +5781,7 @@ void App::firePendingTextEntryFlash(uint32_t nowMs) {
   activateTextEntryButton(index, nowMs);
 }
 
-void App::activateTextEntryButton(size_t buttonIndex, uint32_t nowMs) {
+void App::activateTextEntryButton(size_t buttonIndex, uint32_t nowMs, bool render) {
   if (buttonIndex >= textEntryButtons_.size()) {
     return;
   }
@@ -5765,7 +5841,9 @@ void App::activateTextEntryButton(size_t buttonIndex, uint32_t nowMs) {
   }
 
   rebuildTextEntryButtons();
-  renderTextEntry();
+  if (render) {
+    renderTextEntry();
+  }
 }
 
 void App::commitTextEntry(uint32_t nowMs) {
@@ -5774,7 +5852,7 @@ void App::commitTextEntry(uint32_t nowMs) {
   switch (textEntrySession_.purpose) {
     case TextEntryPurpose::WifiPassword: {
       if (textEntrySession_.value.isEmpty()) {
-        display_.renderStatus("Wi-Fi", tr2(TrKey2::PasswordRequired), textEntrySession_.contextValue);
+        renderWifiStatus(tr2(TrKey2::PasswordRequired), textEntrySession_.contextValue);
         delay(1000);
         renderTextEntry();
         return;
@@ -6518,11 +6596,21 @@ void ensureInstallAppQr() {
 }
 
 // Krok "Ładowanie": a new phrase every kWelcomeLoadingPhraseCycleMs.
-constexpr uint32_t kWelcomeLoadingPhraseCycleMs = 2500;
-constexpr uint32_t kWelcomeLoadingMinMs = 15000;
-// Siatka bezpieczeństwa — gdyby pobieranie fontów utknęło (np. słabe Wi-Fi),
-// ekran i tak rusza dalej zamiast wisieć w nieskończoność.
-constexpr uint32_t kWelcomeLoadingMaxMs = 25000;
+constexpr uint32_t kWelcomeLoadingPhraseCycleMs = 4000;
+// Long enough for the three phrases once, when there is nothing to fetch.
+constexpr uint32_t kWelcomeLoadingMinMs = 7500;
+// Safety nets: a stuck update check or a crawling download still lets the
+// wizard move on. The font pack is ~8 MB, books up to ~3 MB.
+constexpr uint32_t kWelcomeUpdateMaxMs = 6UL * 60UL * 1000UL;
+constexpr uint32_t kWelcomeAssetsMaxMs = 20UL * 60UL * 1000UL;
+// No file finished for this long: the downloads have stalled.
+constexpr uint32_t kWelcomeAssetsStallMs = 3UL * 60UL * 1000UL;
+// Progress of the font and book tasks for the loading screen: written by
+// the tasks, read by the main loop.
+std::atomic<uint8_t> g_fontDlDone{0};
+std::atomic<uint8_t> g_fontDlTotal{0};
+std::atomic<uint8_t> g_bookDlDone{0};
+std::atomic<uint8_t> g_bookDlTotal{0};
 constexpr uint32_t kWelcomeTimedMessageMs = 3000;
 constexpr uint32_t kWelcomeScreenFrameMs = 150;
 // Forces a look at the download QR before the corner "Next" appears —
@@ -6532,15 +6620,6 @@ constexpr uint32_t kWelcomeConnectNextDelayMs = 5000;
 
 bool App::welcomeConnectQrAvailable() const { return g_installAppQrSize > 0; }
 
-void App::openWelcomeLanguage() {
-  menuScreen_ = MenuScreen::WelcomeLanguage;
-  // Bez „Back" — w wizardzie zaczynamy od pierwszego elementu listy.
-  settingsSelectedIndex_ = 0;
-  rebuildSettingsMenuItems();
-  // The power-button hint sits in the page's bottom row (renderWizardPage).
-  renderSettings();
-}
-
 namespace {
 // Zachowaj kolejność z rebuildSettingsMenuItems() dla WelcomeLanguage:
 // 0 English, 1 Polski, 2 Deutsch, 3 Español, 4 Français, 5 Română.
@@ -6548,6 +6627,29 @@ namespace {
 // 4=Romanian, 5=Polish — patrz Localization.h).
 const uint8_t kWelcomeLangByIndex[] = {0, 5, 3, 1, 2, 4};
 }  // namespace
+
+void App::saveWizardStep(uint8_t step) {
+  if (step == savedWizardStep_) {
+    return;
+  }
+  savedWizardStep_ = step;
+  preferences_.putUChar(kPrefWizardStep, step);
+}
+
+void App::openWelcomeLanguage() {
+  menuScreen_ = MenuScreen::WelcomeLanguage;
+  saveWizardStep(kWizStepLanguage);
+  // The chip of the language in use (English on a new reader).
+  settingsSelectedIndex_ = 0;
+  for (size_t i = 0; i < sizeof(kWelcomeLangByIndex); ++i) {
+    if (kWelcomeLangByIndex[i] == static_cast<uint8_t>(uiLanguage_)) {
+      settingsSelectedIndex_ = i;
+    }
+  }
+  rebuildSettingsMenuItems();
+  // The power-button hint sits in the page's bottom row (renderWizardPage).
+  renderSettings();
+}
 
 void App::previewWizardPickerSelection(uint32_t nowMs) {
   // Wywoływane na KAŻDE dotknięcie kafelka na ekranach kreatora Język/Motyw/
@@ -6647,7 +6749,9 @@ void App::selectWelcomeSdCardNext(uint32_t nowMs) {
 
 void App::openWelcomeTheme() {
   menuScreen_ = MenuScreen::WelcomeTheme;
-  settingsSelectedIndex_ = 0;
+  saveWizardStep(kWizStepTheme);
+  // Chips: Light, Dark, Night (see previewWizardPickerSelection).
+  settingsSelectedIndex_ = nightMode_ ? 2 : (darkMode_ ? 1 : 0);
   rebuildSettingsMenuItems();
   renderSettings();
 }
@@ -6661,6 +6765,7 @@ void App::selectWelcomeThemeItem(uint32_t nowMs) {
 
 void App::openWelcomeHighlightColor() {
   menuScreen_ = MenuScreen::WelcomeHighlightColor;
+  saveWizardStep(kWizStepColor);
   settingsSelectedIndex_ = display_.focusColorIndex();
   rebuildSettingsMenuItems();
   renderSettings();
@@ -6681,6 +6786,10 @@ void App::selectWelcomeHighlightColorItem(uint32_t nowMs) {
 // zamiast do ekranu Ustawień Wi-Fi.
 
 void App::openWelcomeWifi() {
+  saveWizardStep(kWizStepWifi);
+  // The phone-sync network from boot would stop the scan's station mode
+  // from reaching anything; the pairing step starts it again later.
+  stopAutoSyncAccessPoint("wizard wifi");
   wifiFlowFromWizard_ = true;
   scanWifiNetworks();
 }
@@ -6695,45 +6804,22 @@ void App::returnFromWifiFlow(uint32_t nowMs) {
 }
 
 // ─── Krok 5+6: skan aktualizacji + pobranie zasobów, ekran "Ładowanie" ──────
-// Jedna wizualizacja dla obu — w tle rusza pobieranie brakujących fontów z SD
-// (ten sam mechanizm co cichy auto-download po skonfigurowaniu Wi-Fi, patrz
-// maybeAutoDownloadFonts()), a na ekranie kręcą się trzy zachęcające frazy
-// przez minimum ~15s. Świadomie NIE odpalamy tu prawdziwej instalacji
-// aktualizacji firmware (checkAndInstall) — restart w środku kreatora
-// pierwszego uruchomienia byłby złym zaskoczeniem.
+// Najpierw aktualizacja do najnowszego wydania (jeśli jest nowsze): pobranie,
+// restart, a kreator wraca na ten sam ekran (kPrefWizardStep). Potem fonty
+// i książki startowe na kartę; "Super!" pojawia się dopiero, gdy są na
+// miejscu, więc wybór czcionki pokazuje od razu wszystkie kroje. Fazy:
+// updateWelcomeLoading() w AppWizard.inl.
 void App::openWelcomeLoading(uint32_t nowMs) {
   menuScreen_ = MenuScreen::WelcomeLoading;
+  saveWizardStep(kWizStepLoading);
   welcomeScreenEnteredMs_ = nowMs;
   welcomeLoadingLastRenderMs_ = 0;
-  welcomeLoadingWorkStarted_ = false;
+  welcomeLoadPhase_ = WelcomeLoadPhase::Start;
+  welcomeLoadPhaseMs_ = nowMs;
+  // Downloads need the radio in station mode; the phone-sync network from
+  // boot makes OtaUpdater::connectWiFi() skip every session while it's up.
+  stopAutoSyncAccessPoint("wizard downloads");
   renderWelcomeLoading(nowMs);
-}
-
-void App::updateWelcomeLoading(uint32_t nowMs) {
-  if (!welcomeLoadingWorkStarted_) {
-    welcomeLoadingWorkStarted_ = true;
-    OtaUpdater::Config config = preferredOtaConfig();
-    if (!fontPackComplete_ && otaUpdater_.isConfigured(config)) {
-      startBackgroundFontDownload(config);
-    }
-    // Karta pusta na tym etapie (typowe dla świeżo sformatowanej/nowej) —
-    // spróbuj po cichu ściągnąć starter library dla języka wybranego w kroku
-    // 1, żeby krok 2.4 miał co pokazać zamiast pustej biblioteki.
-    if (storage_.bookCount() == 0 && otaUpdater_.isConfigured(config)) {
-      startBackgroundBookDownload(config);
-    }
-  }
-
-  const uint32_t elapsed = nowMs - welcomeScreenEnteredMs_;
-  const bool workDone = !fontDownloadInProgress_ && !bookDownloadInProgress_;
-  if ((elapsed >= kWelcomeLoadingMinMs && workDone) || elapsed >= kWelcomeLoadingMaxMs) {
-    openWelcomeSuper(nowMs);
-    return;
-  }
-
-  if (nowMs - welcomeLoadingLastRenderMs_ >= kWelcomeScreenFrameMs) {
-    renderWelcomeLoading(nowMs);
-  }
 }
 
 void App::renderWelcomeLoading(uint32_t nowMs) {
@@ -6769,6 +6855,20 @@ void App::updateWelcomeTimedScreens(uint32_t nowMs) {
     updateWelcomeLoading(nowMs);
     return;
   }
+  if (menuScreen_ == MenuScreen::WelcomeLibrary) {
+    updateWelcomeLibrary(nowMs);
+    return;
+  }
+  if (menuScreen_ == MenuScreen::WelcomeFont) {
+    // Fonts still arriving: every finished one joins the chips at once.
+    const uint8_t fontsNow = g_fontDlDone.load();
+    if (fontsNow != welcomeFontsSeen_) {
+      welcomeFontsSeen_ = fontsNow;
+      rebuildWelcomeFontFaces();
+      renderWizardPage();
+    }
+    return;
+  }
   if (menuScreen_ == MenuScreen::WelcomeConnect) {
     // Re-render every tick so the corner "Next" button appears exactly
     // once the 5s look-first delay passes, with no extra input needed —
@@ -6795,11 +6895,7 @@ void App::updateWelcomeTimedScreens(uint32_t nowMs) {
   if (menuScreen_ == MenuScreen::WelcomeSuper) {
     openWelcomeConfigureIntro(nowMs);
   } else if (menuScreen_ == MenuScreen::WelcomeConfigureIntro) {
-    // Krok 2.1 — reużywamy cały ekran/handler TypographyFontPicker; flaga
-    // mówi selectTypographyFontPickerItem() żeby po wyborze wrócić do
-    // następnego kroku kreatora zamiast do TypographyTuning.
-    wizardFontPickerActive_ = true;
-    openTypographyFontPicker();
+    openWelcomeMenuTheme(nowMs);
   } else {
     // WelcomeConfigureInApp — "Skonfiguruj w aplikacji" auto-advances into
     // the starter-library picker just like Super/ConfigureIntro do.
@@ -6811,7 +6907,8 @@ void App::updateWelcomeTimedScreens(uint32_t nowMs) {
 
 void App::openWelcomeReadingMode() {
   menuScreen_ = MenuScreen::WelcomeReadingMode;
-  settingsSelectedIndex_ = 0;
+  saveWizardStep(kWizStepReadingMode);
+  settingsSelectedIndex_ = readerMode_ == ReaderMode::Scroll ? 1 : 0;
   rebuildSettingsMenuItems();
   renderSettings();
 }
@@ -6909,54 +7006,17 @@ void App::updateWelcomeReadingModePreview(uint32_t nowMs) {
 }
 
 void App::renderWelcomeReadingModePreview() {
-  if (welcomeReadingModePreviewMode_ == 0) {
-    // Ta sama prymitywa co podgląd w Typography Tuning (jedno "słowo-duch"
-    // z sąsiadami przygaszonymi po bokach) — realny wygląd RSVP na tym
-    // urządzeniu. Słowo faktycznie zmienia się co kWelcomeRsvpPreviewWordMs
-    // (patrz updateWelcomeReadingModePreview) — bez tego ekran pokazywał
-    // jedno zamrożone słowo i niczego nie demonstrował.
-    if (kTypographyPreviewWordCount == 0) {
-      return;
-    }
-    const size_t current = welcomeReadingModePreviewWordIndex_ % kTypographyPreviewWordCount;
-    const bool hasNeighbours = kTypographyPreviewWordCount > 1;
-    const size_t beforeIndex =
-        current == 0 ? kTypographyPreviewWordCount - 1 : current - 1;
-    const size_t afterIndex = (current + 1) % kTypographyPreviewWordCount;
-    const String before = hasNeighbours ? kTypographyPreviewWords[beforeIndex] : "";
-    const String after = hasNeighbours ? kTypographyPreviewWords[afterIndex] : "";
-    display_.renderTypographyPreview(before, kTypographyPreviewWords[current], after,
-                                     readerFontSizeIndex_, "RSVP",
-                                     tr3(TrKey3::WelcomePreviewRsvpLine),
-                                     tr3(TrKey3::WelcomeTapToGoBack));
-  } else {
-    // Przewijanie faktycznie płynie — currentWordIndex rośnie co
-    // kWelcomeScrollPreviewWordMs (patrz updateWelcomeReadingModePreview),
-    // renderScrollView() sam dosuwa tekst tak, żeby ta pozycja była
-    // widoczna. Statyczny renderStatus() wcześniej nie ruszał się wcale.
-    if (welcomeScrollPreviewWords_.empty()) {
-      display_.renderStatus(tr3(TrKey3::WelcomeReadingModeScrollLabel),
-                            tr3(TrKey3::WelcomePreviewScrollBody),
-                            tr3(TrKey3::WelcomeTapToGoBack));
-      return;
-    }
-    DisplayManager::ReaderChrome chrome;
-    chrome.showBattery = false;
-    chrome.showChapter = false;
-    chrome.showProgress = false;
-    chrome.showPreviousSentenceHint = false;
-    chrome.showSavePointButton = false;
-    const size_t current =
-        welcomeReadingModePreviewWordIndex_ % welcomeScrollPreviewWords_.size();
-    display_.renderScrollView(welcomeScrollPreviewWords_, 0, 0, current, 0, "", 0,
-                              tr3(TrKey3::WelcomeTapToGoBack), "", chrome);
-  }
+  // The reading screen itself as a wizard page (renderWizardPage, Preview):
+  // RSVP words change every kWelcomeRsvpPreviewWordMs, the page scrolls
+  // every kWelcomeScrollPreviewWordMs (updateWelcomeReadingModePreview).
+  renderWizardPage();
 }
 
 // ─── Krok 2.3: połącz z telefonem (QR + parowanie AP) ───────────────────────
 
 void App::openWelcomeConnect(uint32_t nowMs) {
   menuScreen_ = MenuScreen::WelcomeConnect;
+  saveWizardStep(kWizStepConnect);
   welcomeScreenEnteredMs_ = nowMs;
   renderWelcomeConnect();
 }
@@ -6985,6 +7045,7 @@ void App::selectWelcomeConnectTap(uint32_t nowMs) {
 
 void App::openWelcomeAppPairing(uint32_t nowMs) {
   menuScreen_ = MenuScreen::WelcomeAppPairing;
+  saveWizardStep(kWizStepPairing);
   welcomeScreenEnteredMs_ = nowMs;
 
   // Start AP + BLE pairing if not already running from auto-sync — moved
@@ -7026,43 +7087,20 @@ void App::selectWelcomeAppPairingTap(uint32_t nowMs) {
 
 void App::openWelcomeConfigureInApp(uint32_t nowMs) {
   menuScreen_ = MenuScreen::WelcomeConfigureInApp;
+  saveWizardStep(kWizStepInApp);
   welcomeScreenEnteredMs_ = nowMs;
   renderWelcomeTimedMessage(tr3(TrKey3::WelcomeConfigureInAppLine1),
                             tr3(TrKey3::WelcomeConfigureInAppLine2));
 }
 
 // ─── Krok 2.4: "Prawie gotowe! Co dziś czytamy?" ────────────────────────────
-// Reużywa cały ekran Biblioteki (BookPicker). Starter library (patrz
-// startBackgroundBookDownload(), uruchamiane w kroku 5+6/WelcomeLoading) już
-// próbowała ściągnąć do 5 tytułów dla wybranego języka, zanim doszliśmy tu —
-// jeśli się udało, storage_.bookCount() > 0 i widać realną listę. Jeśli
-// Karol jeszcze nie wgrał żadnego "starter-<kod>-N.rsvp" dla tego języka na
-// GitHuba (albo nie było Wi-Fi), karta zostaje pusta i ekran po prostu
-// przechodzi dalej bez zawieszania kreatora na czymś, czego nie może
-// pokazać.
-void App::openWelcomeBookPicker(uint32_t nowMs) {
-  wizardBookPickerActive_ = true;
-  openBookPicker(false);
-  if (storage_.bookCount() == 0) {
-    finishWelcomeWizard(nowMs);
-    return;
-  }
-  showGridToast(tr3(TrKey3::WelcomeBookPickerTitle), nowMs);
-}
+// Strona kreatora z tytułami z karty (starter library ściągnięta na ekranie
+// ładowania), openWelcomeLibrary() w AppWizard.inl. Pusta karta kończy
+// kreator od razu.
+void App::openWelcomeBookPicker(uint32_t nowMs) { openWelcomeLibrary(nowMs); }
 
 void App::finishWelcomeWizard(uint32_t nowMs) {
-  wifiFlowFromWizard_ = false;
-  wizardFontPickerActive_ = false;
-  wizardBookPickerActive_ = false;
-  preferences_.putBool(kPrefSetupDone, true);
-  // Stary 5-krokowy tutorial na urządzeniu (RSVP/tempo/pauza/menu/pomoc)
-  // zostaje dostępny ręcznie z Ustawienia > O aplikacji > Tutorial, ale nie
-  // jest już wymuszany po kreatorze — krok "Co dziś czytamy" prowadzi prosto
-  // do czytania, tak jak poprosił Karol. Bez oznaczenia tut_done=true
-  // updateState() wymuszałby tutorial przy KAŻDYM kolejnym boocie (patrz
-  // komentarz "Setup done but tutorial not finished" wyżej w tym pliku).
-  preferences_.putBool(kPrefTutorialDone, true);
-  tutorialCompleted_ = true;
+  markWelcomeWizardDone();
   menuScreen_ = MenuScreen::Main;
   menuSelectedIndex_ = 0;
   renderMainMenu();
@@ -7085,18 +7123,34 @@ void App::wizardStepBack(uint32_t nowMs) {
     case MenuScreen::WelcomeHighlightColor:
       openWelcomeTheme();
       return;
+    case MenuScreen::WifiNetworks:
+      if (wifiFlowFromWizard_) {
+        wifiFlowFromWizard_ = false;
+        openWelcomeHighlightColor();
+      }
+      return;
     case MenuScreen::WelcomeLoading:
-      openWelcomeHighlightColor();
+      // Only before anything is downloading or installing.
+      if (welcomeLoadPhase_ == WelcomeLoadPhase::Start) {
+        openWelcomeHighlightColor();
+      }
       return;
     case MenuScreen::WelcomeSuper:
-      openWelcomeLoading(nowMs);
-      return;
     case MenuScreen::WelcomeConfigureIntro:
-      openWelcomeSuper(nowMs);
+      return;
+    case MenuScreen::WelcomeMenuTheme:
+      // Back over the downloads to the last choice before them; Dalej from
+      // there runs Wi-Fi and loading again (quick, nothing left to fetch).
+      openWelcomeHighlightColor();
+      return;
+    case MenuScreen::WelcomeMenuFont:
+      openWelcomeMenuTheme(nowMs);
+      return;
+    case MenuScreen::WelcomeFont:
+      openWelcomeMenuFont(nowMs);
       return;
     case MenuScreen::WelcomeReadingMode:
-      wizardFontPickerActive_ = true;
-      openTypographyFontPicker();
+      openWelcomeFont(nowMs);
       return;
     case MenuScreen::WelcomeReadingModePreview:
       openWelcomeReadingMode();
@@ -7110,18 +7164,11 @@ void App::wizardStepBack(uint32_t nowMs) {
     case MenuScreen::WelcomeConfigureInApp:
       openWelcomeAppPairing(nowMs);
       return;
+    case MenuScreen::WelcomeLibrary:
+      openWelcomeConfigureInApp(nowMs);
+      return;
     default:
-      break;
-  }
-  if (menuScreen_ == MenuScreen::TypographyFontPicker && wizardFontPickerActive_) {
-    wizardFontPickerActive_ = false;
-    openWelcomeConfigureIntro(nowMs);
-    return;
-  }
-  if (menuScreen_ == MenuScreen::BookPicker && wizardBookPickerActive_) {
-    wizardBookPickerActive_ = false;
-    openWelcomeConfigureInApp(nowMs);
-    return;
+      return;
   }
 }
 
@@ -7355,9 +7402,9 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
       // Strip git describe suffix (e.g. "v0.3.1-2-gabcdef" → "v0.3.1")
       int dashPos = current.indexOf('-');
       String currentBase = (dashPos > 0) ? current.substring(0, dashPos) : current;
-      if (currentBase == latest) {
-        Serial.printf("[ota] versions match (%s == %s) — no update needed\n",
-                      currentBase.c_str(), latest.c_str());
+      if (!OtaUpdater::isNewerVersion(latest, currentBase)) {
+        Serial.printf("[ota] %s is not newer than %s — no update needed\n",
+                      latest.c_str(), currentBase.c_str());
         return;
       }
       // Flag it — the reading screen will be interrupted with a blocking
@@ -7381,6 +7428,29 @@ void App::pollOtaCheckResult(uint32_t nowMs) {
 // exist — at boot, right after a successful SD repair, or on the periodic
 // retry below if Wi-Fi gets configured later (e.g. via the Flower app).
 
+namespace {
+// A dropped TLS session or a slow GitHub hop fails one file, not the whole
+// pack: each file gets a few tries before the task moves on without it.
+constexpr int kAssetDownloadAttempts = 3;
+
+bool downloadAssetWithRetry(OtaUpdater &updater, const OtaUpdater::Config &config, const String &assetName,
+                            const String &destPath, String &errorDetail) {
+  for (int attempt = 1; attempt <= kAssetDownloadAttempts; ++attempt) {
+    errorDetail = "";
+    if (updater.downloadAsset(config, assetName, "", destPath, errorDetail)) {
+      return true;
+    }
+    Serial.printf("[dl] %s try %d/%d failed: %s\n", assetName.c_str(), attempt, kAssetDownloadAttempts,
+                  errorDetail.c_str());
+    if (errorDetail.indexOf("404") >= 0 || WiFi.status() != WL_CONNECTED) {
+      return false;  // not in this release, or the network is gone
+    }
+    delay(1000U * static_cast<uint32_t>(attempt));
+  }
+  return false;
+}
+}  // namespace
+
 bool App::refreshFontPackComplete() {
   bool complete = true;
   for (uint8_t i = static_cast<uint8_t>(DisplayManager::ReaderTypeface::Literata);
@@ -7397,6 +7467,10 @@ bool App::refreshFontPackComplete() {
 
 void App::maybeAutoDownloadFonts(uint32_t nowMs) {
   if (fontPackComplete_ || fontDownloadInProgress_) {
+    return;
+  }
+  // The wizard's loading step orders its own downloads (books, then fonts).
+  if (menuScreen_ == MenuScreen::WelcomeLoading) {
     return;
   }
   if (lastFontDownloadAttemptMs_ != 0 &&
@@ -7470,6 +7544,8 @@ void App::fontDownloadTask(void *params) {
 
   FontDownloadResult queuedResult;
   queuedResult.totalMissing = static_cast<uint8_t>(missing.size());
+  g_fontDlDone = 0;
+  g_fontDlTotal = queuedResult.totalMissing;
 
   if (!missing.empty()) {
     OtaUpdater updater;
@@ -7484,24 +7560,24 @@ void App::fontDownloadTask(void *params) {
         }
 
         String errorDetail;
-        const bool baseOk =
-            updater.downloadAsset(taskParams->config, base + ".fnt", "",
-                                  "/fonts/" + base + ".fnt", errorDetail);
+        const bool baseOk = SD_MMC.exists("/fonts/" + base + ".fnt") ||
+                            downloadAssetWithRetry(updater, taskParams->config, base + ".fnt",
+                                                   "/fonts/" + base + ".fnt", errorDetail);
         if (!baseOk) {
           Serial.printf("[fonts] %s.fnt failed: %s\n", base.c_str(), errorDetail.c_str());
           continue;
         }
 
-        errorDetail = "";
-        const bool mediumOk =
-            updater.downloadAsset(taskParams->config, base + "_70.fnt", "",
-                                  "/fonts/" + base + "_70.fnt", errorDetail);
+        const bool mediumOk = SD_MMC.exists("/fonts/" + base + "_70.fnt") ||
+                              downloadAssetWithRetry(updater, taskParams->config, base + "_70.fnt",
+                                                     "/fonts/" + base + "_70.fnt", errorDetail);
         if (!mediumOk) {
           Serial.printf("[fonts] %s_70.fnt failed: %s\n", base.c_str(), errorDetail.c_str());
           continue;
         }
 
         queuedResult.downloaded++;
+        g_fontDlDone = queuedResult.downloaded;
       }
       updater.disconnectWiFi();
     }
@@ -7528,13 +7604,17 @@ void App::pollFontDownloadResult(uint32_t nowMs) {
   FontDownloadResult result;
   while (xQueueReceive(fontDownloadQueue_, &result, 0) == pdTRUE) {
     fontDownloadInProgress_ = false;
-    if (result.totalMissing > 0 && result.downloaded == result.totalMissing) {
-      refreshFontPackComplete();
-      Serial.println("[fonts] font pack complete");
-      // Rebuild the picker in place if it's open right now, so the newly
-      // downloaded fonts show up without requiring a menu round-trip.
+    if (result.downloaded > 0) {
+      if (refreshFontPackComplete()) {
+        Serial.println("[fonts] font pack complete");
+      }
+      // Rebuild the pickers in place if open right now, so the newly
+      // downloaded fonts show up without a menu round-trip.
       if (menuScreen_ == MenuScreen::TypographyFontPicker) {
         openTypographyFontPicker();
+      } else if (menuScreen_ == MenuScreen::WelcomeFont) {
+        rebuildWelcomeFontFaces();
+        renderWizardPage();
       }
     }
     // Partial/failed batches leave fontPackComplete_ false; the missing-only
@@ -7617,6 +7697,8 @@ void App::bookDownloadTask(void *params) {
 
   BookDownloadResult queuedResult;
   queuedResult.totalAttempted = kStarterBookCountPerLanguage;
+  g_bookDlDone = 0;
+  g_bookDlTotal = kStarterBookCountPerLanguage;
 
   OtaUpdater updater;
   if (!updater.connectWiFi(taskParams->config, nullptr, nullptr)) {
@@ -7627,12 +7709,19 @@ void App::bookDownloadTask(void *params) {
       const String assetName = "starter-" + code + "-" + String(i) + ".rsvp";
       const String destPath = "/books/books/" + assetName;
       String errorDetail;
-      if (updater.downloadAsset(taskParams->config, assetName, "", destPath, errorDetail)) {
+      if (SD_MMC.exists(destPath)) {
+        // Fetched before a restart (update, power off): keep it.
+        g_bookDlDone = i;
+        continue;
+      }
+      if (downloadAssetWithRetry(updater, taskParams->config, assetName, destPath, errorDetail)) {
         queuedResult.downloaded++;
       } else {
         Serial.printf("[books] %s not available yet: %s\n", assetName.c_str(),
                       errorDetail.c_str());
       }
+      // Tried, fetched or not (Romanian has 3 titles, not 5).
+      g_bookDlDone = i;
     }
     updater.disconnectWiFi();
   }
@@ -11172,6 +11261,10 @@ int App::findBookIndexByPath(const String &path) const {
 void App::renderMenu() {
   applyReaderUiOrientation();
   if (renderExtraScreen()) {
+    return;
+  }
+  if (wizardNanoScreen()) {
+    renderWizardPage();
     return;
   }
 

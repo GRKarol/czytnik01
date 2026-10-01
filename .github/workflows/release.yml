@@ -12,8 +12,8 @@ name: Release firmware
 #   - plugins-registry.json         (rejestr pluginów dla urządzenia)
 #   - *.fnt                         (17 dodatkowych krojów, pobierane przez
 #                                     czytnik automatycznie w tle po Wi-Fi)
-#   - starter-<lang>-<1..5>.rsvp    (starter library kreatora pierwszego
-#                                     uruchomienia, 5 tytułów domeny publicznej
+#   - starter-<lang>-<1..6>.rsvp    (starter library kreatora pierwszego
+#                                     uruchomienia, 6 tytułów domeny publicznej
 #                                     na język, pobierane po Wi-Fi w kroku 2.4)
 
 on:
@@ -70,6 +70,10 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Build firmware (web flasher + base OTA binary)
+        # The firmware takes its updates, fonts and starter books from the
+        # repo it was released from (staging builds stay on staging).
+        env:
+          RSVP_OTA_REPO: ${{ github.event.repository.name }}
         run: python3 firmware/tools/export_web_firmware.py --version "${{ steps.tag.outputs.name }}"
 
       - name: Verify base artifacts

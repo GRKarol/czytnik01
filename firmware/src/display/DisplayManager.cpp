@@ -1532,6 +1532,10 @@ bool DisplayManager::drawBitmap(int xStart, int yStart, int xEnd, int yEnd, cons
     return false;
   }
 
+  if (panelHold_) {
+    // beginCrossfade(): the frame stays in the buffer for finishCrossfade().
+    return true;
+  }
   ++panelWriteCount_;
   axs15231bPushColors(static_cast<uint16_t>(xStart), static_cast<uint16_t>(yStart),
                       static_cast<uint16_t>(xEnd - xStart),
@@ -2323,6 +2327,33 @@ void DisplayManager::flushScaledFrame(int scale, int virtualWidth, int virtualHe
       const int nativeY = nativeYStart + localNativeY;
       uint16_t *dstRow = txBuffer_ + localNativeY * kPanelNativeWidth;
 
+      // Unscaled landscape (every menu and Nano screen): a panel row is one
+      // column of the frame, copied straight, without the per-pixel mapping
+      // and divisions below.
+      if (scale == 1 && uiOrientation_ == BoardConfig::UiOrientation::Landscape) {
+        const int sourceX = kDisplayWidth - 1 - nativeY;
+        if (sourceX >= 0 && sourceX < virtualWidth) {
+          const int columns = std::min(kPanelNativeWidth, virtualHeight);
+          const uint16_t *src = virtualFrame_ + sourceX;
+          for (int nativeX = 0; nativeX < columns; ++nativeX) {
+            dstRow[nativeX] = src[nativeX * kVirtualBufferWidth];
+          }
+        }
+        continue;
+      }
+      if (scale == 1 && uiOrientation_ == BoardConfig::UiOrientation::LandscapeFlipped) {
+        const int sourceX = nativeY;
+        if (sourceX < virtualWidth) {
+          for (int nativeX = 0; nativeX < kPanelNativeWidth; ++nativeX) {
+            const int sourceY = kDisplayHeight - 1 - nativeX;
+            if (sourceY >= 0 && sourceY < virtualHeight) {
+              dstRow[nativeX] = virtualFrame_[sourceY * kVirtualBufferWidth + sourceX];
+            }
+          }
+        }
+        continue;
+      }
+
       for (int nativeX = 0; nativeX < kPanelNativeWidth; ++nativeX) {
         int logicalX = 0;
         int logicalY = 0;
@@ -2451,8 +2482,12 @@ void DisplayManager::renderBootSplash(uint32_t blackMs, uint32_t fadeMs) {
   flushScaledFrame(1, kBootSplashImageWidth, kBootSplashImageHeight);
   lastRenderKey_ = "";
 
-  // The picture fades in rather than the backlight: see fadeFrame().
-  fadeFrameIn(fadeMs);
+  // Lit in one step, no fade: each fade frame rescales and re-sends the
+  // whole 640x172 picture (~60 ms), so a fade ran at about 10 frames a
+  // second and stuttered whenever SD or Wi-Fi work took the other core.
+  (void)fadeMs;
+  axs15231bSetBrightnessPercent(brightnessPercent_);
+  axs15231bSetBacklight(true);
 }
 
 void DisplayManager::fadeInBacklight(uint32_t fadeMs) {
@@ -2599,6 +2634,106 @@ bool DisplayManager::fadeFrame(bool fadeIn, uint32_t fadeMs) {
     lastRenderKey_ = "";
   }
   return true;
+}
+
+uint16_t *DisplayManager::captureNativeFrame() const {
+  if (virtualFrame_ == nullptr || lastFlushScale_ <= 0 || lastFlushWidth_ <= 0 || lastFlushHeight_ <= 0) {
+    return nullptr;
+  }
+  const size_t pixels = static_cast<size_t>(kPanelNativeWidth) * kPanelNativeHeight;
+  uint16_t *frame = static_cast<uint16_t *>(
+      heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (frame == nullptr) {
+    return nullptr;
+  }
+  std::memset(frame, 0, pixels * sizeof(uint16_t));
+  for (int nativeY = 0; nativeY < kPanelNativeHeight; ++nativeY) {
+    uint16_t *dstRow = frame + static_cast<size_t>(nativeY) * kPanelNativeWidth;
+    for (int nativeX = 0; nativeX < kPanelNativeWidth; ++nativeX) {
+      int logicalX = 0;
+      int logicalY = 0;
+      mapPhysicalToLogical(uiOrientation_, nativeX, nativeY, logicalX, logicalY);
+      const int sourceX = logicalX / lastFlushScale_;
+      const int sourceY = logicalY / lastFlushScale_;
+      if (sourceX >= 0 && sourceX < lastFlushWidth_ && sourceY >= 0 && sourceY < lastFlushHeight_) {
+        dstRow[nativeX] = virtualFrame_[sourceY * kVirtualBufferWidth + sourceX];
+      }
+    }
+  }
+  return frame;
+}
+
+void DisplayManager::beginCrossfade() {
+  if (!initialized_ || panelHold_) {
+    return;
+  }
+  if (crossfadeFrom_ != nullptr) {
+    heap_caps_free(crossfadeFrom_);
+  }
+  crossfadeFrom_ = captureNativeFrame();
+  panelHold_ = true;
+}
+
+void DisplayManager::finishCrossfade(uint32_t fadeMs) {
+  if (!panelHold_) {
+    return;
+  }
+  panelHold_ = false;
+  uint16_t *from = crossfadeFrom_;
+  crossfadeFrom_ = nullptr;
+  uint16_t *to = from != nullptr && fadeMs > 0 ? captureNativeFrame() : nullptr;
+  if (from == nullptr || to == nullptr || txBuffer_ == nullptr) {
+    // Not enough memory for the blend: just show the new screen.
+    if (from != nullptr) heap_caps_free(from);
+    if (to != nullptr) heap_caps_free(to);
+    if (lastFlushScale_ > 0) {
+      flushScaledFrame(lastFlushScale_, lastFlushWidth_, lastFlushHeight_);
+    }
+    return;
+  }
+
+  // Whole native rows per push, as many as the transfer buffer holds; the
+  // panel takes them top to bottom in one pass per frame.
+  const int rowsPerPush = std::max(1, static_cast<int>(kTxBufferPixels / kPanelNativeWidth));
+  const uint32_t startedMs = millis();
+  for (;;) {
+    const uint32_t elapsedMs = millis() - startedMs;
+    const uint32_t level = elapsedMs >= fadeMs ? 256U : (elapsedMs * 256U) / fadeMs;
+    // Smoothstep: eases in and out instead of starting and stopping hard.
+    const uint32_t mix = (level * level * (768U - 2U * level)) >> 16;
+    for (int y = 0; y < kPanelNativeHeight; y += rowsPerPush) {
+      const int rows = std::min(rowsPerPush, kPanelNativeHeight - y);
+      const size_t base = static_cast<size_t>(y) * kPanelNativeWidth;
+      const size_t count = static_cast<size_t>(rows) * kPanelNativeWidth;
+      for (size_t i = 0; i < count; ++i) {
+        const uint16_t a = from[base + i];
+        const uint16_t b = to[base + i];
+        if (a == b || mix >= 256U) {
+          txBuffer_[i] = b;
+          continue;
+        }
+        // Panel words are byte-swapped RGB565.
+        const uint32_t ca = static_cast<uint16_t>((a << 8) | (a >> 8));
+        const uint32_t cb = static_cast<uint16_t>((b << 8) | (b >> 8));
+        const int32_t ra = (ca >> 11) & 0x1F, ga = (ca >> 5) & 0x3F, ba = ca & 0x1F;
+        const int32_t rb = (cb >> 11) & 0x1F, gb = (cb >> 5) & 0x3F, bb = cb & 0x1F;
+        const int32_t m = static_cast<int32_t>(mix);
+        const uint32_t r = static_cast<uint32_t>(ra + (((rb - ra) * m) >> 8));
+        const uint32_t g = static_cast<uint32_t>(ga + (((gb - ga) * m) >> 8));
+        const uint32_t bl = static_cast<uint32_t>(ba + (((bb - ba) * m) >> 8));
+        const uint16_t rgb = static_cast<uint16_t>((r << 11) | (g << 5) | bl);
+        txBuffer_[i] = static_cast<uint16_t>((rgb << 8) | (rgb >> 8));
+      }
+      if (!drawBitmap(0, y, kPanelNativeWidth, y + rows, txBuffer_)) {
+        break;
+      }
+    }
+    if (level >= 256U) {
+      break;
+    }
+  }
+  heap_caps_free(from);
+  heap_caps_free(to);
 }
 
 void DisplayManager::renderRsvpWord(const String &word, const String &chapterLabel,

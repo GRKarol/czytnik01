@@ -256,6 +256,9 @@ bool App::nanoUiActive() const {
     case MenuScreen::WelcomeConnect:
     case MenuScreen::WelcomeAppPairing:
     case MenuScreen::WelcomeConfigureInApp:
+    case MenuScreen::WelcomeMenuTheme:
+    case MenuScreen::WelcomeFont:
+    case MenuScreen::WelcomeLibrary:
     case MenuScreen::TutorialStep1:
     case MenuScreen::TutorialStep2:
     case MenuScreen::TutorialStep3:
@@ -266,10 +269,6 @@ bool App::nanoUiActive() const {
       return !wizardFontPickerActive_;
     case MenuScreen::BookPicker:
       return !wizardBookPickerActive_;
-    case MenuScreen::WifiNetworks:
-    case MenuScreen::WifiSettings:
-    case MenuScreen::TextEntry:
-      return !wifiFlowFromWizard_;
     default:
       return true;
   }
@@ -836,15 +835,16 @@ void App::setNanoTheme(uint8_t palette, bool ownAccent, uint8_t layout) {
   renderSettings();
 }
 
+String App::nanoPaletteLabel(uint8_t palette) const {
+  const String name = DisplayManager::nanoPaletteName(palette);
+  if (palette == DisplayManager::kNanoPaletteClassic) return tr3(TrKey3::NanoPaletteClassic);
+  if (name == "Cream") return tr3(TrKey3::NanoPaletteCream);
+  if (name == "Graphite") return tr3(TrKey3::NanoPaletteGraphite);
+  if (name == "Forest") return tr3(TrKey3::NanoPaletteForest);
+  return name;
+}
+
 void App::renderNanoThemes() {
-  auto paletteName = [this](uint8_t palette) -> String {
-    const String name = DisplayManager::nanoPaletteName(palette);
-    if (palette == DisplayManager::kNanoPaletteClassic) return tr3(TrKey3::NanoPaletteClassic);
-    if (name == "Cream") return tr3(TrKey3::NanoPaletteCream);
-    if (name == "Graphite") return tr3(TrKey3::NanoPaletteGraphite);
-    if (name == "Forest") return tr3(TrKey3::NanoPaletteForest);
-    return name;
-  };
 
   nano::ThemesView view;
   view.section = std::min<int>(nanoThemeSection_, nano::ThemesView::kSections - 1);
@@ -860,7 +860,7 @@ void App::renderNanoThemes() {
       nano::ThemesView::PaletteChip chip;
       chip.id = kNanoActionBase + kNanoThemePalette + palette;
       chip.palette = palette;
-      chip.name = paletteName(palette);
+      chip.name = nanoPaletteLabel(palette);
       chip.selected = palette == nanoPalette_;
       view.palettes.push_back(chip);
     }
@@ -1738,9 +1738,11 @@ void App::runNanoAction(int action, uint32_t nowMs) {
       openBookPicker(false);
       return;
     case kNanoReadFonts:
-      // "Aa" on the Czytaj card: how the reading screen looks, starting on
-      // the typeface and size.
-      openNanoTypography(1, kNanoTypographyFromRead, nowMs);
+      // "Aa" on the Czytaj card: only the reading typeface list. Everything
+      // else about the reading screen stays under Ustawienia > Wyglad
+      // czytania. Back returns to Czytaj (selectTypographyFontPickerItem).
+      nanoFontPickerFromRead_ = true;
+      openTypographyFontPicker();
       return;
     case kNanoSettingsScreensaver:
       nanoScreensaverFromSettingsHome_ = true;

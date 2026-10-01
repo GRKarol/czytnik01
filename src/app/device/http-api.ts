@@ -45,7 +45,11 @@ function timed(ms = TIMEOUT_MS): AbortSignal {
   return AbortSignal.timeout(ms);
 }
 
-const LANG_INDEX: Language[] = ["pl", "en", "de", "es", "fr", "it"];
+// Order of the firmware's UiLanguage enum (Localization.h): the "language"
+// setting is that index. The old order here (pl, en, de, ...) showed an
+// English reader as Polish and switched a reader set to Polish in the app
+// to English.
+const LANG_INDEX: Language[] = ["en", "es", "fr", "de", "ro", "pl"];
 
 interface FirmwareSettings {
   reading?: {
@@ -95,7 +99,7 @@ function fromFirmware(fw: FirmwareSettings): DeviceSettings {
   const sc = fw.scroll ?? {};
   const theme: Theme = d.nightMode ? "night" : d.darkMode ? "dark" : "light";
   const pause: PauseBehaviour = r.pauseMode === "instant" ? "auto" : "tap";
-  const lang: Language = LANG_INDEX[d.language ?? 0] ?? "pl";
+  const lang: Language = LANG_INDEX[d.language ?? 5] ?? "pl";
   // brightnessIndex w firmware to 0..N gdzie N to kMaxBrightness — skalujemy
   // przybliżenie do 0..100 dla UI.
   // Newer firmware keeps a smooth percent (20-100); older only the 5-step

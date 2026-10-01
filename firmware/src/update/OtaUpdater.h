@@ -13,6 +13,11 @@
 // downloads.
 SemaphoreHandle_t wifiSessionMutex();
 
+// Set by tools/pio_set_version.py from RSVP_OTA_REPO (release CI).
+#ifndef RSVP_OTA_DEFAULT_REPO
+#define RSVP_OTA_DEFAULT_REPO "czytnik01"
+#endif
+
 class OtaUpdater {
  public:
   using StatusCallback = void (*)(void *context, const char *title, const char *line1,
@@ -22,7 +27,7 @@ class OtaUpdater {
     String wifiSsid;
     String wifiPassword;
     String githubOwner = "GRKarol";
-    String githubRepo = "czytnik01";
+    String githubRepo = RSVP_OTA_DEFAULT_REPO;
     String assetName = "flower-firmware.bin";
     bool autoCheck = false;
   };
@@ -46,6 +51,11 @@ class OtaUpdater {
     String detail;
     bool rebootRequired = false;
   };
+
+  // True when `latest` is a higher release than `current` ("v0.4.01" >
+  // "v0.4.00"; a "-N-gHASH" suffix is ignored). Tags that don't parse fall
+  // back to "any difference counts", the old behaviour.
+  static bool isNewerVersion(const String &latest, const String &current);
 
   bool loadConfig(Config &config) const;
   bool isConfigured(const Config &config) const;

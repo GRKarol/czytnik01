@@ -59,12 +59,15 @@ export class LibraryPanel extends LitElement {
     return deviceApi.current instanceof HttpDeviceApi;
   }
 
+  // Unknown capabilities (the request timed out while the reader was busy)
+  // count as supported: a newer reader must not be told it is too old. On a
+  // truly old one the cover or chapter request itself reports the error.
   private get picturesSupported(): boolean {
-    return !this.onReader || !!this.caps?.bookPictures;
+    return !this.onReader || !this.caps || !!this.caps.bookPictures;
   }
 
   private get chaptersSupported(): boolean {
-    return !this.onReader || !!this.caps?.chapterEditor;
+    return !this.onReader || !this.caps || !!this.caps.chapterEditor;
   }
 
   render() {
@@ -289,7 +292,9 @@ export class LibraryPanel extends LitElement {
     this.error = "";
     try {
       this.books = await deviceApi.listBooks();
-      this.caps = await deviceApi.getCapabilities().catch(() => null);
+      this.caps =
+        (await deviceApi.getCapabilities().catch(() => null)) ??
+        (await deviceApi.getCapabilities().catch(() => null));
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {

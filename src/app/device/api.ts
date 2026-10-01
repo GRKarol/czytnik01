@@ -8,7 +8,7 @@
  */
 
 export type Theme = "light" | "dark" | "night";
-export type Language = "pl" | "en" | "de" | "es" | "fr" | "it";
+export type Language = "pl" | "en" | "de" | "es" | "fr" | "ro";
 export type ReaderHand = "right" | "left";
 export type ReaderMode = "rsvp" | "scroll";
 export type PauseBehaviour = "tap" | "long-press" | "auto";

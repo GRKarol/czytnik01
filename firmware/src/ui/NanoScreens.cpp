@@ -1356,6 +1356,25 @@ void paintWizardChip(DisplayManager &d, Sink &sink, const Rect &rect, const Wiza
     addTarget(sink, rect, chip.id);
     return;
   }
+  if (chip.art == WizardChipArt::Palette) {
+    d.nanoPaletteChip(rect, chip.palette, chip.label, chip.selected, pressed);
+    addTarget(sink, rect, chip.id);
+    return;
+  }
+  if (chip.art == WizardChipArt::UiFont) {
+    d.nanoFontChip(rect, chip.family, chip.label, "", chip.selected, pressed);
+    addTarget(sink, rect, chip.id);
+    return;
+  }
+  if (chip.art == WizardChipArt::Typeface) {
+    d.nanoButton(rect, chip.label, true, Icon::None, 1, "", "", pressed || chip.selected, false, chip.typeface);
+    if (chip.selected) {
+      d.nanoDrawRoundRect(rect.x, rect.y, rect.w, rect.h, 10, d.nanoColor(Role::Accent));
+      d.nanoDrawRoundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 9, d.nanoColor(Role::Accent));
+    }
+    addTarget(sink, rect, chip.id);
+    return;
+  }
   const uint16_t surface = d.nanoColor(chip.selected || pressed ? Role::SurfaceActive : Role::SurfaceMuted);
   d.nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, 10, surface);
   if (chip.selected) {
@@ -1385,6 +1404,25 @@ void paintWizardChip(DisplayManager &d, Sink &sink, const Rect &rect, const Wiza
       d.nanoTextLineAt(x + headW, cy, letter, 3, d.nanoColor(Role::Accent));
       d.nanoTextLineAt(x + headW + letterW, cy, tail, 3, d.nanoColor(Role::Foreground));
       d.nanoText(Rect(rect.x + 4, rect.y + rect.h - 22, rect.w - 8, 20), chip.label, 1, ink, Align::Center);
+      break;
+    }
+    case WizardChipArt::Book: {
+      if (rect.h < 52) {
+        // Low chips (six books on one page): title and author one small
+        // line each.
+        d.nanoText(Rect(rect.x + 8, rect.y + 2, rect.w - 16, rect.h / 2), chip.label, 1,
+                   d.nanoColor(chip.selected ? Role::Foreground : Role::Muted), Align::Center);
+        d.nanoText(Rect(rect.x + 8, rect.y + rect.h / 2 - 1, rect.w - 16, rect.h / 2), chip.detail, 1,
+                   chip.selected ? d.nanoColor(Role::Accent) : d.nanoBlend(Role::Muted, 170), Align::Center);
+        break;
+      }
+      // A title that fits one line keeps the big size; longer ones drop to
+      // the small size on two lines so the author still has its row.
+      const bool oneLine = DisplayManager::nanoTextWidth(chip.label, 2) <= rect.w - 16;
+      d.nanoText(Rect(rect.x + 8, rect.y + 4, rect.w - 16, rect.h - 26), chip.label, oneLine ? 2 : 1,
+                 d.nanoColor(chip.selected ? Role::Foreground : Role::Muted), Align::Center, 2);
+      d.nanoText(Rect(rect.x + 6, rect.y + rect.h - 20, rect.w - 12, 16), chip.detail, 1,
+                 chip.selected ? d.nanoColor(Role::Accent) : d.nanoBlend(Role::Muted, 170), Align::Center);
       break;
     }
     case WizardChipArt::Scroll: {
@@ -1449,19 +1487,63 @@ void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view) {
 
   const bool qr = view.body == WizardBody::Qr;
   const int textW = qr ? 440 : kScreenW - 32;
-  if (view.body != WizardBody::Message) {
+  if (view.body != WizardBody::Message && view.body != WizardBody::Preview) {
     d.nanoText(Rect(16, 14, textW, 32), view.title, 3, fg);
-    d.nanoText(Rect(16, 46, textW, 20), view.subtitle, 1, muted);
+    if (view.body == WizardBody::Loading) {
+      // Room for a two-line tip over the bar.
+      d.nanoText(Rect(16, 46, textW, 38), view.subtitle, 1, muted, Align::Start, 2);
+    } else if (!view.tallChips) {
+      d.nanoText(Rect(16, 46, textW, 20), view.subtitle, 1, muted);
+    }
   }
 
-  const Rect content(16, 68, kScreenW - 32, 64);
+  const Rect content = view.tallChips ? Rect(16, 50, kScreenW - 32, 84) : Rect(16, 68, kScreenW - 32, 64);
   switch (view.body) {
     case WizardBody::Chips: {
-      const int count = std::max<int>(1, static_cast<int>(view.chips.size()));
-      const int gap = 8;
-      const int chipW = (content.w - gap * (count - 1)) / count;
+      Rect area = content;
+      // Tall chips (all six books) never page: no arrow slots, full width.
+      const bool paged = view.pagePrevId != kNoTarget || view.pageNextId != kNoTarget ||
+                         (view.chipColumns > 0 && !view.tallChips);
+      if (paged) {
+        // Arrow buttons either side; a missing id (first or last page)
+        // leaves its slot empty so the chips never shift between pages.
+        constexpr int kArrowW = 34;
+        const Rect prev(content.x, content.y, kArrowW, content.h);
+        const Rect next(content.x + content.w - kArrowW, content.y, kArrowW, content.h);
+        if (view.pagePrevId != kNoTarget) {
+          d.nanoIconButton(prev, Icon::ChevronLeft, sink.pressed(view.pagePrevId));
+          addTarget(sink, Rect(prev.x - 6, prev.y - 4, prev.w + 10, prev.h + 8), view.pagePrevId);
+        }
+        if (view.pageNextId != kNoTarget) {
+          d.nanoIconButton(next, Icon::ChevronRight, sink.pressed(view.pageNextId));
+          addTarget(sink, Rect(next.x - 4, next.y - 4, next.w + 10, next.h + 8), view.pageNextId);
+        }
+        area = Rect(content.x + kArrowW + 8, content.y, content.w - 2 * (kArrowW + 8), content.h);
+      }
+      const int rows = std::max(1, view.chipRows);
+      const int total = std::max<int>(1, static_cast<int>(view.chips.size()));
+      const int columns = view.chipColumns > 0 ? view.chipColumns : std::max(1, (total + rows - 1) / rows);
+      const int gap = rows > 1 ? 6 : 8;
+      const int chipW = (area.w - gap * (columns - 1)) / columns;
+      const int chipH = (area.h - gap * (rows - 1)) / rows;
       for (int i = 0; i < static_cast<int>(view.chips.size()); ++i) {
-        paintWizardChip(d, sink, Rect(content.x + i * (chipW + gap), content.y, chipW, content.h), view.chips[i]);
+        const int column = i % columns;
+        const int row = i / columns;
+        if (row >= rows) break;
+        paintWizardChip(d, sink,
+                        Rect(area.x + column * (chipW + gap), area.y + row * (chipH + gap), chipW, chipH),
+                        view.chips[i]);
+      }
+      break;
+    }
+    case WizardBody::Preview: {
+      const Rect area(16, 14, kScreenW - 32, 118);
+      if (view.previewMode == 0) {
+        d.nanoReaderSample(area, view.previewBefore, view.previewWord, view.previewAfter, view.previewSizeLevel);
+      } else if (view.scrollWords != nullptr && !view.scrollWords->empty()) {
+        d.nanoDrawRoundRect(area.x, area.y, area.w, area.h, 12, d.nanoColor(Role::ProgressTrack));
+        d.nanoScrollPreview(Rect(area.x + 12, area.y + 8, area.w - 24, area.h - 16), *view.scrollWords,
+                            view.scrollCurrent);
       }
       break;
     }
@@ -1485,6 +1567,14 @@ void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view) {
       // A segment gliding along the track, back and forth.
       const Rect track(content.x + 40, content.y + 30, content.w - 80, 6);
       d.nanoFillRoundRect(track.x, track.y, track.w, track.h, 3, d.nanoColor(Role::ProgressTrack));
+      if (!view.status.isEmpty()) {
+        d.nanoText(Rect(track.x, track.y + 14, track.w, 18), view.status, 1, muted, Align::Center);
+      }
+      if (view.percent >= 0) {
+        const int fill = std::max(6, track.w * std::min(100, view.percent) / 100);
+        d.nanoFillRoundRect(track.x, track.y, fill, track.h, 3, accent);
+        break;
+      }
       const int segW = track.w / 4;
       const int travel = track.w - segW;
       const int period = 40;
@@ -1529,8 +1619,9 @@ void paintWizard(DisplayManager &d, Sink &sink, const WizardView &view) {
   }
   if (!view.footer.isEmpty()) {
     const int left = view.backId != kNoTarget ? 140 : 16;
-    d.nanoText(Rect(left, rowY, std::max(0, rightEdge - left), 28), view.footer, 1, muted,
-               view.backId != kNoTarget ? Align::Center : Align::Start);
+    // Two lines when it doesn't fit beside the buttons.
+    d.nanoText(Rect(left, rowY - 4, std::max(0, rightEdge - left), 36), view.footer, 1, muted,
+               view.backId != kNoTarget ? Align::Center : Align::Start, 2);
   }
 
   d.nanoEndFrame();

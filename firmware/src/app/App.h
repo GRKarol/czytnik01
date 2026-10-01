@@ -165,6 +165,10 @@ class App {
     WelcomeConnect,
     WelcomeAppPairing,
     WelcomeConfigureInApp,
+    WelcomeMenuTheme,
+    WelcomeFont,
+    WelcomeLibrary,
+    WelcomeMenuFont,
     TutorialStep1,
     TutorialStep2,
     TutorialStep3,
@@ -430,7 +434,7 @@ class App {
   void renderTextEntry();
   bool handleTextEntryTap(uint16_t x, uint16_t y, uint32_t nowMs);
   void firePendingTextEntryFlash(uint32_t nowMs);
-  void activateTextEntryButton(size_t buttonIndex, uint32_t nowMs);
+  void activateTextEntryButton(size_t buttonIndex, uint32_t nowMs, bool render = true);
   void commitTextEntry(uint32_t nowMs);
   String configuredWifiSsid();
   String findSavedWifiPassword(const String &ssid);
@@ -492,10 +496,10 @@ class App {
   /// czytania zanim klient zobaczy główne menu. Pokazywany tylko jeśli
   /// `kPrefSetupDone == false`. Kroki 1-3 (język/motyw/kolor) budują listę
   /// przez rebuildSettingsMenuItems() + renderSettings() jak zwykły ekran
-  /// Ustawień. Krok Wi-Fi i krok czcionki NIE mają własnych ekranów — reużywają
-  /// WifiNetworks/TypographyFontPicker z flagą kontekstu (patrz
-  /// wifiFlowFromWizard_/wizardFontPickerActive_/wizardBookPickerActive_
-  /// poniżej), żeby nie duplikować całej logiki skanowania/pobierania.
+  /// Ustawień. Krok Wi-Fi reużywa listę sieci WifiNetworks (w skórce Nano)
+  /// z flagą wifiFlowFromWizard_. Pozostałe kroki to strony kreatora
+  /// (app/AppWizard.inl). Numer kroku leży w NVS (kPrefWizardStep), więc
+  /// restart po aktualizacji albo wyłączenie wraca do tego samego ekranu.
   void openWelcomeLanguage();
   void selectWelcomeLanguageItem(uint32_t nowMs);
   // Shown after the language step only when the card did not mount: asks
@@ -542,6 +546,43 @@ class App {
   size_t wizardStepIndex() const;
   void renderWizardPage();
   void handleWizardTouchAt(uint16_t x, uint16_t y, uint32_t nowMs);
+  // Menu palette, menu font, reading typeface and first book as wizard
+  // pages.
+  void openWelcomeMenuTheme(uint32_t nowMs);
+  void openWelcomeMenuFont(uint32_t nowMs);
+  void openWelcomeFont(uint32_t nowMs);
+  void rebuildWelcomeFontFaces();
+  void openWelcomeLibrary(uint32_t nowMs);
+  void openWelcomeLibraryBook(uint32_t nowMs);
+  // Starter title `slot` (0-based) of the UI language: its path on the
+  // card, and opening it (false when it is not on the card yet).
+  String starterBookPath(uint8_t slot) const;
+  bool openStarterBook(uint8_t slot, uint32_t nowMs);
+  // Library page tick: waits for a picked title still downloading.
+  void updateWelcomeLibrary(uint32_t nowMs);
+  // Loading step: the rotating big line and the "Tip:" line under it.
+  String wizardLoadingPhrase(uint32_t elapsedMs) const;
+  String wizardLoadingTip(uint32_t elapsedMs) const;
+  // Setup-done flags without leaving the screen (the caller opens a book
+  // or the main menu next).
+  void markWelcomeWizardDone();
+  String nanoPaletteLabel(uint8_t palette) const;
+  // Step saved in NVS; prepare sets the screen before the first render,
+  // finish runs what needs the screen up (Wi-Fi scan, pairing network).
+  void saveWizardStep(uint8_t step);
+  uint8_t prepareWizardResume(uint32_t nowMs);
+  void finishWizardResume(uint8_t step, uint32_t nowMs);
+  // One wizard-styled page with a moving bar, drawn outside the step flow
+  // (Wi-Fi scan).
+  void renderWizardBusy(const String &title, const String &subtitle);
+  // Wi-Fi status lines (connecting, connected, wrong password): a wizard
+  // page inside the first-run wizard, the plain status screen elsewhere.
+  void renderWifiStatus(const String &line1, const String &line2);
+  // Loading step: update to the newest release first, then fonts + books.
+  void startWelcomeAssetDownloads();
+  void startWelcomeFontDownload();
+  bool startWizardUpdateTask(const OtaUpdater::Config &config);
+  static void wizardUpdateTask(void *params);
   void openTutorialStep1();
   void finishTutorial(uint32_t nowMs);
   void renderTutorialStep();
@@ -1168,7 +1209,32 @@ class App {
   enum class WelcomeSdState : uint8_t { Missing, Unreadable, ConfirmFormat, Formatting, Failed };
   WelcomeSdState welcomeSdState_ = WelcomeSdState::Missing;
   uint32_t welcomeLoadingLastRenderMs_ = 0;
-  bool welcomeLoadingWorkStarted_ = false;
+  // Update (check, maybe install + restart), then Assets (fonts, books).
+  enum class WelcomeLoadPhase : uint8_t { Start, Update, Assets, Restarting };
+  WelcomeLoadPhase welcomeLoadPhase_ = WelcomeLoadPhase::Start;
+  uint32_t welcomeLoadPhaseMs_ = 0;
+  // Once per boot: after a restart into the new firmware it checks again,
+  // finds itself current and moves on.
+  bool welcomeUpdateChecked_ = false;
+  // Typeface and library pages: what the chips show, and the page.
+  std::vector<DisplayManager::ReaderTypeface> welcomeFontFaces_;
+  uint8_t welcomeLibrarySelected_ = 0;
+  // Library page: a picked title is downloading / failed to download.
+  bool welcomeLibraryWaiting_ = false;
+  bool welcomeLibraryFailed_ = false;
+  bool welcomeLibraryShownDownloading_ = false;
+  uint32_t welcomeLibraryWaitPollMs_ = 0;
+  // Loading step downloads: books first, then fonts (welcomeFontsStarted_);
+  // the stall clock restarts whenever a file finishes.
+  bool welcomeFontsStarted_ = false;
+  unsigned welcomeAssetsProgressMark_ = 0;
+  uint32_t welcomeAssetsProgressMs_ = 0;
+  size_t welcomeChipPage_ = 0;
+  uint8_t welcomeFontsSeen_ = 0;
+  uint8_t savedWizardStep_ = 0xFF;
+  // Set while prepareWizardResume() opens a step under the boot splash:
+  // the page is drawn once the splash is gone (setState(Menu)).
+  bool wizardRenderSuppressed_ = false;
   uint8_t welcomeReadingModePreviewMode_ = 0;  // 0=RSVP, 1=Scroll
   // Podgląd RSVP/Scroll w kreatorze musi realnie animować słowa/przewijanie
   // — statyczny kadr niczego nie demonstruje. Wspólny licznik czasu i
@@ -1267,6 +1333,10 @@ class App {
   // physical key press typed the same character twice.
   int lastFiredTextEntryButtonIndex_ = -1;
   uint32_t lastFiredTextEntryAtMs_ = 0;
+  // Finger-up time on the keyboard (kTextEntryBounceGapMs) and when it
+  // opened: the tap that opened it must not land on a key.
+  uint32_t lastTextEntryReleaseAtMs_ = 0;
+  uint32_t textEntryOpenedAtMs_ = 0;
   // General commit-action cooldown — see kMenuActionDebounceMs in App.cpp.
   // 0 means "no action fired yet" so the very first selectMenuItem() call
   // after boot is never swallowed.

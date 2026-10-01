@@ -32,7 +32,7 @@ const LANG_LABEL: Record<Language, string> = {
   de: "Deutsch",
   es: "Español",
   fr: "Français",
-  it: "Italiano",
+  ro: "Română",
 };
 const HAND_LABEL: Record<ReaderHand, string> = { right: "Prawa", left: "Lewa" };
 const MODE_LABEL: Record<ReaderMode, string> = { rsvp: "RSVP", scroll: "Przewijanie" };
@@ -292,6 +292,9 @@ export class SettingsPanel extends LitElement {
                       ? html`<option value=${index} ?selected=${index === s.typefaceIndex}>${name}</option>`
                       : nothing,
                   )}
+                  ${s.typefaceIndex >= TYPEFACE_NAMES.length
+                    ? html`<option value=${s.typefaceIndex} selected>Krój z nowszego firmware'u</option>`
+                    : nothing}
                 </select>
                 <small class="muted small">
                   ${s.typefacesAvailable

@@ -32,6 +32,8 @@ void runUpdateScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, 
 void runSaverScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runTutorialScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runWizardScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
+void runWizard2Screens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
+void runWizard3Screens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runExtrasScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 
 int main() {
@@ -48,6 +50,8 @@ int main() {
   runSaverScreens(d, dump);
   runTutorialScreens(d, dump);
   runWizardScreens(d, dump);
+  runWizard2Screens(d, dump);
+  runWizard3Screens(d, dump);
   d.setNanoUiFont(0);
   runExtrasScreens(d, dump);
   return 0;

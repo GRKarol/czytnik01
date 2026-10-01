@@ -691,7 +691,7 @@ export class CzytnikApp extends LitElement {
     return html`
       <section class="card">
         <h3>${iconUpdate(22)} Aktualizacje</h3>
-        <updates-panel></updates-panel>
+        <updates-panel .currentFw=${this.readerFirmware}></updates-panel>
       </section>
     `;
   }

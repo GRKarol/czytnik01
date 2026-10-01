@@ -1,10 +1,15 @@
 name: Build starter library
 
-# Generuje 5 tytulow domeny publicznej na jezyk (firmware/tools/generate_starter_library.py)
-# i wgrywa kazdy plik .rsvp jako OSOBNY, nazwany asset Release'u (nie zip) —
-# firmware pobiera je pojedynczo w tle podczas kreatora pierwszego uruchomienia
+# Wgrywa 6 tytulow domeny publicznej na jezyk (firmware/starter-books/*.rsvp)
+# jako OSOBNE, nazwane assety Release'u (nie zip) — firmware pobiera je
+# pojedynczo w tle na ekranie ladowania kreatora pierwszego uruchomienia
 # (OtaUpdater::downloadAsset, patrz App::bookDownloadTask) po nazwie pliku,
 # np. "starter-pl-1.rsvp".
+#
+# Pliki sa w repo, wygenerowane i sprawdzone lokalnie przez
+# firmware/tools/generate_starter_library.py (Gutenberg, Wolne Lektury,
+# Wikisource). CI ich nie pobiera od nowa: Gutenberg czesto zrywa polaczenia
+# i release dostawalby wtedy niepelny zestaw.
 #
 # Triggerowany AUTOMATYCZNIE przez release.yml (workflow_call) po zbudowaniu
 # bazowego firmware. Mozna tez uruchomic recznie podajac tag.
@@ -36,22 +41,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.tag }}
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Generate starter library
-        run: python3 firmware/tools/generate_starter_library.py dist/books
-
-      - name: Verify artifacts
+      - name: Verify starter books
         run: |
-          count=$(ls dist/books/*.rsvp | wc -l)
-          echo "generated $count .rsvp files"
-          test "$count" -ge 1
+          count=$(ls firmware/starter-books/*.rsvp | wc -l)
+          echo "starter books: $count"
+          test "$count" -eq 36
 
       - name: Upload starter books to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          files: dist/books/*.rsvp
+          files: firmware/starter-books/*.rsvp

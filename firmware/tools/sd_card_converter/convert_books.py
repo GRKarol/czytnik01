@@ -305,7 +305,7 @@ class HtmlEventsExtractor(HTMLParser):
         if self._skip_depth > 0:
             return
         if self._heading_tag == tag:
-            title = clean_text(" ".join(self._heading_parts))
+            title = clean_text("".join(self._heading_parts))
             if title:
                 self.events.append(("chapter", title))
             self._heading_tag = None
@@ -327,7 +327,10 @@ class HtmlEventsExtractor(HTMLParser):
         self._flush_text()
 
     def _flush_text(self) -> None:
-        text = clean_text(" ".join(self._text_parts))
+        # Joined as written: the markup's own whitespace separates words. A
+        # space here split words at every inline tag ("<span>I</span>T is"
+        # became "I T is", "<i>word</i>," became "word ,").
+        text = clean_text("".join(self._text_parts))
         self._text_parts = []
         if text:
             self.events.append(("text", text))

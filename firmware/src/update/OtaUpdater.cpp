@@ -1,6 +1,8 @@
 #include "update/OtaUpdater.h"
 
 #include <algorithm>
+#include <memory>
+#include <new>
 
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
@@ -335,6 +337,43 @@ bool OtaUpdater::isConfigured(const Config &config) const {
 
 String OtaUpdater::currentVersion() const { return RSVP_FIRMWARE_VERSION; }
 
+namespace {
+// "v0.4.01-3-gabc" -> {0, 4, 1}. False when there is no number at all.
+bool parseVersionParts(const String &tag, long parts[4]) {
+  for (int i = 0; i < 4; ++i) {
+    parts[i] = 0;
+  }
+  const int dash = tag.indexOf('-');
+  const String base = dash > 0 ? tag.substring(0, dash) : tag;
+  int part = 0;
+  bool digits = false;
+  for (size_t i = 0; i < base.length() && part < 4; ++i) {
+    const char c = base[i];
+    if (c >= '0' && c <= '9') {
+      parts[part] = parts[part] * 10 + (c - '0');
+      digits = true;
+    } else if (c == '.' && digits) {
+      ++part;
+    }
+  }
+  return digits;
+}
+}  // namespace
+
+bool OtaUpdater::isNewerVersion(const String &latest, const String &current) {
+  long a[4];
+  long b[4];
+  if (!parseVersionParts(latest, a) || !parseVersionParts(current, b)) {
+    return !latest.isEmpty() && latest != current;
+  }
+  for (int i = 0; i < 4; ++i) {
+    if (a[i] != b[i]) {
+      return a[i] > b[i];
+    }
+  }
+  return false;
+}
+
 bool OtaUpdater::loadConfigFromPath(const char *path, Config &config) const {
   File file = SD_MMC.open(path);
   if (!file || file.isDirectory()) {
@@ -510,8 +549,13 @@ bool OtaUpdater::fetchLatestRelease(const Config &config, LatestRelease &release
 
   if (!extractAssetDownloadUrl(body, config.assetName, release.assetUrl) ||
       release.assetUrl.isEmpty()) {
-    errorDetail = config.assetName + " missing";
-    return false;
+    // The body is cut at kMaxReleaseJsonBytes and a release with the font
+    // pack and starter books runs past 100 KB, so a missing entry usually
+    // just sits beyond the cut. The public download link for this tag
+    // works the same (resolveDownloadUrl follows its redirect); a real
+    // missing asset fails there with HTTP 404.
+    release.assetUrl = "https://github.com/" + config.githubOwner + "/" + config.githubRepo +
+                       "/releases/download/" + release.tagName + "/" + config.assetName;
   }
 
   return true;
@@ -606,7 +650,7 @@ OtaUpdater::Result OtaUpdater::checkOnly(const Config &config, StatusCallback ca
 
   disconnectWiFi();
   result.latestVersion = release.tagName;
-  if (release.tagName == result.currentVersion) {
+  if (!isNewerVersion(release.tagName, result.currentVersion)) {
     result.code = ResultCode::NoUpdate;
     result.summary = "Already current";
     result.detail = release.tagName;
@@ -657,7 +701,7 @@ OtaUpdater::Result OtaUpdater::checkAndInstall(const Config &config, StatusCallb
   }
 
   result.latestVersion = release.tagName;
-  if (release.tagName == result.currentVersion) {
+  if (!isNewerVersion(release.tagName, result.currentVersion)) {
     disconnectWiFi();
     result.code = ResultCode::NoUpdate;
     result.summary = "Already current";
@@ -901,45 +945,27 @@ bool OtaUpdater::downloadAsset(const Config &config, const String &assetName,
                                const String &tagName, const String &destPath,
                                String &errorDetail, StatusCallback callback,
                                void *context) const {
-  const String releaseUrl = tagName.isEmpty()
-      ? "https://api.github.com/repos/" + config.githubOwner + "/" + config.githubRepo +
-            "/releases/latest"
-      : "https://api.github.com/repos/" + config.githubOwner + "/" + config.githubRepo +
-            "/releases/tags/" + tagName;
+  // Straight to the release's public download link: no api.github.com call
+  // per file. The API allows 60 unauthenticated requests an hour per IP
+  // (the font pack alone is 34 files) and its JSON, cut at 32 KB here, only
+  // listed the first dozen assets of a 68-asset release.
+  const String assetUrl = "https://github.com/" + config.githubOwner + "/" + config.githubRepo +
+                          (tagName.isEmpty() ? String("/releases/latest/download/")
+                                             : "/releases/download/" + tagName + "/") +
+                          assetName;
 
-  WiFiClientSecure metaClient;
-  metaClient.setInsecure();
-  metaClient.setHandshakeTimeout(15);
-
-  HTTPClient metaHttp;
-  metaHttp.setUserAgent(userAgentForVersion(currentVersion()));
-  metaHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  metaHttp.setTimeout(15000);
-  if (!metaHttp.begin(metaClient, releaseUrl)) {
-    errorDetail = "HTTP begin failed";
-    return false;
-  }
-
-  metaHttp.addHeader("Accept", "application/vnd.github+json");
-  const int metaStatus = metaHttp.GET();
-  if (metaStatus != HTTP_CODE_OK) {
-    errorDetail = "GitHub HTTP " + String(metaStatus);
-    metaHttp.end();
-    return false;
-  }
-
-  const String body = readBodyLimited(metaHttp, kMaxReleaseJsonBytes);
-  metaHttp.end();
-
-  String assetUrl;
-  if (!extractAssetDownloadUrl(body, assetName, assetUrl) || assetUrl.isEmpty()) {
-    errorDetail = assetName + " missing";
-    return false;
-  }
-
-  String resolvedUrl;
-  if (!resolveDownloadUrl(assetUrl, assetName, resolvedUrl, errorDetail, callback, context)) {
-    return false;
+  // latest/download hops once more on github.com (to the tagged link)
+  // before the storage host; follow those hops here, one TLS session each.
+  String resolvedUrl = assetUrl;
+  for (int hop = 0; hop < 3 && resolvedUrl.startsWith("https://github.com/"); ++hop) {
+    String next;
+    if (!resolveDownloadUrl(resolvedUrl, assetName, next, errorDetail, callback, context)) {
+      return false;
+    }
+    if (next == resolvedUrl) {
+      break;
+    }
+    resolvedUrl = next;
   }
 
   WiFiClientSecure dlClient;
@@ -979,7 +1005,19 @@ bool OtaUpdater::downloadAsset(const Config &config, const String &assetName,
 
   WiFiClient *stream = dlHttp.getStreamPtr();
   const int reportedSize = dlHttp.getSize();
-  uint8_t buffer[1024];
+  // 8 KB reads: each SD write of a 1 KB piece cost a FAT sector
+  // read-modify-write, which held a 34-file font pack to a crawl. On the
+  // heap, the download tasks' stacks are mostly TLS already.
+  constexpr size_t kDownloadChunkBytes = 8192;
+  std::unique_ptr<uint8_t[]> chunk(new (std::nothrow) uint8_t[kDownloadChunkBytes]);
+  if (!chunk) {
+    out.close();
+    SD_MMC.remove(tmpPath);
+    errorDetail = "Out of memory";
+    dlHttp.end();
+    return false;
+  }
+  uint8_t *buffer = chunk.get();
   size_t totalWritten = 0;
   uint32_t lastDataMs = millis();
   bool stalled = false;
@@ -998,7 +1036,7 @@ bool OtaUpdater::downloadAsset(const Config &config, const String &assetName,
       continue;
     }
 
-    const size_t chunkSize = std::min(sizeof(buffer), static_cast<size_t>(available));
+    const size_t chunkSize = std::min(kDownloadChunkBytes, static_cast<size_t>(available));
     const int bytesRead = stream->readBytes(buffer, chunkSize);
     if (bytesRead <= 0) {
       break;

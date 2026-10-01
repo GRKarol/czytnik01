@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Builds the starter library shipped as GitHub Release assets.
 
-Onboarding krok 2.4 ("Prawie gotowe! Co dzis czytamy?") pobiera po cichu do
-5 tytulow domeny publicznej dla jezyka wybranego w kroku 1, patrz
+Kreator pierwszego uruchomienia (ekran ladowania) pobiera 6 tytulow domeny
+publicznej dla jezyka wybranego w kroku 1, patrz
 App::bookDownloadTask (firmware/src/app/App.cpp). Ten skrypt generuje te
 assety: pobiera zrodlowy plik (EPUB lub plain-text UTF-8) dla kazdej pozycji
 w MANIFEST, konwertuje go do formatu .rsvp uzywajac tej samej logiki co
 firmware/tools/sd_card_converter/convert_books.py (RsvpWriter, ekstrakcja
 zdarzen z EPUB/HTML/tekstu), i zapisuje jako
-"starter-<kod jezyka>-<1..5>.rsvp" w katalogu wyjsciowym.
+"starter-<kod jezyka>-<1..6>.rsvp" w katalogu wyjsciowym.
 
 Rozszerzenie MUSI byc .rsvp — StorageManager na urzadzeniu czyta dyrektywy
 @title/@author/@chapter tylko z plikow .rsvp (patrz hasRsvpExtension() w
@@ -20,6 +20,8 @@ Uzycie (jak w build-fonts.yml/generate_font_pack.sh):
 
 from __future__ import annotations
 
+import html
+import json
 import pathlib
 import re
 import sys
@@ -27,6 +29,7 @@ import tempfile
 import time
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # Book titles/authors contain non-ASCII characters (accents, Polish/Romanian
@@ -44,8 +47,8 @@ USER_AGENT = (
     "Mozilla/5.0 (compatible; czytnik01-starter-library-builder/1.0; "
     "+https://github.com/GRKarol/czytnik01)"
 )
-REQUEST_TIMEOUT_S = 30
-RETRY_COUNT = 3
+REQUEST_TIMEOUT_S = 90
+RETRY_COUNT = 5
 RETRY_DELAY_S = 4
 
 GUTENBERG_START_RE = re.compile(
@@ -176,9 +179,32 @@ BOILERPLATE_HEADING_MARKERS = (
     "title page",
     "frontispiece",
     "table of contents",
+    "contents",
     "preface",
     "introduction",
+    # Tables of contents, notes and errata in the other five languages.
+    "table des mati",
+    "inhalt",
+    "índice",
+    "indice",
+    "spis treści",
+    "treść",
+    "cuprins",
+    "footnote",
+    "notas",
+    "anmerkung",
+    "transkription",
+    "transcriptor",
+    "transcripteur",
+    "errata",
+    "druckfehler",
+    "objaśnienia",
 )
+# A table of contents printed as plain paragraphs: many short lines. Only
+# short sections qualify, so a long run of verse is never taken for one.
+TOC_MIN_PARAGRAPHS = 4
+TOC_MAX_AVERAGE_WORDS = 8
+TOC_MAX_WORDS = 1500
 BOILERPLATE_MIN_WORDS = 60
 # Some editions front-load a long run of short sections before the real text
 # starts (title page + dedication + a table-of-contents block where every
@@ -206,13 +232,26 @@ def _split_into_sections(
     return [s for s in sections if s[0] is not None or s[1]]
 
 
+# Headings that are boilerplate only as the whole heading ("Note" at the
+# end of a Romanian edition, not "Notebook").
+BOILERPLATE_EXACT_HEADINGS = ("note", "notes", "fin", "sfârșit", "ende")
+
+
 def _section_is_boilerplate(title: str | None, texts: list[str]) -> bool:
     if title is not None:
         lowered = title.lower()
         if any(marker in lowered for marker in BOILERPLATE_HEADING_MARKERS):
             return True
+        if lowered.strip(" .") in BOILERPLATE_EXACT_HEADINGS:
+            return True
     word_count = sum(len(t.split()) for t in texts)
-    return word_count < BOILERPLATE_MIN_WORDS
+    if word_count < BOILERPLATE_MIN_WORDS:
+        return True
+    return (
+        len(texts) >= TOC_MIN_PARAGRAPHS
+        and word_count <= TOC_MAX_WORDS
+        and word_count / len(texts) < TOC_MAX_AVERAGE_WORDS
+    )
 
 
 def trim_boilerplate_sections(events: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -252,7 +291,15 @@ def trim_boilerplate_sections(events: list[tuple[str, str]]) -> list[tuple[str, 
 # can't isolate it. This phrase essentially never occurs in 19th/20th-century
 # prose, so treat its first appearance as "everything from here is boilerplate"
 # and cut the stream there.
-BOILERPLATE_INLINE_MARKERS = ("project gutenberg", "gutenberg-tm", "gutenberg™")
+BOILERPLATE_INLINE_MARKERS = (
+    "project gutenberg",
+    "gutenberg-tm",
+    "gutenberg™",
+    # Wolne Lektury's closing note (cover credits, ISBN, file date).
+    "wolnelektury.pl",
+    "fundacja nowoczesna polska",
+    "isbn-978-83-288",
+)
 
 
 def truncate_at_first_inline_boilerplate(
@@ -266,6 +313,122 @@ def truncate_at_first_inline_boilerplate(
     return result
 
 
+# Wikisource (Romanian: Project Gutenberg has only 3 usable Romanian books).
+# The MediaWiki parse API gives each page's rendered HTML; the header box,
+# edit links, footnotes and other page furniture are dropped before the
+# same HTML extractor as EPUB chapters reads it. A page that is just a table
+# of contents (the novel split into subpages) is followed one level down,
+# in the order the contents list them, each subpage becoming a chapter.
+WIKISOURCE_SKIP_CLASSES = (
+    "ws-noexport", "noprint", "mw-editsection", "reference", "references",
+    "mw-references-wrap", "toc", "navbox", "wst-header", "headertemplate",
+    "mw-empty-elt", "plainSister",
+)
+WIKISOURCE_VOID_TAGS = {"br", "img", "hr", "meta", "link", "input", "wbr", "source", "col", "area"}
+WIKISOURCE_MIN_WORDS_OWN_TEXT = 1500
+
+
+class _WikisourceCleaner(cb.HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.out: list[str] = []
+        self.skip_depth = 0
+        self.links: list[str] = []
+
+    def _skipped(self, tag: str, attrs) -> bool:
+        if tag in ("style", "script", "sup", "table"):
+            return True
+        classes = dict(attrs).get("class") or ""
+        return any(name in classes for name in WIKISOURCE_SKIP_CLASSES)
+
+    def handle_starttag(self, tag, attrs):
+        if tag in WIKISOURCE_VOID_TAGS:
+            if not self.skip_depth:
+                self.out.append(f"<{tag}>")
+            return
+        if self.skip_depth:
+            self.skip_depth += 1
+            return
+        if self._skipped(tag, attrs):
+            self.skip_depth = 1
+            return
+        if tag == "a":
+            href = dict(attrs).get("href") or ""
+            if href.startswith("/wiki/"):
+                self.links.append(urllib.parse.unquote(href[len("/wiki/"):]).replace("_", " "))
+        self.out.append(f"<{tag}>")
+
+    def handle_endtag(self, tag):
+        if tag in WIKISOURCE_VOID_TAGS:
+            return
+        if self.skip_depth:
+            self.skip_depth -= 1
+            return
+        self.out.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        if not self.skip_depth:
+            self.out.append(html.escape(data, quote=False))
+
+
+def _wikisource_page(lang: str, title: str) -> tuple[str, str, list[str]]:
+    query = urllib.parse.urlencode({
+        "action": "parse", "page": title, "prop": "text", "redirects": 1,
+        "disableeditsection": 1, "disabletoc": 1, "format": "json", "formatversion": 2,
+    })
+    data = json.loads(fetch(f"https://{lang}.wikisource.org/w/api.php?{query}").decode("utf-8"))
+    if "error" in data:
+        raise RuntimeError(f"wikisource {title}: {data['error'].get('info')}")
+    cleaner = _WikisourceCleaner()
+    cleaner.feed(data["parse"]["text"])
+    return data["parse"]["title"], "".join(cleaner.out), cleaner.links
+
+
+def wikisource_events(lang: str, title: str) -> list[tuple[str, str]]:
+    resolved, markup, links = _wikisource_page(lang, title)
+    events = [e for e in cb.html_events(markup) if e[0] == "chapter" or e[1].strip()]
+    own_words = sum(len(v.split()) for k, v in events if k == "text")
+    subpages: list[str] = []
+    for link in links:
+        if link.startswith(resolved + "/") and link not in subpages:
+            subpages.append(link)
+    if own_words >= WIKISOURCE_MIN_WORDS_OWN_TEXT or not subpages:
+        return events
+    result: list[tuple[str, str]] = []
+    for page in subpages:
+        _, sub_markup, _ = _wikisource_page(lang, page)
+        result.append(("chapter", page[len(resolved) + 1:]))
+        result.extend(e for e in cb.html_events(sub_markup) if e[0] == "chapter" or e[1].strip())
+        time.sleep(0.5)
+    return result
+
+
+FOOTNOTE_MARK_RE = re.compile(r"\s*\[\d{1,4}\]")
+FOOTNOTE_BODY_RE = re.compile(r"^\[\d{1,4}\]\s")
+# Chapter names Gutenberg's EPUB builder leaves for files without a heading
+# ("6345988651784513070 74008 h 1.htm").
+FILE_CHAPTER_RE = re.compile(r"^\d{6,} \d+ h \d+\.htm$|\.x?html?$")
+
+
+def polish_events(events: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Drops footnote bodies and markers and file-name chapter titles: in a
+    one-word-at-a-time reader "[192]" and "Giftkraut." between two sentences
+    are just noise."""
+    result: list[tuple[str, str]] = []
+    for kind, value in events:
+        if kind == "chapter":
+            if FILE_CHAPTER_RE.search(value.strip()):
+                continue
+            result.append((kind, value))
+            continue
+        if FOOTNOTE_BODY_RE.match(value):
+            continue
+        value = FOOTNOTE_MARK_RE.sub("", value).strip()
+        if value:
+            result.append((kind, value))
+    return result
+
+
 def build_one(entry: dict, tmp_dir: pathlib.Path, out_dir: pathlib.Path) -> None:
     lang = entry["lang"]
     slot = entry["slot"]
@@ -275,7 +438,7 @@ def build_one(entry: dict, tmp_dir: pathlib.Path, out_dir: pathlib.Path) -> None
     author = entry["author"]
 
     print(f"[{lang}-{slot}] {title} / {author} <- {url}")
-    data = fetch(url)
+    data = fetch(url) if kind != "wikisource" else b""
 
     if kind == "epub":
         src_path = tmp_dir / f"src-{lang}-{slot}.epub"
@@ -284,6 +447,10 @@ def build_one(entry: dict, tmp_dir: pathlib.Path, out_dir: pathlib.Path) -> None
         author = author or extracted_author
         events = trim_boilerplate_sections(events)
         events = truncate_at_first_inline_boilerplate(events)
+    elif kind == "wikisource":
+        events = wikisource_events(lang, url)
+        events = trim_boilerplate_sections(events)
+        events = drop_empty_chapter_runs(events)
     elif kind == "txt":
         text = data.decode("utf-8-sig", errors="replace")
         text = strip_gutenberg_boilerplate(text)
@@ -292,6 +459,8 @@ def build_one(entry: dict, tmp_dir: pathlib.Path, out_dir: pathlib.Path) -> None
     else:
         raise ValueError(f"unknown source kind: {kind}")
 
+    events = polish_events(events)
+    events = drop_empty_chapter_runs(events)
     writer = cb.RsvpWriter(title=title, author=author, source=url, max_words=MAX_WORDS)
     for event_kind, value in events:
         if event_kind == "chapter":
@@ -356,90 +525,100 @@ def _gutenberg(book_id: int) -> str:
     return f"https://www.gutenberg.org/ebooks/{book_id}.epub.noimages"
 
 
-# 5 genre-varied, public-domain, originally-in-that-language books per UI
-# language (see firmware/src/app/Localization.h for the language list).
-# Sourced from Project Gutenberg; Polish additionally uses Wolne Lektury
-# where Gutenberg's Polish shelf was too thin for genre variety. Every URL
-# below was verified live (HTTP 200, application/epub+zip or a direct
-# Wolne Lektury .epub) before being added here.
-#
-# Romanian is intentionally short (3, not 5): Project Gutenberg's entire
-# Romanian catalog is 5 books total, of which 2 are disqualified (one is a
-# 21st-century copyrighted pamphlet, one is a translation rather than an
-# originally-Romanian work) and no equivalent of Wolne Lektury exists for
-# Romanian with verifiable direct-download URLs. A short starter pack is not
-# an error — see startBackgroundBookDownload()'s comment in App.cpp, missing
-# slots are simply skipped and krok 2.4 shows fewer tiles for that language.
+def _wolnelektury(slug: str) -> str:
+    return f"https://wolnelektury.pl/media/book/epub/{slug}.epub"
+
+
+# 6 public-domain books per UI language (see firmware/src/app/Localization.h),
+# each written in that language, one per genre where the shelf allows:
+# adventure, crime, romance, horror/fantastic, science fiction, humour or
+# short stories. Sources: Project Gutenberg; Wolne Lektury for Polish;
+# Romanian Wikisource for Romanian (Gutenberg has only 3 Romanian books).
+# Every source was fetched and converted before being listed here.
 MANIFEST: list[dict] = [
     # --- English (en) ---
-    {"lang": "en", "slot": 1, "kind": "epub", "url": _gutenberg(1342),
-     "title": "Pride and Prejudice", "author": "Jane Austen"},
-    {"lang": "en", "slot": 2, "kind": "epub", "url": _gutenberg(345),
-     "title": "Dracula", "author": "Bram Stoker"},
-    {"lang": "en", "slot": 3, "kind": "epub", "url": _gutenberg(1661),
+    {"lang": "en", "slot": 1, "kind": "epub", "url": _gutenberg(1661),
      "title": "The Adventures of Sherlock Holmes", "author": "Arthur Conan Doyle"},
-    {"lang": "en", "slot": 4, "kind": "epub", "url": _gutenberg(120),
+    {"lang": "en", "slot": 2, "kind": "epub", "url": _gutenberg(1342),
+     "title": "Pride and Prejudice", "author": "Jane Austen"},
+    {"lang": "en", "slot": 3, "kind": "epub", "url": _gutenberg(120),
      "title": "Treasure Island", "author": "Robert Louis Stevenson"},
+    {"lang": "en", "slot": 4, "kind": "epub", "url": _gutenberg(345),
+     "title": "Dracula", "author": "Bram Stoker"},
     {"lang": "en", "slot": 5, "kind": "epub", "url": _gutenberg(35),
      "title": "The Time Machine", "author": "H. G. Wells"},
+    {"lang": "en", "slot": 6, "kind": "epub", "url": _gutenberg(308),
+     "title": "Three Men in a Boat", "author": "Jerome K. Jerome"},
 
     # --- French (fr) ---
-    {"lang": "fr", "slot": 1, "kind": "epub", "url": _gutenberg(13951),
-     "title": "Les trois mousquetaires", "author": "Alexandre Dumas"},
-    {"lang": "fr", "slot": 2, "kind": "epub", "url": _gutenberg(32854),
+    {"lang": "fr", "slot": 1, "kind": "epub", "url": _gutenberg(32854),
      "title": "Arsène Lupin, gentleman-cambrioleur", "author": "Maurice Leblanc"},
-    {"lang": "fr", "slot": 3, "kind": "epub", "url": _gutenberg(62215),
+    {"lang": "fr", "slot": 2, "kind": "epub", "url": _gutenberg(13951),
+     "title": "Les trois mousquetaires", "author": "Alexandre Dumas"},
+    {"lang": "fr", "slot": 3, "kind": "epub", "url": _gutenberg(4791),
+     "title": "Voyage au centre de la Terre", "author": "Jules Verne"},
+    {"lang": "fr", "slot": 4, "kind": "epub", "url": _gutenberg(62215),
      "title": "Le Fantôme de l'Opéra", "author": "Gaston Leroux"},
-    {"lang": "fr", "slot": 4, "kind": "epub", "url": _gutenberg(2419),
+    {"lang": "fr", "slot": 5, "kind": "epub", "url": _gutenberg(2419),
      "title": "La dame aux camélias", "author": "Alexandre Dumas fils"},
-    {"lang": "fr", "slot": 5, "kind": "epub", "url": _gutenberg(4791),
-     "title": "Voyage au centre de la terre", "author": "Jules Verne"},
+    {"lang": "fr", "slot": 6, "kind": "epub", "url": _gutenberg(4650),
+     "title": "Candide", "author": "Voltaire"},
 
     # --- German (de) ---
-    {"lang": "de", "slot": 1, "kind": "epub", "url": _gutenberg(35312),
-     "title": "Aus dem Leben eines Taugenichts", "author": "Joseph von Eichendorff"},
-    {"lang": "de", "slot": 2, "kind": "epub", "url": _gutenberg(50285),
+    {"lang": "de", "slot": 1, "kind": "epub", "url": _gutenberg(29336),
+     "title": "Durch Wüste und Harem", "author": "Karl May"},
+    {"lang": "de", "slot": 2, "kind": "epub", "url": _gutenberg(22367),
+     "title": "Die Verwandlung", "author": "Franz Kafka"},
+    {"lang": "de", "slot": 3, "kind": "epub", "url": _gutenberg(50285),
      "title": "Dr. Mabuse, der Spieler", "author": "Norbert Jacques"},
-    {"lang": "de", "slot": 3, "kind": "epub", "url": _gutenberg(76360),
-     "title": "Die Elixiere des Teufels", "author": "E. T. A. Hoffmann"},
-    {"lang": "de", "slot": 4, "kind": "epub", "url": _gutenberg(31538),
+    {"lang": "de", "slot": 4, "kind": "epub", "url": _gutenberg(74008),
+     "title": "Der Schimmelreiter", "author": "Theodor Storm"},
+    {"lang": "de", "slot": 5, "kind": "epub", "url": _gutenberg(31538),
      "title": "Peter Schlemihls wundersame Geschichte", "author": "Adelbert von Chamisso"},
-    {"lang": "de", "slot": 5, "kind": "epub", "url": _gutenberg(2229),
-     "title": "Faust: Der Tragödie erster Teil", "author": "Johann Wolfgang von Goethe"},
+    {"lang": "de", "slot": 6, "kind": "epub", "url": _gutenberg(77905),
+     "title": "Deutsche Märchen", "author": "Brüder Grimm"},
 
     # --- Spanish (es) ---
     {"lang": "es", "slot": 1, "kind": "epub", "url": _gutenberg(2000),
      "title": "Don Quijote de la Mancha", "author": "Miguel de Cervantes"},
-    {"lang": "es", "slot": 2, "kind": "epub", "url": _gutenberg(55514),
-     "title": "Cuentos de amor", "author": "Emilia Pardo Bazán"},
-    {"lang": "es", "slot": 3, "kind": "epub", "url": _gutenberg(49836),
+    {"lang": "es", "slot": 2, "kind": "epub", "url": _gutenberg(13507),
+     "title": "Cuentos de amor, de locura y de muerte", "author": "Horacio Quiroga"},
+    {"lang": "es", "slot": 3, "kind": "epub", "url": _gutenberg(26983),
+     "title": "Sangre y arena", "author": "Vicente Blasco Ibáñez"},
+    {"lang": "es", "slot": 4, "kind": "epub", "url": _gutenberg(17223),
+     "title": "Pepita Jiménez", "author": "Juan Valera"},
+    {"lang": "es", "slot": 5, "kind": "epub", "url": _gutenberg(320),
+     "title": "Lazarillo de Tormes", "author": "Anónimo"},
+    {"lang": "es", "slot": 6, "kind": "epub", "url": _gutenberg(49836),
      "title": "Niebla", "author": "Miguel de Unamuno"},
-    {"lang": "es", "slot": 4, "kind": "epub", "url": _gutenberg(13507),
-     "title": "Cuentos de Amor de Locura y de Muerte", "author": "Horacio Quiroga"},
-    {"lang": "es", "slot": 5, "kind": "epub", "url": _gutenberg(53743),
-     "title": "El misterio de un hombre pequeñito", "author": "Eduardo Zamacois"},
 
-    # --- Romanian (ro) — only 3/5, see note above ---
-    {"lang": "ro", "slot": 1, "kind": "epub", "url": _gutenberg(64597),
+    # --- Romanian (ro) ---
+    {"lang": "ro", "slot": 1, "kind": "wikisource", "url": "Amintiri din copilărie",
+     "title": "Amintiri din copilărie", "author": "Ion Creangă"},
+    {"lang": "ro", "slot": 2, "kind": "wikisource", "url": "Moara cu noroc",
+     "title": "Moara cu noroc", "author": "Ioan Slavici"},
+    {"lang": "ro", "slot": 3, "kind": "wikisource", "url": "Povestea lui Harap-Alb",
+     "title": "Povestea lui Harap-Alb", "author": "Ion Creangă"},
+    {"lang": "ro", "slot": 4, "kind": "wikisource", "url": "Sărmanul Dionis",
+     "title": "Sărmanul Dionis", "author": "Mihai Eminescu"},
+    {"lang": "ro", "slot": 5, "kind": "wikisource", "url": "Ion (Rebreanu)",
+     "title": "Ion", "author": "Liviu Rebreanu"},
+    {"lang": "ro", "slot": 6, "kind": "epub", "url": _gutenberg(64597),
      "title": "Nuvele", "author": "Ion Luca Caragiale"},
-    {"lang": "ro", "slot": 2, "kind": "epub", "url": _gutenberg(35323),
-     "title": "Poezii", "author": "Mihai Eminescu"},
-    {"lang": "ro", "slot": 3, "kind": "epub", "url": _gutenberg(62916),
-     "title": "Povești", "author": "Ioan Slavici"},
 
     # --- Polish (pl) ---
-    {"lang": "pl", "slot": 1, "kind": "epub", "url": _gutenberg(8119),
-     "title": "Sklepy cynamonowe", "author": "Bruno Schulz"},
-    {"lang": "pl", "slot": 2, "kind": "epub", "url": _gutenberg(31536),
-     "title": "Pan Tadeusz", "author": "Adam Mickiewicz"},
-    {"lang": "pl", "slot": 3, "kind": "epub",
-     "url": "https://wolnelektury.pl/media/book/epub/dolega-mostowicz-prokurator-alicja-horn.epub",
+    {"lang": "pl", "slot": 1, "kind": "epub", "url": _wolnelektury("w-pustyni-i-w-puszczy"),
+     "title": "W pustyni i w puszczy", "author": "Henryk Sienkiewicz"},
+    {"lang": "pl", "slot": 2, "kind": "epub", "url": _wolnelektury("dolega-mostowicz-prokurator-alicja-horn"),
      "title": "Prokurator Alicja Horn", "author": "Tadeusz Dołęga-Mostowicz"},
-    {"lang": "pl", "slot": 4, "kind": "epub",
-     "url": "https://wolnelektury.pl/media/book/epub/demon-ruchu.epub",
+    {"lang": "pl", "slot": 3, "kind": "epub", "url": _wolnelektury("trylogia-ksiezycowa-na-srebrnym-globie"),
+     "title": "Na srebrnym globie", "author": "Jerzy Żuławski"},
+    {"lang": "pl", "slot": 4, "kind": "epub", "url": _wolnelektury("demon-ruchu"),
      "title": "Demon ruchu", "author": "Stefan Grabiński"},
-    {"lang": "pl", "slot": 5, "kind": "epub", "url": _gutenberg(34635),
-     "title": "Menażerya ludzka", "author": "Gabriela Zapolska"},
+    {"lang": "pl", "slot": 5, "kind": "epub", "url": _gutenberg(31536),
+     "title": "Pan Tadeusz", "author": "Adam Mickiewicz"},
+    {"lang": "pl", "slot": 6, "kind": "epub", "url": _gutenberg(8119),
+     "title": "Sklepy cynamonowe", "author": "Bruno Schulz"},
 ]
 
 

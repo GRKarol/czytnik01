@@ -538,6 +538,7 @@ enum class WizardBody : uint8_t {
   Message,  // big centred title (Super!, Skonfigurujmy...)
   Loading,  // rotating phrase over a sliding bar
   Qr,       // code on the right, text on the left
+  Preview,  // the reading screen itself (RSVP word or scrolling page)
 };
 enum class WizardChipArt : uint8_t {
   Label,     // just the name
@@ -545,6 +546,10 @@ enum class WizardChipArt : uint8_t {
   Theme,     // reading theme preview (DisplayManager::nanoReadingThemeChip)
   Rsvp,      // a word with its focus letter
   Scroll,    // a few lines of text
+  Palette,   // menu palette preview (DisplayManager::nanoPaletteChip)
+  Typeface,  // the name set in that reader typeface
+  Book,      // title over the author (starter library)
+  UiFont,    // the name set in that menu font (DisplayManager::nanoFontChip)
 };
 struct WizardChip {
   int id = kNoTarget;
@@ -554,6 +559,10 @@ struct WizardChip {
   uint16_t swatch = 0;  // Swatch
   uint8_t theme = 0;    // Theme: 0 dark, 1 light, 2 night
   String word;          // Rsvp: sample word in the UI language
+  uint8_t palette = 0;  // Palette
+  DisplayManager::ReaderTypeface typeface = DisplayManager::ReaderTypeface::Count;  // Typeface
+  String detail;        // Book: author
+  uint8_t family = 0;   // UiFont: DisplayManager::nanoUiFontName index
 };
 struct WizardView {
   size_t step = 0;  // 0-based
@@ -562,9 +571,30 @@ struct WizardView {
   String subtitle;
   WizardBody body = WizardBody::Chips;
   std::vector<WizardChip> chips;
+  // Chips: 1 row side by side, or 2 rows (palettes, typefaces). With page
+  // ids set, arrows either side of the chips turn the page.
+  int chipRows = 1;
+  int chipColumns = 0;  // 0 = as many as the chips need
+  // Chips take the subtitle's space too (the starter library's 2x3 books).
+  bool tallChips = false;
+  int pagePrevId = kNoTarget;
+  int pageNextId = kNoTarget;
   // Loading: advances every frame; Message: auto-advance progress, -1 none.
   uint32_t phase = 0;
   int autoPercent = -1;
+  // Loading: known progress 0-100 fills the bar instead of the glider,
+  // `status` names what is happening under it.
+  int percent = -1;
+  String status;
+  // Preview: mode 0 RSVP (before/word/after at the reading size), 1 the
+  // scrolling page (scrollWords around scrollCurrent).
+  uint8_t previewMode = 0;
+  String previewBefore;
+  String previewWord;
+  String previewAfter;
+  uint8_t previewSizeLevel = 0;
+  const std::vector<DisplayManager::ContextWord> *scrollWords = nullptr;
+  size_t scrollCurrent = 0;
   // Qr
   const bool *qr = nullptr;
   uint8_t qrSize = 0;

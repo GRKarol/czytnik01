@@ -1,5 +1,5 @@
-import { LitElement, css, html } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   fetchLatestRelease,
   pickFirmwareAsset,
@@ -30,8 +30,8 @@ export class UpdatesPanel extends LitElement {
   @state() private release: ReleaseInfo | null = null;
   @state() private error = "";
   @state() private progress = 0;
-  /** Aktualna wersja firmware na urządzeniu (na razie nieznana). */
-  @state() private currentFw: string | null = null;
+  /** Firmware of the connected reader (from /api/hello); empty = unknown. */
+  @property({ attribute: false }) currentFw = "";
   private downloaded: Blob | null = null;
 
   render() {
@@ -84,7 +84,11 @@ export class UpdatesPanel extends LitElement {
     const r = this.release!;
     const asset = pickFirmwareAsset(r);
     const tag = r.tag.replace(/^v/, "");
+    // Only a release newer than the reader is offered for install: a reader
+    // on a newer or test build must not be pushed back to an older one.
     const newer = this.currentFw ? isNewer(tag, this.currentFw) : true;
+    const readerAhead = !!this.currentFw && isNewer(this.currentFw, tag);
+    const offerInstall = newer;
     const date = new Date(r.publishedAt).toLocaleDateString("pl-PL");
 
     return html`
@@ -96,8 +100,18 @@ export class UpdatesPanel extends LitElement {
           </div>
           ${newer
             ? html`<span class="badge ok">Dostępna</span>`
-            : html`<span class="badge">Aktualna</span>`}
+            : html`<span class="badge">${readerAhead ? "Starsza" : "Aktualna"}</span>`}
         </header>
+        ${this.currentFw
+          ? html`<p class="muted">
+              Czytnik: ${this.currentFw}.
+              ${readerAhead
+                ? "Ma nowszą wersję niż to wydanie, nie ma czego instalować."
+                : newer
+                  ? ""
+                  : "Ma już tę wersję."}
+            </p>`
+          : nothing}
 
         ${r.body
           ? html`<pre class="changelog">${trimChangelog(r.body)}</pre>`
@@ -118,7 +132,7 @@ export class UpdatesPanel extends LitElement {
                   : ""}
               </div>
               <div class="row">
-                ${this.stage === "found"
+                ${this.stage === "found" && offerInstall
                   ? html`<button class="cta" @click=${() => this.download(asset)}>
                       Pobierz na telefon
                     </button>`

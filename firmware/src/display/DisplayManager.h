@@ -345,6 +345,12 @@ class DisplayManager {
   // leaves the backlight off, fadeFrameIn() turns it on.
   void fadeFrameIn(uint32_t fadeMs);
   void fadeFrameOut(uint32_t fadeMs);
+  // Cross-fade from the picture on the panel to the next screen: after
+  // beginCrossfade() renders still fill the frame buffer but nothing
+  // reaches the panel; finishCrossfade() blends the old picture into the
+  // last rendered frame over fadeMs, then shows it as is.
+  void beginCrossfade();
+  void finishCrossfade(uint32_t fadeMs);
   void renderRsvpWord(const String &word, const String &chapterLabel = "",
                       uint8_t progressPercent = 0, bool showFooter = true,
                       const String &footerStatusLabel = "",
@@ -707,6 +713,9 @@ class DisplayManager {
   void flushScaledFrame(int scale, int virtualWidth, int virtualHeight);
   void flushFullWidthLogicalBand(int yStart, int yEnd);
   bool fadeFrame(bool fadeIn, uint32_t fadeMs);
+  // Panel-order copy (native rows) of the frame last flushed, for
+  // finishCrossfade().
+  uint16_t *captureNativeFrame() const;
   int logicalWidth() const;
   int logicalHeight() const;
   uint16_t focusTimerBreakColor() const;
@@ -716,6 +725,10 @@ class DisplayManager {
 
   uint16_t *virtualFrame_ = nullptr;
   uint16_t *txBuffer_ = nullptr;
+  // beginCrossfade(): the picture being faded out, and drawBitmap() holding
+  // panel writes back until finishCrossfade().
+  uint16_t *crossfadeFrom_ = nullptr;
+  bool panelHold_ = false;
   size_t txBufferBytes_ = 0;
   bool initialized_ = false;
   uint8_t brightnessPercent_ = 100;
