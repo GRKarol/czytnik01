@@ -2461,3 +2461,39 @@ bool App::updateChargeProbe(uint32_t nowMs) {
   display_.setBatteryState(batteryPresent_, batteryDisplayedPercent_, batteryChargingNow());
   return true;
 }
+
+// ─── Short PWR = back ────────────────────────────────────────────────────────
+
+void App::goBackFromPowerButton(uint32_t nowMs) {
+  if (state_ == AppState::Playing) {
+    requestReaderPauseAtSentenceEnd(nowMs);
+    return;
+  }
+  if (state_ == AppState::Menu && menuScreen_ != MenuScreen::Main) {
+    if (menuScreen_ == MenuScreen::WelcomeReadingModePreview || settingsScrollPreviewActive_) {
+      closeReadingPreview(nowMs);
+      return;
+    }
+    if (isExtraScreen()) {
+      extraScreenBack(nowMs);
+      return;
+    }
+    if (menuScreen_ == MenuScreen::WelcomeLanguage) {
+      return;
+    }
+    // Whatever the arrow in the corner does, with the same press flash.
+    for (size_t i = 0; i < currentGridButtons_.size(); ++i) {
+      const DisplayManager::Button &button = currentGridButtons_[i];
+      const size_t id = i < currentGridItemIndices_.size() ? currentGridItemIndices_[i] : i;
+      if (button.icon != ui::IconId::Back && id != static_cast<size_t>(kNanoActionBase + kNanoTypoBack)) {
+        continue;
+      }
+      if (handleGridTap(static_cast<uint16_t>(button.x + button.width / 2),
+                        static_cast<uint16_t>(button.y + button.height / 2), nowMs)) {
+        return;
+      }
+      break;
+    }
+  }
+  toggleMenuFromPowerButton(nowMs);
+}

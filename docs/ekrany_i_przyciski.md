@@ -60,7 +60,7 @@ Cel: status "Bateria/Wyłączanie" przy krytycznym/niskim poziomie. Bez przycisk
 ---
 
 ### Główne menu (MenuScreen::Main) — `renderMainMenu`
-Cel: punkt wejścia do menu (w trybie Official otwierany przyciskiem Menu na panelu przed czytaniem; fizyczny przycisk do menu nie istnieje, lewy przycisk płytki to sprzętowy RESET).
+Cel: punkt wejścia do menu (w trybie Official otwierany przyciskiem Menu na panelu przed czytaniem albo krótkim PWR; lewy przycisk płytki to sprzętowy RESET, firmware go nie widzi).
 Lista (od góry):
 - [warunkowo] „>> Update vX.Y.Z" — pojawia się tylko gdy dostępna aktualizacja OTA — od razu uruchamia `runFirmwareUpdate` (bez ekranu potwierdzenia, patrz uwaga niżej).
 - „Czytaj" — zamyka menu, wraca do czytnika (Paused).
@@ -308,7 +308,8 @@ Typ layoutu: lista.
 ### Standby (AppState::Standby) — wygaszacz ekranu
 Cel: animacja oszczędzająca ekran po czasie bezczynności (styl wybierany w ScreensaverSettings: Życie/Labirynt/Voronoi/Gwiazdy/Matrix/Ekran wyłączony).
 - Fazy: animacja przyciemniona (czas z ustawienia „Wyłącz po”, domyślnie 30 s; jedno dotknięcie albo dowolny przycisk budzi) -> pytanie „Wyłączyć czytnik?" na przyciemnionym ekranie z licznikiem 10 s -> czytnik się wyłącza (animacja wyłączania). „Nie” wraca do poprzedniego ekranu.
-- Krótkie naciśnięcie PWR to osobna rzecz: ekran gaśnie od razu, czytanie i udostępnianie Wi-Fi stają. Ekran włącza dowolny przycisk albo dwa szybkie stuknięcia.
+- Krótkie naciśnięcie prawego przycisku (BOOT) to osobna rzecz: ekran gaśnie od razu, czytanie i udostępnianie Wi-Fi stają. Ekran włącza dowolny przycisk albo dwa szybkie stuknięcia.
+- Przyciski fizyczne: PWR krótko = wstecz o jeden ekran (w czytaniu pauza, z panelu przed czytaniem menu), PWR przytrzymany = wyłączenie. BOOT krótko = zgaszenie ekranu, przytrzymany ponad 1 s = jasność (po puszczeniu), ponad 2 s = motyw czytania.
 - Opcjonalny, delikatnie pulsujący tekst podpowiedzi (fade in/out co 10s).
 Typ layoutu: pełnoekranowa animacja, zero interakcji dotykowej.
 
@@ -338,7 +339,7 @@ Boot → (kolejne uruchomienia) Paused/Playing (czytnik)
 
 Paused/Playing (czytnik) ⇄ Main            [przycisk Menu na panelu / strzałka wstecz]
 Paused/Playing → SavePointNameEntry (TextEntry)   [przycisk SP]
-Paused/Playing ⇄ Standby                    [bezczynność / krótki PWR (od razu zgaszony ekran) / kombinacja BOOT+PWR]
+Paused/Playing ⇄ Standby                    [bezczynność / krótki BOOT (od razu zgaszony ekran) / kombinacja BOOT+PWR]
 
 Main → SettingsHome
 Main → BookPicker (Biblioteka)

@@ -108,7 +108,11 @@ constexpr uint32_t kTouchPlayHoldMs = 420;
 constexpr uint32_t kTouchPlayReleaseGraceMs = 150;
 constexpr uint32_t kPreviewBrowseHoldMs = 240;
 constexpr uint32_t kReaderDoubleTapWindowMs = 520;
-constexpr uint32_t kThemeToggleHoldMs = 900;
+// The right button (BOOT): a short press turns the screen off, held past
+// kBrightnessHoldMs it steps the brightness (on release), past
+// kThemeToggleHoldMs it changes the reading theme (while still held).
+constexpr uint32_t kBrightnessHoldMs = 1000;
+constexpr uint32_t kThemeToggleHoldMs = 2000;
 constexpr uint32_t kScrollAnimationFrameMs = 16;
 constexpr uint16_t kSwipeThresholdPx = 40;
 constexpr uint16_t kAxisBiasPx = 12;
@@ -1337,23 +1341,22 @@ void App::update(uint32_t nowMs) {
       return;
     }
 
-    // Short-press power button → leave the plugin with the screen off.
+    // Short-press power button → back out of the plugin. Plugins get no
+    // button events: every action of theirs is reachable by touch.
     if (powerButton_.wasReleasedEvent()) {
-      Serial.println("[plugin] power button pressed — unloading plugin, screen off");
+      Serial.println("[plugin] power button pressed — unloading plugin");
       pluginLoader_.unload();
       returnFromPlugin();
-      turnScreenOffFromPower(nowMs);
       return;
     }
 
-    // Short-press Reboot (BOOT) button → back out of the plugin, the job
-    // the power button had before. Plugins get no button events now: every
-    // action of theirs is reachable by touch.
+    // Short-press right (BOOT) button → leave the plugin with the screen off.
     if (button_.wasReleasedEvent()) {
-      if (button_.lastHoldDurationMs() < kThemeToggleHoldMs) {
-        Serial.println("[plugin] reboot button pressed — unloading plugin");
+      if (button_.lastHoldDurationMs() < kBrightnessHoldMs) {
+        Serial.println("[plugin] right button pressed — unloading plugin, screen off");
         pluginLoader_.unload();
         returnFromPlugin();
+        turnScreenOffFromPower(nowMs);
         return;
       }
     }
@@ -1950,9 +1953,10 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
 }
 
 void App::handleBootButton(uint32_t nowMs) {
-  // The right button (BOOT): a short press steps the brightness up and wraps
-  // from the brightest level to the dimmest, holding it changes the reading
-  // theme.
+  // The right button (BOOT): a short press turns the screen off (and stops
+  // reading and the phone network). Held past kBrightnessHoldMs it steps the
+  // brightness up, wrapping from the brightest level to the dimmest; held
+  // past kThemeToggleHoldMs it changes the reading theme.
   if (state_ == AppState::Standby) {
     if (!standbyButtonsReleased_ && !button_.isHeld() && !powerButton_.isHeld() &&
         nowMs - standbyEnteredMs_ >= standbyWakeGraceMs_) {
@@ -1966,8 +1970,20 @@ void App::handleBootButton(uint32_t nowMs) {
   }
 
   if (state_ == AppState::Booting || state_ == AppState::UsbTransfer ||
-      state_ == AppState::CompanionSync ||
       state_ == AppState::Sleeping || powerOffStarted_) {
+    return;
+  }
+
+  if (state_ == AppState::CompanionSync) {
+    // A short press ends the sharing and darkens the screen.
+    if (button_.wasReleasedEvent()) {
+      const bool shortPress = !bootButtonLongPressHandled_ && button_.lastHoldDurationMs() < kBrightnessHoldMs;
+      bootButtonLongPressHandled_ = false;
+      if (shortPress) {
+        exitCompanionSync(nowMs);
+        turnScreenOffFromPower(nowMs);
+      }
+    }
     return;
   }
 
@@ -2007,15 +2023,17 @@ void App::handleBootButton(uint32_t nowMs) {
     return;
   }
 
-  if (button_.lastHoldDurationMs() < kThemeToggleHoldMs) {
+  if (button_.lastHoldDurationMs() >= kBrightnessHoldMs) {
     cycleBrightness();
+    return;
   }
+  turnScreenOffFromPower(nowMs);
 }
 
 void App::handlePowerButton(uint32_t nowMs) {
-  // The power button: a short press turns the screen off (and stops
-  // reading and the phone network), another short press turns it back on.
-  // Holding it powers the reader off.
+  // The power button: a short press goes back one screen (pauses reading,
+  // opens the menu from the reader panel) and lights a dark screen. Holding
+  // it powers the reader off.
   if (!powerButtonReleasedSinceBoot_) {
     if (!powerButton_.isHeld()) {
       powerButtonReleasedSinceBoot_ = true;
@@ -2044,13 +2062,13 @@ void App::handlePowerButton(uint32_t nowMs) {
 
   if (state_ == AppState::CompanionSync) {
     // Holding PWR here leaves sync (updateCompanionSync); a short press
-    // ends the sharing and darkens the screen.
+    // backs out of it too.
     if (powerButton_.wasReleasedEvent()) {
       const bool shortPress = !powerButtonLongPressHandled_ && powerButton_.lastHoldDurationMs() < kPowerOffHoldMs;
       powerButtonLongPressHandled_ = false;
+      powerWakeReleaseIgnored_ = false;
       if (shortPress) {
         exitCompanionSync(nowMs);
-        turnScreenOffFromPower(nowMs);
       }
     }
     return;
@@ -2086,8 +2104,13 @@ void App::handlePowerButton(uint32_t nowMs) {
     return;
   }
 
+  if (showingHelpPopup_) {
+    dismissHelpPopup(nowMs);
+    return;
+  }
+
   powerTapPending_ = false;
-  turnScreenOffFromPower(nowMs);
+  goBackFromPowerButton(nowMs);
 }
 
 void App::toggleMenuFromPowerButton(uint32_t nowMs) {

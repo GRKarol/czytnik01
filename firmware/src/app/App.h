@@ -333,6 +333,8 @@ class App {
   void handlePowerButton(uint32_t nowMs);
   bool handleStandbyCombo(uint32_t nowMs);
   void toggleMenuFromPowerButton(uint32_t nowMs);
+  // Short PWR: pauses reading, else does what the on-screen back arrow does.
+  void goBackFromPowerButton(uint32_t nowMs);
   void openMainMenu(uint32_t nowMs);
   void cycleBrightness();
   void cycleThemeMode(uint32_t nowMs);
