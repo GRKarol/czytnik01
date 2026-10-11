@@ -106,18 +106,17 @@ Typ layoutu: lista (14 pozycji + Wróć), przewijana.
 ### SettingsPacing — „Czytanie"
 Wróć — do SettingsHome.
 Tryb czytania — cykl RSVP/Scroll.
-Gdy RSVP:
-- Zachowanie pauzy — cykl Koniec zdania/Natychmiast.
-- Tempo bazowe — cykl WPM (10-100 co 10, potem 100-1000 co 25).
-- Długie słowa — opóźnienie 0-600ms co 50.
-- Złożoność — opóźnienie 0-600ms co 50.
-- Interpunkcja — opóźnienie 0-600ms co 50.
-- Reset tempa — przywraca domyślne opóźnienia (200/200/200ms).
-Gdy Scroll (te same indeksy 2-5 zastępowane):
-- Rozmiar czcionki — cykl 0-8.
-- Interlinia — cykl Compact/Normal/Relaxed.
-- Marginesy — cykl Narrow/Normal/Wide.
-- Podgląd — pokazuje przykładowy tekst przewijany przez 1.5s z aktualnymi ustawieniami.
+Gdy Scroll, najpierw wiersze układu:
+- Rozmiar czcionki — suwak 0-8.
+- Interlinia — Compact/Normal/Relaxed.
+- Marginesy — Narrow/Normal/Wide.
+- Wyrównanie — do lewej/wyjustowane/do środka (domyślnie wyjustowane).
+Potem w obu trybach wiersze tempa (w Scroll przesunięte o 4, `kSettingsPacingScrollTempoOffset`):
+- Zachowanie pauzy — Koniec zdania/Natychmiast.
+- Tempo bazowe — WPM, wspólne dla obu trybów.
+- Długie słowa, Złożoność, Przecinki itp., Kropki — opóźnienia 0-600 ms. RSVP i Scroll mają osobne wartości (`pace_*` i `space_*` w NVS).
+- Reset tempa — 100/100/100 ms, kropki 150 ms, tylko dla wybranego trybu.
+W Scroll na końcu: Podgląd — strona przewijana z bieżącymi ustawieniami, do stuknięcia.
 Typ layoutu: lista, zawartość zmienia się zależnie od trybu czytania.
 
 ### SettingsConnectivity — „Połączenia"

@@ -460,7 +460,11 @@ constexpr size_t kSettingsPacingScrollFontSizeIndex = 2;
 constexpr size_t kSettingsPacingScrollLineSpacingIndex = 3;
 constexpr size_t kSettingsPacingScrollMarginIndex = 4;
 constexpr size_t kSettingsPacingScrollAlignIndex = 5;
-constexpr size_t kSettingsPacingScrollPreviewIndex = 6;
+// After the layout rows the scroll list repeats the RSVP tempo rows (pause
+// mode .. reset), each kSettingsPacingScrollTempoOffset further down.
+constexpr size_t kSettingsPacingScrollTempoOffset = 4;
+constexpr size_t kSettingsPacingScrollPreviewIndex =
+    kSettingsPacingResetIndex + kSettingsPacingScrollTempoOffset + 1;
 constexpr size_t kWifiSettingsNetworkIndex = 1;
 constexpr size_t kWifiSettingsChooseIndex = 2;
 constexpr size_t kWifiSettingsForgetIndex = 3;
@@ -542,6 +546,10 @@ constexpr const char *kPrefPacingComplexMs = "pace_cms";
 constexpr const char *kPrefPacingPunctuationMs = "pace_pms";
 constexpr const char *kPrefPacingSentenceMs = "pace_sms";
 constexpr const char *kPrefPacingDefaultsV2 = "pace_v2";
+constexpr const char *kPrefScrollPacingLongMs = "space_lms";
+constexpr const char *kPrefScrollPacingComplexMs = "space_cms";
+constexpr const char *kPrefScrollPacingPunctuationMs = "space_pms";
+constexpr const char *kPrefScrollPacingSentenceMs = "space_sms";
 constexpr const char *kPrefPauseMode = "pause_md";
 constexpr const char *kPrefAccurateTime = "time_est_a";
 constexpr const char *kPrefTypographyTracking = "type_trk";
@@ -1105,6 +1113,7 @@ void App::begin() {
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
   pacingSentenceDelayMs_ = static_cast<uint16_t>(clampIntSetting(
       preferences_.getUShort(kPrefPacingSentenceMs, kDefaultSentenceDelayMs), kPacingDelayMinMs, kPacingDelayMaxMs));
+  loadScrollPacingDelays();
   migratePacingDefaults();
   accurateTimeEstimateEnabled_ = true;
   loadTypographyConfigFromPreferences();
@@ -2402,6 +2411,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
   pacingSentenceDelayMs_ = static_cast<uint16_t>(clampIntSetting(
       preferences_.getUShort(kPrefPacingSentenceMs, kDefaultSentenceDelayMs), kPacingDelayMinMs, kPacingDelayMaxMs));
+  loadScrollPacingDelays();
   accurateTimeEstimateEnabled_ = true;
 
   loadTypographyConfigFromPreferences();
@@ -2582,6 +2592,7 @@ void App::cycleUiLanguage(uint32_t nowMs) {
 void App::cycleReaderMode(uint32_t nowMs) {
   readerMode_ = nextReaderMode(readerMode_);
   preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_));
+  applyPacingSettings();  // each mode has its own delays
   Serial.printf("[display] reader mode=%s\n", readerModeLabel().c_str());
   invalidateContextPreviewWindow();
 
@@ -5490,11 +5501,15 @@ void App::selectSettingsItem(uint32_t nowMs) {
         showScrollSettingsPreview();
         return;
       default:
-        return;
+        break;
     }
   }
 
-  switch (settingsSelectedIndex_) {
+  size_t rsvpIndex = 0;
+  if (!pacingRsvpIndexForRow(settingsSelectedIndex_, rsvpIndex)) {
+    return;
+  }
+  switch (rsvpIndex) {
     case kSettingsPacingPauseModeIndex:
       pauseMode_ =
           pauseMode_ == PauseMode::SentenceEnd ? PauseMode::Instant : PauseMode::SentenceEnd;
@@ -5520,14 +5535,12 @@ void App::selectSettingsItem(uint32_t nowMs) {
       openPacingDelayEditor(PacingDelayTarget::Sentences, nowMs);
       return;
     case kSettingsPacingResetIndex:
-      pacingLongWordDelayMs_ = kDefaultPacingDelayMs;
-      pacingComplexWordDelayMs_ = kDefaultPacingDelayMs;
-      pacingPunctuationDelayMs_ = kDefaultPacingDelayMs;
-      pacingSentenceDelayMs_ = kDefaultSentenceDelayMs;
-      preferences_.putUShort(kPrefPacingLongMs, pacingLongWordDelayMs_);
-      preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
-      preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
-      preferences_.putUShort(kPrefPacingSentenceMs, pacingSentenceDelayMs_);
+      // Resets the delays of the mode on screen only.
+      *pacingDelaySlot(PacingDelayTarget::LongWords) = kDefaultPacingDelayMs;
+      *pacingDelaySlot(PacingDelayTarget::Complexity) = kDefaultPacingDelayMs;
+      *pacingDelaySlot(PacingDelayTarget::Punctuation) = kDefaultPacingDelayMs;
+      *pacingDelaySlot(PacingDelayTarget::Sentences) = kDefaultSentenceDelayMs;
+      saveActivePacingDelays();
       pacingConfigChanged = true;
       break;
     default:
@@ -6587,21 +6600,24 @@ void App::rebuildSettingsMenuItems() {
       settingsMenuItems_.push_back(uiText(UiText::ScrollLineSpacing) + ": " + scrollLineSpacingLabel());
       settingsMenuItems_.push_back(uiText(UiText::ScrollMargins) + ": " + scrollMarginLabel());
       settingsMenuItems_.push_back(String(tr4(TrKey4::ScrollAlignColon)) + scrollAlignLabel());
+    }
+    // The tempo rows: in scroll mode they follow the layout rows and edit
+    // the scroll page's own delays (pacingDelaySlot()).
+    settingsMenuItems_.push_back(String(tr(TrKey::PauseBehaviour)) +
+                                 pauseModeLabel());
+    settingsMenuItems_.push_back(String(tr(TrKey::BaseSpeed)) +
+                                 String(reader_.wpm()) + " WPM");
+    settingsMenuItems_.push_back(uiText(UiText::LongWords) + ": " +
+                                 pacingDelayLabel(*pacingDelaySlot(PacingDelayTarget::LongWords)));
+    settingsMenuItems_.push_back(uiText(UiText::Complexity) + ": " +
+                                 pacingDelayLabel(*pacingDelaySlot(PacingDelayTarget::Complexity)));
+    settingsMenuItems_.push_back(uiText(UiText::Punctuation) + ": " +
+                                 pacingDelayLabel(*pacingDelaySlot(PacingDelayTarget::Punctuation)));
+    settingsMenuItems_.push_back(String(tr4(TrKey4::PacingSentences)) + ": " +
+                                 pacingDelayLabel(*pacingDelaySlot(PacingDelayTarget::Sentences)));
+    settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
+    if (readerMode_ == ReaderMode::Scroll) {
       settingsMenuItems_.push_back(String(trs(TrStatus::Preview)));
-    } else {
-      settingsMenuItems_.push_back(String(tr(TrKey::PauseBehaviour)) +
-                                   pauseModeLabel());
-      settingsMenuItems_.push_back(String(tr(TrKey::BaseSpeed)) +
-                                   String(reader_.wpm()) + " WPM");
-      settingsMenuItems_.push_back(uiText(UiText::LongWords) + ": " +
-                                   pacingDelayLabel(pacingLongWordDelayMs_));
-      settingsMenuItems_.push_back(uiText(UiText::Complexity) + ": " +
-                                   pacingDelayLabel(pacingComplexWordDelayMs_));
-      settingsMenuItems_.push_back(uiText(UiText::Punctuation) + ": " +
-                                   pacingDelayLabel(pacingPunctuationDelayMs_));
-      settingsMenuItems_.push_back(String(tr4(TrKey4::PacingSentences)) + ": " +
-                                   pacingDelayLabel(pacingSentenceDelayMs_));
-      settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
     }
   } else if (menuScreen_ == MenuScreen::WifiSettings) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
@@ -6648,25 +6664,27 @@ void App::migratePacingDefaults() {
 
 void App::applyPacingSettings() {
   ReadingLoop::PacingConfig pacingConfig;
-  pacingConfig.longWordDelayMs = pacingLongWordDelayMs_;
-  pacingConfig.complexWordDelayMs = pacingComplexWordDelayMs_;
-  pacingConfig.punctuationDelayMs = pacingPunctuationDelayMs_;
-  pacingConfig.sentenceDelayMs = pacingSentenceDelayMs_;
+  pacingConfig.longWordDelayMs = *pacingDelaySlot(PacingDelayTarget::LongWords);
+  pacingConfig.complexWordDelayMs = *pacingDelaySlot(PacingDelayTarget::Complexity);
+  pacingConfig.punctuationDelayMs = *pacingDelaySlot(PacingDelayTarget::Punctuation);
+  pacingConfig.sentenceDelayMs = *pacingDelaySlot(PacingDelayTarget::Sentences);
   reader_.setPacingConfig(pacingConfig);
 
-  Serial.printf("[settings] pacing long=%u ms complexity=%u ms commas=%u ms full stops=%u ms\n",
-                static_cast<unsigned int>(pacingLongWordDelayMs_),
-                static_cast<unsigned int>(pacingComplexWordDelayMs_),
-                static_cast<unsigned int>(pacingPunctuationDelayMs_),
-                static_cast<unsigned int>(pacingSentenceDelayMs_));
+  Serial.printf("[settings] pacing (%s) long=%u ms complexity=%u ms commas=%u ms full stops=%u ms\n",
+                readerMode_ == ReaderMode::Scroll ? "scroll" : "rsvp",
+                static_cast<unsigned int>(pacingConfig.longWordDelayMs),
+                static_cast<unsigned int>(pacingConfig.complexWordDelayMs),
+                static_cast<unsigned int>(pacingConfig.punctuationDelayMs),
+                static_cast<unsigned int>(pacingConfig.sentenceDelayMs));
   // Defer the (potentially slow, screen-clobbering) rebuild while still on
   // a pacing-related screen — it draws its own "Reading time..." status
   // screen over whatever's currently showing, which on PacingDelayEditor
   // meant the slider screen visibly flickered to that status screen and
   // back on every single finger-release. flushPendingTimeEstimateRebuild()
   // (called when leaving either screen) applies it once, off-screen.
-  if (state_ == AppState::Menu &&
-      (menuScreen_ == MenuScreen::SettingsPacing || menuScreen_ == MenuScreen::PacingDelayEditor)) {
+  // Any menu screen defers it: switching RSVP/scroll in the wizard swaps the
+  // delays too, and setState() flushes the rebuild once the menu closes.
+  if (state_ == AppState::Menu) {
     pacingCacheDirty_ = true;
   } else {
     rebuildTimeEstimateCache();
@@ -7363,12 +7381,14 @@ void App::selectWelcomeReadingModeItem(uint32_t nowMs) {
     case 0:  // RSVP
       readerMode_ = ReaderMode::Rsvp;
       preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_));
+      applyPacingSettings();
       Serial.println("[welcome] reading mode=RSVP");
       openWelcomeHighlightColor();
       return;
     case 1:  // Przewijanie strony
       readerMode_ = ReaderMode::Scroll;
       preferences_.putUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_));
+      applyPacingSettings();
       Serial.println("[welcome] reading mode=Scroll");
       openWelcomeHighlightColor();
       return;
@@ -8449,32 +8469,81 @@ void App::runFirmwareUpdate(const OtaUpdater::Config &config, bool automatic, ui
 
 String App::pacingDelayLabel(uint16_t delayMs) const { return String(delayMs) + " ms"; }
 
-uint16_t *App::pacingDelayEditorValuePtr() {
-  switch (pacingDelayEditorTarget_) {
+uint16_t *App::pacingDelaySlot(PacingDelayTarget target) {
+  const bool scroll = readerMode_ == ReaderMode::Scroll;
+  switch (target) {
     case PacingDelayTarget::Complexity:
-      return &pacingComplexWordDelayMs_;
+      return scroll ? &scrollPacingComplexWordDelayMs_ : &pacingComplexWordDelayMs_;
     case PacingDelayTarget::Punctuation:
-      return &pacingPunctuationDelayMs_;
+      return scroll ? &scrollPacingPunctuationDelayMs_ : &pacingPunctuationDelayMs_;
     case PacingDelayTarget::Sentences:
-      return &pacingSentenceDelayMs_;
+      return scroll ? &scrollPacingSentenceDelayMs_ : &pacingSentenceDelayMs_;
     case PacingDelayTarget::LongWords:
     default:
-      return &pacingLongWordDelayMs_;
+      return scroll ? &scrollPacingLongWordDelayMs_ : &pacingLongWordDelayMs_;
   }
 }
 
-const char *App::pacingDelayEditorPrefKey() const {
-  switch (pacingDelayEditorTarget_) {
+uint16_t App::pacingDelayValue(PacingDelayTarget target) const {
+  return *const_cast<App *>(this)->pacingDelaySlot(target);
+}
+
+const char *App::pacingDelayPrefKey(PacingDelayTarget target) const {
+  const bool scroll = readerMode_ == ReaderMode::Scroll;
+  switch (target) {
     case PacingDelayTarget::Complexity:
-      return kPrefPacingComplexMs;
+      return scroll ? kPrefScrollPacingComplexMs : kPrefPacingComplexMs;
     case PacingDelayTarget::Punctuation:
-      return kPrefPacingPunctuationMs;
+      return scroll ? kPrefScrollPacingPunctuationMs : kPrefPacingPunctuationMs;
     case PacingDelayTarget::Sentences:
-      return kPrefPacingSentenceMs;
+      return scroll ? kPrefScrollPacingSentenceMs : kPrefPacingSentenceMs;
     case PacingDelayTarget::LongWords:
     default:
-      return kPrefPacingLongMs;
+      return scroll ? kPrefScrollPacingLongMs : kPrefPacingLongMs;
   }
+}
+
+void App::loadScrollPacingDelays() {
+  auto load = [this](const char *key, uint16_t fallback) {
+    return static_cast<uint16_t>(clampIntSetting(preferences_.getUShort(key, fallback),
+                                                 kPacingDelayMinMs, kPacingDelayMaxMs));
+  };
+  scrollPacingLongWordDelayMs_ = load(kPrefScrollPacingLongMs, kDefaultPacingDelayMs);
+  scrollPacingComplexWordDelayMs_ = load(kPrefScrollPacingComplexMs, kDefaultPacingDelayMs);
+  scrollPacingPunctuationDelayMs_ = load(kPrefScrollPacingPunctuationMs, kDefaultPacingDelayMs);
+  scrollPacingSentenceDelayMs_ = load(kPrefScrollPacingSentenceMs, kDefaultSentenceDelayMs);
+}
+
+void App::saveActivePacingDelays() {
+  for (const PacingDelayTarget target :
+       {PacingDelayTarget::LongWords, PacingDelayTarget::Complexity,
+        PacingDelayTarget::Punctuation, PacingDelayTarget::Sentences}) {
+    preferences_.putUShort(pacingDelayPrefKey(target), *pacingDelaySlot(target));
+  }
+}
+
+size_t App::pacingRowForRsvpIndex(size_t rsvpIndex) const {
+  return readerMode_ == ReaderMode::Scroll ? rsvpIndex + kSettingsPacingScrollTempoOffset
+                                           : rsvpIndex;
+}
+
+bool App::pacingRsvpIndexForRow(size_t row, size_t &rsvpIndex) const {
+  if (readerMode_ != ReaderMode::Scroll) {
+    rsvpIndex = row;
+    return true;
+  }
+  if (row < kSettingsPacingPauseModeIndex + kSettingsPacingScrollTempoOffset ||
+      row > kSettingsPacingResetIndex + kSettingsPacingScrollTempoOffset) {
+    return false;
+  }
+  rsvpIndex = row - kSettingsPacingScrollTempoOffset;
+  return true;
+}
+
+uint16_t *App::pacingDelayEditorValuePtr() { return pacingDelaySlot(pacingDelayEditorTarget_); }
+
+const char *App::pacingDelayEditorPrefKey() const {
+  return pacingDelayPrefKey(pacingDelayEditorTarget_);
 }
 
 String App::pacingDelayEditorLabel() const {
@@ -8569,17 +8638,17 @@ void App::handlePacingDelayEditorTouch(const TouchEvent &event, uint32_t nowMs) 
         flushPendingTimeEstimateRebuild();
         switch (pacingDelayEditorTarget_) {
           case PacingDelayTarget::Complexity:
-            settingsSelectedIndex_ = kSettingsPacingComplexityIndex;
+            settingsSelectedIndex_ = pacingRowForRsvpIndex(kSettingsPacingComplexityIndex);
             break;
           case PacingDelayTarget::Punctuation:
-            settingsSelectedIndex_ = kSettingsPacingPunctuationIndex;
+            settingsSelectedIndex_ = pacingRowForRsvpIndex(kSettingsPacingPunctuationIndex);
             break;
           case PacingDelayTarget::Sentences:
-            settingsSelectedIndex_ = kSettingsPacingSentenceIndex;
+            settingsSelectedIndex_ = pacingRowForRsvpIndex(kSettingsPacingSentenceIndex);
             break;
           case PacingDelayTarget::LongWords:
           default:
-            settingsSelectedIndex_ = kSettingsPacingLongWordsIndex;
+            settingsSelectedIndex_ = pacingRowForRsvpIndex(kSettingsPacingLongWordsIndex);
             break;
         }
         menuScreen_ = MenuScreen::SettingsPacing;
@@ -8684,7 +8753,7 @@ void App::handleWpmEditorTouch(const TouchEvent &event, uint32_t nowMs) {
     if (event.phase == TouchPhase::End) {
       wpmEditorTouchOnBack_ = false;
       if (event.x <= kPacingSliderBackHitX1 && event.y <= kPacingSliderBackHitY1) {
-        settingsSelectedIndex_ = kSettingsPacingWpmIndex;
+        settingsSelectedIndex_ = pacingRowForRsvpIndex(kSettingsPacingWpmIndex);
         menuScreen_ = MenuScreen::SettingsPacing;
         rebuildSettingsMenuItems();
         renderSettings();

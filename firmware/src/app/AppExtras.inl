@@ -475,10 +475,12 @@ bool App::helpTopicFor(MenuScreen screen, int id, HelpTopic &topic) const {
         case kSettingsPacingScrollMarginIndex: return pick(HelpTopic::ScrollMargins);
         case kSettingsPacingScrollAlignIndex: return pick(HelpTopic::ScrollAlign);
         case kSettingsPacingScrollPreviewIndex: return pick(HelpTopic::ScrollPreview);
-        default: return false;
+        default: break;
       }
     }
-    switch (id) {
+    size_t rsvpIndex = 0;
+    if (!pacingRsvpIndexForRow(id, rsvpIndex)) return false;
+    switch (rsvpIndex) {
       case kSettingsPacingPauseModeIndex: return pick(HelpTopic::PauseMode);
       case kSettingsPacingWpmIndex: return pick(HelpTopic::Wpm);
       case kSettingsPacingLongWordsIndex: return pick(HelpTopic::LongWords);

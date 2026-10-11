@@ -2154,22 +2154,32 @@ bool App::nanoSliderSpec(size_t index, NanoSliderSpec &spec) const {
           case kSettingsPacingScrollMarginIndex:
             return set(0, 2, 1, scrollMargin_);
           default:
-            return false;
+            break;
         }
       }
-      switch (index) {
-        case kSettingsPacingWpmIndex:
-          return set(kSettingsWpmMin, kSettingsWpmMax, kWpmSliderStepWpm, reader_.wpm());
-        case kSettingsPacingLongWordsIndex:
-          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingLongWordDelayMs_);
-        case kSettingsPacingComplexityIndex:
-          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingComplexWordDelayMs_);
-        case kSettingsPacingPunctuationIndex:
-          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingPunctuationDelayMs_);
-        case kSettingsPacingSentenceIndex:
-          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingSentenceDelayMs_);
-        default:
+      {
+        size_t rsvpIndex = 0;
+        if (!pacingRsvpIndexForRow(index, rsvpIndex)) {
           return false;
+        }
+        switch (rsvpIndex) {
+          case kSettingsPacingWpmIndex:
+            return set(kSettingsWpmMin, kSettingsWpmMax, kWpmSliderStepWpm, reader_.wpm());
+          case kSettingsPacingLongWordsIndex:
+            return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs,
+                       pacingDelayValue(PacingDelayTarget::LongWords));
+          case kSettingsPacingComplexityIndex:
+            return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs,
+                       pacingDelayValue(PacingDelayTarget::Complexity));
+          case kSettingsPacingPunctuationIndex:
+            return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs,
+                       pacingDelayValue(PacingDelayTarget::Punctuation));
+          case kSettingsPacingSentenceIndex:
+            return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs,
+                       pacingDelayValue(PacingDelayTarget::Sentences));
+          default:
+            return false;
+        }
       }
     case MenuScreen::TypographyTuning:
       switch (index) {
@@ -2221,13 +2231,19 @@ void App::nanoSliderSet(size_t index, int value) {
         if (index == kSettingsPacingScrollFontSizeIndex) scrollFontSize_ = static_cast<uint8_t>(value);
         if (index == kSettingsPacingScrollLineSpacingIndex) scrollLineSpacing_ = static_cast<uint8_t>(value);
         if (index == kSettingsPacingScrollMarginIndex) scrollMargin_ = static_cast<uint8_t>(value);
-        return;
       }
-      if (index == kSettingsPacingWpmIndex) reader_.setWpm(static_cast<uint16_t>(value));
-      if (index == kSettingsPacingLongWordsIndex) pacingLongWordDelayMs_ = static_cast<uint16_t>(value);
-      if (index == kSettingsPacingComplexityIndex) pacingComplexWordDelayMs_ = static_cast<uint16_t>(value);
-      if (index == kSettingsPacingPunctuationIndex) pacingPunctuationDelayMs_ = static_cast<uint16_t>(value);
-      if (index == kSettingsPacingSentenceIndex) pacingSentenceDelayMs_ = static_cast<uint16_t>(value);
+      {
+        size_t rsvpIndex = 0;
+        if (!pacingRsvpIndexForRow(index, rsvpIndex)) {
+          return;
+        }
+        const uint16_t ms = static_cast<uint16_t>(value);
+        if (rsvpIndex == kSettingsPacingWpmIndex) reader_.setWpm(ms);
+        if (rsvpIndex == kSettingsPacingLongWordsIndex) *pacingDelaySlot(PacingDelayTarget::LongWords) = ms;
+        if (rsvpIndex == kSettingsPacingComplexityIndex) *pacingDelaySlot(PacingDelayTarget::Complexity) = ms;
+        if (rsvpIndex == kSettingsPacingPunctuationIndex) *pacingDelaySlot(PacingDelayTarget::Punctuation) = ms;
+        if (rsvpIndex == kSettingsPacingSentenceIndex) *pacingDelaySlot(PacingDelayTarget::Sentences) = ms;
+      }
       return;
     case MenuScreen::TypographyTuning:
       // Live: the sample above the controls follows the finger.
@@ -2272,18 +2288,20 @@ void App::nanoSliderCommit(size_t index, uint32_t nowMs) {
         display_.setScrollFontSize(scrollFontSize_);
         display_.setScrollLineSpacing(scrollLineSpacing_);
         display_.setScrollMargin(scrollMargin_);
-        return;
       }
-      if (index == kSettingsPacingWpmIndex) {
-        preferences_.putUShort(kPrefWpm, reader_.wpm());
-        Serial.printf("[settings] WPM=%u\n", reader_.wpm());
-        return;
+      {
+        size_t rsvpIndex = 0;
+        if (!pacingRsvpIndexForRow(index, rsvpIndex)) {
+          return;
+        }
+        if (rsvpIndex == kSettingsPacingWpmIndex) {
+          preferences_.putUShort(kPrefWpm, reader_.wpm());
+          Serial.printf("[settings] WPM=%u\n", reader_.wpm());
+          return;
+        }
+        saveActivePacingDelays();
+        applyPacingSettings();
       }
-      preferences_.putUShort(kPrefPacingLongMs, pacingLongWordDelayMs_);
-      preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
-      preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
-      preferences_.putUShort(kPrefPacingSentenceMs, pacingSentenceDelayMs_);
-      applyPacingSettings();
       return;
     case MenuScreen::TypographyTuning:
       if (index == TypographyTuningFontSize) {

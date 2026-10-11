@@ -634,6 +634,16 @@ class App {
   void applyPacingDelayEditorTouchX(uint16_t x);
   uint16_t *pacingDelayEditorValuePtr();
   const char *pacingDelayEditorPrefKey() const;
+  // The delay the current reading mode uses (RSVP or scroll page).
+  uint16_t *pacingDelaySlot(PacingDelayTarget target);
+  uint16_t pacingDelayValue(PacingDelayTarget target) const;
+  const char *pacingDelayPrefKey(PacingDelayTarget target) const;
+  void loadScrollPacingDelays();
+  void saveActivePacingDelays();
+  // Scroll mode lists the tempo rows after its layout rows; these move a
+  // row number between that list and the RSVP one (kSettingsPacing*Index).
+  size_t pacingRowForRsvpIndex(size_t rsvpIndex) const;
+  bool pacingRsvpIndexForRow(size_t row, size_t &rsvpIndex) const;
   String pacingDelayEditorLabel() const;
 
   void openWpmEditor(uint32_t nowMs);
@@ -1379,6 +1389,12 @@ class App {
   uint16_t pacingComplexWordDelayMs_ = 100;
   uint16_t pacingPunctuationDelayMs_ = 100;  // commas, dashes, semicolons
   uint16_t pacingSentenceDelayMs_ = 150;     // full stops, ! and ?
+  // The scroll page keeps its own four delays: a page reader takes pauses
+  // differently from one word flashing in the middle of the screen.
+  uint16_t scrollPacingLongWordDelayMs_ = 100;
+  uint16_t scrollPacingComplexWordDelayMs_ = 100;
+  uint16_t scrollPacingPunctuationDelayMs_ = 100;
+  uint16_t scrollPacingSentenceDelayMs_ = 150;
   PacingDelayTarget pacingDelayEditorTarget_ = PacingDelayTarget::LongWords;
   // True while the touch that is currently down started on the editor's
   // corner Back icon — set on TouchPhase::Start, consumed on End, so a

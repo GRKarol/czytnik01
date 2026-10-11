@@ -38,6 +38,7 @@ void runExtrasScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, 
 void runFontSizeScreens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runV0410Screens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 void runV0411Screens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
+void runV0412Screens(DisplayManager &d, void (*dumpFn)(const DisplayManager &, const char *));
 
 int main() {
   DisplayManager d;
@@ -60,5 +61,6 @@ int main() {
   runFontSizeScreens(d, dump);
   runV0410Screens(d, dump);
   runV0411Screens(d, dump);
+  runV0412Screens(d, dump);
   return 0;
 }
