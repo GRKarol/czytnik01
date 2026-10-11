@@ -337,6 +337,23 @@ struct ConfirmView {
 };
 void paintConfirm(DisplayManager &d, Sink &sink, const ConfirmView &view);
 
+// ── Power-off ──
+// Shown while the reader switches itself off: the power sign in a ring that
+// closes as `progress` goes 0..1000, the frame then fades to black. A plain
+// screen-off (PWR short press) just goes dark, so the two never look alike.
+
+struct PowerOffView {
+  String title;
+  String detail;
+  uint16_t progress = 0;
+};
+void paintPowerOff(DisplayManager &d, const PowerOffView &view);
+
+// ── Battery look preview ──
+// The battery indicator in its current style, top right, faded in/out by
+// `alpha` (shown for a second after Wskaznik baterii changes).
+void paintBatteryPreview(DisplayManager &d, uint8_t alpha);
+
 // ── Reader panel (paused, before reading starts) ──
 
 struct ReaderPanelView {

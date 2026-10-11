@@ -8,9 +8,12 @@
 class ReadingLoop {
  public:
   struct PacingConfig {
-    uint16_t longWordDelayMs = 50;
-    uint16_t complexWordDelayMs = 50;
-    uint16_t punctuationDelayMs = 50;
+    uint16_t longWordDelayMs = 100;
+    uint16_t complexWordDelayMs = 100;
+    // Commas, dashes, semicolons and colons.
+    uint16_t punctuationDelayMs = 100;
+    // Full stops, ellipses, exclamation and question marks.
+    uint16_t sentenceDelayMs = 150;
     uint8_t longWordScalePercent = 100;
     uint8_t complexWordScalePercent = 100;
     uint8_t punctuationScalePercent = 100;

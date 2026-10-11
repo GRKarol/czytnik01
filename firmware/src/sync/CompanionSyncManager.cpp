@@ -89,7 +89,9 @@ constexpr uint8_t kMaxBatteryLabel = 2;
 constexpr uint8_t kMaxReaderFontSize = 2;
 constexpr uint8_t kMaxReaderTypeface = 19;  // DisplayManager::ReaderTypeface::Count - 1
 constexpr uint8_t kMaxPauseMode = 1;
-constexpr uint16_t kDefaultPacingDelayMs = 50;
+constexpr uint16_t kDefaultPacingDelayMs = 100;
+constexpr uint16_t kDefaultSentenceDelayMs = 150;
+constexpr const char *kPrefPacingSentenceMs = "pace_sms";
 constexpr uint16_t kMaxPacingDelayMs = 600;
 constexpr int8_t kMinTypographyTracking = -2;
 constexpr int8_t kMaxTypographyTracking = 3;
@@ -103,7 +105,7 @@ constexpr uint8_t kMinTypographyGuideGap = 0;
 constexpr uint8_t kMaxTypographyGuideGap = 8;
 constexpr uint8_t kDefaultTypographyGuideGap = 0;
 constexpr uint8_t kMaxScrollFontSize = 8;
-constexpr uint8_t kDefaultScrollFontSize = 1;
+constexpr uint8_t kDefaultScrollFontSize = 4;
 constexpr uint8_t kMaxScrollLineSpacing = 2;
 constexpr uint8_t kDefaultScrollLineSpacing = 1;
 constexpr uint8_t kMaxScrollMargin = 2;
@@ -2458,6 +2460,9 @@ String CompanionSyncManager::settingsJson() {
   const uint16_t punctuationDelay =
       clampU16(preferences_.getUShort(kPrefPacingPunctuationMs, kDefaultPacingDelayMs), 0,
                kMaxPacingDelayMs);
+  const uint16_t sentenceDelay =
+      clampU16(preferences_.getUShort(kPrefPacingSentenceMs, kDefaultSentenceDelayMs), 0,
+               kMaxPacingDelayMs);
   const uint8_t brightness = static_cast<uint8_t>(
       clampInt(preferences_.getUChar(kPrefBrightness, kDefaultBrightness), 0, kMaxBrightness));
   const uint8_t handedness =
@@ -2469,7 +2474,7 @@ String CompanionSyncManager::settingsJson() {
   const uint8_t language =
       static_cast<uint8_t>(clampInt(preferences_.getUChar(kPrefUiLanguage, 0), 0, kMaxUiLanguage));
   const uint8_t fontSize = static_cast<uint8_t>(
-      clampInt(preferences_.getUChar(kPrefReaderFontSize, 0), 0, kMaxReaderFontSize));
+      clampInt(preferences_.getUChar(kPrefReaderFontSize, 1), 0, kMaxReaderFontSize));
   const uint8_t typeface =
       static_cast<uint8_t>(clampInt(preferences_.getUChar(kPrefReaderTypeface, 0), 0,
                                     kMaxReaderTypeface));
@@ -2508,7 +2513,8 @@ String CompanionSyncManager::settingsJson() {
   body += ",\"accurateTimeEstimate\":true";
   body += ",\"pacing\":{\"longWordMs\":" + String(longDelay) +
           ",\"complexWordMs\":" + String(complexDelay) +
-          ",\"punctuationMs\":" + String(punctuationDelay) + "}";
+          ",\"punctuationMs\":" + String(punctuationDelay) +
+          ",\"sentenceMs\":" + String(sentenceDelay) + "}";
   body += "}";
   body += ",\"display\":{";
   body += "\"brightnessIndex\":" + String(brightness);
@@ -2752,6 +2758,13 @@ bool CompanionSyncManager::applySettingsJson(const String &body, String &error) 
       return false;
     }
     preferences_.putUShort(kPrefPacingPunctuationMs, static_cast<uint16_t>(intValue));
+  }
+  if (readJsonInt(body, "sentenceMs", intValue)) {
+    if (intValue < 0 || intValue > kMaxPacingDelayMs) {
+      error = "sentenceMs must be between 0 and 600";
+      return false;
+    }
+    preferences_.putUShort(kPrefPacingSentenceMs, static_cast<uint16_t>(intValue));
   }
   if (readJsonInt(body, "brightnessIndex", intValue)) {
     if (intValue < 0 || intValue > kMaxBrightness) {

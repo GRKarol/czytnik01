@@ -456,6 +456,7 @@ void App::renderNanoScreen(const String &title, const std::vector<String> &items
   if (nanoRailScreen()) {
     renderNanoRail();
   }
+  nano::paintBatteryPreview(display_, batteryPreviewAlpha(millis()));
   display_.nanoEndFrame();
 }
 
@@ -1070,7 +1071,7 @@ void App::renderNanoTypography() {
     nano::ListItem reset;
     reset.kind = nano::ListItem::Kind::Button;
     reset.id = TypographyTuningReset;
-    // Icon only: five controls share this row.
+    reset.label = tr4(TrKey4::TypoDefaults);
     reset.icon = NanoIcon::Restart;
     view.items.push_back(reset);
   }
@@ -1588,6 +1589,11 @@ bool App::nanoHiddenRow(size_t canonical) const {
     // Reading theme and letter color moved to Motywy > Czytanie (one place
     // for everything that changes how things look).
     if (canonical == kSettingsDisplayThemeIndex || canonical == kSettingsDisplayFocusColorIndex) {
+      return true;
+    }
+    // The guide side lives with the rest of the guide, in Wyglad czytania >
+    // Prowadnica.
+    if (canonical == kSettingsDisplayHandednessIndex) {
       return true;
     }
     // The legacy navigation modes are an advanced-mode option.
@@ -2160,6 +2166,8 @@ bool App::nanoSliderSpec(size_t index, NanoSliderSpec &spec) const {
           return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingComplexWordDelayMs_);
         case kSettingsPacingPunctuationIndex:
           return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingPunctuationDelayMs_);
+        case kSettingsPacingSentenceIndex:
+          return set(kPacingDelayMinMs, kPacingDelayMaxMs, kPacingDelayStepMs, pacingSentenceDelayMs_);
         default:
           return false;
       }
@@ -2219,6 +2227,7 @@ void App::nanoSliderSet(size_t index, int value) {
       if (index == kSettingsPacingLongWordsIndex) pacingLongWordDelayMs_ = static_cast<uint16_t>(value);
       if (index == kSettingsPacingComplexityIndex) pacingComplexWordDelayMs_ = static_cast<uint16_t>(value);
       if (index == kSettingsPacingPunctuationIndex) pacingPunctuationDelayMs_ = static_cast<uint16_t>(value);
+      if (index == kSettingsPacingSentenceIndex) pacingSentenceDelayMs_ = static_cast<uint16_t>(value);
       return;
     case MenuScreen::TypographyTuning:
       // Live: the sample above the controls follows the finger.
@@ -2273,6 +2282,7 @@ void App::nanoSliderCommit(size_t index, uint32_t nowMs) {
       preferences_.putUShort(kPrefPacingLongMs, pacingLongWordDelayMs_);
       preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
       preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
+      preferences_.putUShort(kPrefPacingSentenceMs, pacingSentenceDelayMs_);
       applyPacingSettings();
       return;
     case MenuScreen::TypographyTuning:

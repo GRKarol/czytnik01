@@ -79,6 +79,15 @@ constexpr uint32_t kBootSplashFadeMs = 300;
 constexpr uint32_t kBootFontWaitBudgetMs = 1500;
 constexpr uint32_t kWpmFeedbackMs = 900;
 constexpr uint32_t kPowerOffHoldMs = 1600;
+// Wskaznik baterii: the new look shows top right for kBatteryPreviewMs,
+// fading in and out over kBatteryPreviewFadeMs, redrawn every
+// kBatteryPreviewFrameMs.
+constexpr uint32_t kBatteryPreviewMs = 1000;
+constexpr uint32_t kBatteryPreviewFadeMs = 250;
+constexpr uint32_t kBatteryPreviewFrameMs = 30;
+// Power-off animation: the ring closes, then the picture fades out.
+constexpr uint32_t kPowerOffRingMs = 650;
+constexpr uint32_t kPowerOffFadeMs = 450;
 constexpr uint32_t kPowerOffReleaseWaitMs = 4000;
 // PWR button: single tap toggles the menu, but that only fires once this
 // window passes with no second tap — two taps inside it restart the device
@@ -240,11 +249,16 @@ constexpr uint8_t kBatteryLowWarningPercent = 5;
 constexpr uint8_t kBatteryCriticalPercent = 1;
 constexpr uint8_t kBatteryCriticalConsecutiveSamples = 2;
 constexpr uint32_t kStandbyWakeGraceMs = 900;
-// Screensaver: this long almost dark, then the "turn the screen off?"
-// question for kStandbyAskMs before the panel goes to sleep.
-constexpr uint32_t kStandbyDimMs = 30000;
+// After a PWR screen-off the button is already up: only the bounce of its
+// release has to pass before the next press lights the screen again.
+constexpr uint32_t kScreenOffWakeGraceMs = 80;
+// Screensaver: the scene runs almost dark for the "power off after" time
+// (kScreensaverAutoOffSeconds), then the dim screen asks "turn the reader
+// off?" for kStandbyAskMs; no answer powers the reader off.
 constexpr uint32_t kStandbyAskMs = 10000;
 constexpr uint8_t kStandbyDimPercent = 2;
+// The question shows on a screen that stays dim, just readable.
+constexpr uint8_t kStandbyAskPercent = 12;
 // Two taps this close wake the dark screen.
 constexpr uint32_t kStandbyDoubleTapMs = 450;
 constexpr uint32_t kStandbyTapMaxMs = 350;
@@ -435,7 +449,8 @@ constexpr size_t kSettingsPacingWpmIndex = 3;
 constexpr size_t kSettingsPacingLongWordsIndex = 4;
 constexpr size_t kSettingsPacingComplexityIndex = 5;
 constexpr size_t kSettingsPacingPunctuationIndex = 6;
-constexpr size_t kSettingsPacingResetIndex = 7;
+constexpr size_t kSettingsPacingSentenceIndex = 7;
+constexpr size_t kSettingsPacingResetIndex = 8;
 // Scroll-specific indices (when readerMode_ == Scroll, these replace RSVP items)
 constexpr size_t kSettingsPacingScrollFontSizeIndex = 2;
 constexpr size_t kSettingsPacingScrollLineSpacingIndex = 3;
@@ -463,9 +478,11 @@ constexpr size_t kScreensaverSettingsPreviewIndex = 5;
 constexpr uint8_t kScreensaverTimeoutCount = 9;
 constexpr uint16_t kScreensaverTimeoutMinutes[] = {1, 2, 3, 5, 10, 15, 20, 30, 0};
 
-// Screensaver auto-off values in minutes: 0=Never, 5, 10, 15, 20, 30, 45, 60
+// How long the screensaver runs before it asks to power the reader off, in
+// seconds; 0 = never (the screensaver runs until woken).
 constexpr uint8_t kScreensaverAutoOffCount = 8;
-constexpr uint16_t kScreensaverAutoOffMinutes[] = {0, 5, 10, 15, 20, 30, 45, 60};
+constexpr uint16_t kScreensaverAutoOffSeconds[] = {0, 30, 60, 120, 300, 600, 900, 1800};
+constexpr uint8_t kScreensaverAutoOffDefaultIndex = 1;
 
 // Sleep guard (reading protection) values in minutes: 0=Off, 5, 10, 15, 20, 30, 45, 60
 constexpr uint8_t kScreensaverSleepGuardCount = 8;
@@ -519,6 +536,8 @@ constexpr const char *kPrefLegacyPacingPunctuation = "pace_pnc";
 constexpr const char *kPrefPacingLongMs = "pace_lms";
 constexpr const char *kPrefPacingComplexMs = "pace_cms";
 constexpr const char *kPrefPacingPunctuationMs = "pace_pms";
+constexpr const char *kPrefPacingSentenceMs = "pace_sms";
+constexpr const char *kPrefPacingDefaultsV2 = "pace_v2";
 constexpr const char *kPrefPauseMode = "pause_md";
 constexpr const char *kPrefAccurateTime = "time_est_a";
 constexpr const char *kPrefTypographyTracking = "type_trk";
@@ -533,7 +552,9 @@ constexpr const char *kPrefScrollAlign = "sc_align";
 // larger), see loadScrollFontSize().
 constexpr const char *kPrefScrollFontScale = "sc_font_v";
 constexpr const char *kPrefScreensaverTimeout = "scrn_tmo";
-constexpr const char *kPrefScreensaverAutoOff = "scrn_aof";
+// "scrn_aof" held indices into the old minute table (power-off after 5-60
+// min of screensaver); the new table has its own key.
+constexpr const char *kPrefScreensaverAutoOff = "scrn_aof2";
 constexpr const char *kPrefScreensaverSleepGuard = "scrn_slp";
 constexpr const char *kPrefRecentSeq = "seq";
 constexpr const char *kPrefWifiSsid = "wifi_ssid";
@@ -571,7 +592,11 @@ constexpr uint32_t kNoSavedWordIndex = 0xFFFFFFFFUL;
 constexpr uint16_t kPacingDelayMinMs = 0;
 constexpr uint16_t kPacingDelayMaxMs = 600;
 constexpr uint16_t kPacingDelayStepMs = 50;
-constexpr uint16_t kDefaultPacingDelayMs = 50;
+// Factory delays: long words, complexity and commas 100 ms, full stops
+// 150 ms.
+constexpr uint16_t kDefaultPacingDelayMs = 100;
+constexpr uint16_t kDefaultSentenceDelayMs = 150;
+constexpr uint16_t kOldDefaultPacingDelayMs = 50;
 // Geometry of the PacingDelayEditor slider button — shared by
 // App::renderPacingDelayEditor() (draws it) and
 // App::applyPacingDelayEditorTouchX() (hit-tests drags against it), both of
@@ -1010,7 +1035,7 @@ void App::begin() {
       preferences_.getUChar(kPrefHandedness, static_cast<uint8_t>(handednessMode_)));
   readerFontSizeIndex_ = preferences_.getUChar(kPrefReaderFontSize, readerFontSizeIndex_);
   if (readerFontSizeIndex_ >= kReaderFontSizeCount) {
-    readerFontSizeIndex_ = 0;
+    readerFontSizeIndex_ = 1;
   }
   loadScrollFontSize();
   scrollLineSpacing_ = preferences_.getUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
@@ -1018,7 +1043,7 @@ void App::begin() {
   scrollMargin_ = preferences_.getUChar(kPrefScrollMargin, scrollMargin_);
   if (scrollMargin_ > 2) scrollMargin_ = 1;
   scrollAlign_ = preferences_.getUChar(kPrefScrollAlign, scrollAlign_);
-  if (scrollAlign_ > DisplayManager::kScrollAlignCenter) scrollAlign_ = DisplayManager::kScrollAlignLeft;
+  if (scrollAlign_ > DisplayManager::kScrollAlignCenter) scrollAlign_ = DisplayManager::kScrollAlignJustify;
   switch (preferences_.getUChar(kPrefFooterMetricMode,
                                 static_cast<uint8_t>(footerMetricMode_))) {
     case static_cast<uint8_t>(FooterMetricMode::ChapterTime):
@@ -1051,9 +1076,9 @@ void App::begin() {
   if (screensaverTimeoutIndex_ >= kScreensaverTimeoutCount) {
     screensaverTimeoutIndex_ = 2;
   }
-  screensaverAutoOffIndex_ = preferences_.getUChar(kPrefScreensaverAutoOff, 0);
+  screensaverAutoOffIndex_ = preferences_.getUChar(kPrefScreensaverAutoOff, kScreensaverAutoOffDefaultIndex);
   if (screensaverAutoOffIndex_ >= kScreensaverAutoOffCount) {
-    screensaverAutoOffIndex_ = 0;
+    screensaverAutoOffIndex_ = kScreensaverAutoOffDefaultIndex;
   }
   screensaverSleepGuardIndex_ = preferences_.getUChar(kPrefScreensaverSleepGuard, 0);
   if (screensaverSleepGuardIndex_ >= kScreensaverSleepGuardCount) {
@@ -1074,6 +1099,9 @@ void App::begin() {
       loadPacingDelayMs(preferences_, kPrefPacingComplexMs, kPrefLegacyPacingComplex);
   pacingPunctuationDelayMs_ =
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
+  pacingSentenceDelayMs_ = static_cast<uint16_t>(clampIntSetting(
+      preferences_.getUShort(kPrefPacingSentenceMs, kDefaultSentenceDelayMs), kPacingDelayMinMs, kPacingDelayMaxMs));
+  migratePacingDefaults();
   accurateTimeEstimateEnabled_ = true;
   loadTypographyConfigFromPreferences();
   darkMode_ = preferences_.getBool(kPrefDarkMode, darkMode_);
@@ -1437,6 +1465,7 @@ void App::update(uint32_t nowMs) {
   updateReader(nowMs);
   handleTouch(nowMs);
   updateGridToastOverlay(nowMs);
+  updateBatteryPreview(nowMs);
   updateSdCardSetup(nowMs);
   updateCardReaderDim(nowMs);
 
@@ -1868,7 +1897,7 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
 
   const bool bothHeld = button_.isHeld() && powerButton_.isHeld();
   if (state_ == AppState::Standby) {
-    const bool pastGrace = nowMs - standbyEnteredMs_ >= kStandbyWakeGraceMs;
+    const bool pastGrace = nowMs - standbyEnteredMs_ >= standbyWakeGraceMs_;
     if (!bothHeld && !button_.isHeld() && !powerButton_.isHeld() && pastGrace) {
       standbyButtonsReleased_ = true;
     }
@@ -1921,12 +1950,12 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
 }
 
 void App::handleBootButton(uint32_t nowMs) {
-  // The Reboot (BOOT) button: a short press opens the menu, goes back a
-  // screen or a wizard step (what the power button did before). A long
-  // press does nothing for now.
+  // The right button (BOOT): a short press steps the brightness up and wraps
+  // from the brightest level to the dimmest, holding it changes the reading
+  // theme.
   if (state_ == AppState::Standby) {
     if (!standbyButtonsReleased_ && !button_.isHeld() && !powerButton_.isHeld() &&
-        nowMs - standbyEnteredMs_ >= kStandbyWakeGraceMs) {
+        nowMs - standbyEnteredMs_ >= standbyWakeGraceMs_) {
       standbyButtonsReleased_ = true;
     }
     if (standbyButtonsReleased_ && button_.wasPressedEvent()) {
@@ -1937,6 +1966,7 @@ void App::handleBootButton(uint32_t nowMs) {
   }
 
   if (state_ == AppState::Booting || state_ == AppState::UsbTransfer ||
+      state_ == AppState::CompanionSync ||
       state_ == AppState::Sleeping || powerOffStarted_) {
     return;
   }
@@ -1961,6 +1991,13 @@ void App::handleBootButton(uint32_t nowMs) {
     lastActivityMs_ = nowMs;
   }
 
+  if (button_.isHeld() && !bootButtonLongPressHandled_ &&
+      button_.heldDurationMs(nowMs) >= kThemeToggleHoldMs) {
+    bootButtonLongPressHandled_ = true;
+    cycleThemeMode(nowMs);
+    return;
+  }
+
   if (!button_.wasReleasedEvent()) {
     return;
   }
@@ -1970,41 +2007,8 @@ void App::handleBootButton(uint32_t nowMs) {
     return;
   }
 
-  if (button_.lastHoldDurationMs() >= kThemeToggleHoldMs) {
-    // Long press: no function yet.
-    return;
-  }
-
-  if (state_ == AppState::CompanionSync) {
-    // Back out of the phone-sync screen.
-    exitCompanionSync(nowMs);
-    return;
-  }
-
-  runMenuButton(nowMs);
-}
-
-void App::runMenuButton(uint32_t nowMs) {
-  // Single tap always acts immediately — no waiting to see if a second tap
-  // follows. Double-tap-to-restart is instead detected retroactively: if a
-  // tap opened the menu and a second tap lands within the window while
-  // still on that freshly-opened Main screen (i.e. nothing else navigated
-  // in the meantime), treat it as "restart" instead of the normal in-menu
-  // tap action (back / triple-tap-for-savepoint tracking).
-  if (state_ == AppState::Menu && menuScreen_ == MenuScreen::Main && powerTapPending_ &&
-      nowMs - powerTapPendingMs_ <= kPowerDoubleTapWindowMs) {
-    powerTapPending_ = false;
-    pwrTapCount_ = 0;
-    restartFromPowerButtonDoubleTap();
-    return;
-  }
-
-  const bool openingMenuFromReadingScreen = (state_ != AppState::Menu);
-  powerTapPending_ = false;
-  toggleMenuFromPowerButton(nowMs);
-  if (openingMenuFromReadingScreen) {
-    powerTapPending_ = true;
-    powerTapPendingMs_ = nowMs;
+  if (button_.lastHoldDurationMs() < kThemeToggleHoldMs) {
+    cycleBrightness();
   }
 }
 
@@ -2021,7 +2025,7 @@ void App::handlePowerButton(uint32_t nowMs) {
 
   if (state_ == AppState::Standby) {
     if (!standbyButtonsReleased_ && !button_.isHeld() && !powerButton_.isHeld() &&
-        nowMs - standbyEnteredMs_ >= kStandbyWakeGraceMs) {
+        nowMs - standbyEnteredMs_ >= standbyWakeGraceMs_) {
       standbyButtonsReleased_ = true;
     }
     if (standbyButtonsReleased_ && powerButton_.wasPressedEvent()) {
@@ -2084,13 +2088,6 @@ void App::handlePowerButton(uint32_t nowMs) {
 
   powerTapPending_ = false;
   turnScreenOffFromPower(nowMs);
-}
-
-void App::restartFromPowerButtonDoubleTap() {
-  saveReadingPosition(true);
-  display_.renderStatus("", tr(TrKey::Restarting), "");
-  delay(300);
-  ESP.restart();
 }
 
 void App::toggleMenuFromPowerButton(uint32_t nowMs) {
@@ -2311,7 +2308,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       preferences_.getUChar(kPrefHandedness, static_cast<uint8_t>(handednessMode_)));
   readerFontSizeIndex_ = preferences_.getUChar(kPrefReaderFontSize, readerFontSizeIndex_);
   if (readerFontSizeIndex_ >= kReaderFontSizeCount) {
-    readerFontSizeIndex_ = 0;
+    readerFontSizeIndex_ = 1;
   }
   loadScrollFontSize();
   scrollLineSpacing_ = preferences_.getUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
@@ -2319,7 +2316,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   scrollMargin_ = preferences_.getUChar(kPrefScrollMargin, scrollMargin_);
   if (scrollMargin_ > 2) scrollMargin_ = 1;
   scrollAlign_ = preferences_.getUChar(kPrefScrollAlign, scrollAlign_);
-  if (scrollAlign_ > DisplayManager::kScrollAlignCenter) scrollAlign_ = DisplayManager::kScrollAlignLeft;
+  if (scrollAlign_ > DisplayManager::kScrollAlignCenter) scrollAlign_ = DisplayManager::kScrollAlignJustify;
 
   switch (preferences_.getUChar(kPrefFooterMetricMode,
                                 static_cast<uint8_t>(footerMetricMode_))) {
@@ -2357,7 +2354,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   }
   screensaverAutoOffIndex_ = preferences_.getUChar(kPrefScreensaverAutoOff, screensaverAutoOffIndex_);
   if (screensaverAutoOffIndex_ >= kScreensaverAutoOffCount) {
-    screensaverAutoOffIndex_ = 0;
+    screensaverAutoOffIndex_ = kScreensaverAutoOffDefaultIndex;
   }
   screensaverSleepGuardIndex_ = preferences_.getUChar(kPrefScreensaverSleepGuard, screensaverSleepGuardIndex_);
   if (screensaverSleepGuardIndex_ >= kScreensaverSleepGuardCount) {
@@ -2380,6 +2377,8 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       loadPacingDelayMs(preferences_, kPrefPacingComplexMs, kPrefLegacyPacingComplex);
   pacingPunctuationDelayMs_ =
       loadPacingDelayMs(preferences_, kPrefPacingPunctuationMs, kPrefLegacyPacingPunctuation);
+  pacingSentenceDelayMs_ = static_cast<uint16_t>(clampIntSetting(
+      preferences_.getUShort(kPrefPacingSentenceMs, kDefaultSentenceDelayMs), kPacingDelayMinMs, kPacingDelayMaxMs));
   accurateTimeEstimateEnabled_ = true;
 
   loadTypographyConfigFromPreferences();
@@ -3140,6 +3139,17 @@ void App::handleTouch(uint32_t nowMs) {
                              : ev.phase == TouchPhase::End ? "touch End"
                                                            : "touch Move",
                              40);
+  if (state_ == AppState::Menu &&
+      (menuScreen_ == MenuScreen::WelcomeReadingModePreview || settingsScrollPreviewActive_)) {
+    // A reading preview fills the screen: a tap that started on it closes it.
+    if (ev.phase == TouchPhase::Start) {
+      readingPreviewTouchDown_ = static_cast<int32_t>(nowMs - readingPreviewShownMs_) >= 0;
+    } else if (ev.phase == TouchPhase::End && readingPreviewTouchDown_) {
+      readingPreviewTouchDown_ = false;
+      closeReadingPreview(nowMs);
+    }
+    return;
+  }
   if (state_ == AppState::Menu) {
     applyMenuTouchGesture(ev, nowMs);
   } else {
@@ -5358,6 +5368,9 @@ void App::selectSettingsItem(uint32_t nowMs) {
         display_.setBatteryStyle(static_cast<uint8_t>((display_.batteryStyle() + 1) %
                                                       DisplayManager::kBatteryStyleCount));
         preferences_.putUChar(kPrefBatteryStyle, display_.batteryStyle());
+        // The new look appears for a second in the top corner.
+        batteryPreviewActive_ = true;
+        batteryPreviewStartMs_ = nowMs;
         rebuildSettingsMenuItems();
         showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
         renderSettings();
@@ -5480,13 +5493,18 @@ void App::selectSettingsItem(uint32_t nowMs) {
     case kSettingsPacingPunctuationIndex:
       openPacingDelayEditor(PacingDelayTarget::Punctuation, nowMs);
       return;
+    case kSettingsPacingSentenceIndex:
+      openPacingDelayEditor(PacingDelayTarget::Sentences, nowMs);
+      return;
     case kSettingsPacingResetIndex:
       pacingLongWordDelayMs_ = kDefaultPacingDelayMs;
       pacingComplexWordDelayMs_ = kDefaultPacingDelayMs;
       pacingPunctuationDelayMs_ = kDefaultPacingDelayMs;
+      pacingSentenceDelayMs_ = kDefaultSentenceDelayMs;
       preferences_.putUShort(kPrefPacingLongMs, pacingLongWordDelayMs_);
       preferences_.putUShort(kPrefPacingComplexMs, pacingComplexWordDelayMs_);
       preferences_.putUShort(kPrefPacingPunctuationMs, pacingPunctuationDelayMs_);
+      preferences_.putUShort(kPrefPacingSentenceMs, pacingSentenceDelayMs_);
       pacingConfigChanged = true;
       break;
     default:
@@ -6558,6 +6576,8 @@ void App::rebuildSettingsMenuItems() {
                                    pacingDelayLabel(pacingComplexWordDelayMs_));
       settingsMenuItems_.push_back(uiText(UiText::Punctuation) + ": " +
                                    pacingDelayLabel(pacingPunctuationDelayMs_));
+      settingsMenuItems_.push_back(String(tr4(TrKey4::PacingSentences)) + ": " +
+                                   pacingDelayLabel(pacingSentenceDelayMs_));
       settingsMenuItems_.push_back(uiText(UiText::ResetPacing));
     }
   } else if (menuScreen_ == MenuScreen::WifiSettings) {
@@ -6582,17 +6602,40 @@ void App::rebuildSettingsMenuItems() {
   }
 }
 
+void App::migratePacingDefaults() {
+  // Once: the 2026-10-11 defaults (100 ms, full stops 150 ms) replace the
+  // old 50 ms ones a reader still has. A value someone set stays as it is.
+  if (preferences_.getBool(kPrefPacingDefaultsV2, false)) {
+    return;
+  }
+  preferences_.putBool(kPrefPacingDefaultsV2, true);
+  auto bump = [this](uint16_t &value, const char *key) {
+    if (value == kOldDefaultPacingDelayMs) {
+      value = kDefaultPacingDelayMs;
+      preferences_.putUShort(key, value);
+    }
+  };
+  bump(pacingLongWordDelayMs_, kPrefPacingLongMs);
+  bump(pacingComplexWordDelayMs_, kPrefPacingComplexMs);
+  bump(pacingPunctuationDelayMs_, kPrefPacingPunctuationMs);
+  Serial.printf("[settings] pacing defaults v2: long=%u complexity=%u commas=%u full stops=%u\n",
+                static_cast<unsigned>(pacingLongWordDelayMs_), static_cast<unsigned>(pacingComplexWordDelayMs_),
+                static_cast<unsigned>(pacingPunctuationDelayMs_), static_cast<unsigned>(pacingSentenceDelayMs_));
+}
+
 void App::applyPacingSettings() {
   ReadingLoop::PacingConfig pacingConfig;
   pacingConfig.longWordDelayMs = pacingLongWordDelayMs_;
   pacingConfig.complexWordDelayMs = pacingComplexWordDelayMs_;
   pacingConfig.punctuationDelayMs = pacingPunctuationDelayMs_;
+  pacingConfig.sentenceDelayMs = pacingSentenceDelayMs_;
   reader_.setPacingConfig(pacingConfig);
 
-  Serial.printf("[settings] pacing long=%u ms complexity=%u ms punctuation=%u ms\n",
+  Serial.printf("[settings] pacing long=%u ms complexity=%u ms commas=%u ms full stops=%u ms\n",
                 static_cast<unsigned int>(pacingLongWordDelayMs_),
                 static_cast<unsigned int>(pacingComplexWordDelayMs_),
-                static_cast<unsigned int>(pacingPunctuationDelayMs_));
+                static_cast<unsigned int>(pacingPunctuationDelayMs_),
+                static_cast<unsigned int>(pacingSentenceDelayMs_));
   // Defer the (potentially slow, screen-clobbering) rebuild while still on
   // a pacing-related screen — it draws its own "Reading time..." status
   // screen over whatever's currently showing, which on PacingDelayEditor
@@ -7320,11 +7363,12 @@ constexpr uint32_t kWelcomeRsvpPreviewWordMs = 500;
 constexpr uint32_t kWelcomeScrollPreviewWordMs = 260;
 }  // namespace
 
-void App::openWelcomeReadingModePreview(uint8_t mode) {
+void App::buildReadingPreviewWords(uint8_t mode) {
   welcomeReadingModePreviewMode_ = mode;
   welcomeReadingModePreviewWordIndex_ = 0;
   welcomeReadingModePreviewLastTickMs_ = millis();
-  menuScreen_ = MenuScreen::WelcomeReadingModePreview;
+  readingPreviewShownMs_ = millis();
+  readingPreviewTouchDown_ = false;
 
   if (mode == 0) {
     // A sentence in the menu language, word by word.
@@ -7341,43 +7385,55 @@ void App::openWelcomeReadingModePreview(uint8_t mode) {
       }
       start = spaceIndex + 1;
     }
-  } else {
-    // Zbuduj listę słów raz przy otwarciu — to samo zdanie powtórzone kilka
-    // razy jako kolejne akapity, żeby renderScrollView() miało realny,
-    // wielowierszowy tekst do przewijania zamiast jednego zdania na sztywno.
-    welcomeScrollPreviewWords_.clear();
-    const String sentence = tr3(TrKey3::WelcomePreviewScrollBody);
-    for (int paragraph = 0; paragraph < kWelcomeScrollPreviewParagraphs; ++paragraph) {
-      int start = 0;
-      bool firstWordInParagraph = true;
-      while (start < static_cast<int>(sentence.length())) {
-        int spaceIndex = sentence.indexOf(' ', start);
-        if (spaceIndex < 0) {
-          spaceIndex = sentence.length();
-        }
-        if (spaceIndex > start) {
-          DisplayManager::ContextWord word;
-          word.text = sentence.substring(start, spaceIndex);
-          word.paragraphStart = firstWordInParagraph;
-          firstWordInParagraph = false;
-          welcomeScrollPreviewWords_.push_back(word);
-        }
-        start = spaceIndex + 1;
+    return;
+  }
+  // The same paragraph a few times over, so the page has lines to scroll
+  // through for as long as the preview stays up.
+  welcomeScrollPreviewWords_.clear();
+  const String sentence = tr3(TrKey3::WelcomePreviewScrollBody);
+  for (int paragraph = 0; paragraph < kWelcomeScrollPreviewParagraphs; ++paragraph) {
+    int start = 0;
+    bool firstWordInParagraph = true;
+    while (start < static_cast<int>(sentence.length())) {
+      int spaceIndex = sentence.indexOf(' ', start);
+      if (spaceIndex < 0) {
+        spaceIndex = sentence.length();
       }
+      if (spaceIndex > start) {
+        DisplayManager::ContextWord word;
+        word.text = sentence.substring(start, spaceIndex);
+        word.paragraphStart = firstWordInParagraph;
+        firstWordInParagraph = false;
+        welcomeScrollPreviewWords_.push_back(word);
+      }
+      start = spaceIndex + 1;
     }
   }
+}
 
+void App::openWelcomeReadingModePreview(uint8_t mode) {
+  buildReadingPreviewWords(mode);
+  menuScreen_ = MenuScreen::WelcomeReadingModePreview;
   renderWelcomeReadingModePreview();
 }
 
 void App::updateWelcomeReadingModePreview(uint32_t nowMs) {
-  if (menuScreen_ != MenuScreen::WelcomeReadingModePreview) {
+  if (settingsScrollPreviewActive_ && (state_ != AppState::Menu || menuScreen_ != MenuScreen::SettingsPacing)) {
+    // Left the settings some other way (a reader reset, the app).
+    settingsScrollPreviewActive_ = false;
+  }
+  if (state_ != AppState::Menu ||
+      (menuScreen_ != MenuScreen::WelcomeReadingModePreview && !settingsScrollPreviewActive_)) {
     return;
   }
 
   const uint32_t tickMs =
       welcomeReadingModePreviewMode_ == 0 ? kWelcomeRsvpPreviewWordMs : kWelcomeScrollPreviewWordMs;
   if (nowMs - welcomeReadingModePreviewLastTickMs_ < tickMs) {
+    if (welcomeReadingModePreviewMode_ == 1) {
+      // The page glides between words, as it does while reading.
+      renderWelcomeReadingModePreview();
+    }
     return;
   }
   welcomeReadingModePreviewLastTickMs_ = nowMs;
@@ -7396,10 +7452,67 @@ void App::updateWelcomeReadingModePreview(uint32_t nowMs) {
 }
 
 void App::renderWelcomeReadingModePreview() {
-  // The reading screen itself as a wizard page (renderWizardPage, Preview):
-  // RSVP words change every kWelcomeRsvpPreviewWordMs, the page scrolls
-  // every kWelcomeScrollPreviewWordMs (updateWelcomeReadingModePreview).
-  renderWizardPage();
+  // The reading screen itself, drawn by the same code as reading: colors,
+  // typeface, size, guide, phantom words, scroll layout. It stays up until
+  // a tap (closeReadingPreview); RSVP words change every
+  // kWelcomeRsvpPreviewWordMs, the page moves on every
+  // kWelcomeScrollPreviewWordMs.
+  applyReaderUiOrientation();
+  DisplayManager::ReaderChrome chrome;
+  chrome.showBattery = readerBatteryVisibleWhilePlaying_;
+  chrome.showChapter = false;
+  chrome.showProgress = false;
+  chrome.showPreviousSentenceHint = false;
+  chrome.showSavePointButton = false;
+  if (welcomeReadingModePreviewMode_ == 0) {
+    if (welcomeRsvpPreviewWords_.empty()) {
+      return;
+    }
+    const size_t count = welcomeRsvpPreviewWords_.size();
+    const size_t current = welcomeReadingModePreviewWordIndex_ % count;
+    String before;
+    String after;
+    if (phantomWordsEnabled_) {
+      if (current > 0) before = welcomeRsvpPreviewWords_[current - 1];
+      if (current + 1 < count) after = welcomeRsvpPreviewWords_[current + 1];
+    }
+    display_.renderPhantomRsvpWord(before, welcomeRsvpPreviewWords_[current], after, readerFontSizeIndex_, "", 0,
+                                   false, "", chrome);
+    return;
+  }
+  if (welcomeScrollPreviewWords_.empty()) {
+    return;
+  }
+  const size_t current = welcomeReadingModePreviewWordIndex_ % welcomeScrollPreviewWords_.size();
+  for (size_t i = 0; i < welcomeScrollPreviewWords_.size(); ++i) {
+    welcomeScrollPreviewWords_[i].current = i == current;
+  }
+  const uint32_t elapsed = millis() - welcomeReadingModePreviewLastTickMs_;
+  const uint16_t permille =
+      static_cast<uint16_t>(std::min<uint32_t>(1000, elapsed * 1000UL / kWelcomeScrollPreviewWordMs));
+  constexpr uint32_t kPreviewContentToken = 0x50524556UL;  // "PREV"
+  display_.renderScrollView(welcomeScrollPreviewWords_, kPreviewContentToken, 0, current, permille, "", 0, "", "",
+                            chrome);
+}
+
+void App::closeReadingPreview(uint32_t nowMs) {
+  if (settingsScrollPreviewActive_) {
+    settingsScrollPreviewActive_ = false;
+    rebuildSettingsMenuItems();
+    renderSettings();
+    return;
+  }
+  if (welcomePreviewFromFont_) {
+    welcomePreviewFromFont_ = false;
+    openWelcomeFont(nowMs);
+    return;
+  }
+  // Back on the reading-mode page with the previewed mode picked: Dalej
+  // takes it.
+  const uint8_t previewed = welcomeReadingModePreviewMode_;
+  openWelcomeReadingMode();
+  settingsSelectedIndex_ = previewed == 1 ? 1 : 0;
+  renderSettings();
 }
 
 // ─── Krok 2.3: połącz z telefonem (QR + parowanie AP) ───────────────────────
@@ -8319,6 +8432,8 @@ uint16_t *App::pacingDelayEditorValuePtr() {
       return &pacingComplexWordDelayMs_;
     case PacingDelayTarget::Punctuation:
       return &pacingPunctuationDelayMs_;
+    case PacingDelayTarget::Sentences:
+      return &pacingSentenceDelayMs_;
     case PacingDelayTarget::LongWords:
     default:
       return &pacingLongWordDelayMs_;
@@ -8331,6 +8446,8 @@ const char *App::pacingDelayEditorPrefKey() const {
       return kPrefPacingComplexMs;
     case PacingDelayTarget::Punctuation:
       return kPrefPacingPunctuationMs;
+    case PacingDelayTarget::Sentences:
+      return kPrefPacingSentenceMs;
     case PacingDelayTarget::LongWords:
     default:
       return kPrefPacingLongMs;
@@ -8343,6 +8460,8 @@ String App::pacingDelayEditorLabel() const {
       return uiText(UiText::Complexity);
     case PacingDelayTarget::Punctuation:
       return uiText(UiText::Punctuation);
+    case PacingDelayTarget::Sentences:
+      return tr4(TrKey4::PacingSentences);
     case PacingDelayTarget::LongWords:
     default:
       return uiText(UiText::LongWords);
@@ -8431,6 +8550,9 @@ void App::handlePacingDelayEditorTouch(const TouchEvent &event, uint32_t nowMs) 
             break;
           case PacingDelayTarget::Punctuation:
             settingsSelectedIndex_ = kSettingsPacingPunctuationIndex;
+            break;
+          case PacingDelayTarget::Sentences:
+            settingsSelectedIndex_ = kSettingsPacingSentenceIndex;
             break;
           case PacingDelayTarget::LongWords:
           default:
@@ -8848,56 +8970,15 @@ String App::readerModeLabel() const {
 }
 
 void App::showScrollSettingsPreview() {
-  // Build sample words for preview
-  static const char *const kScrollPreviewText[] = {
-      "The", "quick", "brown", "fox", "jumps", "over",
-      "the", "lazy", "dog.", "Reading", "is", "a",
-      "wonderful", "way", "to", "explore", "new", "worlds.",
-      "Every", "book", "opens", "a", "door", "to",
-      "knowledge", "and", "imagination."
-  };
-  constexpr size_t kScrollPreviewWordCount = sizeof(kScrollPreviewText) / sizeof(kScrollPreviewText[0]);
-
-  std::vector<DisplayManager::ContextWord> previewWords;
-  previewWords.reserve(kScrollPreviewWordCount);
-  for (size_t i = 0; i < kScrollPreviewWordCount; ++i) {
-    DisplayManager::ContextWord w;
-    w.text = kScrollPreviewText[i];
-    w.paragraphStart = (i == 0 || i == 9 || i == 18);
-    w.current = (i == 5);  // highlight "over" as current word
-    previewWords.push_back(w);
-  }
-
-  // Apply current scroll display settings before rendering
+  // The scroll page as it reads with the current size, spacing, margins and
+  // alignment, moving like reading does, until a tap closes it.
   display_.setScrollFontSize(scrollFontSize_);
   display_.setScrollLineSpacing(scrollLineSpacing_);
   display_.setScrollMargin(scrollMargin_);
-
-  // Build a label showing current setting values
-  String overlayText = "Font:" + scrollFontSizeLabel() +
-                       " Spacing:" + scrollLineSpacingLabel() +
-                       " Margin:" + scrollMarginLabel();
-
-  DisplayManager::ReaderChrome chrome;
-  chrome.showBattery = false;
-  chrome.showChapter = false;
-  chrome.showProgress = false;
-  chrome.showPreviousSentenceHint = false;
-  chrome.showSavePointButton = false;
-
-  // Force a fresh render by using a unique content token
-  static uint32_t previewToken = 90000;
-  ++previewToken;
-
-  display_.renderScrollView(previewWords, previewToken,
-                            0, 5, 0,
-                            "", 0, overlayText,
-                            "", chrome);
-
-  // Show preview for 1500ms then return to menu
-  delay(1500);
-  rebuildSettingsMenuItems();
-  renderSettings();
+  display_.setScrollAlign(scrollAlign_);
+  buildReadingPreviewWords(1);
+  settingsScrollPreviewActive_ = true;
+  renderWelcomeReadingModePreview();
 }
 
 String App::scrollFontSizeLabel() const {
@@ -8932,7 +9013,7 @@ void App::loadScrollFontSize() {
     }
     preferences_.putUChar(kPrefScrollFontScale, 2);
   }
-  if (scrollFontSize_ > 8) scrollFontSize_ = 3;
+  if (scrollFontSize_ > 8) scrollFontSize_ = 4;
 }
 
 String App::scrollMarginLabel() const {
@@ -10809,6 +10890,7 @@ void App::enterStandby(uint32_t nowMs, bool screenOff) {
   wpmFeedbackVisible_ = false;
   batteryWarningOverlayVisible_ = false;
   standbyEnteredMs_ = nowMs;
+  standbyWakeGraceMs_ = screenOff ? kScreenOffWakeGraceMs : kStandbyWakeGraceMs;
   standbyButtonsReleased_ = false;
   lastStandbyFrameMs_ = 0;
   setState(AppState::Standby, nowMs);
@@ -11319,11 +11401,11 @@ String App::screensaverTimeoutLabel() const {
 String App::screensaverAutoOffLabel() const {
   if (screensaverAutoOffIndex_ >= kScreensaverAutoOffCount) return tr(TrKey::Never);
   if (screensaverAutoOffIndex_ == 0) return tr(TrKey::Never);
-  const uint16_t minutes = kScreensaverAutoOffMinutes[screensaverAutoOffIndex_];
-  if (minutes >= 60) {
-    return String(minutes / 60) + "h";
+  const uint16_t seconds = kScreensaverAutoOffSeconds[screensaverAutoOffIndex_];
+  if (seconds < 60) {
+    return String(seconds) + " s";
   }
-  return String(minutes) + " min";
+  return String(seconds / 60) + " min";
 }
 
 String App::screensaverSleepGuardLabel() const {
@@ -11341,17 +11423,6 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
     return;
   }
 
-  // Auto power-off: check if standby has been active long enough
-  if (screensaverAutoOffIndex_ > 0) {
-    const uint32_t autoOffMs =
-        static_cast<uint32_t>(kScreensaverAutoOffMinutes[screensaverAutoOffIndex_]) * 60000UL;
-    if (nowMs - standbyEnteredMs_ >= autoOffMs) {
-      Serial.println("[app] screensaver auto power-off triggered");
-      enterPowerOff(nowMs);
-      return;
-    }
-  }
-
   switch (standbyPhase_) {
     case StandbyPhase::Off:
       if (!standbyScreenOffActive_) {
@@ -11361,18 +11432,17 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
       return;
     case StandbyPhase::Ask:
       if (nowMs - standbyPhaseMs_ >= kStandbyAskMs) {
-        Serial.println("[app] screensaver: no answer, screen off");
-        standbyPhase_ = StandbyPhase::Off;
-        standbyPhaseMs_ = nowMs;
-        stopActivityForScreenOff();
-        seedStandbyScreenOff(nowMs);
+        Serial.println("[app] screensaver: no answer, powering off");
+        enterPowerOff(nowMs);
         return;
       }
       renderStandbyAsk(nowMs);
       return;
     case StandbyPhase::Dim:
-      if (nowMs - standbyPhaseMs_ >= kStandbyDimMs) {
-        Serial.println("[app] screensaver: asking before the screen goes off");
+      if (screensaverAutoOffIndex_ > 0 && screensaverAutoOffIndex_ < kScreensaverAutoOffCount &&
+          nowMs - standbyPhaseMs_ >=
+              static_cast<uint32_t>(kScreensaverAutoOffSeconds[screensaverAutoOffIndex_]) * 1000UL) {
+        Serial.println("[app] screensaver: asking before powering off");
         standbyPhase_ = StandbyPhase::Ask;
         standbyPhaseMs_ = nowMs;
         standbyAskShownSeconds_ = -1;
@@ -11380,7 +11450,8 @@ void App::updateStandbyScreensaver(uint32_t nowMs, bool force) {
           display_.wakeFromSleep();
           standbyScreenOffActive_ = false;
         }
-        display_.setBrightnessPercent(currentBrightnessPercent());
+        // Still dim, only enough to read the question.
+        display_.setBrightnessPercent(kStandbyAskPercent);
         renderStandbyAsk(nowMs);
         return;
       }
@@ -11478,8 +11549,7 @@ void App::enterPowerOff(uint32_t nowMs) {
   menuScreen_ = MenuScreen::Main;
   state_ = AppState::Sleeping;
 
-  display_.renderStatus("OFF", tr2(TrKey2::ReleasePwr), tr2(TrKey2::HoldPwrToStart));
-  delay(300);
+  playPowerOffAnimation();
   display_.prepareForSleep();
 
   activeBookStore_.close();
@@ -11504,6 +11574,75 @@ void App::enterPowerOff(uint32_t nowMs) {
 
   BoardConfig::enablePwrButtonExt0Wakeup();
   esp_deep_sleep_start();
+}
+
+uint8_t App::batteryPreviewAlpha(uint32_t nowMs) const {
+  if (!batteryPreviewActive_) {
+    return 0;
+  }
+  const uint32_t elapsed = nowMs - batteryPreviewStartMs_;
+  if (elapsed >= kBatteryPreviewMs) {
+    return 0;
+  }
+  if (elapsed < kBatteryPreviewFadeMs) {
+    return static_cast<uint8_t>(elapsed * 255UL / kBatteryPreviewFadeMs);
+  }
+  if (elapsed > kBatteryPreviewMs - kBatteryPreviewFadeMs) {
+    return static_cast<uint8_t>((kBatteryPreviewMs - elapsed) * 255UL / kBatteryPreviewFadeMs);
+  }
+  return 255;
+}
+
+void App::updateBatteryPreview(uint32_t nowMs) {
+  if (!batteryPreviewActive_) {
+    return;
+  }
+  if (state_ != AppState::Menu || navMode_ != NavMode::Modern) {
+    batteryPreviewActive_ = false;
+    return;
+  }
+  const bool done = nowMs - batteryPreviewStartMs_ >= kBatteryPreviewMs;
+  if (!done && nowMs - batteryPreviewFrameMs_ < kBatteryPreviewFrameMs) {
+    return;
+  }
+  batteryPreviewFrameMs_ = nowMs;
+  if (done) {
+    batteryPreviewActive_ = false;  // one more frame, without the badge
+  }
+  renderMenu();
+}
+
+void App::playPowerOffAnimation() {
+  // The ring closes around the power sign, then the frame fades to black:
+  // switching off never looks like the instant dark of a PWR screen-off.
+  if (standbyScreenOffActive_) {
+    return;  // the panel is already dark
+  }
+  // Brightness stays as it is: from the screensaver question the screen
+  // is dim and goes out dim.
+  nano::PowerOffView view;
+  view.title = tr(TrKey::PoweringOff);
+  view.detail = tr2(TrKey2::HoldPwrToStart);
+  const bool classicColors = navMode_ != NavMode::Modern;
+  if (classicColors) {
+    display_.overrideNanoPalette(DisplayManager::kNanoPaletteClassic, false);
+  }
+  const uint32_t startMs = millis();
+  for (;;) {
+    const uint32_t elapsed = millis() - startMs;
+    view.progress = static_cast<uint16_t>(std::min<uint32_t>(1000, elapsed * 1000UL / kPowerOffRingMs));
+    display_.nanoBeginFrame();
+    nano::paintPowerOff(display_, view);
+    display_.nanoEndFrame();
+    if (view.progress >= 1000) {
+      break;
+    }
+    delay(15);
+  }
+  display_.fadeFrameOut(kPowerOffFadeMs);
+  if (classicColors) {
+    display_.overrideNanoPalette(nanoPalette_, nanoOwnAccent_);
+  }
 }
 
 void App::enterSleep(uint32_t nowMs) {
@@ -11919,6 +12058,10 @@ int App::findBookIndexByPath(const String &path) const {
 void App::renderMenu() {
   const SlowStepLog slowLog("renderMenu");
   applyReaderUiOrientation();
+  if (settingsScrollPreviewActive_ && menuScreen_ == MenuScreen::SettingsPacing) {
+    renderWelcomeReadingModePreview();
+    return;
+  }
   if (renderExtraScreen()) {
     return;
   }
@@ -12064,6 +12207,10 @@ size_t App::mainMenuItemCount() {
 void App::renderSettings() {
   if (settingsMenuItems_.empty()) {
     rebuildSettingsMenuItems();
+  }
+  if (settingsScrollPreviewActive_ && menuScreen_ == MenuScreen::SettingsPacing) {
+    renderWelcomeReadingModePreview();
+    return;
   }
   if (wizardNanoScreen()) {
     renderWizardPage();

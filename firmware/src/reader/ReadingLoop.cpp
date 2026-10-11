@@ -531,6 +531,16 @@ uint16_t punctuationPausePercentForWord(const String &word, bool nextWordStartsL
   }
 }
 
+// Sentence ends (. ! ? and an ellipsis) take the full-stop delay, the rest
+// of the punctuation the comma one.
+bool punctuationEndsSentence(const String &word) {
+  if (endsWithEllipsis(word)) {
+    return true;
+  }
+  const char c = trailingRhythmChar(word);
+  return c == '.' || c == '!' || c == '?';
+}
+
 uint32_t pacingBonusMsForWord(const String &word, bool nextWordStartsLowercase,
                               const ReadingLoop::PacingConfig &config) {
   if (word.isEmpty()) {
@@ -547,7 +557,7 @@ uint32_t pacingBonusMsForWord(const String &word, bool nextWordStartsLowercase,
   totalBonusMs +=
       scaledDelayMs(scaledPercent(punctuationPausePercentForWord(word, nextWordStartsLowercase),
                                   config.punctuationScalePercent),
-                    config.punctuationDelayMs);
+                    punctuationEndsSentence(word) ? config.sentenceDelayMs : config.punctuationDelayMs);
   return totalBonusMs;
 }
 
@@ -765,6 +775,7 @@ void ReadingLoop::setPacingConfig(const PacingConfig &config) {
   pacingConfig_.longWordDelayMs = clampPacingDelayMs(config.longWordDelayMs);
   pacingConfig_.complexWordDelayMs = clampPacingDelayMs(config.complexWordDelayMs);
   pacingConfig_.punctuationDelayMs = clampPacingDelayMs(config.punctuationDelayMs);
+  pacingConfig_.sentenceDelayMs = clampPacingDelayMs(config.sentenceDelayMs);
   pacingConfig_.longWordScalePercent = clampScalePercent(config.longWordScalePercent);
   pacingConfig_.complexWordScalePercent = clampScalePercent(config.complexWordScalePercent);
   pacingConfig_.punctuationScalePercent = clampScalePercent(config.punctuationScalePercent);

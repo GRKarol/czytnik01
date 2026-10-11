@@ -505,6 +505,11 @@ class DisplayManager {
   void nanoChargingBolt(int cx, int cy, int h, uint16_t color);
   // Width nanoBatteryInline() will take for the current style and state.
   int nanoBatteryIndicatorWidth(bool compact = false) const;
+  // Partly transparent overlay: nanoFadeBegin() keeps what is under `rect`,
+  // the overlay is drawn as usual, nanoFadeEnd() mixes it over the kept
+  // pixels at `alpha` (0 = invisible, 255 = solid).
+  void nanoFadeBegin(const ui::Rect &rect);
+  void nanoFadeEnd(uint8_t alpha);
 
   void nanoLabel(const ui::Rect &rect, const String &text, uint8_t size, NanoRole role,
                  NanoAlign align = NanoAlign::Start, uint8_t maxLines = 1);
@@ -683,6 +688,8 @@ class DisplayManager {
   void nanoFillCircleHelper(int x0, int y0, int r, uint8_t corners, int delta, uint16_t color);
   // `alpha` 0-255 of `color` over the pixel already in the frame.
   void nanoBlendPixel(int x, int y, uint16_t color, uint8_t alpha);
+  std::vector<uint16_t> nanoFadeSaved_;
+  ui::Rect nanoFadeRect_;
   void nanoThickLine(int x0, int y0, int x1, int y1, uint16_t color);
   // One line of UI text in `family`/`strike`, pen starting at x, baseline y.
   void nanoDrawRun(int x, int baseline, const String &text, uint8_t family, uint8_t strike,
@@ -784,10 +791,10 @@ class DisplayManager {
   // scroll position.
   String articleReaderSourceCache_;
   std::vector<String> articleReaderLinesCache_;
-  uint8_t scrollFontSize_ = 3;
+  uint8_t scrollFontSize_ = 4;
   uint8_t scrollLineSpacing_ = 1;
   uint8_t scrollMargin_ = 1;
-  uint8_t scrollAlign_ = kScrollAlignLeft;
+  uint8_t scrollAlign_ = kScrollAlignJustify;
 
   int scrollLineHeightPx() const;
   // Left edge of each word of a scroll line for the current alignment.

@@ -177,7 +177,6 @@ void App::renderWizardPage() {
       view.title = tr3(TrKey3::WelcomeLanguageTitle);
       view.subtitle = tr4(TrKey4::WizLanguageSub);
       view.backId = nano::kNoTarget;
-      view.footer = tr3(TrKey3::WelcomePowerBackHint);
       addChips(nano::WizardChipArt::Label);
       break;
     case MenuScreen::WelcomeTheme:
@@ -193,6 +192,9 @@ void App::renderWizardPage() {
       view.title = tr3(TrKey3::WelcomeHighlightColorTitle);
       view.subtitle = tr4(TrKey4::WizColorSub);
       addChips(nano::WizardChipArt::Swatch);
+      // Two rows of three: room for the longest color name.
+      view.chipRows = 2;
+      view.chipColumns = 3;
       for (size_t i = 0; i < view.chips.size(); ++i) {
         view.chips[i].swatch = DisplayManager::presetFocusColor(static_cast<uint8_t>(i));
       }
@@ -314,26 +316,9 @@ void App::renderWizardPage() {
       view.extraLabel = tr4(TrKey4::WizPreview);
       break;
     case MenuScreen::WelcomeReadingModePreview:
-      view.body = nano::WizardBody::Preview;
-      view.nextLabel = tr4(TrKey4::WizPick);
-      view.previewMode = welcomeReadingModePreviewMode_;
-      if (welcomePreviewFromFont_) {
-        view.footer = typefaceDisplayName(typographyConfig_.typeface);
-      }
-      if (welcomeReadingModePreviewMode_ == 0 && !welcomeRsvpPreviewWords_.empty()) {
-        const size_t count = welcomeRsvpPreviewWords_.size();
-        const size_t current = welcomeReadingModePreviewWordIndex_ % count;
-        view.previewWord = welcomeRsvpPreviewWords_[current];
-        if (count > 1) {
-          view.previewBefore = welcomeRsvpPreviewWords_[current == 0 ? count - 1 : current - 1];
-          view.previewAfter = welcomeRsvpPreviewWords_[(current + 1) % count];
-        }
-        view.previewSizeLevel = static_cast<uint8_t>(readerFontSizeIndex_);
-      } else if (!welcomeScrollPreviewWords_.empty()) {
-        view.scrollWords = &welcomeScrollPreviewWords_;
-        view.scrollCurrent = welcomeReadingModePreviewWordIndex_ % welcomeScrollPreviewWords_.size();
-      }
-      break;
+      // Not a wizard page: the reading screen itself, until a tap.
+      renderWelcomeReadingModePreview();
+      return;
     case MenuScreen::WelcomeLoading: {
       view.body = nano::WizardBody::Loading;
       view.title = wizardLoadingPhrase(elapsed);
@@ -472,7 +457,13 @@ void App::renderWizardPage() {
       return;
   }
 
-  const bool classicColors = navMode_ != NavMode::Modern;
+  // The reading-look steps (theme, font, mode, letter color) show the page
+  // in the reading colors, so each choice looks as it will while reading;
+  // the steps after them go back to the menu look.
+  const bool readingLookStep = menuScreen_ == MenuScreen::WelcomeTheme || menuScreen_ == MenuScreen::WelcomeFont ||
+                               menuScreen_ == MenuScreen::WelcomeReadingMode ||
+                               menuScreen_ == MenuScreen::WelcomeHighlightColor;
+  const bool classicColors = navMode_ != NavMode::Modern || readingLookStep;
   if (classicColors) {
     display_.overrideNanoPalette(DisplayManager::kNanoPaletteClassic, false);
   }

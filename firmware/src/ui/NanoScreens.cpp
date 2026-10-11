@@ -789,6 +789,44 @@ void paintConfirm(DisplayManager &d, Sink &sink, const ConfirmView &view) {
   }
 }
 
+// ─── Power-off ──────────────────────────────────────────────────────────────
+
+void paintPowerOff(DisplayManager &d, const PowerOffView &view) {
+  constexpr int kCx = kScreenW / 2;
+  constexpr int kCy = 58;
+  constexpr int kRing = 34;
+  constexpr int kDots = 40;
+  const uint16_t accent = d.nanoColor(Role::Accent);
+  const uint16_t track = d.nanoColor(Role::ProgressTrack);
+  const int lit = static_cast<int>(std::min<uint16_t>(1000, view.progress)) * kDots / 1000;
+  // Dots around the ring, lit clockwise from the top.
+  for (int i = 0; i < kDots; ++i) {
+    const float angle = (static_cast<float>(i) / kDots) * 6.2831853f - 1.5707963f;
+    const int x = kCx + static_cast<int>(cosf(angle) * kRing);
+    const int y = kCy + static_cast<int>(sinf(angle) * kRing);
+    d.nanoFillCircle(x, y, 2, i < lit ? accent : track);
+  }
+  d.nanoIcon(Rect(kCx - 16, kCy - 16, 32, 32), Icon::Power, d.nanoColor(Role::Foreground),
+             d.nanoColor(Role::Background));
+  d.nanoLabel(Rect(16, kCy + kRing + 10, kScreenW - 32, 24), view.title, 2, Role::Foreground, Align::Center);
+  if (!view.detail.isEmpty()) {
+    d.nanoLabel(Rect(16, kCy + kRing + 36, kScreenW - 32, 18), view.detail, 1, Role::Muted, Align::Center);
+  }
+}
+
+void paintBatteryPreview(DisplayManager &d, uint8_t alpha) {
+  if (alpha == 0) {
+    return;
+  }
+  const int w = d.nanoBatteryIndicatorWidth(false) + 36;
+  const Rect badge(kScreenW - w - 8, 6, w, 30);
+  d.nanoFadeBegin(badge);
+  d.nanoFillRoundRect(badge.x, badge.y, badge.w, badge.h, badge.h / 2, d.nanoColor(Role::SurfaceActive));
+  d.nanoDrawRoundRect(badge.x, badge.y, badge.w, badge.h, badge.h / 2, d.nanoColor(Role::Accent));
+  d.nanoBatteryInline(Rect(badge.x + 12, badge.y, badge.w - 24, badge.h), false, Align::Center);
+  d.nanoFadeEnd(alpha);
+}
+
 // ─── Reader panel ───────────────────────────────────────────────────────────
 
 Rect readerPanelWordArea() { return Rect(0, 24, kScreenW, 96); }
@@ -1369,6 +1407,8 @@ void paintTutorial(DisplayManager &d, Sink &sink, const TutorialView &view) {
 
 namespace {
 
+uint8_t fittingTextSize(const String &text, int width, uint8_t maxSize);
+
 void paintWizardChip(DisplayManager &d, Sink &sink, const Rect &rect, const WizardChip &chip) {
   const bool pressed = sink.pressed(chip.id);
   if (chip.art == WizardChipArt::Theme) {
@@ -1414,6 +1454,16 @@ void paintWizardChip(DisplayManager &d, Sink &sink, const Rect &rect, const Wiza
   const uint16_t ink = d.nanoColor(chip.selected ? Role::Foreground : Role::Muted);
   switch (chip.art) {
     case WizardChipArt::Swatch: {
+      if (rect.h < 44) {
+        // Short chip (two rows): the dot left, the name beside it, so a long
+        // name ("Pomarańczowy") keeps all its letters.
+        const int r = std::max(6, std::min(10, static_cast<int>(rect.h) / 3));
+        d.nanoFillCircle(rect.x + 10 + r, rect.y + rect.h / 2, r, chip.swatch);
+        const int textX = rect.x + 2 * r + 20;
+        const int textW = static_cast<int>(rect.x + rect.w) - textX - 6;
+        d.nanoText(Rect(textX, rect.y, textW, rect.h), chip.label, fittingTextSize(chip.label, textW, 2), ink);
+        break;
+      }
       const int r = std::min(12, static_cast<int>(rect.h) / 4);
       d.nanoFillCircle(rect.x + rect.w / 2, rect.y + rect.h / 2 - 8, r, chip.swatch);
       d.nanoText(Rect(rect.x + 4, rect.y + rect.h - 24, rect.w - 8, 20), chip.label, 1, ink, Align::Center);
@@ -1725,6 +1775,8 @@ void paintSync(DisplayManager &d, Sink &sink, const SyncView &view) {
 
 namespace {
 constexpr int kTypographySampleH = 80;
+// Lower sample when the controls take two rows (Prowadnica tab).
+constexpr int kTypographySampleTwoRowsH = 56;
 constexpr int kTypographyBarH = 28;
 }  // namespace
 
@@ -1734,7 +1786,12 @@ void paintTypography(DisplayManager &d, Sink &sink, const TypographyView &view) 
   // The sample is the reading screen, so it keeps the reading colors while
   // the controls below wear the menu palette: what changes the reading
   // screen sits on the reading screen.
-  const Rect sample = typographySampleRect();
+  const int themeCount = static_cast<int>(view.themes.size());
+  const int otherCount = static_cast<int>(view.items.size()) + (view.letterColorId != kNoTarget ? 1 : 0);
+  // Five full-width controls (the Prowadnica tab) cannot keep their names
+  // in one row: they take two rows under a lower sample instead.
+  const bool twoRows = themeCount == 0 && otherCount >= 5;
+  const Rect sample = twoRows ? Rect(0, 0, kScreenW, kTypographySampleTwoRowsH) : typographySampleRect();
   d.nanoReaderSample(sample, view.before, view.word, view.after, view.fontSizeLevel);
   addTarget(sink, sample, view.sampleId);
 
@@ -1744,16 +1801,31 @@ void paintTypography(DisplayManager &d, Sink &sink, const TypographyView &view) 
   const Rect segments(right(back) + kGap, barY, kScreenW - kMargin - right(back) - kGap, kTypographyBarH);
   paintSegments(d, sink, segments, view.segmentIds, view.segmentLabels, view.section);
 
-  const int rowY = barY + kTypographyBarH + 6;
-  const Rect row(kMargin, rowY, kScreenW - kMargin * 2, kScreenH - 4 - rowY);
-  // Theme chips are narrow, the letter color and the other controls share
-  // what is left equally.
-  const int themeCount = static_cast<int>(view.themes.size());
-  const int otherCount = static_cast<int>(view.items.size()) + (view.letterColorId != kNoTarget ? 1 : 0);
+  const int rowY = barY + kTypographyBarH + (twoRows ? 4 : 6);
+  const Rect area(kMargin, rowY, kScreenW - kMargin * 2, kScreenH - 4 - rowY);
   const int cells = themeCount + otherCount;
   if (cells == 0) {
     return;
   }
+  if (twoRows) {
+    // First row ceil(n/2) controls, second the rest, each row split evenly.
+    const int rowH = (area.h - kGap / 2) / 2;
+    const int firstRow = (otherCount + 1) / 2;
+    for (int i = 0; i < static_cast<int>(view.items.size()); ++i) {
+      const bool top = i < firstRow;
+      const int inRow = top ? firstRow : otherCount - firstRow;
+      const int column = top ? i : i - firstRow;
+      const int cellW = (area.w - kGap * (inRow - 1)) / inRow;
+      const int x = area.x + column * (cellW + kGap);
+      const int w = column == inRow - 1 ? right(area) - x : cellW;
+      const int y = top ? area.y : bottom(area) - rowH;
+      paintListItem(d, sink, Rect(x, y, w, rowH), view.items[static_cast<size_t>(i)]);
+    }
+    return;
+  }
+  const Rect row = area;
+  // Theme chips are narrow, the letter color and the other controls share
+  // what is left equally.
   const int gaps = kGap * (cells - 1);
   const int themeW = themeCount > 0 ? std::min(100, (row.w - gaps) / cells) : 0;
   // Icon-only buttons (no label) stay narrow, the rest share the width.

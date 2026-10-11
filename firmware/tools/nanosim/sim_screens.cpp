@@ -425,7 +425,7 @@ void runScreens(DisplayManager &d, void (*dump)(const DisplayManager &, const ch
             ListItem gap = item(ListItem::Kind::Slider, 232, "Przerwa w linii", "0 px");
             gap.sliderMax = 10;
             v.items.push_back(gap);
-            ListItem reset = item(ListItem::Kind::Button, 233, "", "");
+            ListItem reset = item(ListItem::Kind::Button, 233, pl("Domy~slne"), "");
             reset.icon = Icon::Restart;
             v.items.push_back(reset);
           }

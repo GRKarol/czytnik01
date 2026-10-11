@@ -398,6 +398,41 @@ void DisplayManager::nanoPixel(int x, int y, uint16_t color) {
   virtualFrame_[y * kVirtualBufferWidth + x] = panelColor(color);
 }
 
+void DisplayManager::nanoFadeBegin(const ui::Rect &rect) {
+  nanoFadeRect_ = rect;
+  nanoFadeSaved_.clear();
+  if (virtualFrame_ == nullptr) {
+    return;
+  }
+  const int x0 = std::max(0, static_cast<int>(rect.x));
+  const int y0 = std::max(0, static_cast<int>(rect.y));
+  const int x1 = std::min(kNanoScreenW, static_cast<int>(rect.x + rect.w));
+  const int y1 = std::min(kNanoScreenH, static_cast<int>(rect.y + rect.h));
+  nanoFadeRect_ = ui::Rect(x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0));
+  nanoFadeSaved_.reserve(static_cast<size_t>(nanoFadeRect_.w) * nanoFadeRect_.h);
+  for (int y = y0; y < y1; ++y) {
+    const uint16_t *row = virtualFrame_ + y * kVirtualBufferWidth;
+    nanoFadeSaved_.insert(nanoFadeSaved_.end(), row + x0, row + x1);
+  }
+}
+
+void DisplayManager::nanoFadeEnd(uint8_t alpha) {
+  if (virtualFrame_ == nullptr ||
+      nanoFadeSaved_.size() != static_cast<size_t>(nanoFadeRect_.w) * nanoFadeRect_.h) {
+    return;
+  }
+  size_t i = 0;
+  for (int y = nanoFadeRect_.y; y < nanoFadeRect_.y + nanoFadeRect_.h; ++y) {
+    uint16_t *row = virtualFrame_ + y * kVirtualBufferWidth;
+    for (int x = nanoFadeRect_.x; x < nanoFadeRect_.x + nanoFadeRect_.w; ++x, ++i) {
+      // Pixels are stored byte-swapped for the panel; panelColor() swaps
+      // both ways.
+      row[x] = panelColor(nanoMix565(panelColor(nanoFadeSaved_[i]), panelColor(row[x]), alpha));
+    }
+  }
+  nanoFadeSaved_.clear();
+}
+
 void DisplayManager::nanoBlendPixel(int x, int y, uint16_t color, uint8_t alpha) {
   if (alpha == 0 || virtualFrame_ == nullptr || x < nanoClipX0_ || x >= nanoClipX1_ || y < nanoClipY0_ ||
       y >= nanoClipY1_) {
@@ -1848,6 +1883,9 @@ void DisplayManager::nanoTab(const ui::Rect &rect, const String &text, bool acti
   }
 }
 
+// The lowest tile that still holds a small label above a value line.
+constexpr int kNanoStackedMinH = 34;
+
 void DisplayManager::nanoSetting(const ui::Rect &rect, const String &label, const String &value,
                                  bool inlineLayout, bool pressed) {
   const uint16_t surface =
@@ -1855,6 +1893,12 @@ void DisplayManager::nanoSetting(const ui::Rect &rect, const String &label, cons
   nanoFillRoundRect(rect.x, rect.y, rect.w, rect.h, kNanoRadius, surface);
   constexpr int kPad = 12;
   const int textWidth = std::max(0, static_cast<int>(rect.w) - kPad * 2);
+  // A tile too narrow for label and value side by side stacks them (small
+  // label above the value) rather than cutting the label short.
+  if (inlineLayout && rect.h >= kNanoStackedMinH && !value.isEmpty() &&
+      nanoTextWidth(label, 2) + nanoTextWidth(value, 2) + 10 > textWidth) {
+    inlineLayout = false;
+  }
   if (inlineLayout) {
     // Label left in the foreground color, value right in the accent. The
     // value keeps its natural width up to half the row; the label gets the
@@ -1944,7 +1988,7 @@ void DisplayManager::nanoSlider(const ui::Rect &rect, const String &label, const
   const int textWidth = std::max(0, w - kPad * 2);
   // A narrow tile that cannot hold both on one line puts the label in small
   // type above the value instead of cutting the label short.
-  const bool stacked = h >= 44 && nanoTextWidth(label, 2) + nanoTextWidth(valueText, 2) + 10 > textWidth;
+  const bool stacked = h >= kNanoStackedMinH && nanoTextWidth(label, 2) + nanoTextWidth(valueText, 2) + 10 > textWidth;
   const uint8_t labelSize = stacked ? 1 : 2;
   const NanoAlign valueAlign = stacked ? NanoAlign::Start : NanoAlign::End;
   const int valueWidth = stacked ? textWidth : std::min(nanoTextWidth(valueText, 2), textWidth / 2);

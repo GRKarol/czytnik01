@@ -292,11 +292,8 @@ void App::handleStandbyTouch(const TouchEvent &event, uint32_t nowMs) {
     standbyAskShownSeconds_ = -1;
     if (pressed >= 0 && targetAt(event.x, event.y) == pressed) {
       if (pressed == kStandbyAskYes) {
-        Serial.println("[app] screensaver: screen off (asked)");
-        standbyPhase_ = StandbyPhase::Off;
-        standbyPhaseMs_ = nowMs;
-        stopActivityForScreenOff();
-        seedStandbyScreenOff(nowMs);
+        Serial.println("[app] screensaver: powering off (asked)");
+        enterPowerOff(nowMs);
       } else {
         exitStandby(nowMs);
       }

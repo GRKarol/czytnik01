@@ -484,6 +484,7 @@ bool App::helpTopicFor(MenuScreen screen, int id, HelpTopic &topic) const {
       case kSettingsPacingLongWordsIndex: return pick(HelpTopic::LongWords);
       case kSettingsPacingComplexityIndex: return pick(HelpTopic::Complexity);
       case kSettingsPacingPunctuationIndex: return pick(HelpTopic::Punctuation);
+      case kSettingsPacingSentenceIndex: return pick(HelpTopic::Sentences);
       case kSettingsPacingResetIndex: return pick(HelpTopic::ResetPacing);
       default: return false;
     }

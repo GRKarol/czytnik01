@@ -206,6 +206,7 @@ class App {
     LongWords,
     Complexity,
     Punctuation,
+    Sentences,
   };
 
   // Which typography value the TypographyValueEditor screen is currently
@@ -332,7 +333,6 @@ class App {
   void handlePowerButton(uint32_t nowMs);
   bool handleStandbyCombo(uint32_t nowMs);
   void toggleMenuFromPowerButton(uint32_t nowMs);
-  void restartFromPowerButtonDoubleTap();
   void openMainMenu(uint32_t nowMs);
   void cycleBrightness();
   void cycleThemeMode(uint32_t nowMs);
@@ -405,6 +405,7 @@ class App {
   void cycleTypographyPreviewSample(int direction);
   void rebuildSettingsMenuItems();
   void applyPacingSettings();
+  void migratePacingDefaults();
   void maybeAutoCheckForUpdates(uint32_t nowMs);
   bool startBackgroundOtaCheck(const OtaUpdater::Config &config);
   void stopAutoSyncAccessPoint(const char *reason);
@@ -557,6 +558,8 @@ class App {
   void selectWelcomeReadingModeItem(uint32_t nowMs);
   void openWelcomeReadingModePreview(uint8_t mode);
   void renderWelcomeReadingModePreview();
+  void buildReadingPreviewWords(uint8_t mode);
+  void closeReadingPreview(uint32_t nowMs);
   void updateWelcomeReadingModePreview(uint32_t nowMs);
   void openWelcomeConnect(uint32_t nowMs);
   void renderWelcomeConnect();
@@ -744,7 +747,6 @@ class App {
   void stopActivityForScreenOff();
   void handleStandbyTouch(const TouchEvent &event, uint32_t nowMs);
   void renderStandbyAsk(uint32_t nowMs);
-  void runMenuButton(uint32_t nowMs);
   void seedStandbyScreensaver(uint32_t nowMs);
   void stepStandbyScreensaver(uint32_t nowMs);
   void seedStandbyLife(uint32_t nowMs);
@@ -773,6 +775,9 @@ class App {
   String screensaverAutoOffLabel() const;
   String screensaverSleepGuardLabel() const;
   void enterPowerOff(uint32_t nowMs);
+  void playPowerOffAnimation();
+  uint8_t batteryPreviewAlpha(uint32_t nowMs) const;
+  void updateBatteryPreview(uint32_t nowMs);
   void enterSleep(uint32_t nowMs);
   void wakeFromSleep();
   bool restoreSavedBook(uint32_t nowMs);
@@ -1212,6 +1217,11 @@ class App {
   uint32_t lastReaderTapMs_ = 0;
   uint32_t standbyComboStartedMs_ = 0;
   uint32_t standbyEnteredMs_ = 0;
+  // How long both buttons must stay released after entering standby before
+  // a press wakes it: long after the PWR+BOOT combo (fingers leave the two
+  // buttons at different times), short after a PWR screen-off, whose
+  // release already happened.
+  uint32_t standbyWakeGraceMs_ = 900;
   uint32_t lastActivityMs_ = 0;
   uint32_t lastStandbyFrameMs_ = 0;
   uint32_t standbyLifeGeneration_ = 0;
@@ -1259,6 +1269,15 @@ class App {
   // The RSVP preview was opened from the reading-font page, not the
   // reading-mode one: Wybieram and Back return there.
   bool welcomePreviewFromFont_ = false;
+  // Settings > Scroll > Preview: the moving scroll page fills the screen
+  // until a tap (closeReadingPreview).
+  bool settingsScrollPreviewActive_ = false;
+  // Wskaznik baterii preview badge (top right, a second after a change).
+  bool batteryPreviewActive_ = false;
+  uint32_t batteryPreviewStartMs_ = 0;
+  uint32_t batteryPreviewFrameMs_ = 0;
+  uint32_t readingPreviewShownMs_ = 0;
+  bool readingPreviewTouchDown_ = false;
   bool wizardBookPickerActive_ = false;
   uint32_t welcomeScreenEnteredMs_ = 0;
   // OwnCard: a readable card without the font pack (not prepared by the
@@ -1349,14 +1368,15 @@ class App {
   size_t updateConfirmSelectedIndex_ = 0;
   uint8_t brightnessLevelIndex_ = 4;
   uint8_t brightnessPercentSetting_ = 100;
-  uint8_t readerFontSizeIndex_ = 0;
-  uint8_t scrollFontSize_ = 3;
+  uint8_t readerFontSizeIndex_ = 1;  // 0 large, 1 medium (default), 2 small
+  uint8_t scrollFontSize_ = 4;  // the middle of the nine sizes
   uint8_t scrollLineSpacing_ = 1;
   uint8_t scrollMargin_ = 1;
-  uint8_t scrollAlign_ = 0;  // DisplayManager::kScrollAlign*
-  uint16_t pacingLongWordDelayMs_ = 50;
-  uint16_t pacingComplexWordDelayMs_ = 50;
-  uint16_t pacingPunctuationDelayMs_ = 50;
+  uint8_t scrollAlign_ = 1;  // DisplayManager::kScrollAlign*, justified by default
+  uint16_t pacingLongWordDelayMs_ = 100;
+  uint16_t pacingComplexWordDelayMs_ = 100;
+  uint16_t pacingPunctuationDelayMs_ = 100;  // commas, dashes, semicolons
+  uint16_t pacingSentenceDelayMs_ = 150;     // full stops, ! and ?
   PacingDelayTarget pacingDelayEditorTarget_ = PacingDelayTarget::LongWords;
   // True while the touch that is currently down started on the editor's
   // corner Back icon — set on TouchPhase::Start, consumed on End, so a
@@ -1750,7 +1770,7 @@ class App {
   const char* helpPopupDesc_ = nullptr;
   FooterMetricMode footerMetricMode_ = FooterMetricMode::Percentage;
   BatteryLabelMode batteryLabelMode_ = BatteryLabelMode::Percent;
-  ScreensaverMode screensaverMode_ = ScreensaverMode::Book;
+  ScreensaverMode screensaverMode_ = ScreensaverMode::Words;
   uint8_t screensaverTimeoutIndex_ = 2;   // default: 5 min
   uint8_t screensaverAutoOffIndex_ = 0;   // default: off (never)
   uint8_t screensaverSleepGuardIndex_ = 0; // default: off (never)

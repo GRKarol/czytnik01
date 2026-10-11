@@ -497,6 +497,7 @@ enum class TrKey4 : uint8_t {
   ProvDone,
   ProvDoneSub,
   GuideSideShort,
+  PacingSentences,
 };
 
 namespace Translations3 {
