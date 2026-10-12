@@ -51,7 +51,9 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Build firmware (merged + OTA binaries)
-        run: python3 firmware/tools/export_web_firmware.py --version "${GITHUB_SHA::7}"
+        # Wersja z ostatniego taga (np. v0.4.13-1-gf795f17). Sam skrót commita
+        # czytnik czytał jako liczbę 79517 i już nigdy nie widział aktualizacji.
+        run: python3 firmware/tools/export_web_firmware.py --version "$(git describe --tags --match 'v*' --always)"
 
       # ─── PWA build ───────────────────────────────────────────────────────
       # Dzieje się PO firmware build, bo `npm run build` kopiuje całe
