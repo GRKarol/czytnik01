@@ -235,7 +235,10 @@ export class HttpDeviceApi implements DeviceApi {
     // entry carries the .epub name, so compare without the extension.
     const stem = (name: string) => name.replace(/\.[^./]+$/, "");
     const current = data.current ? stem(data.current) : "";
-    return data.books.map((b) => (current && stem(b.name) === current ? { ...b, current: true } : b));
+    return data.books.map((b) => {
+      const book = { ...b, title: b.title?.normalize("NFC"), author: b.author?.normalize("NFC") };
+      return current && stem(b.name) === current ? { ...book, current: true } : book;
+    });
   }
 
   async uploadBook(

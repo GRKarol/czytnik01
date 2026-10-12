@@ -75,8 +75,8 @@ export class BleDeviceApi implements DeviceApi {
     if (ev.ev === "books" && Array.isArray(ev.data)) {
       return (ev.data as Array<Record<string, unknown>>).map((b) => ({
         name: String(b.name ?? ""),
-        title: b.title ? String(b.title) : undefined,
-        author: b.author ? String(b.author) : undefined,
+        title: b.title ? String(b.title).normalize("NFC") : undefined,
+        author: b.author ? String(b.author).normalize("NFC") : undefined,
         bytes: 0,
         progressPercent: typeof b.progressPercent === "number" ? b.progressPercent : undefined,
         category: b.category === "article" ? "article" : "book",

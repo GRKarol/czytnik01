@@ -24,8 +24,10 @@ export interface ParsedBook {
 const RSVP_VERSION = "1";
 const WRAP_WIDTH = 96;
 
+// NFC: some EPUBs store "ą" as "a" + U+0328 (combining ogonek); the reader
+// and the previews want the single precomposed letter.
 function directiveSafe(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
+  return s.normalize("NFC").replace(/\s+/g, " ").trim();
 }
 
 /** Zawija tekst akapitu na linie ≤ WRAP_WIDTH, nie łamiąc słów. */

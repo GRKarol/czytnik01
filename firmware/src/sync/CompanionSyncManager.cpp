@@ -269,6 +269,31 @@ refresh();
 </body>
 </html>)HTML";
 
+// Length of the well-formed UTF-8 sequence for a non-ASCII character
+// starting at `index`, or 0 when the bytes there are not one.
+size_t utf8SequenceLength(const String &text, size_t index) {
+  const uint8_t first = static_cast<uint8_t>(text[index]);
+  size_t length = 0;
+  if (first >= 0xC2 && first <= 0xDF) {
+    length = 2;
+  } else if (first >= 0xE0 && first <= 0xEF) {
+    length = 3;
+  } else if (first >= 0xF0 && first <= 0xF4) {
+    length = 4;
+  } else {
+    return 0;
+  }
+  if (index + length > text.length()) {
+    return 0;
+  }
+  for (size_t k = 1; k < length; ++k) {
+    if ((static_cast<uint8_t>(text[index + k]) & 0xC0) != 0x80) {
+      return 0;
+    }
+  }
+  return length;
+}
+
 bool isSafeFilenameChar(char c) {
   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
          c == '-' || c == '_' || c == '.' || c == ' ';
@@ -3202,6 +3227,15 @@ String CompanionSyncManager::sanitizeFilename(const String &name) const {
   sanitized.reserve(name.length());
   for (size_t i = 0; i < name.length(); ++i) {
     const char c = name[i];
+    // A whole UTF-8 letter ("ą" is two bytes) stays: the card keeps long
+    // names in UTF-8, and swapping each byte for '-' turned "tysiącu" into
+    // "tysi--cu" on the Czytaj card.
+    const size_t sequence = utf8SequenceLength(name, i);
+    if (sequence > 1) {
+      sanitized += name.substring(i, i + sequence);
+      i += sequence - 1;
+      continue;
+    }
     sanitized += isSafeFilenameChar(c) ? c : '-';
   }
   sanitized.trim();

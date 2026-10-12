@@ -122,12 +122,16 @@ constexpr uint8_t kMixedTokenComplexityPercent = 22;
 constexpr uint8_t kNumericTokenComplexityPercent = 10;
 constexpr uint8_t kDenseConnectorComplexityPercent = 12;
 constexpr uint8_t kComplexWordMaxPercent = 85;
-constexpr uint8_t kCommaPausePercent = 45;
-constexpr uint8_t kDashPausePercent = 60;
-constexpr uint8_t kClausePausePercent = 80;
-constexpr uint8_t kEllipsisPausePercent = 110;
-constexpr uint8_t kSentencePausePercent = 135;
-constexpr uint8_t kStrongSentencePausePercent = 150;
+// The two punctuation settings are the pause itself: "Przecinki itp." =
+// 100 ms adds 100 ms after a comma, dash, semicolon or colon, "Kropki" =
+// 150 ms adds 150 ms after . ! ? and an ellipsis. (A comma used to get 45 %
+// of its setting, so 100 ms read as 45 ms and looked like no pause at all.)
+constexpr uint8_t kCommaPausePercent = 100;
+constexpr uint8_t kDashPausePercent = 100;
+constexpr uint8_t kClausePausePercent = 100;
+constexpr uint8_t kEllipsisPausePercent = 100;
+constexpr uint8_t kSentencePausePercent = 100;
+constexpr uint8_t kStrongSentencePausePercent = 100;
 constexpr uint8_t kMaxCatchUpWords = 4;
 constexpr uint16_t kMaxPacingDelayMs = 600;
 

@@ -109,9 +109,7 @@ constexpr uint32_t kTouchPlayReleaseGraceMs = 150;
 constexpr uint32_t kPreviewBrowseHoldMs = 240;
 constexpr uint32_t kReaderDoubleTapWindowMs = 520;
 // The right button (BOOT): a short press turns the screen off, held past
-// kBrightnessHoldMs it steps the brightness (on release), past
 // kThemeToggleHoldMs it changes the reading theme (while still held).
-constexpr uint32_t kBrightnessHoldMs = 1000;
 constexpr uint32_t kThemeToggleHoldMs = 2000;
 constexpr uint32_t kScrollAnimationFrameMs = 16;
 constexpr uint16_t kSwipeThresholdPx = 40;
@@ -213,7 +211,20 @@ constexpr uint32_t kHelpLongPressMs = 600;
 constexpr uint16_t kHelpLongPressMaxDriftPx = 20;
 constexpr size_t kContextPreviewWindowWords = 288;
 constexpr size_t kContextPreviewAnchorLeadWords = 112;
-constexpr size_t kContextPreviewMaxParagraphSnapWords = 48;
+// The window moves on while this many words are still ahead of the current
+// one, more than the scroll page shows below it at the smallest size. It
+// used to move only at its very last word, so the lines past the window's
+// end stayed black until reading reached them. A fresh window reaches
+// kContextPreviewLookaheadWords past the current word.
+constexpr size_t kContextPreviewMinLookaheadWords = 160;
+constexpr size_t kContextPreviewLookaheadWords = 288;
+// Past this size the window is rebuilt around the current word instead of
+// growing further.
+constexpr size_t kContextPreviewMaxWindowWords = 640;
+// Lines wrap from the window's first word, so a window that starts
+// mid-paragraph reflows the page when it moves; snap back this far to the
+// paragraph start to keep the lines where they were.
+constexpr size_t kContextPreviewMaxParagraphSnapWords = 120;
 constexpr uint32_t kProgressSaveIntervalMs = 10000;
 constexpr uint32_t kUsbTransferExitHoldMs = 1200;
 constexpr size_t kTimeEstimateBlockWords = 256;
@@ -395,6 +406,8 @@ constexpr size_t kSettingsConnWifiSessionIndex = kSettingsConnUsbIndex + 1;
 #else
 constexpr size_t kSettingsConnWifiSessionIndex = kSettingsConnUsbIndex;
 #endif
+// Advanced mode only: Wi-Fi with the screen off.
+constexpr size_t kSettingsConnWifiScreenOffIndex = kSettingsConnWifiSessionIndex + 1;
 
 // SettingsAbout items
 constexpr size_t kSettingsAboutVersionIndex = 1;   // tap-target dla dev mode
@@ -592,6 +605,7 @@ constexpr const char *kPrefBleEnabled = "ble_on";
 // 2..4 = automatic: back on when reading stops, off after 10/20/30 s of
 // reading. Shared with CompanionSyncManager ("wifiSession").
 constexpr const char *kPrefWifiSession = "wifi_sess";
+constexpr const char *kPrefWifiScreenOff = "wifi_dark";
 constexpr uint8_t kWifiSessionStandard = 0;
 constexpr uint8_t kWifiSessionWhole = 1;
 constexpr uint8_t kWifiSessionModeCount = 5;
@@ -1051,7 +1065,7 @@ void App::begin() {
   }
   loadScrollFontSize();
   scrollLineSpacing_ = preferences_.getUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
-  if (scrollLineSpacing_ > 2) scrollLineSpacing_ = 1;
+  if (scrollLineSpacing_ > 2) scrollLineSpacing_ = 2;
   scrollMargin_ = preferences_.getUChar(kPrefScrollMargin, scrollMargin_);
   if (scrollMargin_ > 2) scrollMargin_ = 1;
   scrollAlign_ = preferences_.getUChar(kPrefScrollAlign, scrollAlign_);
@@ -1237,6 +1251,7 @@ void App::begin() {
   // (moved out of boot path to prevent blocking)
 
   wifiSessionMode_ = preferences_.getUChar(kPrefWifiSession, kWifiSessionStandard);
+  wifiScreenOff_ = preferences_.getBool(kPrefWifiScreenOff, false);
   if (wifiSessionMode_ >= kWifiSessionModeCount) {
     wifiSessionMode_ = kWifiSessionStandard;
   }
@@ -1361,7 +1376,7 @@ void App::update(uint32_t nowMs) {
 
     // Short-press right (BOOT) button → leave the plugin with the screen off.
     if (button_.wasReleasedEvent()) {
-      if (button_.lastHoldDurationMs() < kBrightnessHoldMs) {
+      if (button_.lastHoldDurationMs() < kThemeToggleHoldMs) {
         Serial.println("[plugin] right button pressed — unloading plugin, screen off");
         pluginLoader_.unload();
         returnFromPlugin();
@@ -1442,6 +1457,11 @@ void App::update(uint32_t nowMs) {
   }
 
   if (state_ == AppState::Standby) {
+    if (autoSyncActive_) {
+      // Kept up through screen off ("Wi-Fi with the screen off"): the app
+      // still sends and fetches books. Its setting changes wait for wake.
+      companionSync_.update();
+    }
     handleTouch(nowMs);
     updateStandbyScreensaver(nowMs);
     if (nowMs - lastStateLogMs_ > 1500) {
@@ -1936,6 +1956,10 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
     return false;
   }
 
+  // Both buttons together raise the brightness one step (the brightest
+  // wraps to the dimmest), however long they are held. The combo owns both
+  // buttons until the last one is up, so neither release counts as a press
+  // of its own and a long hold neither powers off nor changes the theme.
   if (bothHeld) {
     if (!standbyComboActive_) {
       standbyComboActive_ = true;
@@ -1944,12 +1968,16 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
       bootButtonLongPressHandled_ = true;
       powerButtonLongPressHandled_ = true;
       powerTapPending_ = false;
-      enterStandby(nowMs);
+      lastActivityMs_ = nowMs;
+      cycleBrightness();
     }
     return true;
   }
 
   if (standbyComboActive_) {
+    if (button_.isHeld() || powerButton_.isHeld()) {
+      return true;
+    }
     standbyComboActive_ = false;
     standbyComboHandled_ = false;
     bootButtonLongPressHandled_ = false;
@@ -1963,9 +1991,9 @@ bool App::handleStandbyCombo(uint32_t nowMs) {
 
 void App::handleBootButton(uint32_t nowMs) {
   // The right button (BOOT): a short press turns the screen off (and stops
-  // reading and the phone network). Held past kBrightnessHoldMs it steps the
-  // brightness up, wrapping from the brightest level to the dimmest; held
-  // past kThemeToggleHoldMs it changes the reading theme.
+  // reading and the phone network); held past kThemeToggleHoldMs it changes
+  // the reading theme. Brightness is both buttons together
+  // (handleStandbyCombo).
   if (state_ == AppState::Standby) {
     if (!standbyButtonsReleased_ && !button_.isHeld() && !powerButton_.isHeld() &&
         nowMs - standbyEnteredMs_ >= standbyWakeGraceMs_) {
@@ -1984,13 +2012,21 @@ void App::handleBootButton(uint32_t nowMs) {
   }
 
   if (state_ == AppState::CompanionSync) {
-    // A short press ends the sharing and darkens the screen.
+    // A short press ends the sharing and darkens the screen; with "Wi-Fi
+    // with the screen off" on it only darkens the screen (and lights it
+    // again), the sharing goes on.
     if (button_.wasReleasedEvent()) {
-      const bool shortPress = !bootButtonLongPressHandled_ && button_.lastHoldDurationMs() < kBrightnessHoldMs;
+      const bool shortPress = !bootButtonLongPressHandled_ && button_.lastHoldDurationMs() < kThemeToggleHoldMs;
       bootButtonLongPressHandled_ = false;
       if (shortPress) {
-        exitCompanionSync(nowMs);
-        turnScreenOffFromPower(nowMs);
+        if (companionSyncDark_) {
+          setCompanionSyncDark(false);
+        } else if (keepWifiWithScreenOff()) {
+          setCompanionSyncDark(true);
+        } else {
+          exitCompanionSync(nowMs);
+          turnScreenOffFromPower(nowMs);
+        }
       }
     }
     return;
@@ -2032,10 +2068,6 @@ void App::handleBootButton(uint32_t nowMs) {
     return;
   }
 
-  if (button_.lastHoldDurationMs() >= kBrightnessHoldMs) {
-    cycleBrightness();
-    return;
-  }
   turnScreenOffFromPower(nowMs);
 }
 
@@ -2077,7 +2109,11 @@ void App::handlePowerButton(uint32_t nowMs) {
       powerButtonLongPressHandled_ = false;
       powerWakeReleaseIgnored_ = false;
       if (shortPress) {
-        exitCompanionSync(nowMs);
+        if (companionSyncDark_) {
+          setCompanionSyncDark(false);
+        } else {
+          exitCompanionSync(nowMs);
+        }
       }
     }
     return;
@@ -2298,6 +2334,7 @@ void App::applyHandednessSettings(uint32_t nowMs, bool rerender) {
 
 void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   wifiSessionMode_ = preferences_.getUChar(kPrefWifiSession, wifiSessionMode_);
+  wifiScreenOff_ = preferences_.getBool(kPrefWifiScreenOff, false);
   if (wifiSessionMode_ >= kWifiSessionModeCount) {
     wifiSessionMode_ = kWifiSessionStandard;
   }
@@ -2344,7 +2381,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
   }
   loadScrollFontSize();
   scrollLineSpacing_ = preferences_.getUChar(kPrefScrollLineSpacing, scrollLineSpacing_);
-  if (scrollLineSpacing_ > 2) scrollLineSpacing_ = 1;
+  if (scrollLineSpacing_ > 2) scrollLineSpacing_ = 2;
   scrollMargin_ = preferences_.getUChar(kPrefScrollMargin, scrollMargin_);
   if (scrollMargin_ > 2) scrollMargin_ = 1;
   scrollAlign_ = preferences_.getUChar(kPrefScrollAlign, scrollAlign_);
@@ -6508,6 +6545,11 @@ void App::rebuildSettingsMenuItems() {
 #endif
     // 5. Wi-Fi for the app after boot: 30 s / whole session / automatic
     settingsMenuItems_.push_back(String(tr4(TrKey4::WifiSessionColon)) + wifiSessionLabel());
+    if (devModeEnabled()) {
+      // 6. The network stays up while the screen is off.
+      settingsMenuItems_.push_back(String(tr4(TrKey4::WifiScreenOffColon)) +
+                                   (wifiScreenOff_ ? tr(TrKey::Yes) : tr(TrKey::No)));
+    }
   } else if (menuScreen_ == MenuScreen::DeviceHome) {
     rebuildDeviceHomeItems();
   } else if (menuScreen_ == MenuScreen::NanoThemes) {
@@ -6863,6 +6905,17 @@ void App::selectSettingsConnectivityItem(uint32_t nowMs) {
       if (sessionWifiHold()) {
         resumeSessionWifi("wifi session setting");
       }
+      rebuildSettingsMenuItems();
+      showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
+      renderSettings();
+      return;
+    case kSettingsConnWifiScreenOffIndex:
+      if (!devModeEnabled()) {
+        return;
+      }
+      wifiScreenOff_ = !wifiScreenOff_;
+      preferences_.putBool(kPrefWifiScreenOff, wifiScreenOff_);
+      Serial.printf("[app] wifi with screen off -> %d\n", wifiScreenOff_ ? 1 : 0);
       rebuildSettingsMenuItems();
       showGridToast(settingsMenuItems_[settingsSelectedIndex_], nowMs);
       renderSettings();
@@ -9105,7 +9158,7 @@ void App::loadScrollFontSize() {
     }
     preferences_.putUChar(kPrefScrollFontScale, 2);
   }
-  if (scrollFontSize_ > 8) scrollFontSize_ = 4;
+  if (scrollFontSize_ > 8) scrollFontSize_ = 2;
 }
 
 String App::scrollMarginLabel() const {
@@ -10563,6 +10616,17 @@ void App::updateCompanionSync(uint32_t nowMs) {
   // phone could join.
   constexpr uint32_t kCompanionSyncTouchGraceMs = 700;
   TouchEvent ev;
+  if (companionSyncDark_) {
+    // Dark screen: two quick taps light it, nothing else reacts.
+    if (touch_.poll(ev) && ev.phase == TouchPhase::End) {
+      if (companionSyncDarkTapMs_ != 0 && nowMs - companionSyncDarkTapMs_ <= kReaderDoubleTapWindowMs) {
+        setCompanionSyncDark(false);
+      } else {
+        companionSyncDarkTapMs_ = nowMs;
+      }
+    }
+    return;
+  }
   if (touch_.poll(ev)) {
     lastActivityMs_ = nowMs;
     if (wakeCardReaderScreen(ev)) {
@@ -10659,6 +10723,11 @@ void App::renderCompanionSyncScreen() {
 
 void App::exitCompanionSync(uint32_t nowMs) {
   Serial.println("[app] leaving companion sync mode");
+  if (companionSyncDark_) {
+    companionSyncDark_ = false;
+    display_.wakeFromSleep();
+    display_.setBrightnessPercent(currentBrightnessPercent());
+  }
   // Wi-Fi kept for the whole session: leaving this screen hands the running
   // network back to the background path in update() instead of closing it.
   if (wifiSessionMode_ == kWifiSessionWhole) {
@@ -13284,14 +13353,34 @@ void App::updateContextPreviewWindow(size_t currentIndex) {
   size_t endIndex = 0;
   bool rebuildWindow = !contextPreviewWindowValid_ || contextPreviewWords_.empty();
   if (!rebuildWindow) {
-    endIndex = std::min(wordCount, startIndex + kContextPreviewWindowWords);
-    rebuildWindow = currentIndex < startIndex || currentIndex >= endIndex ||
-                    (currentIndex + 1 >= endIndex && endIndex < wordCount);
+    endIndex = std::min(wordCount, startIndex + contextPreviewWords_.size());
+    rebuildWindow = currentIndex < startIndex || currentIndex >= endIndex;
+    const bool shortAhead = currentIndex + kContextPreviewMinLookaheadWords >= endIndex && endIndex < wordCount;
+    if (!rebuildWindow && shortAhead) {
+      if (contextPreviewWords_.size() >= kContextPreviewMaxWindowWords) {
+        rebuildWindow = true;
+      } else {
+        // Grow the window at its end: the lines already on screen keep
+        // their wrap, and only the new words are read from the card.
+        const size_t extendTo = std::min(wordCount, currentIndex + kContextPreviewLookaheadWords);
+        for (size_t index = endIndex; index < extendTo; ++index) {
+          DisplayManager::ContextWord word;
+          word.text = reader_.wordAt(index);
+          if (word.text.isEmpty()) {
+            break;  // a card hiccup: the next pass reads on from here
+          }
+          word.paragraphStart = isParagraphStart(index);
+          contextPreviewWords_.push_back(word);
+        }
+        endIndex = std::min(wordCount, startIndex + contextPreviewWords_.size());
+      }
+    }
   }
 
   if (rebuildWindow) {
     startIndex = contextPreviewAnchorIndex(currentIndex);
-    endIndex = std::min(wordCount, startIndex + kContextPreviewWindowWords);
+    endIndex = std::min(wordCount, std::max(startIndex + kContextPreviewWindowWords,
+                                            currentIndex + kContextPreviewLookaheadWords));
     contextPreviewStartIndex_ = startIndex;
     contextPreviewWords_.clear();
     contextPreviewWords_.reserve(endIndex - startIndex);

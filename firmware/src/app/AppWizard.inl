@@ -564,7 +564,14 @@ void App::handleWizardTouchAt(uint16_t x, uint16_t y, uint32_t touchStartMs, uin
           typographyConfig_.typeface = welcomeFontFaces_[index];
           preferences_.putUChar(kPrefReaderTypeface, static_cast<uint8_t>(typographyConfig_.typeface));
           applyTypographySettings(nowMs, false);
-          display_.consumeFontLoadFailure();
+          if (display_.consumeFontLoadFailure()) {
+            // The card was busy (a download writing): keep trying, or the
+            // preview shows Atkinson in place of the tapped face.
+            Serial.println("[welcome] reading font not loaded yet, retrying");
+            typographyFontRetryPending_ = true;
+            typographyFontRetryLastAttemptMs_ = nowMs;
+            typographyFontRetryDeadlineMs_ = nowMs + 20000;
+          }
         }
         break;
       case MenuScreen::WelcomeLibrary:
@@ -591,7 +598,11 @@ void App::handleWizardTouchAt(uint16_t x, uint16_t y, uint32_t touchStartMs, uin
       welcomePreviewFromFont_ = false;
       openWelcomeReadingModePreview(static_cast<uint8_t>(settingsSelectedIndex_ == 1 ? 1 : 0));
     } else if (menuScreen_ == MenuScreen::WelcomeFont) {
-      // The chosen typeface running as RSVP words at the reading size.
+      // The chosen typeface running as RSVP words at the reading size,
+      // read from the card again if the tap could not load it.
+      if (!display_.isActiveTypefaceLoaded()) {
+        applyTypographySettings(nowMs, false);
+      }
       welcomePreviewFromFont_ = true;
       openWelcomeReadingModePreview(0);
     } else if (menuScreen_ == MenuScreen::WelcomeSdCard) {

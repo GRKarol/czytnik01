@@ -222,12 +222,35 @@ void App::turnScreenOffFromPower(uint32_t nowMs) {
 }
 
 void App::stopActivityForScreenOff() {
-  // Reading pauses in enterStandby(); here the phone network goes too.
+  // Reading pauses in enterStandby(); here the phone network goes too,
+  // unless the advanced "Wi-Fi with the screen off" option keeps it.
   firstSessionSyncHold_ = false;
-  if (autoSyncActive_) {
+  if (autoSyncActive_ && !keepWifiWithScreenOff()) {
     stopAutoSyncAccessPoint("screen off");
     standbyStoppedWifi_ = true;
   }
+}
+
+bool App::keepWifiWithScreenOff() { return wifiScreenOff_ && devModeEnabled(); }
+
+// The sync screen with the option on: the panel sleeps, the network and the
+// server keep running. A button or a double tap lights it again.
+void App::setCompanionSyncDark(bool dark) {
+  if (dark == companionSyncDark_) {
+    return;
+  }
+  companionSyncDark_ = dark;
+  companionSyncDarkTapMs_ = 0;
+  companionSyncTouchStarted_ = false;
+  if (dark) {
+    Serial.println("[app] sync: screen off, network stays up");
+    display_.prepareForSleep();
+    return;
+  }
+  Serial.println("[app] sync: screen on");
+  display_.wakeFromSleep();
+  display_.setBrightnessPercent(currentBrightnessPercent());
+  renderCompanionSyncScreen();
 }
 
 void App::renderStandbyAsk(uint32_t nowMs) {

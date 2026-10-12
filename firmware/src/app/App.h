@@ -757,6 +757,10 @@ class App {
   void exitStandby(uint32_t nowMs);
   void turnScreenOffFromPower(uint32_t nowMs);
   void stopActivityForScreenOff();
+  // Advanced option: the phone network stays up with the screen off, and
+  // the sync screen goes dark in place instead of closing.
+  bool keepWifiWithScreenOff();
+  void setCompanionSyncDark(bool dark);
   void handleStandbyTouch(const TouchEvent &event, uint32_t nowMs);
   void renderStandbyAsk(uint32_t nowMs);
   void seedStandbyScreensaver(uint32_t nowMs);
@@ -1381,8 +1385,8 @@ class App {
   uint8_t brightnessLevelIndex_ = 4;
   uint8_t brightnessPercentSetting_ = 100;
   uint8_t readerFontSizeIndex_ = 1;  // 0 large, 1 medium (default), 2 small
-  uint8_t scrollFontSize_ = 4;  // the middle of the nine sizes
-  uint8_t scrollLineSpacing_ = 1;
+  uint8_t scrollFontSize_ = 2;     // size "2" of the nine
+  uint8_t scrollLineSpacing_ = 2;  // relaxed ("Luźno")
   uint8_t scrollMargin_ = 1;
   uint8_t scrollAlign_ = 1;  // DisplayManager::kScrollAlign*, justified by default
   uint16_t pacingLongWordDelayMs_ = 100;
@@ -1580,6 +1584,9 @@ class App {
   // inside it (a release without a start there is noise, not a tap).
   uint32_t companionSyncEnteredMs_ = 0;
   bool companionSyncTouchStarted_ = false;
+  bool wifiScreenOff_ = false;      // kPrefWifiScreenOff
+  bool companionSyncDark_ = false;  // sync screen dark, network running
+  uint32_t companionSyncDarkTapMs_ = 0;
   // Slider tiles of the last Nano list render, and the drag moving one.
   std::vector<NanoSliderTarget> nanoSliderTargets_;
   int nanoSliderIndex_ = -1;  // settings row under the finger, -1 = none

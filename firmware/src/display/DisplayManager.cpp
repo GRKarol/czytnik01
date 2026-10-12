@@ -488,14 +488,16 @@ const EmbeddedFontVariant *thumbnailFontVariant(DisplayManager::ReaderTypeface t
 // Called whenever the active typeface changes (see setTypographyConfig
 // below) — a deliberate, rare, user-driven event, not something that runs
 // per glyph or per frame, so a blocking SD read here is cheap in context.
-void ensureExtraTypefaceLoaded(DisplayManager::ReaderTypeface typeface) {
+// Returns true when this call read the face from the card: the glyphs on
+// screen change, so a frame cached while the fallback was showing is stale.
+bool ensureExtraTypefaceLoaded(DisplayManager::ReaderTypeface typeface) {
   if (!isExtraTypeface(typeface)) {
-    return;
+    return false;
   }
   if (gSdFontLoadedTypeface == typeface && gSdFontLoader.isLoaded() &&
       gSdFontLoader70.isLoaded()) {
     gSdFontLoadFailurePending = false;
-    return;
+    return false;
   }
   gSdFontLoadedTypeface = typeface;
   const String base = sdFontBaseName(typeface);
@@ -519,6 +521,7 @@ void ensureExtraTypefaceLoaded(DisplayManager::ReaderTypeface typeface) {
   if (gSdFontDamaged) {
     Serial.printf("[sdfont] %s damaged, removed for a fresh download\n", base.c_str());
   }
+  return baseOk || mediumOk;
 }
 
 const EmbeddedFontVariant &extraFontVariant(DisplayManager::ReaderTypeface typeface) {
@@ -748,7 +751,7 @@ ReaderGlyph glyphFor(char c, DisplayManager::ReaderTypeface typeface) {
            lookupValue <= kEmbeddedOpenDyslexicLastChar)
               ? lookupValue
               : LatinText::fallbackAsciiByte(lookupValue);
-      const EmbeddedOpenDyslexicGlyph &glyph =
+      const EmbeddedFontGlyph &glyph =
           kEmbeddedOpenDyslexicGlyphs[glyphValue - kEmbeddedOpenDyslexicFirstChar];
       return {kEmbeddedOpenDyslexicBitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width,
               glyph.xAdvance, kEmbeddedOpenDyslexicHeight};
@@ -758,7 +761,7 @@ ReaderGlyph glyphFor(char c, DisplayManager::ReaderTypeface typeface) {
           (lookupValue >= kEmbeddedAtkinsonFirstChar && lookupValue <= kEmbeddedAtkinsonLastChar)
               ? lookupValue
               : LatinText::fallbackAsciiByte(lookupValue);
-      const EmbeddedAtkinsonGlyph &glyph =
+      const EmbeddedFontGlyph &glyph =
           kEmbeddedAtkinsonGlyphs[glyphValue - kEmbeddedAtkinsonFirstChar];
       return {kEmbeddedAtkinsonBitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width,
               glyph.xAdvance, kEmbeddedAtkinsonHeight};
@@ -796,7 +799,7 @@ ReaderGlyph glyph70For(char c, DisplayManager::ReaderTypeface typeface) {
            lookupValue <= kEmbeddedOpenDyslexic70LastChar)
               ? lookupValue
               : LatinText::fallbackAsciiByte(lookupValue);
-      const EmbeddedOpenDyslexic70Glyph &glyph =
+      const EmbeddedFontGlyph &glyph =
           kEmbeddedOpenDyslexic70Glyphs[glyphValue - kEmbeddedOpenDyslexic70FirstChar];
       return {kEmbeddedOpenDyslexic70Bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width,
               glyph.xAdvance, kEmbeddedOpenDyslexic70Height};
@@ -807,7 +810,7 @@ ReaderGlyph glyph70For(char c, DisplayManager::ReaderTypeface typeface) {
            lookupValue <= kEmbeddedAtkinson70LastChar)
               ? lookupValue
               : LatinText::fallbackAsciiByte(lookupValue);
-      const EmbeddedAtkinson70Glyph &glyph =
+      const EmbeddedFontGlyph &glyph =
           kEmbeddedAtkinson70Glyphs[glyphValue - kEmbeddedAtkinson70FirstChar];
       return {kEmbeddedAtkinson70Bitmaps + glyph.bitmapOffset, glyph.xOffset, glyph.width,
               glyph.xAdvance, kEmbeddedAtkinson70Height};
@@ -1473,7 +1476,9 @@ void DisplayManager::setUiRotated180(bool rotated180) {
 void DisplayManager::setTypographyConfig(const TypographyConfig &config) {
   TypographyConfig next;
   next.typeface = sanitizeReaderTypeface(config.typeface);
-  ensureExtraTypefaceLoaded(next.typeface);
+  if (ensureExtraTypefaceLoaded(next.typeface)) {
+    lastRenderKey_ = "";
+  }
   next.focusHighlight = config.focusHighlight;
   next.trackingPx = static_cast<int8_t>(clampTypographyTracking(config.trackingPx));
   next.anchorPercent = static_cast<uint8_t>(clampTypographyAnchorPercent(config.anchorPercent));
